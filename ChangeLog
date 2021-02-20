@@ -1,3 +1,15 @@
+
+2021-02-20  Renaud Allard <renaud@allard.it>
+	0.6.2 Release
+
+	* Change the default user/group
+
+2021-02-20  Renaud Allard <renaud@allard.it>
+	0.6.1 Release
+
+	* Fixes for some security issues
+	* Fix for compilation with modern compilers
+
 2018-12-05  Dustin Lundquist <dustin@null-ptr.net>
 	0.6.0 Release
 
