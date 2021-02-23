@@ -71,6 +71,13 @@ main(int argc, char **argv) {
     rlim_t max_nofiles = 65536;
     int opt;
 
+    #ifdef __OpenBSD__
+    if (pledge("stdio getpw inet dns rpath proc id", NULL) == -1) {
+    fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
+    exit(1);
+    }
+    #endif
+
     while ((opt = getopt(argc, argv, "fc:n:V")) != -1) {
         switch (opt) {
             case 'c':
