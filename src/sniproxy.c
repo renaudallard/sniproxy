@@ -72,7 +72,8 @@ main(int argc, char **argv) {
     int opt;
 
     #ifdef __OpenBSD__
-    if (pledge("stdio getpw inet dns rpath proc id", NULL) == -1) {
+    if (pledge("stdio getpw inet dns rpath proc id"
+                " wpath unix", NULL) == -1) {
     fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
     exit(1);
     }
