@@ -1,11 +1,11 @@
 Name: sniproxy
-Version: 0.6.0
+Version: 0.6.3
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
 Group: System Environment/Daemons
 License: BSD
-URL: https://github.com/dlundquist/sniproxy
+URL: https://github.com/renaudallard/sniproxy
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
@@ -43,9 +43,18 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sniproxy.8.gz
 %{_mandir}/man5/sniproxy.conf.5.gz
 
-
-
 %changelog
+* Wed, 24 Feb 2021 Renaud Allard <renaud@allard.it> 0.6.3
+- Accept CRLF and LF in HTTP headers, fix buffer overflow error
+- Add plegde call for OpenBSD
+
+* Sat 22 Feb 2021 Renaud Allard <renaud@allard.it> 0.6.2
+- Change the default user/group
+
+* Sat 22 Feb 2021 Renaud Allard <renaud@allard.it> 0.6.1
+- Fixes for some security issues
+- Fix for compilation with modern compilers
+
 * Wed Dec 5 2018 Dustin Lundquist <dustin@null-ptr.net> 0.6.0-1
 - PROXY v1 protocol support
 - SO_REUSEPORT support on Linux 3.9 and later

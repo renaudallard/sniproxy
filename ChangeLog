@@ -1,4 +1,10 @@
 
+2021-02-24  Renaud Allard <renaud@allard.it>
+	0.6.3 Release
+
+	* Accept CRLF and LF in HTTP headers, fix buffer overflow error.
+	* Add plegde call for OpenBSD
+
 2021-02-20  Renaud Allard <renaud@allard.it>
 	0.6.2 Release
 
