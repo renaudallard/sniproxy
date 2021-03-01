@@ -1,3 +1,8 @@
+2021-03-01  Renaud Allard <renaud@allard.it>
+	0.6.4 Release
+
+	* Add wpath and unix to plegde call for OpenBSD
+	* fix ipv6 transparent proxy
 
 2021-02-24  Renaud Allard <renaud@allard.it>
 	0.6.3 Release

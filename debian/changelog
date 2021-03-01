@@ -1,13 +1,20 @@
+sniproxy (0.6.4) unstable; urgency=medium
+
+   * Add wpath and unix to plegde call for OpenBSD
+   * fix ipv6 transparent proxy
+
+ -- Renaud Allard <renaud@allard.it> Wed, 01 Mar 2021 14:10:00 +0200
+
 sniproxy (0.6.3) unstable; urgency=medium
 
-        * Accept CRLF and LF in HTTP headers, fix buffer overflow error.
-        * Add plegde call for OpenBSD
+   * Accept CRLF and LF in HTTP headers, fix buffer overflow error.
+   * Add plegde call for OpenBSD
 
  -- Renaud Allard <renaud@allard.it> Wed, 24 Feb 2021 13:50:00 +0200
 
 sniproxy (0.6.2) unstable; urgency=medium
 
-        * Change the default user/group
+   * Change the default user/group
 
  -- Renaud Allard <renaud@allard.it> Sat, 22 Feb 2021 09:00:00 +0200
 
