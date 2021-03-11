@@ -1,3 +1,10 @@
+2021-03-11  Renaud Allard <renaud@allard.it>
+	0.6.5 Release
+
+	* Add cpath and unix to plegde call for OpenBSD
+	* Add unveil protections for OpenBSD
+	* Remove -Wpedantic as it fails on OpenBSD base-gcc
+
 2021-03-01  Renaud Allard <renaud@allard.it>
 	0.6.4 Release
 

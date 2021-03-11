@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.6.4
+Version: 0.6.5
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -44,6 +44,11 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man5/sniproxy.conf.5.gz
 
 %changelog
+* Mon, 11 Mar 2021 Renaud Allard <renaud@allard.it> 0.6.5
+- Add cpath and unix to plegde call for OpenBSD
+- Add unveil protections for OpenBSD
+- Remove -Wpedantic as it fails on OpenBSD base-gcc
+
 * Mon, 01 Mar 2021 Renaud Allard <renaud@allard.it> 0.6.4
 - Add wpath and unix to plegde call for OpenBSD
 - fix ipv6 transparent proxy

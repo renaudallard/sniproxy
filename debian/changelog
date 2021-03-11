@@ -1,3 +1,11 @@
+sniproxy (0.6.5) unstable; urgency=medium
+
+    * Add cpath and unix to plegde call for OpenBSD
+    * Add unveil protections for OpenBSD
+    * Remove -Wpedantic as it fails on OpenBSD base-gcc
+
+ -- Renaud Allard <renaud@allard.it> Wed, 11 Mar 2021 12:00:00 +0200
+
 sniproxy (0.6.4) unstable; urgency=medium
 
    * Add wpath and unix to plegde call for OpenBSD
