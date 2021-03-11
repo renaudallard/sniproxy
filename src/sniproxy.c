@@ -72,6 +72,17 @@ main(int argc, char **argv) {
     int opt;
 
     #ifdef __OpenBSD__
+    if (unveil("/etc/sniproxy.conf", "r") != 0)
+		err(1, "unveil");
+    if (unveil("/var/run/sniproxy.pid", "rwc") != 0)
+		err(1, "unveil");
+    if (unveil("/var/log", "rwc") != 0)
+		err(1, "unveil");
+    if (unveil("/var/www/sockets", "rw") != 0)
+		err(1, "unveil");
+    if (unveil(NULL, NULL) != 0)
+		err(1, "unveil");
+
     if (pledge("stdio getpw inet dns rpath proc id"
                 " wpath unix", NULL) == -1) {
     fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
