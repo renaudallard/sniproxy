@@ -127,7 +127,7 @@ static void test4() {
     struct Buffer *buffer;
     int read_fd, write_fd;
 
-    buffer = new_buffer(4096, EV_DEFAULT);
+    buffer = new_buffer(16384, EV_DEFAULT);
 
     read_fd = open("/dev/zero", O_RDONLY);
     if (read_fd < 0) {
@@ -155,7 +155,7 @@ static void test_buffer_coalesce() {
     char output[sizeof(input)];
     int len;
 
-    buffer = new_buffer(4096, EV_DEFAULT);
+    buffer = new_buffer(16384, EV_DEFAULT);
     len = buffer_push(buffer, input, sizeof(input));
     assert(len == sizeof(input));
 
