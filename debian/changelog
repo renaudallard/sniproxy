@@ -1,5 +1,9 @@
 sniproxy (0.6.5) unstable; urgency=medium
 
+    * Print proper unveil errors (no influence for linux)
+
+sniproxy (0.6.5) unstable; urgency=medium
+
     * Add cpath and unix to plegde call for OpenBSD
     * Add unveil protections for OpenBSD
     * Remove -Wpedantic as it fails on OpenBSD base-gcc

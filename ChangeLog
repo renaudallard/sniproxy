@@ -1,3 +1,8 @@
+2023-01-30  Renaud Allard <renaud@allard.it>
+	0.6.6 Release
+
+	* Make proper error codes for unveil
+
 2021-03-11  Renaud Allard <renaud@allard.it>
 	0.6.5 Release
 
