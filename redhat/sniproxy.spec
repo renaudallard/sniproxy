@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.6.6
+Version: 0.6.7
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -44,6 +44,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man5/sniproxy.conf.5.gz
 
 %changelog
+* Tue, 31 Jan 2023 Renaud Allard <renaud@allard.it> 0.6.7
+- Fix a warning with clang15 and update old functions
 * Mon, 30 Jan 2023 Renaud Allard <renaud@allard.it> 0.6.6
 - Print proper unveil errors (no influence for linux)
 * Mon, 11 Mar 2021 Renaud Allard <renaud@allard.it> 0.6.5

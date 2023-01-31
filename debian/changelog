@@ -1,4 +1,8 @@
-sniproxy (0.6.5) unstable; urgency=medium
+sniproxy (0.6.7) unstable; urgency=low
+
+    * Fix a warning with clang15 and update old functions
+
+sniproxy (0.6.6) unstable; urgency=low
 
     * Print proper unveil errors (no influence for linux)
 

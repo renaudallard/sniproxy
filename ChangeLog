@@ -1,3 +1,8 @@
+2023-01-31  Renaud Allard <renaud@allard.it>
+	0.6.7 Release
+
+	* Fix a warning with clang15 and update old functions
+
 2023-01-30  Renaud Allard <renaud@allard.it>
 	0.6.6 Release
 
