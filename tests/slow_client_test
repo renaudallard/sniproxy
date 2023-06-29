@@ -32,10 +32,15 @@ sub slow_client($$) {
             PeerPort => $port,
             Proto => "tcp",
             Type => SOCK_STREAM)
+            Timeout => 5)
         or die "couldn't connect $!";
 
     $socket->send($request);
     foreach (split("\r\n", $request)) {
+        unless ($socket->connected()) {
+            print "Disconnected\n";
+            exit(0);
+        }
         $socket->send("$_\r\n");
         sleep(1);
     }

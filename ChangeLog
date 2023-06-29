@@ -1,4 +1,10 @@
 2023-01-31  Renaud Allard <renaud@allard.it>
+	0.6.8 Release
+
+	* Fix buffer overflow in address module
+	* Fix tests in Debian 11
+
+2023-01-31  Renaud Allard <renaud@allard.it>
 	0.6.7 Release
 
 	* Fix a warning with clang15 and update old functions

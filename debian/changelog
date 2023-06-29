@@ -1,3 +1,8 @@
+sniproxy (0.6.8) unstable; urgency=high
+
+    * Fix buffer overflow in address module
+    * Fix tests in Debian 11
+
 sniproxy (0.6.7) unstable; urgency=low
 
     * Fix a warning with clang15 and update old functions
@@ -53,7 +58,7 @@ sniproxy (0.6.0) unstable; urgency=medium
 sniproxy (0.5.0) unstable; urgency=medium
 
   * Transparent proxy support
-  * Use accept4() on Linix
+  * Use accept4() on Linux
   * Run as group specified in config
 
  -- Dustin Lundquist <dustin@null-ptr.net>  Wed, 26 Apr 2017 07:17:13 -0700
