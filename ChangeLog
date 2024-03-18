@@ -1,4 +1,9 @@
 2023-01-31  Renaud Allard <renaud@allard.it>
+	0.6.9 Release
+
+	* Migrate to pcre2
+
+2023-01-31  Renaud Allard <renaud@allard.it>
 	0.6.8 Release
 
 	* Fix buffer overflow in address module

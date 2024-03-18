@@ -1,3 +1,7 @@
+sniproxy (0.6.9) unstable; urgency=low
+
+    * Migrate to pcre2
+
 sniproxy (0.6.8) unstable; urgency=high
 
     * Fix buffer overflow in address module

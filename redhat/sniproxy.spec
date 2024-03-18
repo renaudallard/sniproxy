@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.6.8
+Version: 0.6.9
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -44,6 +44,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man5/sniproxy.conf.5.gz
 
 %changelog
+* Tue, 18 Mar 2024 Renaud Allard <renaud@allard.it> 0.6.9
+- Migrate to pcre2
 * Tue, 31 Jan 2023 Renaud Allard <renaud@allard.it> 0.6.8
 - Fix buffer overflow in address module
 - Fix tests in Debian 11
