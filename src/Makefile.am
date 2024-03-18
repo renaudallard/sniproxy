@@ -1,4 +1,4 @@
-AM_CPPFLAGS = $(LIBEV_CFLAGS) $(LIBPCRE_CFLAGS) $(LIBUDNS_CFLAGS)
+AM_CPPFLAGS = $(LIBEV_CFLAGS) $(LIBPCRE2_CFLAGS) $(LIBUDNS_CFLAGS)
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wwrite-strings
 
 sbin_PROGRAMS = sniproxy
@@ -34,4 +34,4 @@ sniproxy_SOURCES = sniproxy.c \
                    tls.c \
                    tls.h
 
-sniproxy_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS) $(LIBUDNS_LIBS)
+sniproxy_LDADD = $(LIBEV_LIBS) $(LIBPCRE2_LIBS) $(LIBUDNS_LIBS)

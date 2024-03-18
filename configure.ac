@@ -27,13 +27,14 @@ PKG_CHECK_MODULES([LIBEV], [libev], HAVE_LIBEV=yes; AC_DEFINE(HAVE_LIBEV, 1),
  fi
 ])
 
-PKG_CHECK_MODULES([LIBPCRE], [libpcre], HAVE_LIBPCRE=yes; AC_DEFINE(HAVE_LIBPCRE, 1),
-[AC_LIB_HAVE_LINKFLAGS(pcre,, [#include <pcre.h>], [pcre_exec(0,0,0,0,0,0,0,0);])
- if test x$ac_cv_libpcre = xyes; then
-  AC_SUBST([LIBPCRE_LIBS], [$LIBPCRE])
+PKG_CHECK_MODULES([LIBPCRE2], [libpcre2-8], HAVE_LIBPCRE=yes; AC_DEFINE(HAVE_LIBPCRE2, 1),
+AC_DEFINE([PCRE2_CODE_UNIT_WIDTH], [8], [PCRE2 code unit width wanted.])
+[AC_LIB_HAVE_LINKFLAGS(pcre2-8,, [#include <pcre2.h>], [pcre2_match(0,0,0,0,0,0,0);])
+ if test x$ac_cv_libpcre-8 = xyes; then
+  AC_SUBST([LIBPCRE2_LIBS], [$LIBPCRE2])
  else
   AC_MSG_ERROR([[***
-*** libpcre was not found.
+*** libpcre2-8 was not found.
 ***]])
  fi
 ])
