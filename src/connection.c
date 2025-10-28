@@ -44,6 +44,7 @@
 #include "address.h"
 #include "protocol.h"
 #include "logger.h"
+#include "tls.h"
 
 
 #define IS_TEMPORARY_SOCKERR(_errno) (_errno == EAGAIN || \
@@ -454,6 +455,9 @@ parse_client_request(struct Connection *con) {
             warn("Request from %s exceeded %zu byte buffer size",
                     display_sockaddr(&con->client.addr, client, sizeof(client)),
                     buffer_size(con->client.buffer));
+        } else if (result == TLS_ERR_CLIENT_RENEGOTIATION) {
+            warn("Client from %s attempted TLS renegotiation, rejecting",
+                    display_sockaddr(&con->client.addr, client, sizeof(client)));
         } else if (result == -2) {
             warn("Request from %s did not include a hostname",
                     display_sockaddr(&con->client.addr, client, sizeof(client)));

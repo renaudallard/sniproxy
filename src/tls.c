@@ -53,6 +53,16 @@ static int parse_tls_header(const uint8_t*, size_t, char **);
 static int parse_extensions(const uint8_t*, size_t, char **);
 static int parse_server_name_extension(const uint8_t*, size_t, char **);
 
+static uint8_t min_client_hello_version_major = 3;
+static uint8_t min_client_hello_version_minor = 3;
+
+void
+tls_set_min_client_hello_version(uint8_t major, uint8_t minor)
+{
+    min_client_hello_version_major = major;
+    min_client_hello_version_minor = minor;
+}
+
 
 static const char tls_alert[] = {
     0x15, /* TLS Alert */
@@ -145,6 +155,27 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
         return -5;
     }
 
+    if (pos + 6 > data_len)
+        return -5;
+
+    len = ((size_t)data[pos + 1] << 16) +
+        ((size_t)data[pos + 2] << 8) +
+        (size_t)data[pos + 3];
+
+    if (pos + 4 + len > data_len)
+        return -5;
+
+    uint8_t client_hello_version_major = data[pos + 4];
+    uint8_t client_hello_version_minor = data[pos + 5];
+
+    if (client_hello_version_major < min_client_hello_version_major ||
+            (client_hello_version_major == min_client_hello_version_major &&
+             client_hello_version_minor < min_client_hello_version_minor)) {
+        debug("Client hello TLS version %" PRIu8 ".%" PRIu8 " is not supported.",
+              client_hello_version_major, client_hello_version_minor);
+        return -2;
+    }
+
     /* Skip past fixed length records:
        1	Handshake Type
        3	Length
@@ -199,14 +230,31 @@ parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
         len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
 
+        if (pos + 4 + len > data_len)
+            return -5;
+
         /* Check if it's a server name extension */
         if (data[pos] == 0x00 && data[pos + 1] == 0x00) {
             /* There can be only one extension of each type, so we break
                our state and move p to beinnging of the extension here */
-            if (pos + 4 + len > data_len)
-                return -5;
             return parse_server_name_extension(data + pos + 4, len, hostname);
         }
+
+        if (data[pos] == 0xff && data[pos + 1] == 0x01) {
+            if (len < 1)
+                return -5;
+
+            size_t renegotiated_connection_length = data[pos + 4];
+
+            if (renegotiated_connection_length != len - 1)
+                return -5;
+
+            if (renegotiated_connection_length != 0) {
+                debug("Client-initiated TLS renegotiation is not supported.");
+                return TLS_ERR_CLIENT_RENEGOTIATION;
+            }
+        }
+
         pos += 4 + len; /* Advance to the next extension header */
     }
     /* Check we ended where we expected to */

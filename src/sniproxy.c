@@ -44,6 +44,7 @@
 #include "listener.h"
 #include "resolv.h"
 #include "logger.h"
+#include "tls.h"
 
 
 static void usage(void);
@@ -70,8 +71,9 @@ main(int argc, char **argv) {
     int background_flag = 1;
     rlim_t max_nofiles = 65536;
     int opt;
+    int allow_tls10 = 0;
 
-    while ((opt = getopt(argc, argv, "fc:n:V")) != -1) {
+    while ((opt = getopt(argc, argv, "fc:n:VT")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -85,11 +87,17 @@ main(int argc, char **argv) {
             case 'V':
                 printf("sniproxy %s\n", sniproxy_version);
                 return EXIT_SUCCESS;
+            case 'T':
+                allow_tls10 = 1;
+                break;
             default:
                 usage();
                 return EXIT_FAILURE;
         }
     }
+
+    if (allow_tls10)
+        tls_set_min_client_hello_version(3, 1);
 
     config = init_config(config_file, EV_DEFAULT);
     if (config == NULL) {
@@ -255,7 +263,8 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T]\n");
+    fprintf(stderr, "       -T allow TLS 1.0 client hellos\n");
 }
 
 static void

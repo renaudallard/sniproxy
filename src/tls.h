@@ -26,8 +26,13 @@
 #ifndef TLS_H
 #define TLS_H
 
+#include <stdint.h>
 #include "protocol.h"
 
 extern const struct Protocol *const tls_protocol;
+
+void tls_set_min_client_hello_version(uint8_t major, uint8_t minor);
+
+#define TLS_ERR_CLIENT_RENEGOTIATION (-6)
 
 #endif

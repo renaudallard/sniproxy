@@ -17,7 +17,7 @@ const unsigned char good_data_1[] = {
         // Handshake
         0x01, // Handshake Type: Client Hello
         0x00, 0x00, 0x64,  // Length
-        0x03, 0x01, // Version: TLS 1.0
+        0x03, 0x03, // Version: TLS 1.2
         // Random
         0x4e, 0x55, 0xde, 0x32, 0x80, 0x07, 0x92, 0x9f,
         0x50, 0x41, 0xe4, 0xf9, 0x58, 0x32, 0xfc, 0x4f,
@@ -171,7 +171,7 @@ const unsigned char good_data_5[] = {
         // Handshake
         0x01, // Handshake Type: Client Hello
         0x00, 0x00, 0xe8,  // Length 100
-        0x03, 0x01, // Version: TLS 1.0
+        0x03, 0x03, // Version: TLS 1.2
         // Random
         0x4e, 0x55, 0xde, 0x32, 0x80, 0x07, 0x92, 0x9f,
         0x50, 0x41, 0xe4, 0xf9, 0x58, 0x32, 0xfc, 0x4f,
@@ -221,6 +221,55 @@ const unsigned char good_data_5[] = {
                 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef,
                 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef,
                 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef,
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0e, // Length
+            0x00, 0x0c, // Server Name Indication Length
+                0x00, // Server Name Type: host_name
+                0x00, 0x09, // Length
+                // "localhost"
+                0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74
+};
+
+const unsigned char tls10_client_hello[] = {
+    // TLS record
+    0x16, // Content Type: Handshake
+    0x03, 0x01, // Version: TLS 1.0
+    0x00, 0x68, // Length
+        // Handshake
+        0x01, // Handshake Type: Client Hello
+        0x00, 0x00, 0x64,  // Length
+        0x03, 0x01, // Version: TLS 1.0
+        // Random
+        0x4e, 0x55, 0xde, 0x32, 0x80, 0x07, 0x92, 0x9f,
+        0x50, 0x41, 0xe4, 0xf9, 0x58, 0x32, 0xfc, 0x4f,
+        0x10, 0xb3, 0xde, 0x44, 0x4d, 0xa9, 0x67, 0x78,
+        0xea, 0xd1, 0x5f, 0x29, 0x09, 0x04, 0xc1, 0x06,
+        0x00, // Session ID Length
+        0x00, 0x28, // Cipher Suites Length
+            0x00, 0x39,
+            0x00, 0x38,
+            0x00, 0x35,
+            0x00, 0x16,
+            0x00, 0x13,
+            0x00, 0x0a,
+            0x00, 0x33,
+            0x00, 0x32,
+            0x00, 0x2f,
+            0x00, 0x05,
+            0x00, 0x04,
+            0x00, 0x15,
+            0x00, 0x12,
+            0x00, 0x09,
+            0x00, 0x14,
+            0x00, 0x11,
+            0x00, 0x08,
+            0x00, 0x06,
+            0x00, 0x03,
+            0x00, 0xff,
+        0x02, // Compression Methods
+            0x01,
+            0x00,
+        0x00, 0x12, // Extensions Length
             0x00, 0x00, // Extension Type: Server Name
             0x00, 0x0e, // Length
             0x00, 0x0c, // Server Name Indication Length
@@ -405,12 +454,81 @@ const unsigned char bad_data_4[] = {
             0x00, 0x01, // Length
             0x01 // Mode: Peer allows to send requests
 };
+
+const unsigned char bad_data_5[] = {
+    // TLS record
+    0x16, // Content Type: Handshake
+    0x03, 0x03, // Version: TLS 1.2
+    0x00, 0x44, // Length
+        // Handshake
+        0x01, // Handshake Type: Client Hello
+        0x00, 0x00, 0x40, // Length
+        0x03, 0x03, // Version: TLS 1.2
+        // Random
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        0x00, // Session ID Length
+        0x00, 0x02, // Cipher Suites Length
+            0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+        0x01, // Compression Methods
+            0x00, // NULL
+        0x00, 0x15, // Extensions Length
+            // Extension
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0a, // Length
+            0x00, 0x08, // Server Name Indication Length
+                0x00, // Server Name Type: host_name
+                0x00, 0x05, // Length
+                0x72, 0x65, 0x6e, 0x65, 0x67, // "reneg"
+            // Extension
+            0xff, 0x01, // Extension Type: Renegotiation Info
+            0x00, 0x03, // Length
+                0x02, // renegotiated_connection length
+                0x01, 0x02 // verify_data
+};
+
+const unsigned char good_data_6[] = {
+    // TLS record
+    0x16, // Content Type: Handshake
+    0x03, 0x03, // Version: TLS 1.2
+    0x00, 0x42, // Length
+        // Handshake
+        0x01, // Handshake Type: Client Hello
+        0x00, 0x00, 0x3e, // Length
+        0x03, 0x03, // Version: TLS 1.2
+        // Random
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        0x00, // Session ID Length
+        0x00, 0x02, // Cipher Suites Length
+            0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+        0x01, // Compression Methods
+            0x00, // NULL
+        0x00, 0x13, // Extensions Length
+            // Extension
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0e, // Length
+            0x00, 0x0c, // Server Name Indication Length
+                0x00, // Server Name Type: host_name
+                0x00, 0x09, // Length
+                // "localhost"
+                0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74,
+            // Extension
+            0xff, 0x01, // Extension Type: Renegotiation Info
+            0x00, 0x01, // Length
+                0x00 // renegotiated_connection length
+};
 static struct test_packet good[] = {
     { (char *)good_data_1, sizeof(good_data_1) },
     { (char *)good_data_2, sizeof(good_data_2) },
     { (char *)good_data_3, sizeof(good_data_3) },
     { (char *)good_data_4, sizeof(good_data_4) },
-    { (char *)good_data_5, sizeof(good_data_5) }
+    { (char *)good_data_5, sizeof(good_data_5) },
+    { (char *)good_data_6, sizeof(good_data_6) }
 };
 
 static struct test_packet bad[] = {
@@ -418,13 +536,15 @@ static struct test_packet bad[] = {
     { (char *)ssl20_client_hello, sizeof(ssl20_client_hello) },
     { (char *)bad_data_1, sizeof(bad_data_1) },
     { (char *)bad_data_2, sizeof(bad_data_2) },
-    { (char *)bad_data_3, sizeof(bad_data_3) }
+    { (char *)bad_data_3, sizeof(bad_data_3) },
+    { (char *)bad_data_5, sizeof(bad_data_5) }
 };
 
 int main(void) {
     unsigned int i;
     int result;
     char *hostname;
+    struct test_packet legacy_tls10 = { (char *)tls10_client_hello, sizeof(tls10_client_hello) };
 
     for (i = 0; i < sizeof(good) / sizeof(struct test_packet); i++) {
         hostname = NULL;
@@ -442,6 +562,22 @@ int main(void) {
 
     result = tls_protocol->parse_packet(good[0].packet, good[0].len, NULL);
     assert(result == -3);
+
+    hostname = NULL;
+    result = tls_protocol->parse_packet(legacy_tls10.packet, legacy_tls10.len, &hostname);
+    assert(result < 0);
+    assert(hostname == NULL);
+
+    tls_set_min_client_hello_version(3, 1);
+
+    hostname = NULL;
+    result = tls_protocol->parse_packet(legacy_tls10.packet, legacy_tls10.len, &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    assert(0 == strcmp("localhost", hostname));
+    free(hostname);
+
+    tls_set_min_client_hello_version(3, 3);
 
     for (i = 0; i < sizeof(bad) / sizeof(struct test_packet); i++) {
         hostname = NULL;

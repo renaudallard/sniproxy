@@ -8,6 +8,9 @@ use TestUtils;
 use TestHTTPD;
 use File::Temp;
 
+my $PROXY_NAMESPACE  = 'ns-test-proxy';
+my $CLIENT_NAMESPACE = 'ns-test-clt';
+
 
 sub checked_system {
     my $result = system(@_);
@@ -54,7 +57,7 @@ END
 sub proxy {
     my $config = shift;
 
-    exec('ip', 'netns', 'exec', 'ns-test-proxy', @_, '../src/sniproxy', '-f', '-c', $config);
+    exec('ip', 'netns', 'exec', $PROXY_NAMESPACE, @_, '../src/sniproxy', '-f', '-c', $config);
 }
 
 sub exec_cmd {
@@ -65,7 +68,7 @@ sub worker($$$$$) {
     my ($hostname, $path, $ip, $port, $requests) = @_;
 
     for (my $i = 0; $i < $requests; $i++) {
-        system('ip', 'netns', 'exec', 'ns-test-clt',
+        system('ip', 'netns', 'exec', $CLIENT_NAMESPACE,
                 'curl',
                 '-s', '-S',
                 '-H', "Host: $hostname",
@@ -90,6 +93,8 @@ sub main {
     my $httpd_port = $ENV{TEST_HTTPD_PORT} || 8081;
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 10;
+    my $proxy_namespace = $PROXY_NAMESPACE;
+    my $client_namespace = $CLIENT_NAMESPACE;
 
     my $config = make_config($proxy_port, $httpd_port);
 
@@ -97,6 +102,18 @@ sub main {
         print STDERR "This test requires Linux and root privileges\n";
         exit 77;
     }
+
+    # Ensure the current environment permits network namespace management
+    # before attempting to exercise the transparent proxy scenario.  Some
+    # container runtimes drop the CAP_SYS_ADMIN capability which prevents
+    # `ip netns` from configuring the shared mount point under /run/netns.
+    system('sh', '-c', "ip netns del $proxy_namespace >/dev/null 2>&1");
+    system('sh', '-c', "ip netns del $client_namespace >/dev/null 2>&1");
+    if (system('sh', '-c', "ip netns add $proxy_namespace >/dev/null 2>&1") != 0) {
+        print STDERR "Skipping transparent proxy test: network namespaces are not available in this environment\n";
+        exit 77;
+    }
+    system('sh', '-c', "ip netns del $proxy_namespace >/dev/null 2>&1");
 
     # Setup a test network using network namespaces with the ns-test-proxy
     # namespace configured like a normal transparent proxy box.
@@ -156,8 +173,8 @@ sub main {
     # IP route table 100:
     #   local default dev lo scope host
 
-    checked_system('ip', 'netns', 'add', 'ns-test-proxy');
-    checked_system('ip', 'netns', 'add', 'ns-test-clt');
+    checked_system('ip', 'netns', 'add', $proxy_namespace);
+    checked_system('ip', 'netns', 'add', $client_namespace);
 
     checked_system('ip', 'link', 'add', 'veth-proxy-srv', 'type', 'veth', 'peer', 'name', 'veth-srv-proxy');
 
@@ -165,37 +182,37 @@ sub main {
     checked_system('ip', 'addr', 'add', '192.0.2.2/30', 'dev', 'veth-srv-proxy');
     checked_system('ip', 'route', 'add', '192.0.2.4/30', 'via', '192.0.2.1', 'dev', 'veth-srv-proxy');
 
-    checked_system('ip', 'link', 'set', 'veth-proxy-srv', 'up', 'netns', 'ns-test-proxy');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ip', 'addr', 'add', '192.0.2.1/30', 'dev', 'veth-proxy-srv');
+    checked_system('ip', 'link', 'set', 'veth-proxy-srv', 'up', 'netns', $proxy_namespace);
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'ip', 'addr', 'add', '192.0.2.1/30', 'dev', 'veth-proxy-srv');
 
     checked_system('ip', 'link', 'add', 'veth-proxy-clt', 'type', 'veth', 'peer', 'name', 'veth-clt-proxy');
 
-    checked_system('ip', 'link', 'set', 'veth-proxy-clt', 'up', 'netns', 'ns-test-proxy');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ip', 'addr', 'add', '192.0.2.5/30', 'dev', 'veth-proxy-clt');
+    checked_system('ip', 'link', 'set', 'veth-proxy-clt', 'up', 'netns', $proxy_namespace);
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'ip', 'addr', 'add', '192.0.2.5/30', 'dev', 'veth-proxy-clt');
 
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'sysctl', 'net.ipv4.conf.all.forwarding=1');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-o', 'veth-proxy-clt', '-j', 'MASQUERADE');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'iptables', '-t', 'mangle', '-N', 'DIVERT');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'iptables', '-t', 'mangle', '-A', 'PREROUTING', '-p', 'tcp', '-m', 'socket', '-j', 'DIVERT');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'iptables', '-t', 'mangle', '-A', 'DIVERT', '-j', 'MARK', '--set-mark', '1');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'iptables', '-t', 'mangle', '-A', 'DIVERT', '-j', 'ACCEPT');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ip', 'rule', 'add', 'fwmark', '1', 'lookup', '100');
-    checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ip', 'route', 'add', 'local', '0.0.0.0/0', 'dev', 'lo', 'table', '100');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'sysctl', 'net.ipv4.conf.all.forwarding=1');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-o', 'veth-proxy-clt', '-j', 'MASQUERADE');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'iptables', '-t', 'mangle', '-N', 'DIVERT');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'iptables', '-t', 'mangle', '-A', 'PREROUTING', '-p', 'tcp', '-m', 'socket', '-j', 'DIVERT');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'iptables', '-t', 'mangle', '-A', 'DIVERT', '-j', 'MARK', '--set-mark', '1');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'iptables', '-t', 'mangle', '-A', 'DIVERT', '-j', 'ACCEPT');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'ip', 'rule', 'add', 'fwmark', '1', 'lookup', '100');
+    checked_system('ip', 'netns', 'exec', $proxy_namespace, 'ip', 'route', 'add', 'local', '0.0.0.0/0', 'dev', 'lo', 'table', '100');
 
     #checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'iptables-save');
     #checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ip', '-d', 'addr', 'show');
     #checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ip', '-d', 'route', 'show');
 
-    checked_system('ip', 'link', 'set', 'veth-clt-proxy', 'up', 'netns', 'ns-test-clt');
-    checked_system('ip', 'netns', 'exec', 'ns-test-clt', 'ip', 'addr', 'add', '192.0.2.6/30', 'dev', 'veth-clt-proxy');
+    checked_system('ip', 'link', 'set', 'veth-clt-proxy', 'up', 'netns', $client_namespace);
+    checked_system('ip', 'netns', 'exec', $client_namespace, 'ip', 'addr', 'add', '192.0.2.6/30', 'dev', 'veth-clt-proxy');
 
     #checked_system('ip', 'netns', 'exec', 'ns-test-clt', 'ip', '-d', 'addr', 'show');
     #checked_system('ip', 'netns', 'exec', 'ns-test-clt', 'ip', '-d', 'route', 'show');
 
     my $proxy_pid = start_child('proxy', \&proxy, $config, @ARGV);
     my $httpd_pid = start_child('server', \&TestHTTPD::httpd, ip => '192.0.2.2', port => $httpd_port);
-    my $tcpdump1_pid = start_child('tcpdump', \&exec_cmd, 'ip', 'netns', 'exec', 'ns-test-proxy', 'tcpdump', '-npi' ,'veth-proxy-clt', '-s', '0', '-w', 'veth-proxy-clt.pcap');
-    my $tcpdump2_pid = start_child('tcpdump', \&exec_cmd, 'ip', 'netns', 'exec', 'ns-test-proxy', 'tcpdump', '-npi' ,'veth-proxy-srv', '-s', '0', '-w', 'veth-proxy-srv.pcap');
+    my $tcpdump1_pid = start_child('tcpdump', \&exec_cmd, 'ip', 'netns', 'exec', $proxy_namespace, 'tcpdump', '-npi' ,'veth-proxy-clt', '-s', '0', '-w', 'veth-proxy-clt.pcap');
+    my $tcpdump2_pid = start_child('tcpdump', \&exec_cmd, 'ip', 'netns', 'exec', $proxy_namespace, 'tcpdump', '-npi' ,'veth-proxy-srv', '-s', '0', '-w', 'veth-proxy-srv.pcap');
 
     #checked_system('ip', 'netns', 'exec', 'ns-test-proxy', 'ss', '-lptn');
 
@@ -227,8 +244,8 @@ sub main {
     reap_children();
 
     # Cleanup our network name spaces
-    checked_system('ip', 'netns', 'delete', 'ns-test-clt');
-    checked_system('ip', 'netns', 'delete', 'ns-test-proxy');
+    checked_system('ip', 'netns', 'delete', $client_namespace);
+    checked_system('ip', 'netns', 'delete', $proxy_namespace);
 }
 
 main();
