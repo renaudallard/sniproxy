@@ -37,6 +37,7 @@
 #include "tls.h"
 #include "protocol.h"
 #include "logger.h"
+#include "hostname_sanitize.h"
 
 #define SERVER_NAME_LEN 256
 #define TLS_HEADER_LEN 5
@@ -240,7 +241,15 @@ parse_server_name_extension(const uint8_t *data, size_t data_len,
 
                 (*hostname)[len] = '\0';
 
-                return len;
+                size_t hostname_len = len;
+
+                if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
+                    free(*hostname);
+                    *hostname = NULL;
+                    return -5;
+                }
+
+                return (int)hostname_len;
             default:
                 debug("Unknown server name extension name type: %" PRIu8,
                       data[pos]);

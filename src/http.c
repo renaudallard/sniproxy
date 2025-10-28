@@ -30,6 +30,7 @@
 #include <ctype.h> /* isblank(), isdigit() */
 #include "http.h"
 #include "protocol.h"
+#include "hostname_sanitize.h"
 
 #define SERVER_NAME_LEN 256
 
@@ -92,7 +93,15 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
             break;
         }
 
-    return result;
+    size_t hostname_len = (size_t)result;
+
+    if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
+        free(*hostname);
+        *hostname = NULL;
+        return -5;
+    }
+
+    return (int)hostname_len;
 }
 
 static int
