@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <assert.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -168,6 +169,40 @@ static void test_buffer_coalesce(void) {
     assert(len == 0);
 }
 
+static void test_buffer_reserve_and_expand(void) {
+    struct Buffer *buffer;
+    char payload[8] = {0};
+    char extra[32];
+    size_t len;
+
+    buffer = new_buffer(8, EV_DEFAULT);
+    assert(buffer != NULL);
+
+    len = buffer_push(buffer, payload, sizeof(payload));
+    assert(len == sizeof(payload));
+
+    assert(buffer_reserve(buffer, sizeof(payload)) == 0);
+    assert(buffer_room(buffer) >= sizeof(payload));
+
+    for (size_t i = 0; i < sizeof(extra); i++)
+        extra[i] = (char)i;
+
+    len = buffer_push(buffer, extra, sizeof(extra));
+    assert(len == sizeof(extra));
+    assert(buffer_len(buffer) == sizeof(payload) + sizeof(extra));
+
+    free_buffer(buffer);
+}
+
+static void test_buffer_reserve_overflow(void) {
+    struct Buffer *buffer = new_buffer(1024, EV_DEFAULT);
+    assert(buffer != NULL);
+
+    assert(buffer_reserve(buffer, SIZE_MAX) == -1);
+
+    free_buffer(buffer);
+}
+
 int main(void) {
     test1();
 
@@ -178,4 +213,8 @@ int main(void) {
     test4();
 
     test_buffer_coalesce();
+
+    test_buffer_reserve_and_expand();
+
+    test_buffer_reserve_overflow();
 }

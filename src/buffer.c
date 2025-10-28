@@ -98,6 +98,30 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
     return (ssize_t)buf->len;
 }
 
+int
+buffer_reserve(struct Buffer *buf, size_t min_room) {
+    if (min_room == 0 || buffer_room(buf) >= min_room)
+        return 0;
+
+    if (min_room > BUFFER_MAX_SIZE - buf->len)
+        return -1;
+
+    size_t required = buf->len + min_room;
+    size_t new_size = buffer_size(buf);
+
+    while (new_size < required) {
+        if (new_size >= BUFFER_MAX_SIZE)
+            return -1;
+
+        if (new_size > BUFFER_MAX_SIZE / 2)
+            new_size = BUFFER_MAX_SIZE;
+        else
+            new_size <<= 1;
+    }
+
+    return buffer_resize(buf, new_size) < 0 ? -1 : 0;
+}
+
 void
 free_buffer(struct Buffer *buf) {
     if (buf == NULL)
@@ -275,7 +299,7 @@ buffer_push(struct Buffer *dst, const void *src, size_t len) {
     if (dst->len == 0)
         dst->head = 0;
 
-    if (buffer_size(dst) - dst->len < len)
+    if (buffer_reserve(dst, len) < 0)
         return 0; /* insufficient room */
 
     size_t iov_len = setup_write_iov(dst, iov, len);

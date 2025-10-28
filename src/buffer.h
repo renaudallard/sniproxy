@@ -50,6 +50,7 @@ ssize_t buffer_send(struct Buffer *, int, int, struct ev_loop *);
 ssize_t buffer_read(struct Buffer *, int);
 ssize_t buffer_write(struct Buffer *, int);
 ssize_t buffer_resize(struct Buffer *, size_t);
+int buffer_reserve(struct Buffer *, size_t);
 size_t buffer_peek(const struct Buffer *, void *, size_t);
 size_t buffer_coalesce(struct Buffer *, const void **);
 size_t buffer_pop(struct Buffer *, void *, size_t);

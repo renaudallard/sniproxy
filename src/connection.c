@@ -476,6 +476,10 @@ parse_client_request(struct Connection *con) {
             if (buffer_room(con->client.buffer) > 0)
                 return; /* give client a chance to send more data */
 
+            if (buffer_reserve(con->client.buffer,
+                               buffer_size(con->client.buffer)) == 0)
+                return; /* buffer successfully expanded */
+
             warn("Request from %s exceeded %zu byte buffer size",
                     display_sockaddr(&con->client.addr, client, sizeof(client)),
                     buffer_size(con->client.buffer));
@@ -840,7 +844,7 @@ new_connection(struct ev_loop *loop) {
     con->query_handle = NULL;
     con->use_proxy_header = 0;
 
-    con->client.buffer = new_buffer(4096, loop);
+    con->client.buffer = new_buffer(2048, loop);
     if (con->client.buffer == NULL) {
         free_connection(con);
         return NULL;
