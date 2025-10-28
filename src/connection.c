@@ -260,9 +260,11 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             if (bytes_received > 0)
                 continue;
 
-            if (bytes_received < 0 && errno == EINTR)
-                continue;
-
+            /*
+             * Stop retrying within this callback even when interrupted so
+             * other watchers can run. EINTR is treated as a temporary error
+             * below.
+             */
             break;
         } while (buffer_room(input_buffer));
 
@@ -288,9 +290,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             if (bytes_transmitted > 0)
                 continue;
 
-            if (bytes_transmitted < 0 && errno == EINTR)
-                continue;
-
+            /* See comment above for receive side. */
             break;
         } while (buffer_len(output_buffer));
 
