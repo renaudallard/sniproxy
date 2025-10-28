@@ -64,7 +64,7 @@ static void init_default_logger(void);
 static void vlog_msg(struct Logger *, int, const char *, va_list);
 static void free_at_exit(void);
 static int lookup_syslog_facility(const char *);
-static const char *timestamp(char *, size_t);
+static size_t timestamp(char *, size_t);
 static struct LogSink *obtain_stderr_sink(void);
 static struct LogSink *obtain_syslog_sink(void);
 static struct LogSink *obtain_file_sink(const char *);
@@ -265,8 +265,7 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
     } else if (logger->sink->fd != NULL) {
         char buffer[1024];
 
-        timestamp(buffer, sizeof(buffer));
-        size_t len = strlen(buffer);
+        size_t len = timestamp(buffer, sizeof(buffer));
 
         vsnprintf(buffer + len, sizeof(buffer) - len, format, args);
         buffer[sizeof(buffer) - 1] = '\0'; /* ensure buffer null terminated */
@@ -471,31 +470,43 @@ free_sink(struct LogSink *sink) {
     free(sink);
 }
 
-static const char *
+static size_t
 timestamp(char *dst, size_t dst_len) {
     /* TODO change to ev_now() */
     time_t now = time(NULL);
     static struct {
         time_t when;
         char string[32];
-    } timestamp_cache = { .when = 0, .string = {'\0'} };
+        size_t len;
+    } timestamp_cache = { .when = 0, .string = {'\0'}, .len = 0 };
 
     if (now != timestamp_cache.when) {
 #ifdef RFC3339_TIMESTAMP
         struct tm *tmp = gmtime(&now);
-        strftime(timestamp_cache.string, sizeof(timestamp_cache.string),
-                "%FT%TZ ", tmp);
+        timestamp_cache.len = strftime(timestamp_cache.string,
+                sizeof(timestamp_cache.string), "%FT%TZ ", tmp);
 #else
         struct tm *tmp = localtime(&now);
-        strftime(timestamp_cache.string, sizeof(timestamp_cache.string),
-                "%F %T ", tmp);
+        timestamp_cache.len = strftime(timestamp_cache.string,
+                sizeof(timestamp_cache.string), "%F %T ", tmp);
 #endif
 
         timestamp_cache.when = now;
     }
 
-    if (dst != NULL)
-        strncpy(dst, timestamp_cache.string, dst_len);
+    if (dst == NULL)
+        return timestamp_cache.len;
 
-    return timestamp_cache.string;
+    if (dst_len == 0)
+        return 0;
+
+    size_t copy_len = timestamp_cache.len;
+
+    if (copy_len >= dst_len)
+        copy_len = dst_len - 1;
+
+    memcpy(dst, timestamp_cache.string, copy_len);
+    dst[copy_len] = '\0';
+
+    return copy_len;
 }
