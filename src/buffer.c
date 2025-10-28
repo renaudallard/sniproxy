@@ -189,34 +189,54 @@ buffer_write(struct Buffer *buffer, int fd) {
  */
 size_t
 buffer_coalesce(struct Buffer *buffer, const void **dst) {
-    size_t buffer_tail = (buffer->head + buffer->len) & buffer->size_mask;
+    size_t len = buffer->len;
+    size_t head = buffer->head;
+    size_t size = buffer_size(buffer);
 
-    if (buffer_tail <= buffer->head) {
-        /* buffer not wrapped */
+    if (len == 0) {
         if (dst != NULL)
-            *dst = &buffer->buffer[buffer->head];
+            *dst = buffer->buffer + head;
 
-        return buffer->len;
-    } else {
-        /* buffer wrapped */
-        size_t len = buffer->len;
-        char *temp = malloc(len);
-        if (temp != NULL) {
-            buffer_pop(buffer, temp, len);
-            assert(buffer->len == 0);
-
-            buffer_push(buffer, temp, len);
-            assert(buffer->head == 0);
-            assert(buffer->len == len);
-
-            free(temp);
-        }
-
-        if (dst != NULL)
-            *dst = buffer->buffer;
-
-        return buffer->len;
+        return 0;
     }
+
+    if (head + len <= size) {
+        /* Buffer contents are already contiguous. */
+        if (dst != NULL)
+            *dst = buffer->buffer + head;
+
+        return len;
+    }
+
+    size_t first_len = size - head;
+    size_t second_len = len - first_len;
+    size_t temp_len = first_len < second_len ? first_len : second_len;
+
+    char *temp = malloc(temp_len);
+    if (temp == NULL) {
+        if (dst != NULL)
+            *dst = buffer->buffer + head;
+
+        return len;
+    }
+
+    if (first_len <= second_len) {
+        memcpy(temp, buffer->buffer + head, first_len);
+        memmove(buffer->buffer + first_len, buffer->buffer, second_len);
+        memcpy(buffer->buffer, temp, first_len);
+    } else {
+        memcpy(temp, buffer->buffer, second_len);
+        memmove(buffer->buffer, buffer->buffer + head, first_len);
+        memcpy(buffer->buffer + first_len, temp, second_len);
+    }
+
+    free(temp);
+    buffer->head = 0;
+
+    if (dst != NULL)
+        *dst = buffer->buffer;
+
+    return len;
 }
 
 size_t
