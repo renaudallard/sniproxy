@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h> /* malloc() */
 #include <stdint.h>
-#include <string.h> /* strncpy() */
+#include <string.h> /* memcpy() */
 #include <sys/socket.h>
 #include <sys/types.h>
 #include "tls.h"
@@ -231,13 +231,16 @@ parse_server_name_extension(const uint8_t *data, size_t data_len,
 
         switch (data[pos]) { /* name type */
             case 0x00: /* host_name */
+                if (len == 0 || len >= SERVER_NAME_LEN)
+                    return -5;
+
                 *hostname = malloc(len + 1);
                 if (*hostname == NULL) {
                     err("malloc() failure");
                     return -4;
                 }
 
-                strncpy(*hostname, (const char *)(data + pos + 3), len);
+                memcpy(*hostname, data + pos + 3, len);
 
                 (*hostname)[len] = '\0';
 

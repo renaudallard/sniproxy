@@ -25,7 +25,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h> /* malloc() */
-#include <string.h> /* strncpy() */
+#include <string.h> /* memcpy() */
 #include <strings.h> /* strncasecmp() */
 #include <ctype.h> /* isblank(), isdigit() */
 #include "http.h"
@@ -117,14 +117,19 @@ get_header(const char *header, const char *data, size_t data_len, char **value) 
             while (header_len < len && isblank(data[header_len]))
                 header_len++;
 
-            *value = malloc(len - header_len + 1);
+            size_t value_len = len - header_len;
+
+            if (value_len == 0 || value_len >= SERVER_NAME_LEN)
+                return -5;
+
+            *value = malloc(value_len + 1);
             if (*value == NULL)
                 return -4;
 
-            strncpy(*value, data + header_len, len - header_len);
-            (*value)[len - header_len] = '\0';
+            memcpy(*value, data + header_len, value_len);
+            (*value)[value_len] = '\0';
 
-            return len - header_len;
+            return (int)value_len;
         }
 
     /* If there is no data left after reading all the headers then we do not
