@@ -137,29 +137,38 @@ get_header(const char *header, const char *data, size_t data_len, char **value) 
 
 static size_t
 next_header(const char **data, size_t *len) {
-    size_t header_len;
+    if (*len == 0)
+        return 0;
+
+    const char *cursor = *data;
+    const char *line_end = memchr(cursor, '\n', *len);
+
+    if (line_end == NULL) {
+        /* Incomplete line, consume the remaining bytes */
+        *data = cursor + *len;
+        *len = 0;
+        return 0;
+    }
+
+    /* Skip the current line (request line or previous header) */
+    size_t consumed = (size_t)(line_end - cursor) + 1;
+    cursor = line_end + 1;
+    *len -= consumed;
+    *data = cursor;
 
     if (*len == 0)
         return 0;
 
-    /* perhaps we can optimize this to reuse the value of header_len, rather
-     * than scanning twice.
-     * Walk our data stream until the end of the header */
-    while (*len > 1 && (*data)[0] != '\n') {
-        (*len)--;
-        (*data)++;
-    }
+    const char *header_end = memchr(cursor, '\n', *len);
 
-    /* advanced past the <LF> */
-    (*data)++;
-    (*len)--;
+    if (header_end == NULL)
+        return 0;
 
-    /* Find the length of the next header */
-    header_len = 0;
-    while (*len > header_len && (*data)[header_len] != '\n')
-        header_len++;
+    size_t header_len = (size_t)(header_end - cursor);
+
     /* ignore preceding <CR> */
-    if (header_len > 0 && (*data)[header_len - 1] == '\r')
+    if (header_len > 0 && cursor[header_len - 1] == '\r')
         header_len--;
+
     return header_len;
 }
