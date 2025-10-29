@@ -6,29 +6,6 @@ the initial request of the TCP session. This enables HTTPS name-based virtual
 hosting to separate backend servers without installing the private key on the
 proxy machine.
 
-Status: Deprecated
-------------------
-2023-12-13
-
-When I started this project, there wasn't another proxy that filled this niche.
-Now, there are many proxies available to proxy layer-4 based on the TLS SNI
-extension, including Nginx. Additionally, web traffic is evolving: with HTTP/2,
-multiple hostnames can be multiplexed in a single TCP stream [preventing SNI
-Proxy](https://github.com/dlundquist/sniproxy/issues/178) from routing it
-correctly based on hostname, and HTTP/3 (QUIC) uses UDP transport. SNI Proxy
-just doesn't support these protocols, and adding support for them would
-complicate it significantly. For these reasons, I'm transitioning SNI Proxy to
-a deprecated status.
-
-Honestly, this has been the case for last several years, and I hadn't published
-anything to that affect. With CVE-2023-25076 it became clear that this
-situation needs to be communicated clearly.
-
-In some cases, SNI Proxy might be a better fit than a more general purpose
-proxy, so I'm not going to abandon the project completely. I'll still monitor
-issues and email requests; however, unless it is a significant security or
-reliablity issue, don't expect a response.
-
 Features
 --------
 + Name-based proxying of HTTPS without decrypting traffic. No keys or
