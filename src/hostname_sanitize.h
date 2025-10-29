@@ -31,8 +31,10 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)hostname[i];
 
-        if (c <= 0x1F || c == 0x7F || isspace((unsigned char)c))
+        if (c <= 0x1F || c == 0x7F || c >= 0x80 || isspace((unsigned char)c))
             return 0;
+
+        hostname[i] = (char)tolower(c);
     }
 
     *hostname_len = len;

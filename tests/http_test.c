@@ -12,6 +12,11 @@ static const char *good[] = {
         "\r\n",
     "GET / HTTP/1.1\r\n"
         "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
+        "Host: LOCALHOST\r\n"
+        "Accept: */*\r\n"
+        "\r\n",
+    "GET / HTTP/1.1\r\n"
+        "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
         "HOST:\t     localhost\r\n"
         "Accept: */*\r\n"
         "\r\n",

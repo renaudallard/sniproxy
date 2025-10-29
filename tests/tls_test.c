@@ -522,13 +522,48 @@ const unsigned char good_data_6[] = {
             0x00, 0x01, // Length
                 0x00 // renegotiated_connection length
 };
+
+const unsigned char good_data_7[] = {
+    // TLS record
+    0x16, // Content Type: Handshake
+    0x03, 0x03, // Version: TLS 1.2
+    0x00, 0x42, // Length
+        // Handshake
+        0x01, // Handshake Type: Client Hello
+        0x00, 0x00, 0x3e, // Length
+        0x03, 0x03, // Version: TLS 1.2
+        // Random
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        0x00, // Session ID Length
+        0x00, 0x02, // Cipher Suites Length
+            0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+        0x01, // Compression Methods
+            0x00, // NULL
+        0x00, 0x13, // Extensions Length
+            // Extension
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0e, // Length
+            0x00, 0x0c, // Server Name Indication Length
+                0x00, // Server Name Type: host_name
+                0x00, 0x09, // Length
+                // "LOCALHOST"
+                0x4c, 0x4f, 0x43, 0x41, 0x4c, 0x48, 0x4f, 0x53, 0x54,
+            // Extension
+            0xff, 0x01, // Extension Type: Renegotiation Info
+            0x00, 0x01, // Length
+                0x00 // renegotiated_connection length
+};
 static struct test_packet good[] = {
     { (char *)good_data_1, sizeof(good_data_1) },
     { (char *)good_data_2, sizeof(good_data_2) },
     { (char *)good_data_3, sizeof(good_data_3) },
     { (char *)good_data_4, sizeof(good_data_4) },
     { (char *)good_data_5, sizeof(good_data_5) },
-    { (char *)good_data_6, sizeof(good_data_6) }
+    { (char *)good_data_6, sizeof(good_data_6) },
+    { (char *)good_data_7, sizeof(good_data_7) }
 };
 
 static struct test_packet bad[] = {
