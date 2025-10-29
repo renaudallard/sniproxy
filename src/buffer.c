@@ -66,8 +66,9 @@ new_buffer(size_t size, struct ev_loop *loop) {
     buf->head = 0;
     buf->tx_bytes = 0;
     buf->rx_bytes = 0;
-    buf->last_recv = ev_now(loop);
-    buf->last_send = ev_now(loop);
+    const ev_tstamp now = ev_now(loop);
+    buf->last_recv = now;
+    buf->last_send = now;
     buf->buffer = malloc(size);
     if (buf->buffer == NULL) {
         free(buf);
@@ -112,19 +113,34 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
         buf->buffer = resized;
         buf->size_mask = new_size - 1;
     } else {
-        char *new_buffer = malloc(new_size);
-        if (new_buffer == NULL)
-            return -2;
+        size_t original_head = buf->head;
 
-        size_t first_len = MIN(buf->len, current_size - buf->head);
-        memcpy(new_buffer, buf->buffer + buf->head, first_len);
-        if (buf->len > first_len)
-            memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
+        if (buf->head != 0 && buf->len != 0)
+            buffer_coalesce(buf, NULL);
 
-        free(buf->buffer);
-        buf->buffer = new_buffer;
+        if (buf->head != 0 && buf->len != 0) {
+            char *new_buffer = malloc(new_size);
+            if (new_buffer == NULL)
+                return -2;
+
+            size_t first_len = MIN(buf->len, current_size - original_head);
+            memcpy(new_buffer, buf->buffer + original_head, first_len);
+            if (buf->len > first_len)
+                memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
+
+            free(buf->buffer);
+            buf->buffer = new_buffer;
+            buf->head = 0;
+        } else {
+            char *resized = realloc(buf->buffer, new_size);
+            if (resized == NULL)
+                return -2;
+
+            buf->buffer = resized;
+            buf->head = 0;
+        }
+
         buf->size_mask = new_size - 1;
-        buf->head = 0;
     }
 
     if (new_size < buf->min_size)
