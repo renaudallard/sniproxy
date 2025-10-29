@@ -90,10 +90,29 @@ add_table(struct Table_head *tables, struct Table *table) {
 }
 
 void init_table(struct Table *table) {
-    struct Backend *iter;
+    struct Backend *iter = STAILQ_FIRST(&table->backends);
 
-    STAILQ_FOREACH(iter, &table->backends, entries)
-        init_backend(iter);
+    while (iter != NULL) {
+        struct Backend *next = STAILQ_NEXT(iter, entries);
+
+        if (!init_backend(iter)) {
+            const char *pattern = iter->pattern != NULL ? iter->pattern : "(null)";
+            char address[ADDRESS_BUFFER_SIZE];
+            const char *address_str = display_address(iter->address, address,
+                    sizeof(address));
+
+            if (address_str != NULL)
+                err("Removing backend \"%s\" %s due to failed regex compilation",
+                        pattern, address_str);
+            else
+                err("Removing backend \"%s\" due to failed regex compilation",
+                        pattern);
+
+            remove_backend(&table->backends, iter);
+        }
+
+        iter = next;
+    }
 }
 
 void

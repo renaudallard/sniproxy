@@ -8,6 +8,7 @@
 
 static void test_empty_table(void);
 static void test_single_entry_table(void);
+static void test_invalid_regex_backend_removed(void);
 static void append_entry(struct Table *, const char *, const char *);
 static void add_new_table(struct Table_head *, const char *, const char **);
 static void test_add_table(void);
@@ -20,6 +21,7 @@ int main(void) {
     test_single_entry_table();
     test_add_table();
     test_tables_reload();
+    test_invalid_regex_backend_removed();
 }
 
 static void
@@ -186,4 +188,33 @@ test_tables_reload(void) {
 
     free_tables(&existing);
     table_ref_put(bar);
+}
+
+static void
+test_invalid_regex_backend_removed(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+
+    append_entry(table, "(", "192.0.2.10");
+    append_entry(table, "^example\\.com$", "192.0.2.11");
+
+    init_table(table);
+
+    struct Backend *backend = STAILQ_FIRST(&table->backends);
+    assert(backend != NULL);
+    assert(strcmp("^example\\.com$", backend->pattern) == 0);
+    assert(STAILQ_NEXT(backend, entries) == NULL);
+
+    const char *match = "example.com";
+    struct LookupResult result = table_lookup_server_address(table,
+            match, strlen(match));
+    assert(result.address != NULL);
+
+    const char *no_match = "other.example";
+    result = table_lookup_server_address(table, no_match, strlen(no_match));
+    assert(result.address == NULL);
+
+    table_ref_put(table);
 }
