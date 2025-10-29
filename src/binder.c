@@ -95,7 +95,10 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
         return -1;
     }
 
-    size_t request_len = sizeof(request) + addr_len;
+    if (addr_len > sizeof(data_buf) - sizeof(struct binder_request))
+        fatal("bind_socket: address length %zu exceeds buffer", addr_len);
+
+    size_t request_len = sizeof(struct binder_request) + addr_len;
     if (request_len > sizeof(data_buf))
         fatal("bind_socket: request length %zu exceeds buffer", request_len);
     request = (struct binder_request *)data_buf;
@@ -158,6 +161,15 @@ binder_main(int sockfd) {
         }
 
         struct binder_request *req = (struct binder_request *)buffer;
+
+        size_t header_size = sizeof(struct binder_request);
+        if (req->address_len > sizeof(buffer) - header_size ||
+                req->address_len > (size_t)len - header_size) {
+            memset(buffer, 0, sizeof(buffer));
+            snprintf(buffer, sizeof(buffer),
+                    "Invalid address length: %zu", req->address_len);
+            goto error;
+        }
 
         int fd = socket(req->address[0].sa_family, SOCK_STREAM, 0);
         if (fd < 0) {

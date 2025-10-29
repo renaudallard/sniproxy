@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <limits.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
@@ -911,25 +912,49 @@ log_connection(struct Connection *con) {
 
 static void
 log_bad_request(struct Connection *con __attribute__((unused)), const char *req, size_t req_len, int parse_result) {
+    if (req == NULL)
+        return;
+
+    if (req_len > (SIZE_MAX - 64) / 6) {
+        err("log_bad_request: request length %zu too large to log safely", req_len);
+        return;
+    }
+
     size_t message_len = 64 + 6 * req_len;
     char *message = malloc(message_len);
     if (message == NULL) {
         err("log_bad_request: unable to allocate message buffer");
         return;
     }
+
     char *message_pos = message;
-    char *message_end = message + message_len;
+    size_t remaining = message_len;
 
-    message_pos += snprintf(message_pos, (size_t)(message_end - message_pos),
-                            "parse_packet({");
+    message[0] = '\0';
 
-    for (size_t i = 0; i < req_len; i++)
-        message_pos += snprintf(message_pos, (size_t)(message_end - message_pos),
-                                "0x%02hhx, ", (unsigned char)req[i]);
+    int written = snprintf(message_pos, remaining, "parse_packet({");
+    if (written < 0 || (size_t)written >= remaining)
+        goto done;
 
-    message_pos -= 2;/* Delete the trailing ', ' */
-    snprintf(message_pos, (size_t)(message_end - message_pos), "}, %zu, ...) = %d",
-             req_len, parse_result);
+    message_pos += (size_t)written;
+    remaining -= (size_t)written;
+
+    for (size_t i = 0; i < req_len; i++) {
+        written = snprintf(message_pos, remaining, "0x%02hhx%s", (unsigned char)req[i],
+                (i + 1 == req_len) ? "" : ", ");
+        if (written < 0 || (size_t)written >= remaining)
+            goto done;
+
+        message_pos += (size_t)written;
+        remaining -= (size_t)written;
+    }
+
+    written = snprintf(message_pos, remaining, "}, %zu, ...) = %d", req_len, parse_result);
+    if (written < 0 || (size_t)written >= remaining)
+        goto done;
+
+done:
+    message[message_len - 1] = '\0';
     debug("%s", message);
 
     free(message);
