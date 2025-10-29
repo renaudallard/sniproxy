@@ -47,7 +47,12 @@ static const char *bad[] = {
     NULL,
     "www..example.com",
     "-www.example.com",
-    "1n\\/l1|>|-|0$T|\\|4M"
+    "1n\\/l1|>|-|0$T|\\|4M",
+    "example.com:1e3",
+    "example.com:999999999999999999999999",
+    "example.com:+443",
+    "example.com:-1",
+    "example.com: 80"
 };
 
 int compare_address_strings(const char *a, const char *b) {

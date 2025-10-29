@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h> /* tolower */
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -109,9 +110,10 @@ new_address(const char *hostname_or_ip) {
     if ((port = strrchr(hostname_or_ip, ':')) != NULL &&
             is_numeric(port + 1)) {
         len = (size_t)(port - hostname_or_ip);
-        int port_num = atoi(port + 1);
+        errno = 0;
+        unsigned long port_num = strtoul(port + 1, NULL, 10);
 
-        if (len < sizeof(ip_buf) && port_num >= 0 && port_num <= 65535) {
+        if (len < sizeof(ip_buf) && errno == 0 && port_num <= UINT16_MAX) {
             strncpy(ip_buf, hostname_or_ip, len);
             ip_buf[len] = '\0';
 
@@ -362,10 +364,18 @@ address_set_port(struct Address *addr, uint16_t port) {
 
 int
 address_set_port_str(struct Address *addr, const char* str) {
-    int port = atoi(str);
-    if (port < 0 || port > 65535) {
+    char *endptr;
+    unsigned long port;
+
+    if (str == NULL || *str == '\0')
         return 0;
-    }
+
+    errno = 0;
+    port = strtoul(str, &endptr, 10);
+
+    if (errno != 0 || *endptr != '\0' || port > UINT16_MAX)
+        return 0;
+
     address_set_port(addr, (uint16_t)port);
     return 1;
 }
@@ -447,15 +457,21 @@ display_sockaddr(const void *sa, char *buffer, size_t buffer_len) {
 
 int
 is_numeric(const char *s) {
-    char *p;
+    char *endptr;
 
     if (s == NULL || *s == '\0')
         return 0;
 
-    int n = strtod(s, &p);
-    (void)n; /* unused */
+    if (*s == '+' || *s == '-' || isspace((unsigned char)*s))
+        return 0;
 
-    return *p == '\0'; /* entire string was numeric */
+    errno = 0;
+    (void)strtoul(s, &endptr, 10);
+
+    if (errno != 0)
+        return 0;
+
+    return *endptr == '\0'; /* entire string was numeric */
 }
 
 static int
