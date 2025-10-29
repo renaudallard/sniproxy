@@ -239,13 +239,13 @@ init_config(const char *filename, struct ev_loop *loop) {
     }
 
     if (parse_config(config, file, global_grammar) <= 0) {
-        intmax_t whence = ftell(file);
+        off_t whence = ftello(file);
         char line[256];
 
-        err("error parsing %s at %jd near:", filename, whence);
+        err("error parsing %s at %jd near:", filename, (intmax_t)whence);
         fseeko(file, (off_t)-20, SEEK_CUR);
         for (int i = 0; i < 5; i++)
-            err(" %jd\t%s", ftell(file), fgets(line, sizeof(line), file));
+            err(" %jd\t%s", (intmax_t)ftello(file), fgets(line, sizeof(line), file));
 
         free_config(config, loop);
         config = NULL;
