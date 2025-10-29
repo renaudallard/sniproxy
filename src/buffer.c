@@ -59,6 +59,7 @@ new_buffer(size_t size, struct ev_loop *loop) {
     if (buf == NULL)
         return NULL;
 
+    buf->min_size = size;
     buf->size_mask = size - 1;
     buf->len = 0;
     buf->head = 0;
@@ -96,6 +97,8 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
     buf->buffer = new_buffer;
     buf->size_mask = new_size - 1;
     buf->head = 0;
+    if (new_size < buf->min_size)
+        buf->min_size = new_size;
 
     return (ssize_t)buf->len;
 }
@@ -117,6 +120,33 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
 
     if (new_size < current_size)
         new_size = current_size;
+
+    if (new_size == current_size)
+        return 0;
+
+    return buffer_resize(buf, new_size) < 0 ? -1 : 0;
+}
+
+int
+buffer_maybe_shrink(struct Buffer *buf) {
+    size_t current_size = buffer_size(buf);
+
+    if (current_size <= buf->min_size)
+        return 0;
+
+    if (buf->len > current_size / 4)
+        return 0;
+
+    size_t new_size = current_size;
+
+    while (new_size > buf->min_size && buf->len <= new_size / 4) {
+        size_t candidate = new_size / 2;
+
+        if (candidate < buf->min_size || candidate < buf->len)
+            break;
+
+        new_size = candidate;
+    }
 
     if (new_size == current_size)
         return 0;

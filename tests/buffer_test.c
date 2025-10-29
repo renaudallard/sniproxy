@@ -203,6 +203,24 @@ static void test_buffer_reserve_overflow(void) {
     free_buffer(buffer);
 }
 
+static void test_buffer_maybe_shrink(void) {
+    struct Buffer *buffer = new_buffer(16, EV_DEFAULT);
+    char payload[128] = {0};
+
+    assert(buffer != NULL);
+
+    assert(buffer_push(buffer, payload, sizeof(payload)) == sizeof(payload));
+    assert(buffer_size(buffer) >= sizeof(payload));
+
+    assert(buffer_pop(buffer, NULL, sizeof(payload)) == sizeof(payload));
+    assert(buffer_len(buffer) == 0);
+
+    assert(buffer_maybe_shrink(buffer) == 0);
+    assert(buffer_size(buffer) == 16);
+
+    free_buffer(buffer);
+}
+
 int main(void) {
     test1();
 
@@ -217,4 +235,6 @@ int main(void) {
     test_buffer_reserve_and_expand();
 
     test_buffer_reserve_overflow();
+
+    test_buffer_maybe_shrink();
 }

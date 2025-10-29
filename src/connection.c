@@ -51,6 +51,7 @@
                                       _errno == EWOULDBLOCK || \
                                       _errno == EINTR)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define SERVER_BUFFER_MIN_SIZE 2048
 
 
 struct resolv_cb_data {
@@ -317,6 +318,9 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             close_socket(con, loop);
         }
     }
+
+    if (is_client)
+        buffer_maybe_shrink(con->server.buffer);
 
     /* Handle any state specific logic, note we may transition through several
      * states during a single call */
@@ -870,6 +874,8 @@ new_connection(struct ev_loop *loop) {
         free_connection(con);
         return NULL;
     }
+
+    con->server.buffer->min_size = SERVER_BUFFER_MIN_SIZE;
 
     return con;
 }

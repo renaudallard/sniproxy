@@ -33,6 +33,7 @@
 
 struct Buffer {
     char *buffer;
+    size_t min_size;
     size_t size_mask;       /* bit mask for buffer size */
     size_t head;            /* index of first byte of content */
     size_t len;             /* size of content */
@@ -51,6 +52,7 @@ ssize_t buffer_read(struct Buffer *, int);
 ssize_t buffer_write(struct Buffer *, int);
 ssize_t buffer_resize(struct Buffer *, size_t);
 int buffer_reserve(struct Buffer *, size_t);
+int buffer_maybe_shrink(struct Buffer *);
 size_t buffer_peek(const struct Buffer *, void *, size_t);
 size_t buffer_coalesce(struct Buffer *, const void **);
 size_t buffer_pop(struct Buffer *, void *, size_t);
