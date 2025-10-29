@@ -20,11 +20,12 @@ Features
 Usage
 -----
 
-    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V]
+    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T]
         -c  configuration file, defaults to /etc/sniproxy.conf
         -f  run in foreground, do not drop privileges
         -n  specify file descriptor limit
         -V  print the version of SNIProxy and exit
+        -T  allow TLS 1.0 client hellos
 
 
 Installation
