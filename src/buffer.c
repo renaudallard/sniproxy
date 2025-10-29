@@ -167,18 +167,15 @@ buffer_maybe_shrink(struct Buffer *buf) {
     if (buf->len > current_size / 4)
         return 0;
 
-    size_t new_size = current_size;
+    /* Keep at least a 2x growth slack to avoid resize thrashing. */
+    size_t desired = buf->len ? buf->len << 1 : 1;
 
-    while (new_size > buf->min_size && buf->len <= new_size / 4) {
-        size_t candidate = new_size / 2;
+    if (desired < buf->min_size)
+        desired = buf->min_size;
 
-        if (candidate < buf->min_size || candidate < buf->len)
-            break;
+    size_t new_size = next_power_of_two(desired);
 
-        new_size = candidate;
-    }
-
-    if (new_size == current_size)
+    if (new_size == 0 || new_size >= current_size)
         return 0;
 
     return buffer_resize(buf, new_size) < 0 ? -1 : 0;
@@ -379,7 +376,7 @@ buffer_push(struct Buffer *dst, const void *src, size_t len) {
         return 0; /* insufficient room */
 
     size_t start = (dst->head + dst->len) & dst->size_mask;
-    size_t size = buffer_size(dst);
+    const size_t size = buffer_size(dst);
     size_t first_len = MIN(len, size - start);
 
     memcpy(dst->buffer + start, src, first_len);
@@ -399,7 +396,8 @@ buffer_push(struct Buffer *dst, const void *src, size_t len) {
  */
 static size_t
 setup_write_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
-    size_t room = buffer_size(buffer) - buffer->len;
+    const size_t size = buffer_size(buffer);
+    size_t room = size - buffer->len;
 
     if (room == 0) /* trivial case: no room */
         return 0;
@@ -411,26 +409,26 @@ setup_write_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
 
     size_t start = (buffer->head + buffer->len) & buffer->size_mask;
 
-    if (start + write_len <= buffer_size(buffer)) {
+    if (start + write_len <= size) {
         iov[0].iov_base = buffer->buffer + start;
         iov[0].iov_len = write_len;
 
         /* assert iov are within bounds, non-zero length and non-overlapping */
         assert(iov[0].iov_len > 0);
         assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + buffer_size(buffer));
+        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
 
         return 1;
     } else {
         iov[0].iov_base = buffer->buffer + start;
-        iov[0].iov_len = buffer_size(buffer) - start;
+        iov[0].iov_len = size - start;
         iov[1].iov_base = buffer->buffer;
         iov[1].iov_len = write_len - iov[0].iov_len;
 
         /* assert iov are within bounds, non-zero length and non-overlapping */
         assert(iov[0].iov_len > 0);
         assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + buffer_size(buffer));
+        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
         assert(iov[1].iov_len > 0);
         assert((char *)iov[1].iov_base >= buffer->buffer);
         assert((char *)iov[1].iov_base + iov[1].iov_len <= (char *)iov[0].iov_base);
@@ -444,30 +442,31 @@ setup_read_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
     if (buffer->len == 0)
         return 0;
 
+    const size_t size = buffer_size(buffer);
     size_t read_len = buffer->len;
     if (len != 0)
         read_len = MIN(len, buffer->len);
 
-    if (buffer->head + read_len <= buffer_size(buffer)) {
+    if (buffer->head + read_len <= size) {
         iov[0].iov_base = buffer->buffer + buffer->head;
         iov[0].iov_len = read_len;
 
         /* assert iov are within bounds, non-zero length and non-overlapping */
         assert(iov[0].iov_len > 0);
         assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + buffer_size(buffer));
+        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
 
         return 1;
     } else {
         iov[0].iov_base = buffer->buffer + buffer->head;
-        iov[0].iov_len = buffer_size(buffer) - buffer->head;
+        iov[0].iov_len = size - buffer->head;
         iov[1].iov_base = buffer->buffer;
         iov[1].iov_len = read_len - iov[0].iov_len;
 
         /* assert iov are within bounds, non-zero length and non-overlapping */
         assert(iov[0].iov_len > 0);
         assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + buffer_size(buffer));
+        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
         assert(iov[1].iov_len > 0);
         assert((char *)iov[1].iov_base >= buffer->buffer);
         assert((char *)iov[1].iov_base + iov[1].iov_len <= (char *)iov[0].iov_base);
