@@ -24,6 +24,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdio.h>
+#include <sys/types.h>
 #include "cfg_tokenizer.h"
 
 static void chomp_line(FILE *);
@@ -62,7 +63,7 @@ next_token(FILE *config, char *buffer, size_t buffer_len) {
             default:
                 /* Rewind one byte, so next_word() can fetch from
                  * the beginning of the word */
-                fseeko(config, -1, SEEK_CUR);
+                fseeko(config, (off_t)-1, SEEK_CUR);
 
                 token_len = next_word(config, buffer, buffer_len);
                 if (token_len <= 0)
@@ -116,7 +117,7 @@ next_word(FILE *file, char *buffer, int buffer_len) {
                 if (quoted == 0) {
                     /* rewind the file one character, so we don't eat
                      * part of the next token */
-                    fseeko(file, -1, SEEK_CUR);
+                    fseeko(file, (off_t)-1, SEEK_CUR);
 
                     buffer[len] = '\0';
                     len++;

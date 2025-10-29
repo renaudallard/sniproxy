@@ -24,6 +24,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdio.h>
+#include <sys/types.h>
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
@@ -242,7 +243,7 @@ init_config(const char *filename, struct ev_loop *loop) {
         char line[256];
 
         err("error parsing %s at %jd near:", filename, whence);
-        fseek(file, -20, SEEK_CUR);
+        fseeko(file, (off_t)-20, SEEK_CUR);
         for (int i = 0; i < 5; i++)
             err(" %jd\t%s", ftell(file), fgets(line, sizeof(line), file));
 
