@@ -252,6 +252,21 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         is_client ? close_client_socket : close_server_socket;
 
     /* Receive first in case the socket was closed */
+    if (revents & EV_READ && buffer_room(input_buffer) == 0) {
+        if (!is_client) {
+            if (buffer_reserve(input_buffer, buffer_size(input_buffer)) < 0) {
+                char server[INET6_ADDRSTRLEN + 8];
+
+                warn("Response from %s exceeded %zu byte buffer size",
+                        display_sockaddr(&con->server.addr, server, sizeof(server)),
+                        buffer_size(input_buffer));
+
+                close_socket(con, loop);
+                return;
+            }
+        }
+    }
+
     if (revents & EV_READ && buffer_room(input_buffer)) {
         ssize_t bytes_received = 0;
 
