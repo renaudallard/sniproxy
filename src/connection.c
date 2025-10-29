@@ -787,7 +787,9 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         warn("close failed: %s", strerror(errno));
 
     if (con->state == RESOLVING) {
-        resolv_cancel(con->query_handle);
+        if (con->query_handle != NULL)
+            resolv_cancel(con->query_handle);
+        con->query_handle = NULL;
         con->state = PARSED;
     }
 
