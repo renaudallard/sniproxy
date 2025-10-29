@@ -41,6 +41,7 @@
 #define NOT_POWER_OF_2(x) (x == 0 || (x & (x - 1)))
 
 
+#define BUFFER_COALESCE_STACK_COPY 4096
 static const size_t BUFFER_MAX_SIZE = 1024 * 1024 * 1024;
 
 
@@ -297,12 +298,19 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
     size_t second_len = len - first_len;
     size_t temp_len = first_len < second_len ? first_len : second_len;
 
-    char *temp = malloc(temp_len);
-    if (temp == NULL) {
-        if (dst != NULL)
-            *dst = buffer->buffer + head;
+    char stack_buf[BUFFER_COALESCE_STACK_COPY];
+    char *temp = stack_buf;
+    int temp_on_heap = 0;
 
-        return len;
+    if (temp_len > BUFFER_COALESCE_STACK_COPY) {
+        temp = malloc(temp_len);
+        if (temp == NULL) {
+            if (dst != NULL)
+                *dst = buffer->buffer + head;
+
+            return len;
+        }
+        temp_on_heap = 1;
     }
 
     if (first_len <= second_len) {
@@ -315,7 +323,9 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
         memcpy(buffer->buffer + first_len, temp, second_len);
     }
 
-    free(temp);
+    if (temp_on_heap)
+        free(temp);
+
     buffer->head = 0;
 
     if (dst != NULL)
@@ -326,19 +336,24 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
 
 size_t
 buffer_peek(const struct Buffer *src, void *dst, size_t len) {
-    struct iovec iov[2];
-    size_t bytes_copied = 0;
+    size_t read_len = src->len;
 
-    size_t iov_len = setup_read_iov(src, iov, len);
+    if (len != 0 && len < read_len)
+        read_len = len;
 
-    for (size_t i = 0; i < iov_len; i++) {
-        if (dst != NULL)
-            memcpy((char *)dst + bytes_copied, iov[i].iov_base, iov[i].iov_len);
+    if (dst == NULL)
+        return read_len;
 
-        bytes_copied += iov[i].iov_len;
-    }
+    size_t head = src->head;
+    size_t size = buffer_size(src);
+    size_t first_len = MIN(read_len, size - head);
 
-    return bytes_copied;
+    memcpy(dst, src->buffer + head, first_len);
+
+    if (read_len > first_len)
+        memcpy((char *)dst + first_len, src->buffer, read_len - first_len);
+
+    return read_len;
 }
 
 size_t
@@ -353,8 +368,8 @@ buffer_pop(struct Buffer *src, void *dst, size_t len) {
 
 size_t
 buffer_push(struct Buffer *dst, const void *src, size_t len) {
-    struct iovec iov[2];
-    size_t bytes_appended = 0;
+    if (len == 0)
+        return 0;
 
     /* coalesce when reading into an empty buffer */
     if (dst->len == 0)
@@ -363,17 +378,18 @@ buffer_push(struct Buffer *dst, const void *src, size_t len) {
     if (buffer_reserve(dst, len) < 0)
         return 0; /* insufficient room */
 
-    size_t iov_len = setup_write_iov(dst, iov, len);
+    size_t start = (dst->head + dst->len) & dst->size_mask;
+    size_t size = buffer_size(dst);
+    size_t first_len = MIN(len, size - start);
 
-    for (size_t i = 0; i < iov_len; i++) {
-        memcpy(iov[i].iov_base, (char *)src + bytes_appended, iov[i].iov_len);
-        bytes_appended += iov[i].iov_len;
-    }
+    memcpy(dst->buffer + start, src, first_len);
 
-    if (bytes_appended > 0)
-        advance_write_position(dst, bytes_appended);
+    if (len > first_len)
+        memcpy(dst->buffer, (const char *)src + first_len, len - first_len);
 
-    return bytes_appended;
+    advance_write_position(dst, len);
+
+    return len;
 }
 
 /*
