@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
+#include <limits.h>
 #include <ev.h>
 #include "buffer.h"
 
@@ -47,6 +48,7 @@ static size_t setup_write_iov(const struct Buffer *, struct iovec *, size_t);
 static size_t setup_read_iov(const struct Buffer *, struct iovec *, size_t);
 static inline void advance_write_position(struct Buffer *, size_t);
 static inline void advance_read_position(struct Buffer *, size_t);
+static size_t next_power_of_two(size_t);
 
 
 struct Buffer *
@@ -107,17 +109,17 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
         return -1;
 
     size_t required = buf->len + min_room;
-    size_t new_size = buffer_size(buf);
+    size_t current_size = buffer_size(buf);
+    size_t new_size = next_power_of_two(required);
 
-    while (new_size < required) {
-        if (new_size >= BUFFER_MAX_SIZE)
-            return -1;
+    if (new_size == 0 || new_size > BUFFER_MAX_SIZE)
+        return -1;
 
-        if (new_size > BUFFER_MAX_SIZE / 2)
-            new_size = BUFFER_MAX_SIZE;
-        else
-            new_size <<= 1;
-    }
+    if (new_size < current_size)
+        new_size = current_size;
+
+    if (new_size == current_size)
+        return 0;
 
     return buffer_resize(buf, new_size) < 0 ? -1 : 0;
 }
@@ -397,6 +399,24 @@ setup_read_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
 
         return 2;
     }
+}
+
+static size_t
+next_power_of_two(size_t value) {
+    if (value == 0)
+        return 0;
+
+    value--;
+
+    for (size_t shift = 1; shift < sizeof(size_t) * CHAR_BIT; shift <<= 1)
+        value |= value >> shift;
+
+    value++;
+
+    if (value == 0)
+        return 0;
+
+    return value;
 }
 
 static inline void
