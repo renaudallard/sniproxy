@@ -24,7 +24,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdio.h>
-#include <stdlib.h> /* malloc */
+#include <stdlib.h> /* malloc, realloc */
 #include <string.h> /* memcpy */
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -87,16 +87,45 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
     if (new_size < buf->len)
         return -1; /* new_size too small to hold existing data */
 
-    char *new_buffer = malloc(new_size);
-    if (new_buffer == NULL)
-        return -2;
+    size_t current_size = buffer_size(buf);
 
-    buffer_peek(buf, new_buffer, new_size);
+    if (new_size == current_size)
+        return (ssize_t)buf->len;
 
-    free(buf->buffer);
-    buf->buffer = new_buffer;
-    buf->size_mask = new_size - 1;
-    buf->head = 0;
+    size_t used_end = buf->len == 0 ? 0 : buf->head + buf->len;
+    int data_is_contiguous = (buf->len == 0) || used_end <= current_size;
+
+    if (buf->len == 0) {
+        char *resized = realloc(buf->buffer, new_size);
+        if (resized == NULL)
+            return -2;
+
+        buf->buffer = resized;
+        buf->size_mask = new_size - 1;
+        buf->head = 0;
+    } else if (data_is_contiguous && used_end <= new_size) {
+        char *resized = realloc(buf->buffer, new_size);
+        if (resized == NULL)
+            return -2;
+
+        buf->buffer = resized;
+        buf->size_mask = new_size - 1;
+    } else {
+        char *new_buffer = malloc(new_size);
+        if (new_buffer == NULL)
+            return -2;
+
+        size_t first_len = MIN(buf->len, current_size - buf->head);
+        memcpy(new_buffer, buf->buffer + buf->head, first_len);
+        if (buf->len > first_len)
+            memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
+
+        free(buf->buffer);
+        buf->buffer = new_buffer;
+        buf->size_mask = new_size - 1;
+        buf->head = 0;
+    }
+
     if (new_size < buf->min_size)
         buf->min_size = new_size;
 
