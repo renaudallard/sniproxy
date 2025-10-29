@@ -869,7 +869,7 @@ new_connection(struct ev_loop *loop) {
         return NULL;
     }
 
-    con->server.buffer = new_buffer(4096, loop);
+    con->server.buffer = new_buffer(16384, loop);
     if (con->server.buffer == NULL) {
         free_connection(con);
         return NULL;

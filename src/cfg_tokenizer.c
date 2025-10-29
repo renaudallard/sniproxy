@@ -62,7 +62,7 @@ next_token(FILE *config, char *buffer, size_t buffer_len) {
             default:
                 /* Rewind one byte, so next_word() can fetch from
                  * the beginning of the word */
-                fseek(config, -1, SEEK_CUR);
+                fseeko(config, -1, SEEK_CUR);
 
                 token_len = next_word(config, buffer, buffer_len);
                 if (token_len <= 0)
@@ -116,7 +116,7 @@ next_word(FILE *file, char *buffer, int buffer_len) {
                 if (quoted == 0) {
                     /* rewind the file one character, so we don't eat
                      * part of the next token */
-                    fseek(file, -1, SEEK_CUR);
+                    fseeko(file, -1, SEEK_CUR);
 
                     buffer[len] = '\0';
                     len++;

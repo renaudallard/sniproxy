@@ -60,7 +60,7 @@ sub http_client($$) {
     $socket->send($request);
 
     my $buffer;
-    $socket->recv($buffer, 4096);
+    $socket->recv($buffer, 16384);
 
     $socket->close();
 
