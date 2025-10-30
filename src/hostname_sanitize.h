@@ -28,13 +28,46 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
     if (len == 0 || len > max_len)
         return 0;
 
+    /* Host headers may legally contain only hostnames, IPv4 literals, a
+     * wildcard "*", or bracketed IPv6 literals. Reject anything else so we do
+     * not match routing rules using unexpected characters such as '/', '@',
+     * or '%'. */
+
+    if (len == 1 && hostname[0] == '*') {
+        *hostname_len = len;
+        return 1;
+    }
+
+    int bracketed_ipv6 = 0;
+    if (hostname[0] == '[') {
+        if (len <= 2 || hostname[len - 1] != ']')
+            return 0;
+        bracketed_ipv6 = 1;
+    } else if (hostname[len - 1] == ']') {
+        /* Trailing bracket without a leading one is invalid. */
+        return 0;
+    }
+
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)hostname[i];
 
-        if (c <= 0x1F || c == 0x7F || c >= 0x80 || isspace((unsigned char)c))
+        if (c <= 0x1F || c == 0x7F || c >= 0x80 || isspace(c))
             return 0;
 
-        hostname[i] = (char)tolower(c);
+        if (bracketed_ipv6) {
+            if (i == 0 || i == len - 1)
+                continue;
+
+            if (!(isxdigit(c) || c == ':' || c == '.'))
+                return 0;
+
+            hostname[i] = (char)tolower(c);
+        } else {
+            if (!(isalnum(c) || c == '-' || c == '.' || c == '_'))
+                return 0;
+
+            hostname[i] = (char)tolower(c);
+        }
     }
 
     *hostname_len = len;
