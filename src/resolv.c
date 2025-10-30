@@ -182,6 +182,8 @@ resolv_query(const char *hostname, int mode,
     struct ResolvQuery *cb_data = malloc(sizeof(struct ResolvQuery));
     if (cb_data == NULL) {
         err("Failed to allocate memory for DNS query callback data.");
+        if (client_free_cb != NULL)
+            client_free_cb(client_cb_data);
         return NULL;
     }
     cb_data->client_cb = client_cb;
@@ -216,8 +218,9 @@ resolv_query(const char *hostname, int mode,
     if (all_queries_are_null(cb_data)) {
         if (cb_data->client_free_cb != NULL)
             cb_data->client_free_cb(cb_data->client_cb_data);
+
         free(cb_data);
-        cb_data = NULL;
+        return NULL;
     }
 
     return cb_data;

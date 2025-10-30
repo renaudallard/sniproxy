@@ -578,6 +578,24 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         cb_data->loop = loop;
         con->use_proxy_header = result.use_proxy_header;
 
+        const char *hostname = address_hostname(result.address);
+        if (hostname == NULL || hostname[0] == '\0') {
+            err("%s: hostname lookup returned empty result", __func__);
+
+            if (result.caller_free_address)
+                free((void *)result.address);
+
+            free(cb_data);
+
+            abort_connection(con);
+            reactivate_watchers(con, loop);
+
+            return;
+        }
+
+        char hostname_buf[ADDRESS_BUFFER_SIZE];
+        snprintf(hostname_buf, sizeof(hostname_buf), "%s", hostname);
+
         int resolv_mode = RESOLV_MODE_DEFAULT;
         if (con->listener->transparent_proxy) {
             char listener_address[ADDRESS_BUFFER_SIZE];
@@ -599,9 +617,19 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             }
         }
 
-        con->query_handle = resolv_query(address_hostname(result.address),
+        con->query_handle = resolv_query(hostname,
                 resolv_mode, resolv_cb,
                 (void (*)(void *))free_resolv_cb_data, cb_data);
+
+        if (con->query_handle == NULL) {
+            notice("unable to resolve %s, closing connection", hostname_buf);
+
+            abort_connection(con);
+            con->query_handle = NULL;
+            reactivate_watchers(con, loop);
+
+            return;
+        }
 
         con->state = RESOLVING;
 #endif
