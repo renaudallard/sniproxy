@@ -146,7 +146,7 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     /*
      * Handshake
      */
-    if (pos + 1 > data_len) {
+    if (pos > data_len || data_len - pos < 1) {
         return -5;
     }
     if (data[pos] != TLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
@@ -155,14 +155,14 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
         return -5;
     }
 
-    if (pos + 6 > data_len)
+    if (pos > data_len || data_len - pos < 6)
         return -5;
 
     len = ((size_t)data[pos + 1] << 16) +
         ((size_t)data[pos + 2] << 8) +
         (size_t)data[pos + 3];
 
-    if (pos + 4 + len > data_len)
+    if (pos > data_len || data_len - pos < 4 || len > data_len - pos - 4)
         return -5;
 
     uint8_t client_hello_version_major = data[pos + 4];
@@ -186,19 +186,19 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     pos += 38;
 
     /* Session ID */
-    if (pos + 1 > data_len)
+    if (pos > data_len || data_len - pos < 1)
         return -5;
     len = (size_t)data[pos];
     pos += 1 + len;
 
     /* Cipher Suites */
-    if (pos + 2 > data_len)
+    if (pos > data_len || data_len - pos < 2)
         return -5;
     len = ((size_t)data[pos] << 8) + (size_t)data[pos + 1];
     pos += 2 + len;
 
     /* Compression Methods */
-    if (pos + 1 > data_len)
+    if (pos > data_len || data_len - pos < 1)
         return -5;
     len = (size_t)data[pos];
     pos += 1 + len;
@@ -209,12 +209,12 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     }
 
     /* Extensions */
-    if (pos + 2 > data_len)
+    if (pos > data_len || data_len - pos < 2)
         return -5;
     len = ((size_t)data[pos] << 8) + (size_t)data[pos + 1];
     pos += 2;
 
-    if (pos + len > data_len)
+    if (pos > data_len || len > data_len - pos)
         return -5;
     return parse_extensions(data + pos, len, hostname);
 }
@@ -225,12 +225,15 @@ parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
     size_t len;
 
     /* Parse each 4 bytes for the extension header */
-    while (pos + 4 <= data_len) {
+    while (pos <= data_len) {
+        size_t remaining = data_len - pos;
+        if (remaining < 4)
+            break;
         /* Extension Length */
         len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
 
-        if (pos + 4 + len > data_len)
+        if (len > remaining - 4)
             return -5;
 
         /* Check if it's a server name extension */
@@ -270,11 +273,14 @@ parse_server_name_extension(const uint8_t *data, size_t data_len,
     size_t pos = 2; /* skip server name list length */
     size_t len;
 
-    while (pos + 3 < data_len) {
+    while (pos < data_len) {
+        size_t remaining = data_len - pos;
+        if (remaining <= 3)
+            break;
         len = ((size_t)data[pos + 1] << 8) +
             (size_t)data[pos + 2];
 
-        if (pos + 3 + len > data_len)
+        if (len > remaining - 3)
             return -5;
 
         switch (data[pos]) { /* name type */

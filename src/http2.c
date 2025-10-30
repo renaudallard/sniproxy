@@ -186,7 +186,11 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
     size_t pos = 0;
     int result = -1;
 
-    while (pos + 9 <= data_len) {
+    while (pos <= data_len) {
+        size_t remaining = data_len - pos;
+        if (remaining < 9)
+            break;
+
         uint32_t length = ((uint32_t)data[pos] << 16) |
                           ((uint32_t)data[pos + 1] << 8) |
                           data[pos + 2];
@@ -198,7 +202,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                              data[pos + 8];
         pos += 9;
 
-        if (pos + length > data_len) {
+        if (length > data_len - pos) {
             result = -1;
             goto done;
         }
