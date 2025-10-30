@@ -32,6 +32,8 @@
 #include <time.h>
 #include <assert.h>
 #include <sys/queue.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "logger.h"
 
 struct Logger {
@@ -410,17 +412,44 @@ obtain_file_sink(const char *filepath) {
         return NULL;
 
 
-    FILE *fd = fopen(filepath, "a");
-    if (fd == NULL) {
+    int open_flags = O_WRONLY | O_APPEND | O_CREAT;
+#ifdef O_CLOEXEC
+    open_flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    open_flags |= O_NOFOLLOW;
+#endif
+
+    int fd = open(filepath, open_flags, 0600);
+    if (fd < 0) {
         free(sink);
         err("Failed to open new log file: %s", filepath);
         return NULL;
     }
-    setvbuf(fd, NULL, _IOLBF, 0);
+
+    FILE *file = fdopen(fd, "a");
+    if (file == NULL) {
+        int saved_errno = errno;
+        close(fd);
+        free(sink);
+        errno = saved_errno;
+        err("Failed to associate stream with log file: %s", filepath);
+        return NULL;
+    }
+
+    setvbuf(file, NULL, _IOLBF, 0);
 
     sink->type = LOG_SINK_FILE;
     sink->filepath = strdup(filepath);
-    sink->fd = fd;
+    if (sink->filepath == NULL) {
+        int saved_errno = errno;
+        fclose(file);
+        free(sink);
+        errno = saved_errno;
+        err("Failed to duplicate log file path: %s", filepath);
+        return NULL;
+    }
+    sink->fd = file;
     sink->reference_count = 0;
 
     SLIST_INSERT_HEAD(&sinks, sink, entries);

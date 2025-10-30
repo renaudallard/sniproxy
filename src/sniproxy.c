@@ -298,9 +298,26 @@ usage(void) {
 
 static void
 write_pidfile(const char *path, pid_t pid) {
-    FILE *fp = fopen(path, "w");
+    int open_flags = O_WRONLY | O_CREAT | O_TRUNC;
+#ifdef O_CLOEXEC
+    open_flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    open_flags |= O_NOFOLLOW;
+#endif
+
+    int fd = open(path, open_flags, 0600);
+    if (fd < 0) {
+        perror("open");
+        return;
+    }
+
+    FILE *fp = fdopen(fd, "w");
     if (fp == NULL) {
-        perror("fopen");
+        int saved_errno = errno;
+        close(fd);
+        errno = saved_errno;
+        perror("fdopen");
         return;
     }
 
