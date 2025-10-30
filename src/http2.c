@@ -394,6 +394,9 @@ decode_header_block(struct hpack_decoder *decoder,
             size_t existing_len;
             if (!hpack_get_name(decoder, name_index, &existing_name, &existing_len))
                 return -4;
+            if (existing_len > SIZE_MAX - 1)
+                return -4;
+
             name = malloc(existing_len + 1);
             if (name == NULL)
                 return -4;
@@ -452,6 +455,9 @@ append_hostname_if_needed(struct host_accumulator *hosts,
         return 0;
 
     if (value_len >= SERVER_NAME_LEN)
+        return -4;
+
+    if (value_len > SIZE_MAX - 1)
         return -4;
 
     char *buffer = malloc(value_len + 1);
@@ -594,7 +600,12 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
     }
 
     if (decoder->dynamic_count == decoder->dynamic_capacity) {
-        size_t new_cap = decoder->dynamic_capacity == 0 ? 8 : decoder->dynamic_capacity * 2;
+        size_t new_cap = decoder->dynamic_capacity == 0 ? 8 : decoder->dynamic_capacity;
+
+        if (new_cap > SIZE_MAX / 2)
+            return 0;
+
+        new_cap *= 2;
         struct hpack_entry *tmp = realloc(decoder->dynamic_entries, new_cap * sizeof(struct hpack_entry));
         if (tmp == NULL)
             return 0;
@@ -605,6 +616,9 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
     memmove(&decoder->dynamic_entries[1], &decoder->dynamic_entries[0], decoder->dynamic_count * sizeof(struct hpack_entry));
 
     struct hpack_entry *entry = &decoder->dynamic_entries[0];
+    if (name_len > SIZE_MAX - 1 || value_len > SIZE_MAX - 1)
+        return 0;
+
     entry->name = malloc(name_len + 1);
     entry->value = malloc(value_len + 1);
     if ((name_len && entry->name == NULL) || (value_len && entry->value == NULL)) {
@@ -726,6 +740,9 @@ hpack_decode_string(const unsigned char *data, size_t data_len, size_t *consumed
     if (decode_integer(data, data_len, 7, &length, &used) < 0)
         return -1;
 
+    if (length > SIZE_MAX - 1)
+        return -1;
+
     if (length > data_len - used)
         return -1;
 
@@ -768,6 +785,9 @@ build_huffman_tree(void) {
             int16_t next = huffman_tree[node].child[direction];
             if (next == 0) {
                 if (huffman_tree_size == huffman_tree_cap) {
+                    if (huffman_tree_cap > SIZE_MAX / 2)
+                        return 0;
+
                     size_t new_cap = huffman_tree_cap * 2;
                     struct huffman_node *tmp = realloc(huffman_tree, new_cap * sizeof(struct huffman_node));
                     if (tmp == NULL) {
