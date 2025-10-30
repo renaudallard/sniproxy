@@ -159,7 +159,15 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_username,
     },
     {
+        .keyword="user",
+        .parse_arg=(int(*)(void *, const char *))accept_username,
+    },
+    {
         .keyword="groupname",
+        .parse_arg=    (int(*)(void *, const char *))accept_groupname,
+    },
+    {
+        .keyword="group",
         .parse_arg=    (int(*)(void *, const char *))accept_groupname,
     },
     {
