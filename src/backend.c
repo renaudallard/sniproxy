@@ -108,6 +108,16 @@ init_backend(struct Backend *backend) {
                     backend->pattern, reerr, reerroffset);
             return 0;
         }
+
+        backend->pattern_match_data =
+            pcre2_match_data_create_from_pattern(backend->pattern_re, NULL);
+        if (backend->pattern_match_data == NULL) {
+            err("Failed to allocate regex match data for pattern \"%s\"",
+                    backend->pattern);
+            pcre2_code_free(backend->pattern_re);
+            backend->pattern_re = NULL;
+            return 0;
+        }
 #elif defined(HAVE_LIBPCRE)
         const char *reerr;
         int reerroffset;
@@ -143,10 +153,12 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
     STAILQ_FOREACH(iter, head, entries) {
         assert(iter->pattern_re != NULL);
 #if defined(HAVE_LIBPCRE2_8)
-	pcre2_match_data *md = pcre2_match_data_create_from_pattern(iter->pattern_re, NULL);
-	int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, NULL);
-	pcre2_match_data_free(md);
-	if (ret >= 0)
+        pcre2_match_data *md = iter->pattern_match_data;
+        if (md == NULL)
+            continue;
+
+        int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, NULL);
+        if (ret >= 0)
             return iter;
 #elif defined(HAVE_LIBPCRE)
         if (pcre_exec(iter->pattern_re, NULL,
@@ -190,6 +202,8 @@ free_backend(struct Backend *backend) {
     free(backend->pattern);
     free(backend->address);
 #if defined(HAVE_LIBPCRE2_8)
+    if (backend->pattern_match_data != NULL)
+        pcre2_match_data_free(backend->pattern_match_data);
     if (backend->pattern_re != NULL)
         pcre2_code_free(backend->pattern_re);
 #elif defined(HAVE_LIBPCRE)

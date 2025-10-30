@@ -48,6 +48,7 @@ struct Backend {
     /* Runtime fields */
 #if defined(HAVE_LIBPCRE2_8)
     pcre2_code *pattern_re;
+    pcre2_match_data *pattern_match_data;
 #elif defined(HAVE_LIBPCRE)
     pcre *pattern_re;
 #endif
