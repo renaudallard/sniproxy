@@ -471,8 +471,13 @@ accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
         { "debug",      LOG_DEBUG },
     };
 
+    if (priority == NULL || *priority == '\0')
+        return -1;
+
+    size_t priority_len = strlen(priority);
+
     for (size_t i = 0; i < sizeof(priorities) / sizeof(priorities[0]); i++)
-        if (strncasecmp(priorities[i].name, priority, strlen(priority)) == 0) {
+        if (strncasecmp(priorities[i].name, priority, priority_len) == 0) {
             lb->priority = priorities[i].priority;
             return 1;
         }
@@ -645,8 +650,13 @@ accept_resolver_search(struct ResolverConfig *resolver, const char *search) {
 
 static int
 accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
+    if (mode == NULL || *mode == '\0')
+        return -1;
+
+    size_t mode_len = strlen(mode);
+
     for (size_t i = 0; i < sizeof(resolver_mode_names) / sizeof(resolver_mode_names[0]); i++)
-        if (strncasecmp(resolver_mode_names[i], mode, strlen(mode)) == 0) {
+        if (strncasecmp(resolver_mode_names[i], mode, mode_len) == 0) {
             resolver->mode = i;
             return 1;
         }

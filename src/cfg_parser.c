@@ -110,8 +110,13 @@ parse_config(void *context, FILE *cfg, const struct Keyword *grammar) {
 
 static const struct Keyword *
 find_keyword(const struct Keyword *grammar, const char *word) {
+    if (word == NULL)
+        return NULL;
+
+    size_t word_len = strlen(word);
+
     for (; grammar->keyword; grammar++)
-        if (strncmp(grammar->keyword, word, strlen(word)) == 0)
+        if (strncmp(grammar->keyword, word, word_len) == 0)
             return grammar;
 
     /* Special case for wildcard grammars i.e. tables */
