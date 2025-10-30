@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include "http2.h"
 #include "http.h"
+
+static const unsigned char http2_preface[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
 static const unsigned char http2_single_request[] =
     "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
@@ -130,6 +134,35 @@ int main(void) {
             sizeof(http2_unbracketed_ipv6) - 1, &hostname);
     assert(result < 0);
     assert(hostname == NULL);
+
+    size_t oversized_payload = HTTP2_MAX_HEADER_BLOCK_SIZE + 1;
+    size_t oversized_total = sizeof(http2_preface) - 1 + 9 + oversized_payload;
+    unsigned char *oversized = malloc(oversized_total);
+    assert(oversized != NULL);
+
+    size_t pos = 0;
+    memcpy(oversized + pos, http2_preface, sizeof(http2_preface) - 1);
+    pos += sizeof(http2_preface) - 1;
+
+    oversized[pos++] = (unsigned char)((oversized_payload >> 16) & 0xFF);
+    oversized[pos++] = (unsigned char)((oversized_payload >> 8) & 0xFF);
+    oversized[pos++] = (unsigned char)(oversized_payload & 0xFF);
+    oversized[pos++] = 0x01; /* HEADERS */
+    oversized[pos++] = 0x04; /* END_HEADERS */
+    oversized[pos++] = 0x00;
+    oversized[pos++] = 0x00;
+    oversized[pos++] = 0x00;
+    oversized[pos++] = 0x01; /* Stream ID 1 */
+    memset(oversized + pos, 0x00, oversized_payload);
+    pos += oversized_payload;
+
+    assert(pos == oversized_total);
+
+    hostname = NULL;
+    result = http_protocol->parse_packet((const char *)oversized, oversized_total, &hostname);
+    assert(result < 0);
+    assert(hostname == NULL);
+    free(oversized);
 
     for (i = 0; i < sizeof(bad) / sizeof(const char *); i++) {
         hostname = NULL;

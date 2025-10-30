@@ -840,7 +840,14 @@ header_block_append(struct header_block *block, const unsigned char *data, size_
     if (len == 0)
         return 1;
 
+    if (len > SIZE_MAX - block->len)
+        return 0;
+
     size_t needed = block->len + len;
+
+    if (needed > HTTP2_MAX_HEADER_BLOCK_SIZE)
+        return 0;
+
     if (needed > block->cap) {
         size_t new_cap = block->cap == 0 ? 256 : block->cap;
         while (new_cap < needed) {
