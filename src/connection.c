@@ -536,6 +536,16 @@ parse_client_request(struct Connection *con) {
             abort_connection(con);
             return;
         }
+
+        /* Parsing failed but a fallback backend is configured. Treat this as a
+         * request without a usable hostname so downstream lookups do not see a
+         * bogus length derived from the negative parser return value. */
+        if (hostname != NULL) {
+            free(hostname);
+            hostname = NULL;
+        }
+
+        result = 0;
     }
 
     con->hostname = hostname;
@@ -954,14 +964,19 @@ log_connection(struct Connection *con) {
     display_sockaddr(&con->client.local_addr, listener_address, sizeof(listener_address));
     display_sockaddr(&con->server.addr, server_address, sizeof(server_address));
 
+    const char *logged_hostname = con->hostname != NULL ? con->hostname : "-";
+    size_t raw_hostname_len = con->hostname != NULL ? con->hostname_len : 1;
+    int hostname_len = raw_hostname_len > (size_t)INT_MAX ? INT_MAX :
+            (int)raw_hostname_len;
+
     log_msg(con->listener->access_log,
            LOG_NOTICE,
            "%s -> %s -> %s [%.*s] %zu/%zu bytes tx %zu/%zu bytes rx %1.3f seconds",
            client_address,
            listener_address,
            server_address,
-           (int)con->hostname_len,
-           con->hostname,
+           hostname_len,
+           logged_hostname,
            con->server.buffer->tx_bytes,
            con->server.buffer->rx_bytes,
            con->client.buffer->tx_bytes,

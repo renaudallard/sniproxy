@@ -642,6 +642,13 @@ listener_lookup_server_address(const struct Listener *listener,
     if (listener == NULL)
         return (struct LookupResult){ .address = NULL };
 
+    if (name == NULL || name_len == 0) {
+        return (struct LookupResult){
+            .address = listener->fallback_address,
+            .use_proxy_header = listener->fallback_use_proxy_header,
+        };
+    }
+
     if (listener->table == NULL) {
         return (struct LookupResult){
             .address = listener->fallback_address,
