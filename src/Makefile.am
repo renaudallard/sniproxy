@@ -24,6 +24,7 @@ sniproxy_SOURCES = sniproxy.c \
                    http2.c \
                    http2.h \
                    http2_huffman_table.inc \
+                   fd_util.h \
                    listener.c \
                    listener.h \
                    logger.c \

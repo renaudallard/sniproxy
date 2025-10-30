@@ -47,6 +47,7 @@
 #include "protocol.h"
 #include "tls.h"
 #include "http.h"
+#include "fd_util.h"
 
 static void close_listener(struct ev_loop *, struct Listener *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
@@ -513,14 +514,23 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         address_set_port(listener->fallback_address,
                 address_port(listener->address));
 
+    int socket_type = SOCK_STREAM;
 #ifdef HAVE_ACCEPT4
-    int sockfd = socket(address_sa(listener->address)->sa_family, SOCK_STREAM | SOCK_NONBLOCK, 0);
-#else
-    int sockfd = socket(address_sa(listener->address)->sa_family, SOCK_STREAM, 0);
+    socket_type |= SOCK_NONBLOCK;
 #endif
+#ifdef SOCK_CLOEXEC
+    socket_type |= SOCK_CLOEXEC;
+#endif
+    int sockfd = socket(address_sa(listener->address)->sa_family, socket_type, 0);
     if (sockfd < 0) {
         err("socket failed: %s", strerror(errno));
         return sockfd;
+    }
+
+    if (set_cloexec(sockfd) < 0) {
+        err("failed to set close-on-exec on listener socket: %s", strerror(errno));
+        close(sockfd);
+        return -1;
     }
 
     /* set SO_REUSEADDR on server socket to facilitate restart */
@@ -583,6 +593,12 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
             err("binder failed to bind to %s",
                 display_address(listener->address, address, sizeof(address)));
             return sockfd;
+        }
+
+        if (set_cloexec(sockfd) < 0) {
+            err("failed to set close-on-exec on bound listener socket: %s", strerror(errno));
+            close(sockfd);
+            return -1;
         }
     } else if (result < 0) {
         err("bind %s failed: %s",

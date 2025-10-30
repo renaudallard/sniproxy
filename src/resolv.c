@@ -38,6 +38,7 @@
 #include "resolv.h"
 #include "address.h"
 #include "logger.h"
+#include "fd_util.h"
 
 
 #ifndef HAVE_LIBUDNS
@@ -139,6 +140,10 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode) {
     int sockfd = dns_open(ctx);
     if (sockfd < 0)
         fatal("Failed to open DNS resolver socket: %s",
+                strerror(errno));
+
+    if (set_cloexec(sockfd) < 0)
+        fatal("Failed to set close-on-exec on DNS resolver socket: %s",
                 strerror(errno));
 
     int flags = fcntl(sockfd, F_GETFL, 0);

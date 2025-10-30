@@ -46,6 +46,7 @@
 #include "protocol.h"
 #include "logger.h"
 #include "tls.h"
+#include "fd_util.h"
 
 
 #define IS_TEMPORARY_SOCKERR(_errno) (_errno == EAGAIN || \
@@ -111,10 +112,14 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     con->listener = listener_ref_get(listener);
 
 #ifdef HAVE_ACCEPT4
+    int accept_flags = SOCK_NONBLOCK;
+#ifdef SOCK_CLOEXEC
+    accept_flags |= SOCK_CLOEXEC;
+#endif
     int sockfd = accept4(listener->watcher.fd,
                     (struct sockaddr *)&con->client.addr,
                     &con->client.addr_len,
-                    SOCK_NONBLOCK);
+                    accept_flags);
 #else
     int sockfd = accept(listener->watcher.fd,
                     (struct sockaddr *)&con->client.addr,
@@ -126,6 +131,15 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         warn("accept failed: %s", strerror(errno));
         free_connection(con);
 
+        errno = saved_errno;
+        return 0;
+    }
+
+    if (set_cloexec(sockfd) < 0) {
+        int saved_errno = errno;
+        warn("fcntl(FD_CLOEXEC) failed on accepted socket: %s", strerror(errno));
+        close(sockfd);
+        free_connection(con);
         errno = saved_errno;
         return 0;
     }
@@ -695,16 +709,29 @@ free_resolv_cb_data(struct resolv_cb_data *cb_data) {
 
 static void
 initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
+    int socket_type = SOCK_STREAM;
 #ifdef HAVE_ACCEPT4
-    int sockfd = socket(con->server.addr.ss_family, SOCK_STREAM | SOCK_NONBLOCK, 0);
-#else
-    int sockfd = socket(con->server.addr.ss_family, SOCK_STREAM, 0);
+    socket_type |= SOCK_NONBLOCK;
 #endif
+#ifdef SOCK_CLOEXEC
+    socket_type |= SOCK_CLOEXEC;
+#endif
+    int sockfd = socket(con->server.addr.ss_family, socket_type, 0);
     if (sockfd < 0) {
         char client[INET6_ADDRSTRLEN + 8];
         warn("socket failed: %s, closing connection from %s",
                 strerror(errno),
                 display_sockaddr(&con->client.addr, client, sizeof(client)));
+        abort_connection(con);
+        return;
+    }
+
+    if (set_cloexec(sockfd) < 0) {
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("fcntl(FD_CLOEXEC) failed on server socket: %s, closing connection from %s",
+                strerror(errno),
+                display_sockaddr(&con->client.addr, client, sizeof(client)));
+        close(sockfd);
         abort_connection(con);
         return;
     }

@@ -28,11 +28,13 @@
 #include <unistd.h>
 #include <string.h> /* memcpy() */
 #include <errno.h> /* errno */
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
 #include "binder.h"
 #include "logger.h"
+#include "fd_util.h"
 
 /*
  * binder is a child process we spawn before dropping privileges that is
@@ -56,9 +58,20 @@ static pid_t binder_pid = -1;
 void
 start_binder(void) {
     int sockets[2];
+    int socket_type = SOCK_STREAM;
+#ifdef SOCK_CLOEXEC
+    socket_type |= SOCK_CLOEXEC;
+#endif
 
-    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) < 0) {
+    if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0) {
         err("sockpair: %s", strerror(errno));
+        return;
+    }
+
+    if (set_cloexec(sockets[0]) < 0 || set_cloexec(sockets[1]) < 0) {
+        err("failed to set close-on-exec on binder socket: %s", strerror(errno));
+        close(sockets[0]);
+        close(sockets[1]);
         return;
     }
 
@@ -125,6 +138,11 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
     }
 
     int fd = parse_ancillary_data(&msg);
+    if (fd >= 0 && set_cloexec(fd) < 0) {
+        err("failed to set close-on-exec on bound socket: %s", strerror(errno));
+        close(fd);
+        return -1;
+    }
     if (fd < 0)
         err("binder returned: %.*s", len, data_buf);
 
@@ -171,10 +189,22 @@ binder_main(int sockfd) {
             goto error;
         }
 
-        int fd = socket(req->address[0].sa_family, SOCK_STREAM, 0);
+        int socket_type = SOCK_STREAM;
+#ifdef SOCK_CLOEXEC
+        socket_type |= SOCK_CLOEXEC;
+#endif
+        int fd = socket(req->address[0].sa_family, socket_type, 0);
         if (fd < 0) {
             memset(buffer, 0, sizeof(buffer));
             snprintf(buffer, sizeof(buffer), "socket(): %s", strerror(errno));
+            goto error;
+        }
+
+        if (set_cloexec(fd) < 0) {
+            int saved_errno = errno;
+            memset(buffer, 0, sizeof(buffer));
+            snprintf(buffer, sizeof(buffer), "fcntl(FD_CLOEXEC): %s", strerror(saved_errno));
+            close(fd);
             goto error;
         }
 
