@@ -666,6 +666,18 @@ listener_lookup_server_address(const struct Listener *listener,
          * port from the listen, this allows sharing table across listeners */
         struct Address *new_addr = copy_address(table_result.address);
 
+        if (new_addr == NULL) {
+            err("Failed to copy backend address for %.*s: %s",
+                    (int)name_len,
+                    name,
+                    strerror(errno));
+
+            return (struct LookupResult){
+                .address = listener->fallback_address,
+                .use_proxy_header = listener->fallback_use_proxy_header
+            };
+        }
+
         address_set_port(new_addr, address_port(listener->address));
 
         return (struct LookupResult){
