@@ -200,6 +200,13 @@ static struct Keyword global_grammar[] = {
         .finalize=(int(*)(void *, void *))end_listener_stanza,
     },
     {
+        .keyword="listen",
+        .create=(void *(*)(void))new_listener,
+        .parse_arg=(int(*)(void *, const char *))accept_listener_arg,
+        .block_grammar=listener_stanza_grammar,
+        .finalize=(int(*)(void *, void *))end_listener_stanza,
+    },
+    {
         .keyword="table",
         .create=(void *(*)(void))new_table,
         .parse_arg=(int(*)(void *, const char *))accept_table_arg,
