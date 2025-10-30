@@ -48,6 +48,16 @@ new_backend(void) {
         return NULL;
     }
 
+    backend->pattern = NULL;
+    backend->address = NULL;
+    backend->use_proxy_header = 0;
+#if defined(HAVE_LIBPCRE2_8)
+    backend->pattern_re = NULL;
+    backend->pattern_match_data = NULL;
+#elif defined(HAVE_LIBPCRE)
+    backend->pattern_re = NULL;
+#endif
+
     return backend;
 }
 
@@ -95,6 +105,11 @@ add_backend(struct Backend_head *backends, struct Backend *backend) {
 
 int
 init_backend(struct Backend *backend) {
+    if (backend == NULL || backend->pattern == NULL || backend->address == NULL) {
+        err("Incomplete backend configuration");
+        return 0;
+    }
+
     if (backend->pattern_re == NULL) {
 
 #if defined(HAVE_LIBPCRE2_8)
@@ -150,8 +165,9 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
         name_len = 0;
     }
 
-    STAILQ_FOREACH(iter, head, entries) {
-        assert(iter->pattern_re != NULL);
+    for (iter = STAILQ_FIRST(head); iter != NULL; iter = STAILQ_NEXT(iter, entries)) {
+        if (iter->pattern_re == NULL)
+            continue;
 #if defined(HAVE_LIBPCRE2_8)
         pcre2_match_data *md = iter->pattern_match_data;
         if (md == NULL)

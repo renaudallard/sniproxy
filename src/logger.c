@@ -77,7 +77,7 @@ static void free_sink(struct LogSink *);
 
 struct Logger *
 new_syslog_logger(const char *facility) {
-    struct Logger *logger = malloc(sizeof(struct Logger));
+    struct Logger *logger = calloc(1, sizeof(struct Logger));
     if (logger != NULL) {
         logger->sink = obtain_syslog_sink();
         if (logger->sink == NULL) {
@@ -96,7 +96,7 @@ new_syslog_logger(const char *facility) {
 
 struct Logger *
 new_file_logger(const char *filepath) {
-    struct Logger *logger = malloc(sizeof(struct Logger));
+    struct Logger *logger = calloc(1, sizeof(struct Logger));
     if (logger != NULL) {
         logger->sink = obtain_file_sink(filepath);
         if (logger->sink == NULL) {
@@ -117,7 +117,8 @@ void
 reopen_loggers(void) {
     struct LogSink *sink;
 
-    SLIST_FOREACH(sink, &sinks, entries) {
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
         if (sink->type == LOG_SINK_SYSLOG) {
             closelog();
             openlog(PACKAGE_NAME, LOG_PID, 0);
@@ -129,6 +130,7 @@ reopen_loggers(void) {
             else
                 setvbuf(sink->fd, NULL, _IOLBF, 0);
         }
+        sink = SLIST_NEXT(sink, entries);
     }
 }
 
@@ -283,7 +285,7 @@ init_default_logger(void) {
     if (default_logger != NULL)
         return;
 
-    logger = malloc(sizeof(struct Logger));
+    logger = calloc(1, sizeof(struct Logger));
     if (logger != NULL) {
         logger->sink = obtain_stderr_sink();
         if (logger->sink == NULL) {
@@ -352,12 +354,14 @@ static struct LogSink *
 obtain_stderr_sink(void) {
     struct LogSink *sink;
 
-    SLIST_FOREACH(sink, &sinks, entries) {
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
         if (sink->type == LOG_SINK_STDERR)
             return sink;
+        sink = SLIST_NEXT(sink, entries);
     }
 
-    sink = malloc(sizeof(struct LogSink));
+    sink = calloc(1, sizeof(struct LogSink));
     if (sink != NULL) {
         sink->type = LOG_SINK_STDERR;
         sink->filepath = NULL;
@@ -374,12 +378,14 @@ static struct LogSink *
 obtain_syslog_sink(void) {
     struct LogSink *sink;
 
-    SLIST_FOREACH(sink, &sinks, entries) {
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
         if (sink->type == LOG_SINK_SYSLOG)
             return sink;
+        sink = SLIST_NEXT(sink, entries);
     }
 
-    sink = malloc(sizeof(struct LogSink));
+    sink = calloc(1, sizeof(struct LogSink));
     if (sink != NULL) {
         sink->type = LOG_SINK_SYSLOG;
         sink->filepath = NULL;
@@ -401,13 +407,15 @@ obtain_file_sink(const char *filepath) {
     if (filepath == NULL)
         return NULL;
 
-    SLIST_FOREACH(sink, &sinks, entries) {
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
         if (sink->type == LOG_SINK_FILE &&
                 strcmp(sink->filepath, filepath) == 0)
             return sink;
+        sink = SLIST_NEXT(sink, entries);
     }
 
-    sink = malloc(sizeof(struct LogSink));
+    sink = calloc(1, sizeof(struct LogSink));
     if (sink == NULL)
         return NULL;
 

@@ -209,9 +209,11 @@ print_connections(void) {
     }
 
     fprintf(temp, "Running connections:\n");
-    struct Connection *iter;
-    TAILQ_FOREACH(iter, &connections, entries)
+    struct Connection *iter = TAILQ_FIRST(&connections);
+    while (iter != NULL) {
         print_connection(temp, iter);
+        iter = TAILQ_NEXT(iter, entries);
+    }
 
     if (fclose(temp) < 0)
         warn("fclose failed: %s", strerror(errno));

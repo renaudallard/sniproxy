@@ -91,15 +91,16 @@ parse_boolean(const char *boolean) {
 void
 init_listeners(struct Listener_head *listeners,
         const struct Table_head *tables, struct ev_loop *loop) {
-    struct Listener *iter;
+    struct Listener *iter = SLIST_FIRST(listeners);
     char address[ADDRESS_BUFFER_SIZE];
 
-    SLIST_FOREACH(iter, listeners, entries) {
+    while (iter != NULL) {
         if (init_listener(iter, tables, loop) < 0) {
             err("Failed to initialize listener %s",
                     display_address(iter->address, address, sizeof(address)));
             exit(1);
         }
+        iter = SLIST_NEXT(iter, entries);
     }
 }
 

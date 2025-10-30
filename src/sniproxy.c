@@ -306,24 +306,31 @@ write_pidfile(const char *path, pid_t pid) {
     open_flags |= O_NOFOLLOW;
 #endif
 
-    int fd = open(path, open_flags, 0600);
+    int fd = -1;
+    FILE *fp = NULL;
+
+    fd = open(path, open_flags, 0600);
     if (fd < 0) {
         perror("open");
         return;
     }
 
-    FILE *fp = fdopen(fd, "w");
+    fp = fdopen(fd, "w");
     if (fp == NULL) {
         int saved_errno = errno;
-        close(fd);
-        errno = saved_errno;
         perror("fdopen");
-        return;
+        errno = saved_errno;
+        goto cleanup;
     }
 
     fprintf(fp, "%d\n", pid);
 
-    fclose(fp);
+cleanup:
+    if (fp != NULL)
+        fclose(fp);
+    else if (fd >= 0)
+        close(fd);
+
 }
 
 static void

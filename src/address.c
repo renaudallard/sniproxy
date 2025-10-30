@@ -234,9 +234,9 @@ int
 address_compare(const struct Address *addr_1, const struct Address *addr_2) {
     if (addr_1 == NULL && addr_2 == NULL)
         return 0;
-    if (addr_1 == NULL && addr_2 != NULL)
+    if (addr_1 == NULL)
         return -1;
-    if (addr_1 != NULL && addr_2 == NULL)
+    if (addr_2 == NULL)
         return 1;
 
     if (addr_1->type < addr_2->type)

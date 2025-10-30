@@ -52,15 +52,12 @@ struct Table *
 new_table(void) {
     struct Table *table;
 
-    table = malloc(sizeof(struct Table));
+    table = calloc(1, sizeof(struct Table));
     if (table == NULL) {
         err("malloc: %s", strerror(errno));
         return NULL;
     }
 
-    table->name = NULL;
-    table->use_proxy_header = 0;
-    table->reference_count = 0;
     STAILQ_INIT(&table->backends);
 
     return table;
@@ -127,15 +124,16 @@ free_tables(struct Table_head *tables) {
 
 struct Table *
 table_lookup(const struct Table_head *tables, const char *name) {
-    struct Table *iter;
+    struct Table *iter = SLIST_FIRST(tables);
 
-    SLIST_FOREACH(iter, tables, entries) {
+    while (iter != NULL) {
         if (iter->name == NULL && name == NULL) {
             return iter;
         } else if (iter->name != NULL && name != NULL &&
                 strcmp(iter->name, name) == 0) {
             return iter;
         }
+        iter = SLIST_NEXT(iter, entries);
     }
 
     return NULL;
@@ -204,15 +202,16 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
 
 void
 print_table_config(FILE *file, struct Table *table) {
-    struct Backend *backend;
+    struct Backend *backend = STAILQ_FIRST(&table->backends);
 
     if (table->name == NULL)
         fprintf(file, "table {\n");
     else
         fprintf(file, "table %s {\n", table->name);
 
-    STAILQ_FOREACH(backend, &table->backends, entries) {
+    while (backend != NULL) {
         print_backend_config(file, backend);
+        backend = STAILQ_NEXT(backend, entries);
     }
     fprintf(file, "}\n\n");
 }
