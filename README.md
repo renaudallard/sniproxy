@@ -16,6 +16,13 @@ Features
 + Supports multiple listening sockets per instance.
 + Supports HAProxy proxy protocol to propagate original source address to
   back-end servers.
++ Routes HTTP/2 connections by decoding HPACK HEADERS frames and sanitising
+  :authority values before routing.
++ Requires TLS 1.2 or newer by default while allowing administrators to opt
+  into TLS 1.0 support with the `-T` flag.
++ Sandboxes privileged operations on OpenBSD with pledge(2) and unveil(2).
++ Accepts legacy configuration keywords such as `listen`, `proto`, `user`, and
+  `group` for compatibility with existing deployments.
 
 Usage
 -----
