@@ -172,7 +172,7 @@ int bind_socket(const struct sockaddr *addr, size_t len) {
 static struct LookupResult stub_lookup_result;
 
 struct LookupResult table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
-    (void)table;
+    assert(table != NULL);
     (void)name;
     (void)name_len;
     return stub_lookup_result;
@@ -201,6 +201,15 @@ int main(void) {
     assert(result.caller_free_address == 0);
     assert(result.use_proxy_header == listener.fallback_use_proxy_header);
     assert(last_set_port == 0);
+
+    /* When the listener has no associated table we should fall back without
+     * attempting a lookup. */
+    listener.table = NULL;
+
+    result = listener_lookup_server_address(&listener, hostname, strlen(hostname));
+    assert(result.address == listener.fallback_address);
+    assert(result.caller_free_address == 0);
+    assert(result.use_proxy_header == listener.fallback_use_proxy_header);
 
     return 0;
 }

@@ -618,6 +618,16 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 struct LookupResult
 listener_lookup_server_address(const struct Listener *listener,
         const char *name, size_t name_len) {
+    if (listener == NULL)
+        return (struct LookupResult){ .address = NULL };
+
+    if (listener->table == NULL) {
+        return (struct LookupResult){
+            .address = listener->fallback_address,
+            .use_proxy_header = listener->fallback_use_proxy_header,
+        };
+    }
+
     struct LookupResult table_result =
         table_lookup_server_address(listener->table, name, name_len);
 
