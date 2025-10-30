@@ -70,7 +70,7 @@ const struct Protocol *const http_protocol = &(struct Protocol){
  */
 static int
 parse_http_header(const char* data, size_t data_len, char **hostname) {
-    int result, i;
+    int result;
 
     if (hostname == NULL)
         return -3;
@@ -91,24 +91,40 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
     if (result < 0)
         return result;
 
-    /*
-     *  if the user specifies the port in the request, it is included here.
-     *  Host: example.com:80
-     *  Host: [2001:db8::1]:8080
-     *  so we trim off port portion
-     */
-    for (i = result - 1; i >= 0; i--)
-        if ((*hostname)[i] == ':') {
-            (*hostname)[i] = '\0';
-            result = i;
-            break;
-        } else if (!isdigit((*hostname)[i])) {
-            break;
+    char *port = strrchr(*hostname, ':');
+    if (port != NULL) {
+        int digits_only = 1;
+
+        for (char *p = port + 1; *p != '\0'; p++)
+            if (!isdigit((unsigned char)*p)) {
+                digits_only = 0;
+                break;
+            }
+
+        if (digits_only) {
+            if (port > *hostname && port[-1] == ':') {
+                digits_only = 0;
+            } else if ((*hostname)[0] != '[') {
+                char *first_colon = strchr(*hostname, ':');
+                if (first_colon != NULL && first_colon != port)
+                    digits_only = 0;
+            }
         }
 
-    size_t hostname_len = (size_t)result;
+        if (digits_only) {
+            *port = '\0';
+        }
+    }
+
+    size_t hostname_len = strlen(*hostname);
 
     if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
+        free(*hostname);
+        *hostname = NULL;
+        return -5;
+    }
+
+    if (hostname_len > 0 && (*hostname)[0] != '[' && strchr(*hostname, ':') != NULL) {
         free(*hostname);
         *hostname = NULL;
         return -5;

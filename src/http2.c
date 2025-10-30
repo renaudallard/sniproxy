@@ -458,21 +458,42 @@ append_hostname_if_needed(struct host_accumulator *hosts,
     buffer[value_len] = '\0';
 
     size_t len = value_len;
-    size_t i = len;
-    int digits = 0;
-    while (i > 0 && isdigit((unsigned char)buffer[i - 1])) {
-        digits = 1;
-        i--;
-    }
-    if (digits && i > 0 && buffer[i - 1] == ':') {
-        buffer[i - 1] = '\0';
-        len = i - 1;
+
+    char *port = strrchr(buffer, ':');
+    if (port != NULL) {
+        int digits_only = 1;
+
+        for (char *p = port + 1; *p != '\0'; p++)
+            if (!isdigit((unsigned char)*p)) {
+                digits_only = 0;
+                break;
+            }
+
+        if (digits_only) {
+            if (port > buffer && port[-1] == ':') {
+                digits_only = 0;
+            } else if (buffer[0] != '[') {
+                char *first_colon = strchr(buffer, ':');
+                if (first_colon != NULL && first_colon != port)
+                    digits_only = 0;
+            }
+        }
+
+        if (digits_only) {
+            *port = '\0';
+            len = (size_t)(port - buffer);
+        }
     }
 
     if (len == 0)
         len = strlen(buffer);
 
     if (!sanitize_hostname(buffer, &len, SERVER_NAME_LEN - 1)) {
+        free(buffer);
+        return -4;
+    }
+
+    if (len > 0 && buffer[0] != '[' && memchr(buffer, ':', len) != NULL) {
         free(buffer);
         return -4;
     }
