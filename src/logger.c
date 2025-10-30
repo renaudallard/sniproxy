@@ -261,7 +261,7 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
         return;
 
     if (logger->sink->type == LOG_SINK_SYSLOG) {
-        vsyslog(logger->facility|logger->priority, format, args);
+        vsyslog(logger->facility | priority, format, args);
     } else if (logger->sink->fd != NULL) {
         char buffer[1024];
 

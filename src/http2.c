@@ -644,15 +644,31 @@ decode_integer(const unsigned char *data, size_t data_len, unsigned int prefix,
     size_t idx = 1;
 
     if (result == mask) {
-        unsigned int shift = 0;
+        size_t shift = 0;
+        const size_t shift_limit = sizeof(size_t) * CHAR_BIT;
         do {
             if (idx >= data_len)
                 return -1;
             unsigned char byte = data[idx++];
-            result += (size_t)(byte & 0x7F) << shift;
-            shift += 7;
+            size_t chunk = (size_t)(byte & 0x7F);
+
+            if (shift >= shift_limit)
+                return -1;
+            if (chunk > (SIZE_MAX >> shift))
+                return -1;
+            size_t addend = chunk << shift;
+            if (result > SIZE_MAX - addend)
+                return -1;
+
+            result += addend;
+
             if (!(byte & 0x80))
                 break;
+
+            if (shift_limit - shift < 7)
+                shift = shift_limit;
+            else
+                shift += 7;
         } while (1);
     }
 
