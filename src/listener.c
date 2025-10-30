@@ -171,10 +171,13 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
     free(existing_listener->fallback_address);
     existing_listener->fallback_address = new_listener->fallback_address;
     new_listener->fallback_address = NULL;
+    existing_listener->fallback_use_proxy_header =
+            new_listener->fallback_use_proxy_header;
 
     free(existing_listener->source_address);
     existing_listener->source_address = new_listener->source_address;
     new_listener->source_address = NULL;
+    existing_listener->transparent_proxy = new_listener->transparent_proxy;
 
     existing_listener->protocol = new_listener->protocol;
 
@@ -186,6 +189,8 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
     existing_listener->access_log = logger_ref_get(new_listener->access_log);
 
     existing_listener->log_bad_requests = new_listener->log_bad_requests;
+    existing_listener->reuseport = new_listener->reuseport;
+    existing_listener->ipv6_v6only = new_listener->ipv6_v6only;
 
     struct Table *new_table =
             table_lookup(tables, existing_listener->table_name);
