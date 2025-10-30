@@ -135,38 +135,57 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
 
 static int
 get_header(const char *header, const char *data, size_t data_len, char **value) {
-    size_t len, header_len;
-
-    header_len = strlen(header);
+    size_t len;
+    size_t header_len = strlen(header);
+    char *found_value = NULL;
+    size_t found_len = 0;
+    int found = 0;
 
     /* loop through headers stopping at first blank line */
-    while ((len = next_header(&data, &data_len)) != 0)
+    while ((len = next_header(&data, &data_len)) != 0) {
         if (len > header_len && strncasecmp(header, data, header_len) == 0) {
+            size_t value_start = header_len;
+
             /* Eat leading whitespace */
-            while (header_len < len && isblank(data[header_len]))
-                header_len++;
+            while (value_start < len && isblank((unsigned char)data[value_start]))
+                value_start++;
 
-            size_t value_len = len - header_len;
+            size_t value_len = len - value_start;
 
-            if (value_len == 0 || value_len >= SERVER_NAME_LEN)
+            if (value_len == 0 || value_len >= SERVER_NAME_LEN) {
+                free(found_value);
                 return -5;
+            }
 
-            *value = malloc(value_len + 1);
-            if (*value == NULL)
+            if (found) {
+                /* Multiple host headers are not permitted */
+                free(found_value);
+                return -5;
+            }
+
+            found_value = malloc(value_len + 1);
+            if (found_value == NULL)
                 return -4;
 
-            memcpy(*value, data + header_len, value_len);
-            (*value)[value_len] = '\0';
-
-            return (int)value_len;
+            memcpy(found_value, data + value_start, value_len);
+            found_value[value_len] = '\0';
+            found_len = value_len;
+            found = 1;
         }
+    }
 
     /* If there is no data left after reading all the headers then we do not
      * have a complete HTTP request, there must be a blank line */
-    if (data_len == 0)
+    if (data_len == 0) {
+        free(found_value);
         return -1;
+    }
 
-    return -2;
+    if (!found)
+        return -2;
+
+    *value = found_value;
+    return (int)found_len;
 }
 
 static size_t
