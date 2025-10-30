@@ -540,6 +540,9 @@ hpack_decoder_free(struct hpack_decoder *decoder) {
 
 static int
 hpack_set_dynamic_size(struct hpack_decoder *decoder, size_t size) {
+    if (size > HTTP2_MAX_DYNAMIC_TABLE_SIZE)
+        return 0;
+
     decoder->max_dynamic_size = size;
 
     while (decoder->dynamic_size > decoder->max_dynamic_size) {
@@ -557,7 +560,16 @@ hpack_set_dynamic_size(struct hpack_decoder *decoder, size_t size) {
 
 static int
 hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len, const char *value, size_t value_len) {
-    size_t entry_size = name_len + value_len + 32;
+    if (name_len > SIZE_MAX - value_len)
+        return 0;
+
+    size_t combined_len = name_len + value_len;
+
+    if (combined_len > SIZE_MAX - 32)
+        return 0;
+
+    size_t entry_size = combined_len + 32;
+
     if (entry_size > decoder->max_dynamic_size) {
         while (decoder->dynamic_count > 0) {
             struct hpack_entry *entry = &decoder->dynamic_entries[decoder->dynamic_count - 1];

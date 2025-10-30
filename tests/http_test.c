@@ -22,6 +22,11 @@ static const unsigned char http2_unbracketed_ipv6[] =
     "\x82\x87\x84\x41\x0b"
     "2001:db8::1";
 
+static const unsigned char http2_dynamic_table_overflow[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x06\x04\x00\x00\x00\x00\x00"
+    "\x00\x01\x00\x10\x00\x00";
+
 struct http_request_case {
     const char *request;
     const char *expected_host;
@@ -132,6 +137,12 @@ int main(void) {
     hostname = NULL;
     result = http_protocol->parse_packet((const char *)http2_unbracketed_ipv6,
             sizeof(http2_unbracketed_ipv6) - 1, &hostname);
+    assert(result < 0);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    result = http_protocol->parse_packet((const char *)http2_dynamic_table_overflow,
+            sizeof(http2_dynamic_table_overflow) - 1, &hostname);
     assert(result < 0);
     assert(hostname == NULL);
 
