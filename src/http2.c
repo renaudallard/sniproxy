@@ -795,6 +795,9 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
     if (!build_huffman_tree())
         return -1;
 
+    if (len > (SIZE_MAX - 1) / 2)
+        return -1;
+
     size_t capacity = len * 2 + 1;
     char *buf = malloc(capacity);
     if (buf == NULL)
@@ -835,7 +838,13 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
         }
     }
 
-    uint32_t mask = (1u << bit_count) - 1u;
+    uint32_t mask;
+    if (bit_count == 0)
+        mask = 0u;
+    else if (bit_count >= 32)
+        mask = UINT32_MAX;
+    else
+        mask = (1u << bit_count) - 1u;
     if (bit_count > 0 && (bit_buffer & mask) != mask) {
         free(buf);
         return -1;
