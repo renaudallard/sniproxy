@@ -31,6 +31,7 @@
 #include "http.h"
 #include "protocol.h"
 #include "hostname_sanitize.h"
+#include "http2.h"
 
 #define SERVER_NAME_LEN 256
 
@@ -73,6 +74,18 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
 
     if (hostname == NULL)
         return -3;
+
+    static const char http2_preface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    size_t preface_len = sizeof(http2_preface) - 1;
+
+    if (data_len > 0) {
+        size_t cmp_len = data_len < preface_len ? data_len : preface_len;
+        if (cmp_len > 0 && memcmp(data, http2_preface, cmp_len) == 0) {
+            int h2_result = parse_http2_header((const unsigned char *)data, data_len, hostname);
+            if (h2_result != -4)
+                return h2_result;
+        }
+    }
 
     result = get_header("Host:", data, data_len, hostname);
     if (result < 0)
