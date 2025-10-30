@@ -107,6 +107,10 @@ static const struct Keyword listener_stanza_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_listener_protocol,
     },
     {
+        .keyword="proto",
+        .parse_arg=(int(*)(void *, const char *))accept_listener_protocol,
+    },
+    {
         .keyword="reuseport",
         .parse_arg=(int(*)(void *, const char *))accept_listener_reuseport,
     },
