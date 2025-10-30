@@ -216,10 +216,7 @@ resolv_query(const char *hostname, int mode,
     }
 
     if (all_queries_are_null(cb_data)) {
-        if (cb_data->client_free_cb != NULL)
-            cb_data->client_free_cb(cb_data->client_cb_data);
-
-        free(cb_data);
+        process_client_callback(cb_data);
         return NULL;
     }
 

@@ -617,21 +617,23 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             }
         }
 
+        con->state = RESOLVING;
         con->query_handle = resolv_query(hostname,
                 resolv_mode, resolv_cb,
                 (void (*)(void *))free_resolv_cb_data, cb_data);
 
         if (con->query_handle == NULL) {
-            notice("unable to resolve %s, closing connection", hostname_buf);
+            if (con->state == RESOLVING) {
+                notice("unable to resolve %s, closing connection", hostname_buf);
 
-            abort_connection(con);
+                abort_connection(con);
+                reactivate_watchers(con, loop);
+            }
+
             con->query_handle = NULL;
-            reactivate_watchers(con, loop);
 
             return;
         }
-
-        con->state = RESOLVING;
 #endif
     } else if (address_is_sockaddr(result.address)) {
         con->server.addr_len = address_sa_len(result.address);
