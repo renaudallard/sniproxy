@@ -113,33 +113,18 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
         buf->buffer = resized;
         buf->size_mask = new_size - 1;
     } else {
-        size_t original_head = buf->head;
+        char *new_buffer = malloc(new_size);
+        if (new_buffer == NULL)
+            return -2;
 
-        if (buf->head != 0 && buf->len != 0)
-            buffer_coalesce(buf, NULL);
+        size_t first_len = MIN(buf->len, current_size - buf->head);
+        memcpy(new_buffer, buf->buffer + buf->head, first_len);
+        if (buf->len > first_len)
+            memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
 
-        if (buf->head != 0 && buf->len != 0) {
-            char *new_buffer = malloc(new_size);
-            if (new_buffer == NULL)
-                return -2;
-
-            size_t first_len = MIN(buf->len, current_size - original_head);
-            memcpy(new_buffer, buf->buffer + original_head, first_len);
-            if (buf->len > first_len)
-                memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
-
-            free(buf->buffer);
-            buf->buffer = new_buffer;
-            buf->head = 0;
-        } else {
-            char *resized = realloc(buf->buffer, new_size);
-            if (resized == NULL)
-                return -2;
-
-            buf->buffer = resized;
-            buf->head = 0;
-        }
-
+        free(buf->buffer);
+        buf->buffer = new_buffer;
+        buf->head = 0;
         buf->size_mask = new_size - 1;
     }
 
