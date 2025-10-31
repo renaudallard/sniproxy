@@ -136,6 +136,21 @@ reopen_loggers(void) {
 }
 
 void
+logger_for_each_file_sink(void (*callback)(const char *, void *), void *userdata) {
+    struct LogSink *sink;
+
+    if (callback == NULL)
+        return;
+
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
+        if (sink->type == LOG_SINK_FILE && sink->filepath != NULL)
+            callback(sink->filepath, userdata);
+        sink = SLIST_NEXT(sink, entries);
+    }
+}
+
+void
 set_default_logger(struct Logger *new_logger) {
     struct Logger *old_default_logger = default_logger;
 

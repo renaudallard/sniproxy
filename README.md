@@ -156,7 +156,12 @@ spoofing by a single 16 bit query ID, which makes it relatively easy to spoof).
 OpenBSD specific behaviour
 --------------------------
 
-On OpenBSD, sniproxy is protected by pledge(2) and unveil(2).
-Therefore, the configuration file must be /etc/sniproxy.conf, unix sockets
-must be in /var/www/sockets and logs must be in /var/log. Also, sniproxy PID
-file must be /var/run/sniproxy.pid
+On OpenBSD, sniproxy is sandboxed with pledge(2) and unveil(2). The daemon
+unveils the configuration file passed on the command line (defaulting to
+`/etc/sniproxy.conf`), the pidfile location, every file-backed log sink, and
+each listener, fallback, source, and backend address that uses a UNIX domain
+socket. These paths are collected from the configuration that is loaded at
+startup, so custom locations are supported as long as the relevant files or
+directories exist before sniproxy is launched. After the necessary resources
+have been unveiled, sniproxy pledges the minimal runtime promises and a
+restricted exec profile for re-execing loggers.

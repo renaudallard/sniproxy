@@ -44,6 +44,7 @@ void set_logger_priority(struct Logger *, int);
 struct Logger *logger_ref_get(struct Logger *);
 void logger_ref_put(struct Logger *);
 void reopen_loggers(void);
+void logger_for_each_file_sink(void (*callback)(const char *, void *), void *userdata);
 
 /* Shorthand to log to global error log */
 void fatal(const char *, ...)
