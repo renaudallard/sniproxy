@@ -34,7 +34,6 @@
 #ifndef HOSTNAME_SANITIZE_H
 #define HOSTNAME_SANITIZE_H
 
-#include <ctype.h>
 #include <stddef.h>
 
 static inline int
@@ -46,8 +45,12 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
 
     len = *hostname_len;
 
-    while (len > 0 && isspace((unsigned char)hostname[len - 1]))
+    while (len > 0) {
+        unsigned char tail = (unsigned char)hostname[len - 1];
+        if (!(tail == ' ' || (tail >= '\t' && tail <= '\r')))
+            break;
         len--;
+    }
 
     hostname[len] = '\0';
 
@@ -74,26 +77,95 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
         return 0;
     }
 
-    for (size_t i = 0; i < len; i++) {
-        unsigned char c = (unsigned char)hostname[i];
+    if (bracketed_ipv6) {
+        char *p = hostname + 1;
+        const char *end = hostname + len - 1;
+        unsigned int colon_count = 0;
 
-        if (c <= 0x1F || c == 0x7F || c >= 0x80 || isspace(c))
+        for (; p < end; p++) {
+            unsigned char c = (unsigned char)*p;
+
+            if (c <= 0x1F || c == 0x7F || c >= 0x80 || c == ' ' ||
+                (c >= '\t' && c <= '\r'))
+                return 0;
+
+            if (c == ':') {
+                colon_count++;
+            } else if (c != '.') {
+                if ((unsigned)(c - '0') <= 9) {
+                    /* leave digits as-is */
+                } else if ((unsigned)(c - 'A') <= ('F' - 'A')) {
+                    c = (unsigned char)(c | 0x20);
+                } else if (!((unsigned)(c - 'a') <= ('f' - 'a')))
+                    return 0;
+            }
+
+            *p = (char)((unsigned)(c - 'A') <= ('Z' - 'A') ? (c | 0x20) : c);
+        }
+
+        if (colon_count < 2)
+            return 0;
+    } else {
+        char *p = hostname;
+        const char *end = hostname + len;
+        int label_len = 0;
+        int saw_label = 0;
+        int last_was_dash = 0;
+
+        for (; p < end; p++) {
+            unsigned char c = (unsigned char)*p;
+
+            if (c <= 0x1F || c == 0x7F || c >= 0x80 || c == ' ' ||
+                (c >= '\t' && c <= '\r'))
+                return 0;
+
+            if (c == '.') {
+                if (label_len == 0 || last_was_dash)
+                    return 0;
+
+                label_len = 0;
+                last_was_dash = 0;
+                continue;
+            }
+
+            if ((unsigned)(c - '0') <= 9) {
+                last_was_dash = 0;
+            } else {
+                if ((unsigned)(c - 'A') <= ('Z' - 'A')) {
+                    c = (unsigned char)(c | 0x20);
+                    last_was_dash = 0;
+                } else if ((unsigned)(c - 'a') <= ('z' - 'a')) {
+                    last_was_dash = 0;
+                } else if (c == '-' || c == '_') {
+                    if (label_len == 0)
+                        return 0;
+                    last_was_dash = 1;
+                } else {
+                    return 0;
+                }
+            }
+
+            saw_label = 1;
+            label_len++;
+            if (label_len > 63)
+                return 0;
+
+            *p = (char)((unsigned)(c - 'A') <= ('Z' - 'A') ? (c | 0x20) : c);
+        }
+
+        if (!saw_label)
             return 0;
 
-        if (bracketed_ipv6) {
-            if (i == 0 || i == len - 1)
-                continue;
+        if (label_len == 0 && hostname[len - 1] != '.')
+            return 0;
 
-            if (!(isxdigit(c) || c == ':' || c == '.'))
-                return 0;
+        if (last_was_dash && hostname[len - 1] != '.')
+            return 0;
 
-            hostname[i] = (char)tolower(c);
-        } else {
-            if (!(isalnum(c) || c == '-' || c == '.' || c == '_'))
-                return 0;
+        while (len > 0 && hostname[len - 1] == '.')
+            len--;
 
-            hostname[i] = (char)tolower(c);
-        }
+        hostname[len] = '\0';
     }
 
     *hostname_len = len;

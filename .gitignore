@@ -1,4 +1,6 @@
 a.out
+http_test
+tests/http_test
 *.o
 *.cdbs-orig
 .deps

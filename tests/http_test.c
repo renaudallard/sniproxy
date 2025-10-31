@@ -48,6 +48,13 @@ static const unsigned char http2_unbracketed_ipv6[] =
     "\x82\x87\x84\x41\x0b"
     "2001:db8::1";
 
+static const unsigned char http_host_with_nul[] =
+    "GET / HTTP/1.1\r\n"
+    "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
+    "Host: example.com\0.evil\r\n"
+    "Accept: */*\r\n"
+    "\r\n";
+
 static const unsigned char http2_dynamic_table_overflow[] =
     "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
     "\x00\x00\x06\x04\x00\x00\x00\x00\x00"
@@ -132,6 +139,16 @@ static const char *bad[] = {
         "\r\n",
     "GET / HTTP/1.1\r\n"
         "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
+        "Host: example.com:\r\n"
+        "Accept: */*\r\n"
+        "\r\n",
+    "GET / HTTP/1.1\r\n"
+        "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
+        "Host: [2001:db8::1]:\r\n"
+        "Accept: */*\r\n"
+        "\r\n",
+    "GET / HTTP/1.1\r\n"
+        "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
         "Host: example.com/evil\r\n"
         "Accept: */*\r\n"
         "\r\n",
@@ -179,6 +196,12 @@ int main(void) {
     hostname = NULL;
     result = http_protocol->parse_packet((const char *)http2_unbracketed_ipv6,
             sizeof(http2_unbracketed_ipv6) - 1, &hostname);
+    assert(result < 0);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    result = http_protocol->parse_packet((const char *)http_host_with_nul,
+            sizeof(http_host_with_nul) - 1, &hostname);
     assert(result < 0);
     assert(hostname == NULL);
 

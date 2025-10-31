@@ -91,32 +91,46 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
     if (result < 0)
         return result;
 
-    char *port = strrchr(*hostname, ':');
-    if (port != NULL) {
-        int digits_only = 1;
+    char *buffer = *hostname;
+    size_t hostname_len = (size_t)result;
+    size_t first_colon = hostname_len;
+    size_t last_colon = hostname_len;
 
-        for (char *p = port + 1; *p != '\0'; p++)
-            if (!isdigit((unsigned char)*p)) {
-                digits_only = 0;
-                break;
-            }
-
-        if (digits_only) {
-            if (port > *hostname && port[-1] == ':') {
-                digits_only = 0;
-            } else if ((*hostname)[0] != '[') {
-                char *first_colon = strchr(*hostname, ':');
-                if (first_colon != NULL && first_colon != port)
-                    digits_only = 0;
-            }
-        }
-
-        if (digits_only) {
-            *port = '\0';
+    for (size_t i = 0; i < hostname_len; i++) {
+        if (buffer[i] == ':') {
+            if (first_colon == hostname_len)
+                first_colon = i;
+            last_colon = i;
         }
     }
 
-    size_t hostname_len = strlen(*hostname);
+    if (last_colon != hostname_len) {
+        int digits_only = 1;
+        size_t port_len = hostname_len - (last_colon + 1);
+
+        if (port_len == 0)
+            digits_only = 0;
+
+        for (size_t i = last_colon + 1; i < hostname_len; i++) {
+            if (!isdigit((unsigned char)buffer[i])) {
+                digits_only = 0;
+                break;
+            }
+        }
+
+        if (digits_only) {
+            if (last_colon > 0 && buffer[last_colon - 1] == ':') {
+                digits_only = 0;
+            } else if (buffer[0] != '[' && first_colon != last_colon) {
+                digits_only = 0;
+            }
+        }
+
+        if (digits_only) {
+            hostname_len = last_colon;
+            buffer[hostname_len] = '\0';
+        }
+    }
 
     if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
         free(*hostname);
