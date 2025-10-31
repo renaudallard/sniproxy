@@ -1,4 +1,4 @@
-.TH SNIPROXY 8 "14 September 2014" "SNIProxy manual" "sniproxy"
+.TH SNIPROXY 8 "31 Oct 2025" "SNIProxy manual" "sniproxy"
 
 .SH NAME
 
@@ -7,20 +7,23 @@ SNIProxy \- transparent session based TLS and HTTP proxy
 .SH SYNOPSIS
 
 \fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ]
-[ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ]
+[ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR ]
 
 .SH DESCRIPTION
 
-Proxies incoming HTTP and TLS connections based on the hostname contained in
-the initial request of the TCP session. This enables HTTPS name-based virtual
-hosting to separate backend servers without installing the private key on the
-proxy machine\&.
+Proxies incoming HTTP and TLS connections, including HTTP/2 requests,
+based on the hostname contained in the initial request of the TCP
+session. This enables HTTPS name-based virtual hosting to separate
+backend servers without installing the private key on the proxy
+machine\&. By default TLS 1.2 (and newer) client hellos are
+accepted\&.
 
 .SH OPTIONS
 
 .TP
 -c \fIconfig\fR
-Specify configuration file to use. The default is /etc/sniproxy\&.conf\&.
+Specify configuration file to use. The default is
+/etc/sniproxy\&.conf\&.
 
 .TP
 -f
@@ -28,9 +31,14 @@ Do not daemonize, and run in foreground\&.
 
 .TP
 -n \fIfile-descriptor-limit\fR
-Specify the maximum file descriptor resource limit\&. SNIProxy will attempt to
-set the maximum file descriptor limit to the value specified\&.
+Specify the maximum file descriptor resource limit\&. SNIProxy will
+attempt to set the maximum file descriptor limit to the value
+specified\&.
 
 .TP
 -V
 Print the version of SNIProxy and exit\&.
+
+.TP
+-T
+Allow TLS 1.0 client hellos in addition to newer TLS versions\&.

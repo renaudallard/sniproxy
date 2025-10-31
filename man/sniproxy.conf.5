@@ -1,4 +1,4 @@
-.TH SNIPROXY.CONF 5 "22 March 2015" "SNIProxy manual" "sniproxy"
+.TH SNIPROXY.CONF 5 "31 Oct 2025" "SNIProxy manual" "sniproxy"
 
 .SH NAME
 
@@ -10,12 +10,13 @@ sniproxy.conf - sniproxy configuration file
 
 .SH DESCRIPTION
 
-/etc/sniproxy.conf is the configuration file for sniproxy. Statements are
-separated by either a new line or semi-colon. Lines starting with \&# are
-comments. The configuration is broken down into stanzas delimited by curly
-braces. Characters may be escaped using \&\\. Configuration directives may may
-be shorted as long as they are unambiguous e.g. user daemon instead of username
-daemon.
+/etc/sniproxy.conf is the configuration file for sniproxy.
+Statements are separated by either a new line or semi-colon.
+Lines starting with \&# are comments.
+The configuration is broken down into stanzas delimited by
+curly braces. Characters may be escaped using \&\\. Configuration
+directives may be shortened as long as they are unambiguous e.g. user
+daemon instead of username daemon.
 
 .SS USERNAME
 
@@ -25,8 +26,21 @@ username daemon
 .fi
 .PP
 
-Specify the user sniproxy will run as. When sniproxy is launched as super user,
+Specify the user sniproxy will run as.
+When sniproxy is launched as super user,
 it will drop permissions to this user.
+
+.SS GROUPNAME
+
+.PP
+.nf
+groupname _sniproxy
+.fi
+.PP
+
+Specify the group sniproxy will run as after dropping privileges. Either
+the full \fBgroupname\fR directive or the short \fBgroup\fR form may be
+used.
 
 .SS PIDFILE
 
@@ -36,8 +50,8 @@ pidfile /var/run/sniproxy.pid
 .fi
 .PP
 
-Specify the path to the pid file, the directory much be writeable by the user
-sniproxy runs as.
+Specify the path to the pid file, the directory must be writeable by the
+user sniproxy runs as.
 
 .SS ERROR_LOG
 
@@ -50,13 +64,14 @@ error_log {
 .fi
 .PP
 
-Specify how error messages should be handled. Messages can be either logged to
-syslog using the syslog directive specifies that logs should to a given syslog
-facility. Alternatively the filename directive may be specified to log to file,
-these two options are mutually exclusive. The priority directive indicates what
-severity of messages should be logged. Accepted priorities the standard syslog
-priorities, in increasing verbosity: emergency, alert, critical, error,
-warning, notice, info, and debug.
+Specify how error messages should be handled. Messages can be either
+logged to syslog using the syslog directive, which sends logs to a
+given syslog facility. Alternatively the filename directive may be
+specified to log to file, and these two options are mutually
+exclusive. The priority directive indicates what severity of
+messages should be logged. Accepted priorities are the standard
+syslog priorities, in increasing verbosity: emergency, alert,
+critical, error, warning, notice, info, and debug.
 
 .SS ACCESS_LOG
 
@@ -68,10 +83,10 @@ access_log {
 .fi
 .PP
 
-Specify how connections should be logged, may be overridden in a specific
-listener. Connections are logged after both the client and server have sockets
-have been closed. The syslog and priority directive may be used here as in
-error_log.
+Specify how connections should be logged, and this may be overridden in
+a specific listener. Connections are logged after both the client and
+server sockets have been closed. The syslog and priority directive may
+be used here as in error_log.
 
 .SS RESOLVER
 
@@ -84,30 +99,36 @@ resolver {
 .fi
 .PP
 
-Specify how DNS queries should be resolved, this is only required if using
-hostnames as addresses in the configuration or using wildcard backends.  If not
-specified the IPv4 only queries will be preformed using the system default name
-servers.
+Specify how DNS queries should be resolved, which is only required if
+using hostnames as addresses in the configuration or using wildcard
+backends. If not specified the IPv4 only queries will be performed using
+the system default name servers.
+
+Multiple \fBnameserver\fR directives may be supplied. Optional
+\fBsearch\fR directives append the given domain to hostnames that do not
+already end with a trailing dot before resolution.
 
 Four modes are supported:
 
 ipv4_only: query for any A records, use the first A record returned
 (following CNAME records).
 
-ipv6_only: query for any AAAA records, use the first AAAA record returned
-(following CNAME records).
+ipv6_only: query for any AAAA records, use the first AAAA record
+returned (following CNAME records).
 
-ipv4_first: query for both A and AAAA records, wait for both queries to complete,
-use the first A record if any, otherwise use the first AAAA record.
+ipv4_first: query for both A and AAAA records, wait for both queries to
+complete, use the first A record if any, otherwise use the first AAAA
+record.
 
-ipv6_first: query for both A and AAAA records, wait for both queries to complete,
-use the first AAAA record if any, otherwise use the first A record.
+ipv6_first: query for both A and AAAA records, wait for both queries to
+complete, use the first AAAA record if any, otherwise use the first A
+record.
 
-It is strongly recommended to use a local name server, since a single socket is
-reused for all DNS queries and thus the UDP port number is predictable leaving
-the query only protected from spoofed replies by the 16 bit query ID.
-Additionally since no internal DNS caching is performed a local resolver can
-improve performance.
+It is strongly recommended to use a local name server, since a single
+socket is reused for all DNS queries and thus the UDP port number is
+predictable, leaving the query only protected from spoofed replies
+by the 16 bit query ID. Additionally, since no internal DNS caching
+is performed, a local resolver can improve performance.
 
 .SS LISTENER
 
@@ -136,44 +157,47 @@ listener [::]:80 {
 .fi
 .PP
 
-Define a listening address to accept new connections from clients on. Addresses
-may be specified as an IPv4 literal followed by a TCP port number, and IPv6
-literal followed by a TCP port number, a bare TCP port number or a unix socket
-path prefixed with 'unix:'.
+Define a listening address to accept new connections from clients on.
+Addresses may be specified as an IPv4 literal followed by a TCP port
+number, an IPv6 literal followed by a TCP port number, a bare TCP port
+number, or a unix socket path prefixed with 'unix:'.
 
 Protocol defines how the client request should be parsed to obtain the
-requested hostname, two protocols are supported http and tls.
+requested hostname. Two protocols are supported: http and tls.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
-which allows one to run several sniproxy instances on the same ip:port pair.
-This enables us to evenly load-balance incoming connections between these instances
-without the use of any external load-balancing proxy. Requires Linux kernel 3.9+.
-Setting reuseport to "yes" enables this functionality.
+which allows one to run several sniproxy instances on the same
+ip:port pair. This enables evenly load-balancing incoming connections
+between these instances without the use of any external
+load-balancing proxy. Requires Linux kernel 3.9+. Setting reuseport
+to "yes" enables this functionality.
 
-The ipv6_v6only directive controls if listening on the IPv6 any address '::'
-will accepting connections to any IPv4 address as well as an IPv6 address. This
-is useful if the user wants different configurations for IPv4 and IPv6 or
-wishes to handle IPv4 traffic with another server/proxy entirely. This is only
-applicable to IPv6 listeners, and is ignored on other listeners.
+The ipv6_v6only directive controls whether listening on the IPv6 any
+address '::' will accept connections to any IPv4 address as well as an
+IPv6 address. This is useful if the user wants different configurations
+for IPv4 and IPv6 or wishes to handle IPv4 traffic with another
+server/proxy entirely. This directive applies only to IPv6 listeners
+and is ignored on other listeners.
 
-Table specifies the name of the table used to lookup which server to forward
-the connection to based on the hostname extracted from the initial client
-request. If no table directive is specified the default, unnamed, table will be
-used.
+Table specifies the name of the table used to look up which server
+to forward the connection to based on the hostname extracted from
+the initial client request. If no table directive is specified the
+default, unnamed, table will be used.
 
-The fallback directive specifies a server to be used if the client request can
-not be parsed, a server can not be found in the table for the hostname
-specified or the hostname can not be resolved.. This should be an IP address
-and port or unix socket path.
+The fallback directive specifies a server to be used if the client
+request cannot be parsed, a server cannot be found in the table for the
+hostname, or the hostname cannot be resolved. This should be an IP
+address and port or a unix socket path.
 
-The bad_requests directive allows logging the contents of the client request if
-it is not parsable, this is useful for debugging.
+The bad_requests directive allows logging the contents of the client
+request if it is not parsable. This is useful for debugging.
 
-The source directive allows specifying a specified address to bind to before
-connecting to the backend server. In most cases it is better to omit this
-option and allow the operating system to select the outgoing address
-automatically. Do not include a port number in this address, doing so will
-limit the proxy to one simultaneous to each server at time.
+The source directive allows specifying an address to bind to before
+connecting to the backend server. In most cases it is better to omit
+this option and allow the operating system to select the outgoing
+address automatically. Do not include a port number in this address,
+because doing so will limit the proxy to one simultaneous connection to
+each server at a time.
 
 The access log configuration may be overridden on each listener.
 
@@ -189,15 +213,17 @@ table http_hosts {
 .fi
 .PP
 
-Tables define how to map each hostname to a backend server. Each request's
-hostname is matched against entries in the table in order, until a match is
-found and that server is used. The server address may be either IP, an IP and
-port, a unix socket path, a hostname or '*'. If no port is specified, the port
-of the listener which connection was received on will be used.
+Tables define how to map each hostname to a backend server. Each
+request's hostname is matched against entries in the table in order
+until a match is found and that server is used. The server address may
+be either an IP, an IP and port, a unix socket path, a hostname, or '*'.
+If no port is specified, the port of the listener that received the
+connection will be used.
 
-The optional proxy_protocol option will prepend a HAProxy PROXY v1 protocol
-header to the proxied connection allowing supporting webservers to obtain the
-source and destination IP and port of the original incoming TCP connection.
+The optional proxy_protocol option will prepend a HAProxy PROXY v1
+protocol header to the proxied connection, allowing supporting
+webservers to obtain the source and destination IP and port of the
+original incoming TCP connection.
 
 
 .SH "SEE ALSO"
