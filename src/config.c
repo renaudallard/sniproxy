@@ -420,7 +420,16 @@ end_listener_stanza(struct Config *config, struct Listener *listener) {
 
 static int
 end_table_stanza(struct Config *config, struct Table *table) {
-    /* TODO check table */
+    if (valid_table(table) <= 0) {
+        err("Invalid table");
+        print_table_config(stderr, table);
+
+        table_ref_get(table);
+        assert(table->reference_count == 1);
+        table_ref_put(table);
+
+        return -1;
+    }
 
     add_table(&config->tables, table);
 
@@ -429,7 +438,13 @@ end_table_stanza(struct Config *config, struct Table *table) {
 
 static int
 end_backend(struct Table *table, struct Backend *backend) {
-    /* TODO check backend */
+    const char *table_name = table->name != NULL ? table->name : "(default)";
+
+    if (!valid_backend(backend)) {
+        err("Invalid backend in table \"%s\"", table_name);
+        free_backend(backend);
+        return -1;
+    }
 
     table->use_proxy_header = table->use_proxy_header ||
                               backend->use_proxy_header;

@@ -34,7 +34,6 @@
 #include "logger.h"
 
 
-static void free_backend(struct Backend *);
 static const char *backend_config_options(const struct Backend *);
 
 
@@ -156,6 +155,26 @@ init_backend(struct Backend *backend) {
     return 1;
 }
 
+int
+valid_backend(const struct Backend *backend) {
+    if (backend == NULL) {
+        err("Invalid backend definition");
+        return 0;
+    }
+
+    if (backend->pattern == NULL) {
+        err("Backend is missing a match pattern");
+        return 0;
+    }
+
+    if (backend->address == NULL) {
+        err("Backend \"%s\" is missing a destination address", backend->pattern);
+        return 0;
+    }
+
+    return 1;
+}
+
 struct Backend *
 lookup_backend(const struct Backend_head *head, const char *name, size_t name_len) {
     struct Backend *iter;
@@ -210,7 +229,7 @@ remove_backend(struct Backend_head *head, struct Backend *backend) {
     free_backend(backend);
 }
 
-static void
+void
 free_backend(struct Backend *backend) {
     if (backend == NULL)
         return;

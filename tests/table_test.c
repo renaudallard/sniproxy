@@ -40,6 +40,7 @@ static void add_new_table(struct Table_head *, const char *, const char **);
 static void test_add_table(void);
 static void test_tables_reload(void);
 static int count_tables(const struct Table_head *);
+static void test_table_validation(void);
 
 
 int main(void) {
@@ -48,6 +49,7 @@ int main(void) {
     test_add_table();
     test_tables_reload();
     test_invalid_regex_backend_removed();
+    test_table_validation();
 }
 
 static void
@@ -242,5 +244,41 @@ test_invalid_regex_backend_removed(void) {
     result = table_lookup_server_address(table, no_match, strlen(no_match));
     assert(result.address == NULL);
 
+    table_ref_put(table);
+}
+
+static void
+test_table_validation(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+    accept_table_arg(table, "empty");
+    assert(valid_table(table) == 0);
+    table_ref_put(table);
+
+    table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+    accept_table_arg(table, "missing-address");
+    struct Backend *backend = new_backend();
+    assert(backend != NULL);
+    accept_backend_arg(backend, "^example\\.com$");
+    add_backend(&table->backends, backend);
+    assert(valid_table(table) == 0);
+    table_ref_put(table);
+
+    table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+    accept_table_arg(table, "complete");
+    backend = new_backend();
+    assert(backend != NULL);
+    accept_backend_arg(backend, "^example\\.net$");
+    accept_backend_arg(backend, "192.0.2.20");
+    add_backend(&table->backends, backend);
+    assert(valid_table(table) == 1);
     table_ref_put(table);
 }

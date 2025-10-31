@@ -86,6 +86,31 @@ add_table(struct Table_head *tables, struct Table *table) {
     SLIST_INSERT_HEAD(tables, table, entries);
 }
 
+int
+valid_table(struct Table *table) {
+    if (table == NULL) {
+        err("Invalid table definition");
+        return 0;
+    }
+
+    const char *table_name = table->name != NULL ? table->name : "(default)";
+
+    if (STAILQ_EMPTY(&table->backends)) {
+        err("Table \"%s\" does not define any backends", table_name);
+        return 0;
+    }
+
+    struct Backend *backend;
+    STAILQ_FOREACH(backend, &table->backends, entries) {
+        if (!valid_backend(backend)) {
+            err("Table \"%s\" contains an invalid backend definition", table_name);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 void init_table(struct Table *table) {
     struct Backend *iter = STAILQ_FIRST(&table->backends);
 
