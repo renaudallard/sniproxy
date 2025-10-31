@@ -257,7 +257,7 @@ init_config(const char *filename, struct ev_loop *loop) {
         return NULL;
     }
 
-    if (parse_config(config, file, global_grammar) <= 0) {
+    if (parse_config(config, file, global_grammar, "global") <= 0) {
         off_t whence = ftello(file);
         char line[256];
 

@@ -33,11 +33,14 @@ static const struct Keyword *find_keyword(const struct Keyword *, const char *);
 
 
 int
-parse_config(void *context, FILE *cfg, const struct Keyword *grammar) {
+parse_config(void *context, FILE *cfg, const struct Keyword *grammar,
+        const char *context_name) {
     char buffer[256];
     const struct Keyword *keyword = NULL;
     void *sub_context = NULL;
     int result;
+    const char *active_context = (context_name && *context_name) ?
+            context_name : "global";
 
     for (;;) {
         switch (next_token(cfg, buffer, sizeof(buffer))) {
@@ -68,14 +71,19 @@ parse_config(void *context, FILE *cfg, const struct Keyword *grammar) {
                             return result;
                     }
                 } else {
-                    err("%s: unknown keyword %s", __func__, buffer);
+                    err("%s: unknown keyword %s in %s context", __func__,
+                            buffer, active_context);
                     return -1;
                 }
                 break;
             case TOKEN_OBRACE:
                 if (keyword && sub_context && keyword->block_grammar) {
+                    const char *child_context =
+                            (keyword->keyword && *keyword->keyword) ?
+                            keyword->keyword : active_context;
                     result = parse_config(sub_context, cfg,
-                                          keyword->block_grammar);
+                                          keyword->block_grammar,
+                                          child_context);
                     if (result > 0 && keyword->finalize)
                         result = keyword->finalize(context, sub_context);
 

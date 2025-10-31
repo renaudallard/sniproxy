@@ -37,6 +37,6 @@ struct Keyword {
 };
 
 
-int parse_config(void *, FILE *, const struct Keyword *);
+int parse_config(void *, FILE *, const struct Keyword *, const char *);
 
 #endif
