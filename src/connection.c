@@ -40,6 +40,7 @@
 #include <arpa/inet.h>
 #include <ev.h>
 #include <assert.h>
+#include <sys/stat.h>
 #include "connection.h"
 #include "resolv.h"
 #include "address.h"
@@ -202,9 +203,36 @@ print_connections(void) {
         return;
     }
 
+    if (set_cloexec(fd) < 0) {
+        warn("set_cloexec failed for %s: %s", filename, strerror(errno));
+        close(fd);
+        unlink(filename);
+        return;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        warn("fstat failed for %s: %s", filename, strerror(errno));
+        close(fd);
+        unlink(filename);
+        return;
+    }
+
+    mode_t desired_mode = S_IRUSR | S_IWUSR;
+    if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+        if (fchmod(fd, desired_mode) != 0) {
+            warn("fchmod failed for %s: %s", filename, strerror(errno));
+            close(fd);
+            unlink(filename);
+            return;
+        }
+    }
+
     FILE *temp = fdopen(fd, "w");
     if (temp == NULL) {
         warn("fdopen failed: %s", strerror(errno));
+        close(fd);
+        unlink(filename);
         return;
     }
 
@@ -215,8 +243,11 @@ print_connections(void) {
         iter = TAILQ_NEXT(iter, entries);
     }
 
-    if (fclose(temp) < 0)
+    if (fclose(temp) < 0) {
         warn("fclose failed: %s", strerror(errno));
+        unlink(filename);
+        return;
+    }
 
     notice("Dumped connections to %s", filename);
 }

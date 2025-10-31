@@ -387,7 +387,13 @@ daemonize(void) {
 #endif
 
     /* local part */
-    umask(022);
+    /*
+     * Use a restrictive umask so any files we create (pid files, debug
+     * dumps, log files before permissions are adjusted, etc.) are not left
+     * world or group accessible by default.  Individual file creation code
+     * will relax permissions explicitly when needed.
+     */
+    umask(077);
     signal(SIGHUP, SIG_IGN);
 
     ev_default_fork();
