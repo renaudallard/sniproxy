@@ -351,8 +351,8 @@ main(int argc, char **argv) {
 
 static void
 daemonize(void) {
-#ifdef HAVE_DAEMON
-    if (daemon(0,0) < 0)
+#if defined(HAVE_DAEMON) || defined(__OpenBSD__)
+    if (daemon(0, 0) < 0)
         perror_exit("daemon()");
 #else
     pid_t pid;
