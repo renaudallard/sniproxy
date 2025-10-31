@@ -45,14 +45,16 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
 
     len = *hostname_len;
 
-    while (len > 0) {
-        unsigned char tail = (unsigned char)hostname[len - 1];
+    char *end = hostname + len;
+    while (end > hostname) {
+        unsigned char tail = (unsigned char)*(end - 1);
         if (!(tail == ' ' || (tail >= '\t' && tail <= '\r')))
             break;
-        len--;
+        end--;
     }
 
-    hostname[len] = '\0';
+    len = (size_t)(end - hostname);
+    *end = '\0';
 
     if (len == 0 || len > max_len)
         return 0;
@@ -100,7 +102,7 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
                     return 0;
             }
 
-            *p = (char)((unsigned)(c - 'A') <= ('Z' - 'A') ? (c | 0x20) : c);
+            *p = (char)c;
         }
 
         if (colon_count < 2)
@@ -150,7 +152,7 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
             if (label_len > 63)
                 return 0;
 
-            *p = (char)((unsigned)(c - 'A') <= ('Z' - 'A') ? (c | 0x20) : c);
+            *p = (char)c;
         }
 
         if (!saw_label)
