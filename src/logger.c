@@ -34,6 +34,7 @@
 #include <sys/queue.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include "logger.h"
 
 struct Logger {
@@ -433,6 +434,31 @@ obtain_file_sink(const char *filepath) {
         free(sink);
         err("Failed to open new log file: %s", filepath);
         return NULL;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        int saved_errno = errno;
+        close(fd);
+        free(sink);
+        errno = saved_errno;
+        err("Failed to stat log file: %s", filepath);
+        return NULL;
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        close(fd);
+        free(sink);
+        err("Refusing to write to non-regular log file: %s", filepath);
+        errno = EINVAL;
+        return NULL;
+    }
+
+    if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+        if (fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH)) != 0) {
+            warn("Failed to drop group/world write permission on log file %s: %s",
+                    filepath, strerror(errno));
+        }
     }
 
     FILE *file = fdopen(fd, "a");

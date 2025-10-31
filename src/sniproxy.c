@@ -315,6 +315,27 @@ write_pidfile(const char *path, pid_t pid) {
         return;
     }
 
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        int saved_errno = errno;
+        perror("fstat");
+        close(fd);
+        errno = saved_errno;
+        return;
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        errno = EINVAL;
+        perror("write_pidfile");
+        close(fd);
+        return;
+    }
+
+    if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+        if (fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH)) != 0)
+            perror("fchmod");
+    }
+
     fp = fdopen(fd, "w");
     if (fp == NULL) {
         int saved_errno = errno;
