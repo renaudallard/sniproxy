@@ -54,7 +54,7 @@ uint16_t address_port(const struct Address *);
 void address_set_port(struct Address *, uint16_t);
 int address_set_port_str(struct Address *addr, const char* str);
 const char *display_address(const struct Address *, char *, size_t);
-const char *display_sockaddr(const void *, char *, size_t);
+const char *display_sockaddr(const void *, socklen_t, char *, size_t);
 int is_numeric(const char *);
 
 #endif

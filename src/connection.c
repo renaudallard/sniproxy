@@ -276,7 +276,9 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 char server[INET6_ADDRSTRLEN + 8];
 
                 warn("Response from %s exceeded %zu byte buffer size",
-                        display_sockaddr(&con->server.addr, server, sizeof(server)),
+                        display_sockaddr(&con->server.addr,
+                            con->server.addr_len,
+                            server, sizeof(server)),
                         buffer_size(input_buffer));
 
                 close_socket(con, loop);
@@ -517,17 +519,25 @@ parse_client_request(struct Connection *con) {
                 return; /* buffer successfully expanded */
 
             warn("Request from %s exceeded %zu byte buffer size",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_size(con->client.buffer));
         } else if (result == TLS_ERR_CLIENT_RENEGOTIATION) {
             warn("Client from %s attempted TLS renegotiation, rejecting",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)));
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
         } else if (result == -2) {
             warn("Request from %s did not include a hostname",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)));
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
         } else {
             warn("Unable to parse request from %s: parse_packet returned %d",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     result);
 
             if (con->listener->log_bad_requests)
@@ -637,7 +647,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                             "on non-IP listener %s, falling back to "
                             "non-transparent mode",
                             address_hostname(result.address),
-                            display_sockaddr(con->listener->address,
+                            display_address(con->listener->address,
                                     listener_address, sizeof(listener_address))
                             );
             }
@@ -733,7 +743,9 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         char client[INET6_ADDRSTRLEN + 8];
         warn("socket failed: %s, closing connection from %s",
                 strerror(errno),
-                display_sockaddr(&con->client.addr, client, sizeof(client)));
+                display_sockaddr(&con->client.addr,
+                    con->client.addr_len,
+                    client, sizeof(client)));
         abort_connection(con);
         return;
     }
@@ -742,7 +754,9 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         char client[INET6_ADDRSTRLEN + 8];
         warn("fcntl(FD_CLOEXEC) failed on server socket: %s, closing connection from %s",
                 strerror(errno),
-                display_sockaddr(&con->client.addr, client, sizeof(client)));
+                display_sockaddr(&con->client.addr,
+                    con->client.addr_len,
+                    client, sizeof(client)));
         close(sockfd);
         abort_connection(con);
         return;
@@ -813,7 +827,9 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         close(sockfd);
         char server[INET6_ADDRSTRLEN + 8];
         warn("Failed to open connection to %s: %s",
-                display_sockaddr(&con->server.addr, server, sizeof(server)),
+                display_sockaddr(&con->server.addr,
+                    con->server.addr_len,
+                    server, sizeof(server)),
                 strerror(errno));
         abort_connection(con);
         return;
@@ -962,9 +978,12 @@ log_connection(struct Connection *con) {
     char server_address[ADDRESS_BUFFER_SIZE];
 
 
-    display_sockaddr(&con->client.addr, client_address, sizeof(client_address));
-    display_sockaddr(&con->client.local_addr, listener_address, sizeof(listener_address));
-    display_sockaddr(&con->server.addr, server_address, sizeof(server_address));
+    display_sockaddr(&con->client.addr, con->client.addr_len,
+            client_address, sizeof(client_address));
+    display_sockaddr(&con->client.local_addr, con->client.local_addr_len,
+            listener_address, sizeof(listener_address));
+    display_sockaddr(&con->server.addr, con->server.addr_len,
+            server_address, sizeof(server_address));
 
     const char *logged_hostname = con->hostname != NULL ? con->hostname : "-";
     size_t raw_hostname_len = con->hostname != NULL ? con->hostname_len : 1;
@@ -1064,39 +1083,55 @@ print_connection(FILE *file, const struct Connection *con) {
             break;
         case ACCEPTED:
             fprintf(file, "ACCEPTED      %s %zu/%zu\t-\n",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_len(con->client.buffer), buffer_size(con->client.buffer));
             break;
         case PARSED:
             fprintf(file, "PARSED        %s %zu/%zu\t-\n",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_len(con->client.buffer), buffer_size(con->client.buffer));
             break;
         case RESOLVING:
             fprintf(file, "RESOLVING      %s %zu/%zu\t-\n",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_len(con->client.buffer), buffer_size(con->client.buffer));
             break;
         case RESOLVED:
             fprintf(file, "RESOLVED      %s %zu/%zu\t-\n",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_len(con->client.buffer), buffer_size(con->client.buffer));
             break;
         case CONNECTED:
             fprintf(file, "CONNECTED     %s %zu/%zu\t%s %zu/%zu\n",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_len(con->client.buffer), buffer_size(con->client.buffer),
-                    display_sockaddr(&con->server.addr, server, sizeof(server)),
+                    display_sockaddr(&con->server.addr,
+                        con->server.addr_len,
+                        server, sizeof(server)),
                     buffer_len(con->server.buffer), buffer_size(con->server.buffer));
             break;
         case SERVER_CLOSED:
             fprintf(file, "SERVER_CLOSED %s %zu/%zu\t-\n",
-                    display_sockaddr(&con->client.addr, client, sizeof(client)),
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)),
                     buffer_len(con->client.buffer), buffer_size(con->client.buffer));
             break;
         case CLIENT_CLOSED:
             fprintf(file, "CLIENT_CLOSED -\t%s %zu/%zu\n",
-                    display_sockaddr(&con->server.addr, server, sizeof(server)),
+                    display_sockaddr(&con->server.addr,
+                        con->server.addr_len,
+                        server, sizeof(server)),
                     buffer_len(con->server.buffer), buffer_size(con->server.buffer));
             break;
         case CLOSED:

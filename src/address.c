@@ -396,7 +396,9 @@ display_address(const struct Address *addr, char *buffer, size_t buffer_len) {
                         addr->data);
             return buffer;
         case SOCKADDR:
-            return display_sockaddr(addr->data, buffer, buffer_len);
+            return display_sockaddr(addr->data,
+                    (socklen_t)addr->len,
+                    buffer, buffer_len);
         case WILDCARD:
             if (addr->port != 0)
                 snprintf(buffer, buffer_len, "*:%" PRIu16,
@@ -411,47 +413,112 @@ display_address(const struct Address *addr, char *buffer, size_t buffer_len) {
 }
 
 const char *
-display_sockaddr(const void *sa, char *buffer, size_t buffer_len) {
+display_sockaddr(const void *sa_ptr, socklen_t sa_len, char *buffer, size_t buffer_len) {
+    const struct sockaddr *sa = (const struct sockaddr *)sa_ptr;
     char ip[INET6_ADDRSTRLEN];
-    if (sa == NULL || buffer == NULL)
+
+    if (buffer == NULL || buffer_len == 0)
         return NULL;
 
-    switch (((const struct sockaddr *)sa)->sa_family) {
+    buffer[0] = '\0';
+
+    if (sa == NULL || sa_len < (socklen_t)sizeof(sa->sa_family))
+        return buffer;
+
+    switch (sa->sa_family) {
         case AF_INET:
+            if (sa_len < (socklen_t)sizeof(struct sockaddr_in))
+                break;
+
             inet_ntop(AF_INET,
                       &((const struct sockaddr_in *)sa)->sin_addr,
                       ip, sizeof(ip));
 
-            if (((struct sockaddr_in *)sa)->sin_port != 0)
+            if (((const struct sockaddr_in *)sa)->sin_port != 0)
                 snprintf(buffer, buffer_len, "%s:%" PRIu16, ip,
-                        ntohs(((struct sockaddr_in *)sa)->sin_port));
+                        ntohs(((const struct sockaddr_in *)sa)->sin_port));
             else
                 snprintf(buffer, buffer_len, "%s", ip);
 
             break;
         case AF_INET6:
+            if (sa_len < (socklen_t)sizeof(struct sockaddr_in6))
+                break;
+
             inet_ntop(AF_INET6,
                       &((const struct sockaddr_in6 *)sa)->sin6_addr,
                       ip, sizeof(ip));
 
-            if (((struct sockaddr_in6 *)sa)->sin6_port != 0)
+            if (((const struct sockaddr_in6 *)sa)->sin6_port != 0)
                 snprintf(buffer, buffer_len, "[%s]:%" PRIu16, ip,
-                         ntohs(((struct sockaddr_in6 *)sa)->sin6_port));
+                         ntohs(((const struct sockaddr_in6 *)sa)->sin6_port));
             else
                 snprintf(buffer, buffer_len, "[%s]", ip);
 
             break;
-        case AF_UNIX:
-            snprintf(buffer, buffer_len, "unix:%s",
-                     ((struct sockaddr_un *)sa)->sun_path);
+        case AF_UNIX: {
+            const struct sockaddr_un *sun = (const struct sockaddr_un *)sa;
+            size_t offset = offsetof(struct sockaddr_un, sun_path);
+            size_t available = 0;
+
+            if (sa_len > (socklen_t)offset)
+                available = (size_t)(sa_len - (socklen_t)offset);
+            if (available > sizeof(sun->sun_path))
+                available = sizeof(sun->sun_path);
+
+            while (available > 0 && sun->sun_path[available - 1] == '\0')
+                available--;
+
+            size_t pos = snprintf(buffer, buffer_len, "unix:");
+            if (pos >= buffer_len)
+                return buffer;
+
+            if (available == 0) {
+                buffer[pos] = '\0';
+                break;
+            }
+
+            const unsigned char *name = (const unsigned char *)sun->sun_path;
+            if (sun->sun_path[0] == '\0' && available > 0) {
+                if (pos + 1 >= buffer_len) {
+                    buffer[buffer_len - 1] = '\0';
+                    break;
+                }
+                buffer[pos++] = '@';
+                name++;
+                available--;
+            }
+
+            for (size_t i = 0; i < available && pos < buffer_len - 1; i++) {
+                unsigned char ch = name[i];
+
+                if (isprint(ch) && ch != '\\') {
+                    buffer[pos++] = (char)ch;
+                } else {
+                    if (pos + 4 >= buffer_len) {
+                        pos = buffer_len - 1;
+                        break;
+                    }
+
+                    int written = snprintf(buffer + pos, buffer_len - pos,
+                            "\\x%02x", ch);
+                    if (written < 0)
+                        break;
+                    pos += (size_t)written;
+                }
+            }
+
+            buffer[MIN(pos, buffer_len - 1)] = '\0';
             break;
+        }
         case AF_UNSPEC:
             snprintf(buffer, buffer_len, "NONE");
             break;
         default:
-            /* unexpected AF */
-            assert(0);
+            snprintf(buffer, buffer_len, "UNKNOWN");
+            break;
     }
+
     return buffer;
 }
 
