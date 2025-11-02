@@ -10,6 +10,31 @@ AC_USE_SYSTEM_EXTENSIONS
 # Checks for programs.
 AC_PROG_CC
 AM_PROG_CC_C_O
+PKG_PROG_PKG_CONFIG
+
+AC_ARG_ENABLE([http3],
+              [AS_HELP_STRING([--enable-http3], [Enable HTTP/3 (QUIC) support])],
+              [],
+              [enable_http3=no])
+
+QUICHE_CFLAGS=""
+QUICHE_LIBS=""
+HAVE_QUICHE_DEFINE=""
+
+AM_CONDITIONAL([HTTP3_ENABLED], [test "x$enable_http3" = "xyes"])
+
+AS_IF([test "x$enable_http3" = "xyes"], [
+    PKG_CHECK_MODULES([QUICHE], [quiche],
+        [AC_DEFINE([HAVE_QUICHE], [1], [Define if libquiche is available])],
+        [AC_MSG_ERROR([libquiche is required for --enable-http3])])
+    QUICHE_CFLAGS="${QUICHE_CFLAGS}"
+    QUICHE_LIBS="${QUICHE_LIBS}"
+    HAVE_QUICHE_DEFINE="-DHAVE_QUICHE"
+])
+
+AC_SUBST([QUICHE_CFLAGS])
+AC_SUBST([QUICHE_LIBS])
+AC_SUBST([HAVE_QUICHE_DEFINE])
 
 
 # Checks for libraries.
@@ -20,7 +45,7 @@ AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [],
 			   [AC_MSG_ERROR([libpcre is required])])])
 
 AC_ARG_ENABLE([dns],
-	      [AS_HELP_STRING([--enable-dns], [Enable DNS resolution])])
+              [AS_HELP_STRING([--enable-dns], [Enable DNS resolution])])
 
 AM_CONDITIONAL([DNS_ENABLED], [test "$enable_dns"])
 

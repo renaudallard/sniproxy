@@ -27,14 +27,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <ctype.h>
 #include <sys/queue.h>
 #include <assert.h>
 #include "backend.h"
 #include "address.h"
 #include "logger.h"
-
-
-static const char *backend_config_options(const struct Backend *);
+#ifdef HAVE_QUICHE
+#include "quic.h"
+#endif
 
 
 struct Backend *
@@ -49,6 +51,7 @@ new_backend(void) {
 
     backend->pattern = NULL;
     backend->address = NULL;
+    backend->udp_address = NULL;
     backend->use_proxy_header = 0;
 #if defined(HAVE_LIBPCRE2_8)
     backend->pattern_re = NULL;
@@ -68,6 +71,51 @@ accept_backend_arg(struct Backend *backend, const char *arg) {
             err("strdup failed");
             return -1;
         }
+    } else if (strncasecmp(arg, "http3=", 6) == 0 ||
+            strncasecmp(arg, "udp=", 4) == 0) {
+#ifdef HAVE_QUICHE
+        if (!quic_runtime_enabled()) {
+            err("HTTP/3 backends require enabling HTTP/3 at runtime (start with -H)");
+            return -1;
+        }
+        const char *value = arg + (tolower((unsigned char)arg[0]) == 'h' ? 6 : 4);
+
+        if (backend->udp_address != NULL) {
+            err("Duplicate UDP backend address specified");
+            return -1;
+        }
+
+        backend->udp_address = new_address(value);
+        if (backend->udp_address == NULL) {
+            err("invalid udp address: %s", value);
+            return -1;
+        }
+
+        if (address_is_wildcard(backend->udp_address)) {
+            free(backend->udp_address);
+            backend->udp_address = NULL;
+            err("HTTP/3 backends require a specific UDP endpoint");
+            return -1;
+        }
+
+        if (address_port(backend->udp_address) == 0) {
+            free(backend->udp_address);
+            backend->udp_address = NULL;
+            err("HTTP/3 backends must include an explicit UDP port");
+            return -1;
+        }
+#ifndef HAVE_LIBUDNS
+        if (!address_is_sockaddr(backend->udp_address)) {
+            free(backend->udp_address);
+            backend->udp_address = NULL;
+            err("Only socket address udp backends are permitted when compiled without libudns");
+            return -1;
+        }
+#endif
+#else
+        err("HTTP/3 backends require --enable-http3 at configure time");
+        return -1;
+#endif
     } else if (backend->address == NULL) {
 
         backend->address = new_address(arg);
@@ -208,19 +256,22 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
 void
 print_backend_config(FILE *file, const struct Backend *backend) {
     char address[ADDRESS_BUFFER_SIZE];
+    char udp_address[ADDRESS_BUFFER_SIZE];
 
-    fprintf(file, "\t%s %s%s\n",
+    fprintf(file, "\t%s %s",
             backend->pattern,
-            display_address(backend->address, address, sizeof(address)),
-            backend_config_options(backend));
-}
+            display_address(backend->address, address, sizeof(address)));
 
-static const char *
-backend_config_options(const struct Backend *backend) {
     if (backend->use_proxy_header)
-        return " proxy_protocol";
-    else
-        return "";
+        fprintf(file, " proxy_protocol");
+
+    if (backend->udp_address != NULL) {
+        fprintf(file, " udp=%s",
+                display_address(backend->udp_address,
+                        udp_address, sizeof(udp_address)));
+    }
+
+    fputc('\n', file);
 }
 
 void
@@ -236,6 +287,7 @@ free_backend(struct Backend *backend) {
 
     free(backend->pattern);
     free(backend->address);
+    free(backend->udp_address);
 #if defined(HAVE_LIBPCRE2_8)
     if (backend->pattern_match_data != NULL)
         pcre2_match_data_free(backend->pattern_match_data);

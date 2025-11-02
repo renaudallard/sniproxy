@@ -170,16 +170,59 @@ remove_table(struct Table_head *tables, struct Table *table) {
     table_ref_put(table);
 }
 
+static const struct Address *select_backend_address(const struct Backend *backend,
+        enum TableLookupTarget target, int *use_proxy_header,
+        enum TableLookupTarget *resolved_target);
+
 struct LookupResult
-table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
+table_lookup_server_address(const struct Table *table, const char *name, size_t name_len,
+        enum TableLookupTarget target) {
     struct Backend *b = table_lookup_backend(table, name, name_len);
     if (b == NULL) {
         info("No match found for %.*s", (int)name_len, name);
-        return (struct LookupResult){.address = NULL};
+        return (struct LookupResult){.address = NULL,
+                                     .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT};
     }
 
-    return (struct LookupResult){.address = b->address,
-                                 .use_proxy_header = b->use_proxy_header};
+    int use_proxy_header = 0;
+    enum TableLookupTarget resolved_target = TABLE_LOOKUP_TARGET_DEFAULT;
+    const struct Address *backend_address = select_backend_address(b, target,
+            &use_proxy_header, &resolved_target);
+
+    if (backend_address == NULL)
+        return (struct LookupResult){.address = NULL,
+                                     .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT};
+
+    return (struct LookupResult){.address = backend_address,
+                                 .use_proxy_header = use_proxy_header,
+                                 .resolved_target = resolved_target};
+}
+
+static const struct Address *
+select_backend_address(const struct Backend *backend, enum TableLookupTarget target,
+        int *use_proxy_header, enum TableLookupTarget *resolved_target) {
+    if (backend == NULL)
+        return NULL;
+
+    const struct Address *address = backend->address;
+    enum TableLookupTarget actual_target = TABLE_LOOKUP_TARGET_DEFAULT;
+
+    if (target == TABLE_LOOKUP_TARGET_HTTP3 && backend->udp_address != NULL) {
+        address = backend->udp_address;
+        actual_target = TABLE_LOOKUP_TARGET_HTTP3;
+    }
+
+    if (address == NULL)
+        return NULL;
+
+    if (use_proxy_header != NULL)
+        *use_proxy_header = (actual_target == TABLE_LOOKUP_TARGET_DEFAULT) ?
+                backend->use_proxy_header : 0;
+
+    if (resolved_target != NULL)
+        *resolved_target = actual_target;
+
+    return address;
 }
 
 void

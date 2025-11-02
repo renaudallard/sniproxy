@@ -1,4 +1,5 @@
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings
+AM_CPPFLAGS =
 
 sbin_PROGRAMS = sniproxy
 
@@ -38,3 +39,16 @@ sniproxy_SOURCES = sniproxy.c \
                    table.h \
                    tls.c \
                    tls.h
+
+sniproxy_LDADD =
+
+if HTTP3_ENABLED
+AM_CPPFLAGS += $(QUICHE_CFLAGS) $(HAVE_QUICHE_DEFINE)
+sniproxy_SOURCES += quic.c \
+                   quic.h \
+                   quic_listener.c \
+                   quic_listener.h
+sniproxy_LDADD += $(QUICHE_LIBS)
+endif
+
+EXTRA_DIST = quic.c quic.h quic_listener.c quic_listener.h

@@ -197,10 +197,12 @@ int bind_socket(const struct sockaddr *addr, size_t len) {
 
 static struct LookupResult stub_lookup_result;
 
-struct LookupResult table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
+struct LookupResult table_lookup_server_address(const struct Table *table, const char *name,
+        size_t name_len, enum TableLookupTarget target) {
     assert(table != NULL);
     (void)name;
     (void)name_len;
+    (void)target;
     return stub_lookup_result;
 }
 
@@ -217,6 +219,7 @@ int main(void) {
     stub_lookup_result.address = &backend_address;
     stub_lookup_result.use_proxy_header = 0;
     stub_lookup_result.caller_free_address = 0;
+    stub_lookup_result.resolved_target = TABLE_LOOKUP_TARGET_DEFAULT;
 
     last_set_port = 0;
 
@@ -226,6 +229,7 @@ int main(void) {
     assert(result.address == listener.fallback_address);
     assert(result.caller_free_address == 0);
     assert(result.use_proxy_header == listener.fallback_use_proxy_header);
+    assert(result.resolved_target == TABLE_LOOKUP_TARGET_DEFAULT);
     assert(last_set_port == 0);
 
     /* When the listener has no associated table we should fall back without
@@ -236,6 +240,7 @@ int main(void) {
     assert(result.address == listener.fallback_address);
     assert(result.caller_free_address == 0);
     assert(result.use_proxy_header == listener.fallback_use_proxy_header);
+    assert(result.resolved_target == TABLE_LOOKUP_TARGET_DEFAULT);
 
     return 0;
 }

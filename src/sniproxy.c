@@ -51,6 +51,9 @@
 #include "resolv.h"
 #include "logger.h"
 #include "tls.h"
+#ifdef HAVE_QUICHE
+#include "quic.h"
+#endif
 
 
 static void usage(void);
@@ -218,8 +221,14 @@ main(int argc, char **argv) {
     rlim_t max_nofiles = 65536;
     int opt;
     int allow_tls10 = 0;
+#ifdef HAVE_QUICHE
+    int enable_http3 = 0;
+    const char *optstring = "fc:n:VTH";
+#else
+    const char *optstring = "fc:n:VT";
+#endif
 
-    while ((opt = getopt(argc, argv, "fc:n:VT")) != -1) {
+    while ((opt = getopt(argc, argv, optstring)) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -236,7 +245,16 @@ main(int argc, char **argv) {
             case 'T':
                 allow_tls10 = 1;
                 break;
+#ifdef HAVE_QUICHE
+            case 'H':
+                enable_http3 = 1;
+                break;
+#endif
             default:
+#ifndef HAVE_QUICHE
+                if (optopt == 'H')
+                    fprintf(stderr, "HTTP/3 support not available in this build\n");
+#endif
                 usage();
                 return EXIT_FAILURE;
         }
@@ -248,6 +266,11 @@ main(int argc, char **argv) {
 
     if (allow_tls10)
         tls_set_min_client_hello_version(3, 1);
+
+#ifdef HAVE_QUICHE
+    if (enable_http3)
+        quic_set_runtime_enabled(1);
+#endif
 
     config = init_config(config_file, EV_DEFAULT);
     if (config == NULL) {
@@ -463,8 +486,15 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T]");
+#ifdef HAVE_QUICHE
+    fprintf(stderr, " [-H]");
+#endif
+    fprintf(stderr, "\n");
     fprintf(stderr, "       -T allow TLS 1.0 client hellos\n");
+#ifdef HAVE_QUICHE
+    fprintf(stderr, "       -H enable HTTP/3 (QUIC) support\n");
+#endif
 }
 
 static void

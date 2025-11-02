@@ -33,6 +33,10 @@
 #include "config.h"
 #include "logger.h"
 #include "connection.h"
+#ifdef HAVE_QUICHE
+#include "quic_listener.h"
+#include "quic.h"
+#endif
 
 
 struct LoggerBuilder {
@@ -399,7 +403,16 @@ accept_pidfile(struct Config *config, const char *pidfile) {
 
 static int
 end_listener_stanza(struct Config *config, struct Listener *listener) {
-    listener->accept_cb = &accept_connection;
+#ifdef HAVE_QUICHE
+    if (listener->protocol == quic_protocol) {
+        if (!quic_runtime_enabled()) {
+            err("QUIC listener configured but HTTP/3 support is disabled at runtime");
+            return -1;
+        }
+        listener->accept_cb = &accept_quic_client;
+    } else
+#endif
+        listener->accept_cb = &accept_connection;
 
     if (valid_listener(listener) <= 0) {
         err("Invalid listener");

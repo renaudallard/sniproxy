@@ -49,6 +49,12 @@ struct LookupResult {
     const struct Address *address;
     int caller_free_address;
     int use_proxy_header;
+    enum TableLookupTarget resolved_target;
+};
+
+enum TableLookupTarget {
+    TABLE_LOOKUP_TARGET_DEFAULT = 0,
+    TABLE_LOOKUP_TARGET_HTTP3,
 };
 
 struct Table *new_table(void);
@@ -56,7 +62,8 @@ int accept_table_arg(struct Table *, const char *);
 void add_table(struct Table_head *, struct Table *);
 struct Table *table_lookup(const struct Table_head *, const char *);
 struct LookupResult table_lookup_server_address(const struct Table *,
-                                                const char *, size_t);
+                                                const char *, size_t,
+                                                enum TableLookupTarget);
 void reload_tables(struct Table_head *, struct Table_head *);
 void print_table_config(FILE *, struct Table *);
 int valid_table(struct Table *);

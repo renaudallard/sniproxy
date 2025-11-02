@@ -94,3 +94,21 @@ table_test_SOURCES = table_test.c \
                       ../src/logger.c
 
 table_test_LDADD = $(LIBPCRE_LIBS)
+
+if HTTP3_ENABLED
+AM_CPPFLAGS += $(QUICHE_CFLAGS) $(HAVE_QUICHE_DEFINE)
+TESTS += quic_listener_test
+check_PROGRAMS += quic_listener_test
+quic_listener_test_SOURCES = quic_listener_test.c \
+                             ../src/quic_listener.c \
+                             ../src/quic.c \
+                             ../src/listener.c \
+                             ../src/table.c \
+                             ../src/backend.c \
+                             ../src/address.c \
+                             ../src/logger.c \
+                             ../src/buffer.c \
+                             ../src/http.c \
+                             ../src/tls.c
+quic_listener_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS) $(QUICHE_LIBS)
+endif

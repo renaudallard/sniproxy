@@ -47,7 +47,17 @@
 #include "protocol.h"
 #include "tls.h"
 #include "http.h"
+#ifdef HAVE_QUICHE
+#include "quic.h"
+#include "quic_listener.h"
+#endif
 #include "fd_util.h"
+
+#ifdef HAVE_QUICHE
+#define LISTENER_IS_QUIC(listener) ((listener)->protocol == quic_protocol && quic_runtime_enabled())
+#else
+#define LISTENER_IS_QUIC(listener) 0
+#endif
 
 static void close_listener(struct ev_loop *, struct Listener *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
@@ -228,6 +238,7 @@ new_listener(void) {
     listener->transparent_proxy = 0;
     listener->fallback_use_proxy_header = 0;
     listener->reference_count = 0;
+    listener->protocol_data = NULL;
     /* Initializes sock fd to negative sentinel value to indicate watchers
      * are not active */
     ev_io_init(&listener->watcher, accept_cb, -1, EV_READ);
@@ -290,6 +301,20 @@ int
 accept_listener_protocol(struct Listener *listener, const char *protocol) {
     if (strncasecmp(protocol, http_protocol->name, strlen(protocol)) == 0)
         listener->protocol = http_protocol;
+#ifdef HAVE_QUICHE
+    else if (strncasecmp(protocol, quic_protocol->name, strlen(protocol)) == 0) {
+        if (!quic_runtime_enabled()) {
+            err("QUIC support disabled at runtime; start sniproxy with -H to enable HTTP/3");
+            return 0;
+        }
+        listener->protocol = quic_protocol;
+    }
+#else
+    else if (strncasecmp(protocol, "quic", strlen(protocol)) == 0) {
+        err("QUIC support not enabled in this build");
+        return 0;
+    }
+#endif
     else
         listener->protocol = tls_protocol;
 
@@ -474,6 +499,10 @@ valid_listener(const struct Listener *listener) {
 
     switch (address_sa(listener->address)->sa_family) {
         case AF_UNIX:
+            if (LISTENER_IS_QUIC(listener)) {
+                err("QUIC listeners require an IP address");
+                return 0;
+            }
             break;
         case AF_INET:
             /* fall through */
@@ -488,7 +517,12 @@ valid_listener(const struct Listener *listener) {
             return 0;
     }
 
-    if (listener->protocol != tls_protocol && listener->protocol != http_protocol) {
+    if (listener->protocol != tls_protocol &&
+            listener->protocol != http_protocol
+#ifdef HAVE_QUICHE
+            && listener->protocol != quic_protocol
+#endif
+            ) {
         err("Invalid protocol");
         return 0;
     }
@@ -515,7 +549,7 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         address_set_port(listener->fallback_address,
                 address_port(listener->address));
 
-    int socket_type = SOCK_STREAM;
+    int socket_type = LISTENER_IS_QUIC(listener) ? SOCK_DGRAM : SOCK_STREAM;
 #ifdef HAVE_ACCEPT4
     socket_type |= SOCK_NONBLOCK;
 #endif
@@ -543,13 +577,15 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         return result;
     }
 
-    /* set SO_KEEPALIVE on the server socket so that abandoned client connections
-     * do not linger behind forever */
-    result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
-    if (result < 0) {
-        err("setsockopt SO_KEEPALIVE failed: %s", strerror(errno));
-        close(sockfd);
-        return result;
+    if (!LISTENER_IS_QUIC(listener)) {
+        /* set SO_KEEPALIVE on the server socket so that abandoned client connections
+         * do not linger behind forever */
+        result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+        if (result < 0) {
+            err("setsockopt SO_KEEPALIVE failed: %s", strerror(errno));
+            close(sockfd);
+            return result;
+        }
     }
 
     if (listener->reuseport == 1) {
@@ -609,11 +645,13 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         return result;
     }
 
-    result = listen(sockfd, SOMAXCONN);
-    if (result < 0) {
-        err("listen failed: %s", strerror(errno));
-        close(sockfd);
-        return result;
+    if (!LISTENER_IS_QUIC(listener)) {
+        result = listen(sockfd, SOMAXCONN);
+        if (result < 0) {
+            err("listen failed: %s", strerror(errno));
+            close(sockfd);
+            return result;
+        }
     }
 
 #ifndef HAVE_ACCEPT4
@@ -624,6 +662,16 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
     ev_io_init(&listener->watcher, accept_cb, sockfd, EV_READ);
     listener->watcher.data = listener;
     listener->backoff_timer.data = listener;
+
+#ifdef HAVE_QUICHE
+    if (LISTENER_IS_QUIC(listener)) {
+        if (quic_listener_attach(listener, loop) < 0) {
+            close(sockfd);
+            listener->watcher.fd = -1;
+            return -1;
+        }
+    }
+#endif
 
     ev_io_start(loop, &listener->watcher);
 
@@ -641,12 +689,14 @@ struct LookupResult
 listener_lookup_server_address(const struct Listener *listener,
         const char *name, size_t name_len) {
     if (listener == NULL)
-        return (struct LookupResult){ .address = NULL };
+        return (struct LookupResult){ .address = NULL,
+                                     .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT };
 
     if (name == NULL || name_len == 0) {
         return (struct LookupResult){
             .address = listener->fallback_address,
             .use_proxy_header = listener->fallback_use_proxy_header,
+            .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT,
         };
     }
 
@@ -654,17 +704,23 @@ listener_lookup_server_address(const struct Listener *listener,
         return (struct LookupResult){
             .address = listener->fallback_address,
             .use_proxy_header = listener->fallback_use_proxy_header,
+            .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT,
         };
     }
 
+    enum TableLookupTarget target =
+        LISTENER_IS_QUIC(listener) ?
+        TABLE_LOOKUP_TARGET_HTTP3 : TABLE_LOOKUP_TARGET_DEFAULT;
+
     struct LookupResult table_result =
-        table_lookup_server_address(listener->table, name, name_len);
+        table_lookup_server_address(listener->table, name, name_len, target);
 
     if (table_result.address == NULL) {
         /* No match in table, use fallback address if present */
         return (struct LookupResult){
             .address = listener->fallback_address,
-            .use_proxy_header = listener->fallback_use_proxy_header
+            .use_proxy_header = listener->fallback_use_proxy_header,
+            .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT,
         };
     } else if (address_is_wildcard(table_result.address)) {
         /* Wildcard table entry, create a new address from hostname */
@@ -675,7 +731,8 @@ listener_lookup_server_address(const struct Listener *listener,
 
             return (struct LookupResult){
                 .address = listener->fallback_address,
-                .use_proxy_header = listener->fallback_use_proxy_header
+                .use_proxy_header = listener->fallback_use_proxy_header,
+                .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT,
             };
         } else if (address_is_sockaddr(new_addr)) {
             warn("Refusing to proxy to socket address literal %.*s in request",
@@ -684,7 +741,8 @@ listener_lookup_server_address(const struct Listener *listener,
 
             return (struct LookupResult){
                 .address = listener->fallback_address,
-                .use_proxy_header = listener->fallback_use_proxy_header
+                .use_proxy_header = listener->fallback_use_proxy_header,
+                .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT,
             };
         }
 
@@ -698,7 +756,8 @@ listener_lookup_server_address(const struct Listener *listener,
         return (struct LookupResult){
             .address = new_addr,
             .caller_free_address = 1,
-            .use_proxy_header = table_result.use_proxy_header
+            .use_proxy_header = table_result.use_proxy_header,
+            .resolved_target = table_result.resolved_target,
         };
     } else if (address_port(table_result.address) == 0) {
         /* If the server port isn't specified return a new address using the
@@ -713,7 +772,8 @@ listener_lookup_server_address(const struct Listener *listener,
 
             return (struct LookupResult){
                 .address = listener->fallback_address,
-                .use_proxy_header = listener->fallback_use_proxy_header
+                .use_proxy_header = listener->fallback_use_proxy_header,
+                .resolved_target = TABLE_LOOKUP_TARGET_DEFAULT,
             };
         }
 
@@ -722,9 +782,14 @@ listener_lookup_server_address(const struct Listener *listener,
         return (struct LookupResult){
             .address = new_addr,
             .caller_free_address = 1,
-            .use_proxy_header = table_result.use_proxy_header
+            .use_proxy_header = table_result.use_proxy_header,
+            .resolved_target = table_result.resolved_target,
         };
     } else {
+        if (LISTENER_IS_QUIC(listener) &&
+                table_result.resolved_target == TABLE_LOOKUP_TARGET_HTTP3)
+            table_result.use_proxy_header = 0;
+
         return table_result;
     }
 }
@@ -768,6 +833,11 @@ static void
 close_listener(struct ev_loop *loop, struct Listener *listener) {
     ev_timer_stop(loop, &listener->backoff_timer);
 
+#ifdef HAVE_QUICHE
+    if (LISTENER_IS_QUIC(listener))
+        quic_listener_detach(listener, loop);
+#endif
+
     if (listener->watcher.fd >= 0) {
         ev_io_stop(loop, &listener->watcher);
         close(listener->watcher.fd);
@@ -779,6 +849,11 @@ static void
 free_listener(struct Listener *listener) {
     if (listener == NULL)
         return;
+
+#ifdef HAVE_QUICHE
+    if (LISTENER_IS_QUIC(listener) && listener->protocol_data != NULL)
+        quic_listener_detach(listener, NULL);
+#endif
 
     free(listener->address);
     free(listener->fallback_address);

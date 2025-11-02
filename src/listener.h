@@ -48,6 +48,7 @@ struct Listener {
     struct ev_timer backoff_timer;
     struct Table *table;
     int (*accept_cb)(struct Listener *, struct ev_loop *);
+    void *protocol_data;
     SLIST_ENTRY(Listener) entries;
 };
 

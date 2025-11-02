@@ -30,6 +30,9 @@
 #include <assert.h>
 #include "table.h"
 #include "backend.h"
+#ifdef HAVE_QUICHE
+#include "quic.h"
+#endif
 
 
 static void test_empty_table(void);
@@ -41,15 +44,32 @@ static void test_add_table(void);
 static void test_tables_reload(void);
 static int count_tables(const struct Table_head *);
 static void test_table_validation(void);
+#ifdef HAVE_QUICHE
+static void test_http3_backend_mapping(void);
+static void test_udp_backend_mapping(void);
+static void test_http3_fallback_to_tcp(void);
+static void test_http3_backend_requires_port(void);
+static void test_http3_backend_rejects_wildcard(void);
+#endif
 
 
 int main(void) {
+#ifdef HAVE_QUICHE
+    quic_set_runtime_enabled(1);
+#endif
     test_empty_table();
     test_single_entry_table();
     test_add_table();
     test_tables_reload();
     test_invalid_regex_backend_removed();
     test_table_validation();
+#ifdef HAVE_QUICHE
+    test_http3_backend_mapping();
+    test_udp_backend_mapping();
+    test_http3_fallback_to_tcp();
+    test_http3_backend_requires_port();
+    test_http3_backend_rejects_wildcard();
+#endif
 }
 
 static void
@@ -67,7 +87,7 @@ test_empty_table(void) {
 
     const char *server_query = "example.com";
     struct LookupResult result = table_lookup_server_address(table,
-            server_query, strlen(server_query));
+            server_query, strlen(server_query), TABLE_LOOKUP_TARGET_DEFAULT);
     assert(result.address == NULL);
 
     table_ref_put(table);
@@ -104,7 +124,7 @@ test_single_entry_table(void) {
 
     const char *server_query = "example.com";
     struct LookupResult result = table_lookup_server_address(table,
-            server_query, strlen(server_query));
+            server_query, strlen(server_query), TABLE_LOOKUP_TARGET_DEFAULT);
     assert(result.address != NULL);
 
     table_ref_put(table);
@@ -237,11 +257,12 @@ test_invalid_regex_backend_removed(void) {
 
     const char *match = "example.com";
     struct LookupResult result = table_lookup_server_address(table,
-            match, strlen(match));
+            match, strlen(match), TABLE_LOOKUP_TARGET_DEFAULT);
     assert(result.address != NULL);
 
     const char *no_match = "other.example";
-    result = table_lookup_server_address(table, no_match, strlen(no_match));
+    result = table_lookup_server_address(table, no_match, strlen(no_match),
+            TABLE_LOOKUP_TARGET_DEFAULT);
     assert(result.address == NULL);
 
     table_ref_put(table);
@@ -282,3 +303,123 @@ test_table_validation(void) {
     assert(valid_table(table) == 1);
     table_ref_put(table);
 }
+
+#ifdef HAVE_QUICHE
+static void
+test_http3_backend_mapping(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+
+    const char *name = "http3";
+    accept_table_arg(table, name);
+
+    struct Backend *backend = new_backend();
+    assert(backend != NULL);
+
+    accept_backend_arg(backend, "^example\\.com$");
+    accept_backend_arg(backend, "192.0.2.10:443");
+    accept_backend_arg(backend, "http3=192.0.2.10:4433");
+    add_backend(&table->backends, backend);
+
+    init_table(table);
+
+    const char *hostname = "example.com";
+    struct LookupResult tcp = table_lookup_server_address(table,
+            hostname, strlen(hostname), TABLE_LOOKUP_TARGET_DEFAULT);
+    assert(tcp.address == backend->address);
+
+    struct LookupResult http3 = table_lookup_server_address(table,
+            hostname, strlen(hostname), TABLE_LOOKUP_TARGET_HTTP3);
+    assert(http3.address == backend->udp_address);
+    assert(http3.resolved_target == TABLE_LOOKUP_TARGET_HTTP3);
+
+    table_ref_put(table);
+}
+
+static void
+test_udp_backend_mapping(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+
+    const char *name = "udp";
+    accept_table_arg(table, name);
+
+    struct Backend *backend = new_backend();
+    assert(backend != NULL);
+
+    accept_backend_arg(backend, "^udp\\.example$");
+    accept_backend_arg(backend, "203.0.113.10:443");
+    accept_backend_arg(backend, "udp=203.0.113.10:4433");
+    add_backend(&table->backends, backend);
+
+    init_table(table);
+
+    const char *hostname = "udp.example";
+    struct LookupResult http3 = table_lookup_server_address(table,
+            hostname, strlen(hostname), TABLE_LOOKUP_TARGET_HTTP3);
+    assert(http3.address == backend->udp_address);
+    assert(http3.resolved_target == TABLE_LOOKUP_TARGET_HTTP3);
+
+    table_ref_put(table);
+}
+
+static void
+test_http3_fallback_to_tcp(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+
+    const char *name = "http3-fallback";
+    accept_table_arg(table, name);
+
+    struct Backend *backend = new_backend();
+    assert(backend != NULL);
+
+    accept_backend_arg(backend, "^fallback\\.example$");
+    accept_backend_arg(backend, "198.51.100.10:443");
+    accept_backend_arg(backend, "proxy_protocol");
+    add_backend(&table->backends, backend);
+
+    init_table(table);
+
+    const char *hostname = "fallback.example";
+    struct LookupResult http3 = table_lookup_server_address(table,
+            hostname, strlen(hostname), TABLE_LOOKUP_TARGET_HTTP3);
+    assert(http3.address == backend->address);
+    assert(http3.resolved_target == TABLE_LOOKUP_TARGET_DEFAULT);
+    assert(http3.use_proxy_header == backend->use_proxy_header);
+
+    table_ref_put(table);
+}
+
+static void
+test_http3_backend_requires_port(void) {
+    struct Backend *backend = new_backend();
+    assert(backend != NULL);
+
+    assert(accept_backend_arg(backend, "^secure\\.example$") > 0);
+    assert(accept_backend_arg(backend, "198.51.100.10:443") > 0);
+    assert(accept_backend_arg(backend, "http3=203.0.113.5") < 0);
+    assert(backend->udp_address == NULL);
+
+    free_backend(backend);
+}
+
+static void
+test_http3_backend_rejects_wildcard(void) {
+    struct Backend *backend = new_backend();
+    assert(backend != NULL);
+
+    assert(accept_backend_arg(backend, "^wildcard\\.example$") > 0);
+    assert(accept_backend_arg(backend, "198.51.100.20:443") > 0);
+    assert(accept_backend_arg(backend, "http3=*") < 0);
+    assert(backend->udp_address == NULL);
+
+    free_backend(backend);
+}
+#endif /* HAVE_QUICHE */
