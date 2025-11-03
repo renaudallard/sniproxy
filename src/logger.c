@@ -1387,7 +1387,8 @@ static void
 logger_child_main(int sockfd) {
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-logger", 0, 0, 0);
-#elif defined(HAVE_SETPROCTITLE)
+#endif
+#ifdef HAVE_SETPROCTITLE
     setproctitle("sniproxy-logger");
 #endif
 
