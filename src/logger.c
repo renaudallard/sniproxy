@@ -89,6 +89,8 @@ static int logger_process_enabled = 0;
 static int logger_process_failed = 0;
 static int logger_parent_fs_locked = 0;
 
+struct logger_ipc_header;
+
 static void free_logger(struct Logger *);
 static void init_default_logger(void);
 static void vlog_msg(struct Logger *, int, const char *, va_list);
