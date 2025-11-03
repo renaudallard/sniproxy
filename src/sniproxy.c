@@ -219,6 +219,8 @@ main(int argc, char **argv) {
     int opt;
     int allow_tls10 = 0;
 
+    logger_prepare_process_title(argc, argv);
+
     while ((opt = getopt(argc, argv, "fc:n:VT")) != -1) {
         switch (opt) {
             case 'c':

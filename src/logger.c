@@ -79,6 +79,105 @@ struct ChildSink {
 
 SLIST_HEAD(ChildSink_head, ChildSink);
 
+#if defined(__linux__) && !defined(HAVE_SETPROCTITLE)
+extern char **environ;
+
+static char **logger_title_argv = NULL;
+static int logger_title_argc = 0;
+static char *logger_title_buf = NULL;
+static size_t logger_title_buf_len = 0;
+
+static int
+logger_copy_environment(void) {
+    size_t env_count = 0;
+    while (environ != NULL && environ[env_count] != NULL)
+        env_count++;
+
+    if (env_count == 0)
+        return 1;
+
+    char **new_environ = calloc(env_count + 1, sizeof(char *));
+    if (new_environ == NULL)
+        return 0;
+
+    for (size_t i = 0; i < env_count; i++) {
+        new_environ[i] = strdup(environ[i]);
+        if (new_environ[i] == NULL) {
+            for (size_t j = 0; j < i; j++)
+                free(new_environ[j]);
+            free(new_environ);
+            return 0;
+        }
+    }
+    new_environ[env_count] = NULL;
+
+    environ = new_environ;
+
+    return 1;
+}
+
+static void
+logger_set_process_title_fallback(const char *title) {
+    if (logger_title_buf == NULL || logger_title_buf_len == 0)
+        return;
+
+    size_t len = strnlen(title, logger_title_buf_len - 1);
+    memset(logger_title_buf, '\0', logger_title_buf_len);
+    memcpy(logger_title_buf, title, len);
+
+    if (logger_title_argv != NULL && logger_title_argc > 0) {
+        logger_title_argv[0] = logger_title_buf;
+        for (int i = 1; i < logger_title_argc; i++)
+            logger_title_argv[i] = NULL;
+    }
+}
+#endif
+
+#if defined(__linux__) && !defined(HAVE_SETPROCTITLE)
+void
+logger_prepare_process_title(int argc, char **argv) {
+    if (argc <= 0 || argv == NULL || argv[0] == NULL)
+        return;
+
+    logger_title_argv = argv;
+    logger_title_argc = argc;
+
+    char *start = argv[0];
+    char *end = start + strlen(start);
+
+    for (int i = 1; i < argc && argv[i] != NULL; i++) {
+        char *candidate = argv[i] + strlen(argv[i]);
+        if (candidate > end)
+            end = candidate;
+    }
+
+    if (environ != NULL) {
+        for (char **env = environ; *env != NULL; env++) {
+            char *candidate = *env + strlen(*env);
+            if (candidate > end)
+                end = candidate;
+        }
+    }
+
+    logger_title_buf = start;
+    if (end > start)
+        logger_title_buf_len = (size_t)(end - start);
+    else
+        logger_title_buf_len = strlen(start);
+
+    if (!logger_copy_environment()) {
+        logger_title_buf = NULL;
+        logger_title_buf_len = 0;
+        logger_title_argv = NULL;
+        logger_title_argc = 0;
+    }
+}
+#else
+void
+logger_prepare_process_title(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
+}
+#endif
+
 static struct Logger *default_logger = NULL;
 static SLIST_HEAD(LogSink_head, LogSink) sinks = SLIST_HEAD_INITIALIZER(sinks);
 
@@ -1390,6 +1489,8 @@ logger_child_main(int sockfd) {
 #endif
 #ifdef HAVE_SETPROCTITLE
     setproctitle("sniproxy-logger");
+#elif defined(__linux__)
+    logger_set_process_title_fallback("sniproxy-logger");
 #endif
 
     for (;;) {
