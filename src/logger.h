@@ -37,6 +37,8 @@ struct Logger;
 #define LOG_INFO    6
 #define LOG_DEBUG   7
 
+#include <sys/types.h>
+
 struct Logger *new_syslog_logger(const char *facility);
 struct Logger *new_file_logger(const char *filepath);
 void set_default_logger(struct Logger *);
@@ -48,6 +50,7 @@ void logger_for_each_file_sink(void (*callback)(const char *, void *), void *use
 void logger_prepare_process_title(int argc, char **argv);
 int logger_process_is_active(void);
 void logger_parent_notify_fs_locked(void);
+int logger_drop_privileges(uid_t uid, gid_t gid);
 
 /* Shorthand to log to global error log */
 void fatal(const char *, ...)

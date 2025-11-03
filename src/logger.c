@@ -38,6 +38,7 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <grp.h>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -212,6 +213,7 @@ static int send_logger_new_sink(struct LogSink *, int fd_to_send);
 static int send_logger_log(struct Logger *, int, const char *);
 static int send_logger_reopen(struct LogSink *, int fd_to_send);
 static int send_logger_drop(struct LogSink *);
+static int send_logger_privileges(uid_t, gid_t);
 static ssize_t write_full(int, const void *, size_t);
 static ssize_t read_full(int, void *, size_t);
 static int recv_logger_header(int, struct logger_ipc_header *, int *);
@@ -221,11 +223,17 @@ static struct ChildSink *child_sink_lookup(struct ChildSink_head *, uint32_t);
 static void child_sink_free(struct ChildSink_head *, struct ChildSink *);
 static FILE *logger_child_open_file(const char *filepath);
 
-#define LOGGER_CMD_NEW_SINK   1U
-#define LOGGER_CMD_LOG        2U
-#define LOGGER_CMD_REOPEN     3U
-#define LOGGER_CMD_DROP       4U
-#define LOGGER_CMD_SHUTDOWN   5U
+#define LOGGER_CMD_NEW_SINK       1U
+#define LOGGER_CMD_LOG            2U
+#define LOGGER_CMD_REOPEN         3U
+#define LOGGER_CMD_DROP           4U
+#define LOGGER_CMD_SHUTDOWN       5U
+#define LOGGER_CMD_PRIVILEGES     6U
+
+struct logger_privileges_payload {
+    uint32_t uid;
+    uint32_t gid;
+};
 
 struct logger_ipc_header {
     uint32_t type;
@@ -349,6 +357,14 @@ logger_for_each_file_sink(void (*callback)(const char *, void *), void *userdata
             callback(sink->filepath, userdata);
         sink = SLIST_NEXT(sink, entries);
     }
+}
+
+int
+logger_drop_privileges(uid_t uid, gid_t gid) {
+    if (!logger_process_enabled)
+        return 0;
+
+    return send_logger_privileges(uid, gid);
 }
 
 void
@@ -1191,6 +1207,35 @@ send_logger_drop(struct LogSink *sink) {
     return send_logger_header(&header, -1);
 }
 
+static int
+send_logger_privileges(uid_t uid, gid_t gid) {
+    if (uid > UINT32_MAX || gid > UINT32_MAX) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    struct logger_privileges_payload payload = {
+        .uid = (uint32_t)uid,
+        .gid = (uint32_t)gid,
+    };
+
+    struct logger_ipc_header header = {
+        .type = LOGGER_CMD_PRIVILEGES,
+        .sink_id = 0,
+        .arg0 = 0,
+        .arg1 = 0,
+        .payload_len = sizeof(payload),
+    };
+
+    if (send_logger_header(&header, -1) < 0)
+        return -1;
+
+    if (send_logger_payload(&payload, sizeof(payload)) < 0)
+        return -1;
+
+    return 0;
+}
+
 static ssize_t
 write_full(int fd, const void *buf, size_t len) {
     const char *ptr = buf;
@@ -1455,6 +1500,35 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             } else if (sink->type == LOG_SINK_SYSLOG) {
                 closelog();
                 openlog(PACKAGE_NAME, LOG_PID, 0);
+            }
+            break;
+        case LOGGER_CMD_PRIVILEGES:
+            if (payload == NULL ||
+                    header->payload_len != sizeof(struct logger_privileges_payload))
+                break;
+            {
+                struct logger_privileges_payload *priv =
+                        (struct logger_privileges_payload *)payload;
+                gid_t gid = (gid_t)priv->gid;
+                uid_t uid = (uid_t)priv->uid;
+                gid_t groups[1];
+
+                groups[0] = gid;
+                if (setgroups(1, groups) < 0) {
+                    fprintf(stderr, "sniproxy logger: setgroups: %s\n",
+                            strerror(errno));
+                    _exit(EXIT_FAILURE);
+                }
+                if (setgid(gid) < 0) {
+                    fprintf(stderr, "sniproxy logger: setgid: %s\n",
+                            strerror(errno));
+                    _exit(EXIT_FAILURE);
+                }
+                if (setuid(uid) < 0) {
+                    fprintf(stderr, "sniproxy logger: setuid: %s\n",
+                            strerror(errno));
+                    _exit(EXIT_FAILURE);
+                }
             }
             break;
         case LOGGER_CMD_DROP:
