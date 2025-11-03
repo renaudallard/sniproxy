@@ -314,6 +314,16 @@ main(int argc, char **argv) {
             write_pidfile(config->pidfile, getpid());
     }
 
+#ifdef __OpenBSD__
+    if (logger_process_is_active()) {
+        if (pledge("stdio getpw inet dns rpath proc id unix", NULL) == -1) {
+            fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        logger_parent_notify_fs_locked();
+    }
+#endif
+
     start_binder();
 
     set_limits(max_nofiles);

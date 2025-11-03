@@ -45,6 +45,8 @@ struct Logger *logger_ref_get(struct Logger *);
 void logger_ref_put(struct Logger *);
 void reopen_loggers(void);
 void logger_for_each_file_sink(void (*callback)(const char *, void *), void *userdata);
+int logger_process_is_active(void);
+void logger_parent_notify_fs_locked(void);
 
 /* Shorthand to log to global error log */
 void fatal(const char *, ...)
