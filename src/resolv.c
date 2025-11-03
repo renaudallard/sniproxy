@@ -865,7 +865,7 @@ resolver_child_dns_sock_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 }
 
 static void
-resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int reevents) {
+resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
     struct dns_ctx *ctx = (struct dns_ctx *)w->data;
 
     if (revents & EV_TIMER)
