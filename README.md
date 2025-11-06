@@ -275,7 +275,7 @@ dnsmasq) to minimize exposure to DNS spoofing attacks.
 Security & Hardening
 --------------------
 
-SNIProxy 0.7.0 includes extensive security hardening:
+SNIProxy includes extensive security hardening:
 
 ### Recent Security Improvements
 
@@ -396,8 +396,6 @@ Validate configuration syntax:
 
 Project Status
 --------------
-
-**Current version**: 0.7.0
 
 SNIProxy is actively maintained with a focus on security, stability, and
 standards compliance. The codebase has undergone extensive security hardening
