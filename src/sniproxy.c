@@ -488,7 +488,7 @@ rename_main_process(void) {
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-mainloop", 0, 0, 0);
 #endif
-#ifdef HAVE_SETPROCTITLE
+#if defined(HAVE_SETPROCTITLE) && !defined(__OpenBSD__)
     setproctitle("sniproxy-mainloop");
 #endif
 }

@@ -56,8 +56,8 @@ Features
 + **Reference counting** ensures safe updates during reload
 + **Flexible logging**: Syslog and file-based logs with per-listener overrides
 + **Access logs** with connection duration and byte transfer statistics
-+ **Process renaming**: Processes show as `sniproxy-mainloop`, `sniproxy-binder`,
-  `sniproxy-logger`, and `sniproxy-resolver` in process listings
++ **Process renaming**: Processes show as `sniproxy-mainloop` (Linux only),
+  `sniproxy-binder`, `sniproxy-logger`, and `sniproxy-resolver` in process listings
 + **PID file support** for process management
 + **Privilege dropping** to non-root user/group after binding privileged ports
 + **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
