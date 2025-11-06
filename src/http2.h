@@ -41,6 +41,13 @@
  */
 #define HTTP2_MAX_DYNAMIC_TABLE_SIZE (1U << 16)
 
+/*
+ * Bound total HPACK dynamic table memory consumed across all HTTP/2 connections.
+ * Attackers can open numerous connections to multiply per-connection limits, so
+ * enforce a global budget to prevent unbounded heap usage.
+ */
+#define HTTP2_MAX_AGGREGATE_DYNAMIC_TABLE_SIZE (4U << 20)
+
 int parse_http2_header(const unsigned char *data, size_t data_len, char **hostname);
 
 #endif
