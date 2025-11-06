@@ -203,6 +203,23 @@ buffer_maybe_shrink(struct Buffer *buf) {
     return buffer_resize(buf, new_size) < 0 ? -1 : 0;
 }
 
+int
+buffer_maybe_shrink_idle(struct Buffer *buf, ev_tstamp now, ev_tstamp idle_age) {
+    if (buf == NULL)
+        return 0;
+
+    if (buf->len != 0)
+        return 0;
+
+    ev_tstamp last_activity = buf->last_recv > buf->last_send ?
+            buf->last_recv : buf->last_send;
+
+    if (now - last_activity < idle_age)
+        return 0;
+
+    return buffer_maybe_shrink(buf);
+}
+
 void
 free_buffer(struct Buffer *buf) {
     if (buf == NULL)

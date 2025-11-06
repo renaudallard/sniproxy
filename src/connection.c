@@ -54,9 +54,13 @@
                                       _errno == EWOULDBLOCK || \
                                       _errno == EINTR)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define SERVER_BUFFER_MIN_SIZE 2048
-#define SERVER_BUFFER_MAX_SIZE (1U << 20)
+#define CLIENT_BUFFER_INITIAL_SIZE 16384
+#define CLIENT_BUFFER_MIN_SIZE 8192
 #define CLIENT_BUFFER_MAX_SIZE (1U << 20)
+#define SERVER_BUFFER_INITIAL_SIZE 65536
+#define SERVER_BUFFER_MIN_SIZE 32768
+#define SERVER_BUFFER_MAX_SIZE (1U << 20)
+#define BUFFER_SHRINK_IDLE_SECONDS 1.0
 #define CONNECTION_IDLE_TIMEOUT 60.0
 
 
@@ -393,8 +397,11 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         }
     }
 
-    if (is_client)
-        buffer_maybe_shrink(con->server.buffer);
+    if (is_client) {
+        ev_tstamp now = ev_now(loop);
+        buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+        buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+    }
 
     /* Handle any state specific logic, note we may transition through several
      * states during a single call */
@@ -1120,14 +1127,15 @@ new_connection(struct ev_loop *loop) {
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
     con->idle_timer.data = con;
 
-    con->client.buffer = new_buffer(2048, loop);
+    con->client.buffer = new_buffer(CLIENT_BUFFER_INITIAL_SIZE, loop);
     if (con->client.buffer == NULL) {
         free_connection(con);
         return NULL;
     }
     buffer_set_max_size(con->client.buffer, CLIENT_BUFFER_MAX_SIZE);
+    con->client.buffer->min_size = CLIENT_BUFFER_MIN_SIZE;
 
-    con->server.buffer = new_buffer(16384, loop);
+    con->server.buffer = new_buffer(SERVER_BUFFER_INITIAL_SIZE, loop);
     if (con->server.buffer == NULL) {
         free_connection(con);
         return NULL;
