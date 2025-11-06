@@ -612,7 +612,12 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
             return 0;
 
         new_cap *= 2;
-        struct hpack_entry *tmp = realloc(decoder->dynamic_entries, new_cap * sizeof(struct hpack_entry));
+
+        if (new_cap > SIZE_MAX / sizeof(struct hpack_entry))
+            return 0;
+
+        size_t alloc_size = new_cap * sizeof(struct hpack_entry);
+        struct hpack_entry *tmp = realloc(decoder->dynamic_entries, alloc_size);
         if (tmp == NULL)
             return 0;
         decoder->dynamic_entries = tmp;
