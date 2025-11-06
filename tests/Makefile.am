@@ -40,7 +40,8 @@ check_PROGRAMS = http_test \
                  config_test
 
 http_test_SOURCES = http_test.c \
-                    ../src/http.c
+                    ../src/http.c \
+                    ../src/http2.c
 
 tls_test_SOURCES = tls_test.c \
                    ../src/tls.c \
@@ -76,7 +77,8 @@ config_test_SOURCES = config_test.c \
                       ../src/resolv.c \
                       ../src/resolv.h \
                       ../src/tls.c \
-                      ../src/http.c
+                      ../src/http.c \
+                      ../src/http2.c
 
 config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS) $(LIBUDNS_LIBS)
 
