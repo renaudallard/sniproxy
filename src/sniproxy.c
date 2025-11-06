@@ -23,6 +23,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +40,9 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <signal.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #include <errno.h>
 #include <stddef.h>
 #ifdef __OpenBSD__
@@ -60,6 +67,7 @@ static void set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
+static void rename_main_process(void);
 
 #ifdef __OpenBSD__
 struct openbsd_unveil_data {
@@ -338,6 +346,7 @@ main(int argc, char **argv) {
 
     /* Drop permissions only when we can */
     drop_perms(config->user ? config->user : default_username, config->group);
+    rename_main_process();
 
     ev_signal_init(&sighup_watcher, signal_cb, SIGHUP);
     ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
@@ -472,6 +481,16 @@ drop_perms(const char *username, const char *groupname) {
 
     if (setuid(user->pw_uid) < 0)
         fatal("setuid(): %s", strerror(errno));
+}
+
+static void
+rename_main_process(void) {
+#ifdef __linux__
+    (void)prctl(PR_SET_NAME, "sniproxy-mainloop", 0, 0, 0);
+#endif
+#ifdef HAVE_SETPROCTITLE
+    setproctitle("sniproxy-mainloop");
+#endif
 }
 
 static void

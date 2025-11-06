@@ -56,8 +56,8 @@ Features
 + **Reference counting** ensures safe updates during reload
 + **Flexible logging**: Syslog and file-based logs with per-listener overrides
 + **Access logs** with connection duration and byte transfer statistics
-+ **Process renaming**: Helper processes show as `sniproxy-logger` and
-  `sniproxy-resolver` in process listings
++ **Process renaming**: Processes show as `sniproxy-mainloop`, `sniproxy-binder`,
+  `sniproxy-logger`, and `sniproxy-resolver` in process listings
 + **PID file support** for process management
 + **Privilege dropping** to non-root user/group after binding privileged ports
 + **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
@@ -68,11 +68,13 @@ Architecture
 
 SNIProxy uses a multi-process architecture for security and isolation:
 
-1. **Main process**: Accepts connections, parses protocol headers, routes to
+1. **Main process** (`sniproxy-mainloop`): Accepts connections, parses protocol headers, routes to
    backends, and proxies data bidirectionally
-2. **Logger process** (`sniproxy-logger`): Handles all log writes with dropped
+2. **Binder process** (`sniproxy-binder`): Creates privileged listening sockets before
+   and after reloads so the main loop can drop root while still opening low ports
+3. **Logger process** (`sniproxy-logger`): Handles all log writes with dropped
    privileges, enabling secure logging from the main process
-3. **Resolver process** (`sniproxy-resolver`): Performs asynchronous DNS lookups
+4. **Resolver process** (`sniproxy-resolver`): Performs asynchronous DNS lookups
    in isolation when DNS support is enabled
 
 This separation ensures that even if a component is compromised, the attack

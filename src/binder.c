@@ -23,6 +23,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -32,6 +36,9 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #include "binder.h"
 #include "logger.h"
 #include "fd_util.h"
@@ -161,6 +168,13 @@ stop_binder(void) {
 
 static void
 binder_main(int sockfd) {
+#ifdef __linux__
+    (void)prctl(PR_SET_NAME, "sniproxy-binder", 0, 0, 0);
+#endif
+#ifdef HAVE_SETPROCTITLE
+    setproctitle("sniproxy-binder");
+#endif
+
     for (;;) {
         char buffer[256];
         int len = recv(sockfd, buffer, sizeof(buffer), 0);
