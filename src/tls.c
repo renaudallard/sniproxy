@@ -288,13 +288,17 @@ parse_server_name_extension(const uint8_t *data, size_t data_len,
                 if (len == 0 || len >= SERVER_NAME_LEN)
                     return -5;
 
+                const uint8_t *hostname_bytes = data + pos + 3;
+                if (memchr(hostname_bytes, '\0', len) != NULL)
+                    return -5;
+
                 *hostname = malloc(len + 1);
                 if (*hostname == NULL) {
                     err("malloc() failure");
                     return -4;
                 }
 
-                memcpy(*hostname, data + pos + 3, len);
+                memcpy(*hostname, hostname_bytes, len);
 
                 (*hostname)[len] = '\0';
 

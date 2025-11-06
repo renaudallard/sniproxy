@@ -573,11 +573,19 @@ insert_proxy_v1_header(struct Connection *con) {
             buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
                               ntohs(((const struct sockaddr_in *)&con->
                               client.addr)->sin_port));
+            if ((ssize_t)buf_len < 0)
+                buf_len = 0;
+            else if (buf_len >= sizeof(buf))
+                buf_len = sizeof(buf) - 1;
             con->header_len += buffer_push(con->client.buffer, buf, buf_len);
 
             buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
                               ntohs(((const struct sockaddr_in *)&con->
                               client.local_addr)->sin_port));
+            if ((ssize_t)buf_len < 0)
+                buf_len = 0;
+            else if (buf_len >= sizeof(buf))
+                buf_len = sizeof(buf) - 1;
             con->header_len += buffer_push(con->client.buffer, buf, buf_len);
 
             break;
@@ -600,11 +608,19 @@ insert_proxy_v1_header(struct Connection *con) {
             buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
                               ntohs(((const struct sockaddr_in6 *)&con->
                               client.addr)->sin6_port));
+            if ((ssize_t)buf_len < 0)
+                buf_len = 0;
+            else if (buf_len >= sizeof(buf))
+                buf_len = sizeof(buf) - 1;
             con->header_len += buffer_push(con->client.buffer, buf, buf_len);
 
             buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
                               ntohs(((const struct sockaddr_in6 *)&con->
                               client.local_addr)->sin6_port));
+            if ((ssize_t)buf_len < 0)
+                buf_len = 0;
+            else if (buf_len >= sizeof(buf))
+                buf_len = sizeof(buf) - 1;
             con->header_len += buffer_push(con->client.buffer, buf, buf_len);
 
             break;
@@ -1165,49 +1181,7 @@ log_bad_request(struct Connection *con __attribute__((unused)), const char *req,
     if (req == NULL)
         return;
 
-    if (req_len > (SIZE_MAX - 64) / 6) {
-        err("log_bad_request: request length %zu too large to log safely", req_len);
-        return;
-    }
-
-    size_t message_len = 64 + 6 * req_len;
-    char *message = malloc(message_len);
-    if (message == NULL) {
-        err("log_bad_request: unable to allocate message buffer");
-        return;
-    }
-
-    char *message_pos = message;
-    size_t remaining = message_len;
-
-    message[0] = '\0';
-
-    int written = snprintf(message_pos, remaining, "parse_packet({");
-    if (written < 0 || (size_t)written >= remaining)
-        goto done;
-
-    message_pos += (size_t)written;
-    remaining -= (size_t)written;
-
-    for (size_t i = 0; i < req_len; i++) {
-        written = snprintf(message_pos, remaining, "0x%02hhx%s", (unsigned char)req[i],
-                (i + 1 == req_len) ? "" : ", ");
-        if (written < 0 || (size_t)written >= remaining)
-            goto done;
-
-        message_pos += (size_t)written;
-        remaining -= (size_t)written;
-    }
-
-    written = snprintf(message_pos, remaining, "}, %zu, ...) = %d", req_len, parse_result);
-    if (written < 0 || (size_t)written >= remaining)
-        goto done;
-
-done:
-    message[message_len - 1] = '\0';
-    debug("%s", message);
-
-    free(message);
+    debug("parse_packet([redacted], %zu, ...) = %d", req_len, parse_result);
 }
 
 /*

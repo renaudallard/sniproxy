@@ -140,6 +140,9 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
     if (min_room == 0 || buffer_room(buf) >= min_room)
         return 0;
 
+    if (min_room > SIZE_MAX - buf->len)
+        return -1;
+
     if (buf->len >= buf->max_size || min_room > buf->max_size - buf->len)
         return -1;
 
