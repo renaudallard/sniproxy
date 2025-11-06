@@ -486,6 +486,7 @@ reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
         return;
 
     ev_timer_stop(loop, &con->idle_timer);
+    ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
     ev_timer_set(&con->idle_timer, CONNECTION_IDLE_TIMEOUT, 0.0);
     ev_timer_start(loop, &con->idle_timer);
 }
@@ -494,6 +495,8 @@ static void
 stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
     if (ev_is_active(&con->idle_timer))
         ev_timer_stop(loop, &con->idle_timer);
+
+    ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
 }
 
 #ifdef HAVE_LIBUDNS
