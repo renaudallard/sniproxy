@@ -36,10 +36,12 @@ struct ResolvQuery *resolv_query(const char *, int,
 void resolv_cancel(struct ResolvQuery *);
 void resolv_shutdown(struct ev_loop *);
 
-static const int RESOLV_MODE_DEFAULT = 0;
-static const int RESOLV_MODE_IPV4_ONLY = 1;
-static const int RESOLV_MODE_IPV6_ONLY = 2;
-static const int RESOLV_MODE_IPV4_FIRST = 3;
-static const int RESOLV_MODE_IPV6_FIRST = 4;
+enum resolv_mode {
+    RESOLV_MODE_DEFAULT = 0,
+    RESOLV_MODE_IPV4_ONLY = 1,
+    RESOLV_MODE_IPV6_ONLY = 2,
+    RESOLV_MODE_IPV4_FIRST = 3,
+    RESOLV_MODE_IPV6_FIRST = 4,
+};
 
 #endif
