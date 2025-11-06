@@ -31,5 +31,9 @@ sed -i "s/^\(AC_INIT(\[sniproxy\], \[\)[^]]*\(.\+\)$/\1${VERSION}\2/" ${SOURCE_D
 # Update redhat/sniproxy.spec with new version
 sed -i "s/^Version:\s\+[^ ]\+/Version: ${VERSION}/" ${SOURCE_DIR}/redhat/sniproxy.spec
 
-# Update debian/changelog with new version
-debchange --newversion ${VERSION} "New git revision"
+# Update debian/changelog with new version when debchange is available
+if command -v debchange >/dev/null 2>&1; then
+    debchange --newversion ${VERSION} "New git revision"
+else
+    echo "debchange not found; skipping debian/changelog update" >&2
+fi
