@@ -55,6 +55,7 @@
                                       _errno == EINTR)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define SERVER_BUFFER_MIN_SIZE 2048
+#define SERVER_BUFFER_MAX_SIZE (1U << 20)
 #define CLIENT_BUFFER_MAX_SIZE (1U << 20)
 #define CONNECTION_IDLE_TIMEOUT 60.0
 
@@ -96,6 +97,11 @@ static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
+
+#ifdef HAVE_LIBUDNS
+static int dns_query_acquire(void);
+static void dns_query_release(void);
+#endif
 
 
 void
@@ -490,6 +496,34 @@ stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
         ev_timer_stop(loop, &con->idle_timer);
 }
 
+#ifdef HAVE_LIBUDNS
+static size_t max_concurrent_dns_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+static size_t active_dns_queries;
+
+static int
+dns_query_acquire(void) {
+    if (active_dns_queries >= max_concurrent_dns_queries)
+        return 0;
+
+    active_dns_queries++;
+    return 1;
+}
+
+static void
+dns_query_release(void) {
+    assert(active_dns_queries > 0);
+    active_dns_queries--;
+}
+
+void
+connections_set_dns_query_limit(size_t limit) {
+    if (limit == 0)
+        limit = 1;
+
+    max_concurrent_dns_queries = limit;
+}
+#endif
+
 static void
 connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attribute__((unused))) {
     struct Connection *con = w->data;
@@ -737,12 +771,32 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             }
         }
 
+        if (!dns_query_acquire()) {
+            char client[INET6_ADDRSTRLEN + 8];
+
+            notice("Maximum concurrent DNS queries (%zu) reached for %s, closing connection",
+                    max_concurrent_dns_queries,
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
+
+            if (result.caller_free_address)
+                free((void *)result.address);
+            free(cb_data);
+
+            abort_connection(con);
+            reactivate_watchers(con, loop);
+
+            return;
+        }
+
         con->state = RESOLVING;
         con->query_handle = resolv_query(hostname,
                 resolv_mode, resolv_cb,
                 (void (*)(void *))free_resolv_cb_data, cb_data);
 
         if (con->query_handle == NULL) {
+            dns_query_release();
             if (con->state == RESOLVING) {
                 notice("unable to resolve %s, closing connection", hostname_buf);
 
@@ -777,6 +831,10 @@ resolv_cb(struct Address *result, void *data) {
     struct resolv_cb_data *cb_data = (struct resolv_cb_data *)data;
     struct Connection *con = cb_data->connection;
     struct ev_loop *loop = cb_data->loop;
+
+#ifdef HAVE_LIBUDNS
+    dns_query_release();
+#endif
 
     if (con->state != RESOLVING) {
         warn("resolv_cb() called for connection not in RESOLVING state");
@@ -956,8 +1014,12 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         warn("close failed: %s", strerror(errno));
 
     if (con->state == RESOLVING) {
-        if (con->query_handle != NULL)
+        if (con->query_handle != NULL) {
             resolv_cancel(con->query_handle);
+#ifdef HAVE_LIBUDNS
+            dns_query_release();
+#endif
+        }
         con->query_handle = NULL;
         con->state = PARSED;
     }
@@ -1052,6 +1114,7 @@ new_connection(struct ev_loop *loop) {
         return NULL;
     }
 
+    buffer_set_max_size(con->server.buffer, SERVER_BUFFER_MAX_SIZE);
     con->server.buffer->min_size = SERVER_BUFFER_MIN_SIZE;
 
     return con;

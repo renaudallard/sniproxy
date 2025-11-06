@@ -24,6 +24,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <stdint.h>
 #include <string.h>
@@ -58,6 +60,7 @@ static struct ResolverConfig *new_resolver_config(void);
 static int accept_resolver_nameserver(struct ResolverConfig *, const char *);
 static int accept_resolver_search(struct ResolverConfig *, const char *);
 static int accept_resolver_mode(struct ResolverConfig *, const char *);
+static int accept_resolver_max_queries(struct ResolverConfig *, const char *);
 static int end_resolver_stanza(struct Config *, struct ResolverConfig *);
 static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
@@ -95,6 +98,10 @@ static const struct Keyword resolver_stanza_grammar[] = {
     {
         .keyword="mode",
         .parse_arg=(int(*)(void *, const char *))accept_resolver_mode,
+    },
+    {
+        .keyword="max_concurrent_queries",
+        .parse_arg=(int(*)(void *, const char *))accept_resolver_max_queries,
     },
     {
         .keyword = NULL,
@@ -239,6 +246,8 @@ init_config(const char *filename, struct ev_loop *loop) {
         return NULL;
     }
 
+    config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+
     SLIST_INIT(&config->listeners);
     SLIST_INIT(&config->tables);
 
@@ -323,6 +332,11 @@ reload_config(struct Config *config, struct ev_loop *loop) {
 
     listeners_reload(&config->listeners, &new_config->listeners,
             &config->tables, loop);
+
+#ifdef HAVE_LIBUDNS
+    config->resolver.max_concurrent_queries = new_config->resolver.max_concurrent_queries;
+    connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
+#endif
 
     free_config(new_config, loop);
 }
@@ -611,6 +625,7 @@ new_resolver_config(void) {
         resolver->nameservers = NULL;
         resolver->search = NULL;
         resolver->mode = 0;
+        resolver->max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
     }
 
     return resolver;
@@ -700,6 +715,28 @@ accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
 }
 
 static int
+accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) {
+    if (value == NULL || *value == '\0')
+        return -1;
+
+    char *endptr = NULL;
+    errno = 0;
+    unsigned long parsed = strtoul(value, &endptr, 10);
+
+    if (errno != 0 || endptr == value || *endptr != '\0')
+        return -1;
+
+    if (parsed == 0)
+        return -1;
+
+    if (parsed > SIZE_MAX)
+        return -1;
+
+    resolver->max_concurrent_queries = (size_t)parsed;
+    return 1;
+}
+
+static int
 end_resolver_stanza(struct Config *config, struct ResolverConfig *resolver) {
     config->resolver = *resolver;
     free(resolver);
@@ -718,6 +755,7 @@ print_resolver_config(FILE *file, struct ResolverConfig *resolver) {
         fprintf(file, "\tsearch %s\n", resolver->search[i]);
 
     fprintf(file, "\tmode %s\n", resolver_mode_names[resolver->mode]);
+    fprintf(file, "\tmax_concurrent_queries %zu\n", resolver->max_concurrent_queries);
 
     fprintf(file, "}\n\n");
 }

@@ -330,6 +330,10 @@ main(int argc, char **argv) {
 
     set_limits(max_nofiles);
 
+#ifdef HAVE_LIBUDNS
+    connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
+#endif
+
     init_listeners(&config->listeners, &config->tables, EV_DEFAULT);
 
     /* Drop permissions only when we can */

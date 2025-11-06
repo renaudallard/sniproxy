@@ -26,6 +26,7 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
+#include <stddef.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
 #include <ev.h>
@@ -67,5 +68,11 @@ void init_connections(void);
 int accept_connection(struct Listener *, struct ev_loop *);
 void free_connections(struct ev_loop *);
 void print_connections(void);
+
+#define DEFAULT_DNS_QUERY_CONCURRENCY 256
+
+#ifdef HAVE_LIBUDNS
+void connections_set_dns_query_limit(size_t limit);
+#endif
 
 #endif
