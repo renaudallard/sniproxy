@@ -36,7 +36,7 @@ Features
 + **TLS 1.2+ required by default** - optionally allow TLS 1.0 with `-T` flag
 + **Regex DoS prevention**: Match limits scale with hostname length
 + **Buffer overflow protection**: Strict bounds checking in all protocol parsers
-+ **NUL byte rejection**: Prevents hostname validation bypasses
++ **NULL byte rejection**: Prevents hostname validation bypasses
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
 + **DNS query concurrency limits**: Prevents resolver exhaustion
 + **Connection idle timeouts**: Automatic cleanup of stalled connections
