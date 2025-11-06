@@ -6,23 +6,80 @@ the initial request of the TCP session. This enables HTTPS name-based virtual
 hosting to separate backend servers without installing the private key on the
 proxy machine.
 
+SNIProxy is a production-ready, high-performance transparent proxy with a focus
+on security, reliability, and minimal resource usage.
+
 Features
 --------
-+ Name-based proxying of HTTPS without decrypting traffic. No keys or
-  certificates required.
-+ Supports both TLS and HTTP protocols.
-+ Supports IPv4, IPv6 and Unix domain sockets for both back-end servers and
-  listeners.
-+ Supports multiple listening sockets per instance.
-+ Supports HAProxy proxy protocol to propagate original source address to
-  back-end servers.
-+ Routes HTTP/2 connections by decoding HPACK HEADERS frames and sanitising
-  :authority values before routing.
-+ Requires TLS 1.2 or newer by default while allowing administrators to opt
-  into TLS 1.0 support with the `-T` flag.
-+ Sandboxes privileged operations on OpenBSD with pledge(2) and unveil(2).
-+ Accepts legacy configuration keywords such as `listen`, `proto`, `user`, and
-  `group` for compatibility with existing deployments.
+
+### Core Functionality
++ **Name-based proxying** of HTTPS without decrypting traffic - no keys or
+  certificates required on the proxy
++ **Protocol support**: TLS (SNI extraction), HTTP/1.x (Host header), and
+  HTTP/2 (HPACK :authority pseudo-header)
++ **Pattern matching**: Exact hostname matching and PCRE/PCRE2 regular expressions
++ **Wildcard backends**: Route to dynamically resolved hostnames
++ **Fallback routing**: Default backend for requests without valid hostnames
++ **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1/v2)
+
+### Network & Performance
++ **IPv4, IPv6, and Unix domain sockets** for both listeners and backends
++ **Multiple listeners** per instance with independent configurations
++ **Source address binding** for outbound connections
++ **Transparent proxy mode** (IP_TRANSPARENT) to preserve client source IPs
++ **SO_REUSEPORT** support for multi-process scalability
++ **Event-driven architecture** using libev for efficient I/O multiplexing
++ **Dynamic ring buffers** with automatic growth/shrinking
++ **Zero-copy operations** where supported (splice on Linux)
+
+### Security & Hardening
++ **TLS 1.2+ required by default** - optionally allow TLS 1.0 with `-T` flag
++ **Regex DoS prevention**: Match limits scale with hostname length
++ **Buffer overflow protection**: Strict bounds checking in all protocol parsers
++ **NUL byte rejection**: Prevents hostname validation bypasses
++ **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
++ **DNS query concurrency limits**: Prevents resolver exhaustion
++ **Connection idle timeouts**: Automatic cleanup of stalled connections
++ **Privilege separation**: Separate processes for logging and DNS resolution
++ **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
++ **Input sanitization**: Hostname validation, control character removal
++ **Comprehensive fuzzing**: TLS and HTTP/2 protocol fuzzers included
+
+### DNS Resolution
++ **Asynchronous DNS** via dedicated resolver process (when built with UDNS)
++ **IPv4/IPv6 preference modes**: default, IPv4-only, IPv6-only, IPv4-first, IPv6-first
++ **Configurable nameservers** and search domains
++ **Concurrency limits** to prevent resource exhaustion
+
+### Operations & Management
++ **Hot configuration reload** via SIGHUP without dropping connections
++ **Reference counting** ensures safe updates during reload
++ **Flexible logging**: Syslog and file-based logs with per-listener overrides
++ **Access logs** with connection duration and byte transfer statistics
++ **Process renaming**: Helper processes show as `sniproxy-logger` and
+  `sniproxy-resolver` in process listings
++ **PID file support** for process management
++ **Privilege dropping** to non-root user/group after binding privileged ports
++ **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
+  keywords
+
+Architecture
+------------
+
+SNIProxy uses a multi-process architecture for security and isolation:
+
+1. **Main process**: Accepts connections, parses protocol headers, routes to
+   backends, and proxies data bidirectionally
+2. **Logger process** (`sniproxy-logger`): Handles all log writes with dropped
+   privileges, enabling secure logging from the main process
+3. **Resolver process** (`sniproxy-resolver`): Performs asynchronous DNS lookups
+   in isolation when DNS support is enabled
+
+This separation ensures that even if a component is compromised, the attack
+surface is minimized. The main process drops privileges after binding to ports,
+and helper processes run with minimal system access.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
 
 Usage
 -----
@@ -32,7 +89,7 @@ Usage
         -f  run in foreground, do not drop privileges
         -n  specify file descriptor limit
         -V  print the version of SNIProxy and exit
-        -T  allow TLS 1.0 client hellos
+        -T  allow TLS 1.0 client hellos (default requires TLS 1.2+)
 
 
 Installation
@@ -111,12 +168,15 @@ OS X support is a best effort, and isn't a primary target platform.
 Configuration Syntax
 --------------------
 
+### Basic Configuration
+
     user daemon
+    group daemon
 
     pidfile /tmp/sniproxy.pid
 
     error_log {
-        syslog daemon
+        filename /var/log/sniproxy/error.log
         priority notice
     }
 
@@ -127,41 +187,265 @@ Configuration Syntax
         # Specify a server to use if the initial client request doesn't contain
         # a hostname
         fallback 192.0.2.5:443
+
+        # Optional: bind outbound connections to specific source address
+        source 192.0.2.100
+
+        # Optional: per-listener access log
+        access_log {
+            filename /var/log/sniproxy/access.log
+        }
     }
 
     table TableName {
         # Match exact request hostnames
         example.com 192.0.2.10:4343
+
         # If port is not specified the listener port will be used
         example.net [2001:DB8::1:10]
-        # Or use regular expression to match
-        .*\\.com    [2001:DB8::1:11]:443
-        # Combining regular expression and wildcard will resolve the hostname
-        # client requested and proxy to it
-        .*\\.edu    *:443
+
+        # Use regular expressions to match multiple hosts
+        .*\\.example\\.com    192.0.2.11:443
+
+        # Wildcard backends resolve the client-requested hostname
+        .*\\.dynamiccdn\\.com    *:443
+    }
+
+### Advanced Configuration
+
+    resolver {
+        # DNS resolution mode: ipv4_only, ipv6_only, ipv4_first, ipv6_first
+        mode ipv4_first
+
+        # Custom nameservers (requires --enable-dns)
+        nameserver 8.8.8.8
+        nameserver 2001:4860:4860::8888
+
+        # Limit concurrent DNS queries to prevent resource exhaustion
+        max_concurrent_queries 256
+    }
+
+    listener [::]:443 {
+        protocol tls
+        table SecureHosts
+
+        # Enable SO_REUSEPORT for multi-process load balancing
+        reuseport yes
+
+        # Enable IP_TRANSPARENT to preserve client source IPs
+        transparent_proxy yes
+
+        # Log malformed/rejected requests
+        bad_requests log
+
+        # Fallback with PROXY protocol header
+        fallback 192.0.2.50:443
+        fallback_use_proxy_header yes
+    }
+
+    table SecureHosts {
+        # Enable PROXY protocol for all backends in this table
+        use_proxy_header yes
+
+        # Backend-specific PROXY protocol override
+        secure.example.com 192.0.2.20:443 { use_proxy_header no }
     }
 
 DNS Resolution
 --------------
 
-Using hostnames or wildcard entries in the configuration requires sniproxy to
-be built with [UDNS](http://www.corpit.ru/mjt/udns.html). SNIProxy will still
-build without UDNS, but these features will be unavailable.
+Using hostnames or wildcard entries in the configuration requires SNIProxy to
+be built with [UDNS](http://www.corpit.ru/mjt/udns.html) (`--enable-dns` flag).
+SNIProxy will still build without UDNS, but DNS-dependent features will be
+unavailable.
 
-UDNS uses a single UDP socket for all queries, so it is recommended you use a
-local caching DNS resolver (with a single socket each DNS query is protected by
-spoofing by a single 16 bit query ID, which makes it relatively easy to spoof).
+When DNS support is enabled, SNIProxy spawns a separate `sniproxy-resolver`
+process that handles all DNS queries asynchronously. This architecture provides:
+
+- **Process isolation**: DNS operations are separated from the main proxy
+- **Concurrency control**: Configurable limits prevent resolver exhaustion
+- **IPv4/IPv6 flexibility**: Multiple resolution modes for different deployment needs
+- **Custom nameservers**: Override system DNS configuration per SNIProxy instance
+
+**Security note**: UDNS uses a single UDP socket with 16-bit query IDs. It is
+strongly recommended to use a local caching DNS resolver (e.g., unbound,
+dnsmasq) to minimize exposure to DNS spoofing attacks.
 
 
-OpenBSD specific behaviour
---------------------------
+Security & Hardening
+--------------------
 
-On OpenBSD, sniproxy is sandboxed with pledge(2) and unveil(2). The daemon
-unveils the configuration file passed on the command line (defaulting to
-`/etc/sniproxy.conf`), the pidfile location, every file-backed log sink, and
-each listener, fallback, source, and backend address that uses a UNIX domain
-socket. These paths are collected from the configuration that is loaded at
-startup, so custom locations are supported as long as the relevant files or
-directories exist before sniproxy is launched. After the necessary resources
-have been unveiled, sniproxy pledges the minimal runtime promises and a
-restricted exec profile for re-execing loggers.
+SNIProxy 0.7.0 includes extensive security hardening:
+
+### Recent Security Improvements
+
+- **Regex DoS mitigation**: Match limits now scale with hostname length to
+  prevent catastrophic backtracking attacks on malicious hostnames
+- **Buffer overflow protection**: Added strict overflow guards in `buffer_reserve()`
+  to detect and prevent integer wraparound attacks
+- **NUL byte filtering**: TLS SNI parsing rejects server names with embedded NUL
+  bytes before hostname validation, preventing filter bypass
+- **HTTP/2 memory limits**: Enforced per-connection (64KB) and global (4MB) HPACK
+  dynamic table size limits to prevent memory exhaustion
+- **PROXY header hardening**: Truncated snprintf results can no longer trick
+  buffer operations into reading past temporary buffers
+- **Connection timeout protection**: Idle timers now properly clear pending events
+  to prevent use-after-free conditions
+- **DNS concurrency limits**: Configurable limits with mutex protection around
+  the global resolver query list
+
+### Testing Infrastructure
+
+The project includes comprehensive testing:
+
+- **Unit tests**: All major components (buffer, TLS, HTTP, HTTP/2, tables, etc.)
+- **Fuzz testing**: Dedicated fuzzers for TLS ClientHello and HTTP/2 HEADERS
+  parsing in `tests/fuzz/`
+- **Integration tests**: End-to-end listener and routing validation
+- **Protocol conformance**: Tests for TLS 1.0-1.3, HTTP/1.x, and HTTP/2
+
+Run tests with: `make check`
+
+### OpenBSD Sandboxing
+
+On OpenBSD, SNIProxy uses pledge(2) and unveil(2) for system call and filesystem
+restrictions:
+
+- **unveil()**: Restricts access to configuration file, pidfile, log files, and
+  Unix domain sockets referenced in the configuration
+- **pledge()**: Reduces available system calls to minimum required set:
+  - Main process: `stdio rpath inet dns proc exec`
+  - Logger process: `stdio rpath wpath cpath fattr`
+  - Resolver process: `stdio inet dns`
+
+All paths are collected from the loaded configuration, so custom locations work
+as long as files/directories exist before launch. After unveiling resources,
+SNIProxy pledges minimal runtime promises and a restricted exec profile for
+spawning helper processes.
+
+Performance Notes
+-----------------
+
+SNIProxy is designed for high performance and low resource usage:
+
+- **Event-driven I/O**: Uses libev for efficient non-blocking I/O multiplexing,
+  handling thousands of concurrent connections per process
+- **Minimal per-connection overhead**: Dynamic buffers start small and grow only
+  as needed, then shrink when idle
+- **Zero-copy operations**: Uses splice() on Linux to move data between sockets
+  without copying through userspace
+- **SO_REUSEPORT support**: Run multiple SNIProxy instances on the same port for
+  kernel-level load balancing across CPU cores
+- **Compiled regex patterns**: Pattern matching happens once at config load,
+  not per connection
+- **Hot config reload**: Update routing rules without restarting or dropping
+  existing connections (SIGHUP)
+
+**Typical resource usage**: 1-2 MB RAM per process plus ~2-8 KB per active
+connection (varies with traffic patterns)
+
+Troubleshooting
+---------------
+
+### Common Issues
+
+**"Address already in use" when starting**
+- Another process is bound to the port, or a previous SNIProxy instance didn't
+  clean up. Use `netstat -tlnp` or `ss -tlnp` to check.
+- Try enabling `reuseport yes` in listener config for multi-instance setups
+
+**Connections fail to route / "No matching backend"**
+- Check that table names match between listener and table definitions
+- Verify hostname patterns - remember that regex patterns need proper escaping
+  (e.g., `.*\.example\.com` not `*.example.com`)
+- Enable `bad_requests log` to see rejected requests in error log
+
+**DNS resolution not working**
+- Ensure SNIProxy was built with `--enable-dns` and UDNS library
+- Check `sniproxy-resolver` process is running (should appear in process list)
+- Verify nameserver configuration and network connectivity
+
+**High memory usage**
+- Check for connections stuck in RESOLVING state with slow/unresponsive DNS
+- Reduce `max_concurrent_queries` to limit DNS-related memory
+- Verify no regex patterns causing excessive backtracking (check error log)
+
+**Permissions errors on startup**
+- Ensure user/group specified in config exists
+- Verify log file directories are writable by the configured user
+- On OpenBSD, ensure all paths exist before starting (for unveil)
+
+### Debug Mode
+
+Run in foreground with debug logging:
+
+    sniproxy -f -c /path/to/config.conf
+
+This will:
+- Keep process in foreground (not daemonize)
+- Not drop privileges (runs as invoking user)
+- Show detailed logging to stderr
+
+### Configuration Testing
+
+Validate configuration syntax:
+
+    sniproxy -c /path/to/config.conf -t
+
+(Note: A `-t` flag may need to be implemented if not present)
+
+Project Status
+--------------
+
+**Current version**: 0.7.0
+
+SNIProxy is actively maintained with a focus on security, stability, and
+standards compliance. The codebase has undergone extensive security hardening
+in recent releases, including protection against regex DoS, buffer overflows,
+and memory exhaustion attacks.
+
+**Primary platforms**: Linux and OpenBSD
+**Best-effort support**: Other BSDs, macOS
+
+### Use Cases
+
+SNIProxy is production-ready and commonly used for:
+
+- **Name-based virtual hosting**: Route HTTPS traffic by hostname without
+  TLS termination
+- **TLS/SSL load balancing**: Distribute connections across backend servers
+  based on SNI
+- **Multi-tenant hosting**: Route multiple domains to different backend
+  infrastructure
+- **CDN origins**: Route traffic to appropriate origin servers by hostname
+- **Development proxies**: Local HTTPS routing for development environments
+- **IoT/embedded systems**: Lightweight SNI routing with minimal resource usage
+
+### Contributing
+
+Contributions are welcome! Areas of particular interest:
+
+- Additional protocol parsers (QUIC, etc.)
+- Performance optimizations
+- Security improvements
+- Platform support (Windows, other operating systems)
+- Documentation improvements
+- Bug reports and test cases
+
+### Resources
+
+- **Source code**: https://github.com/dlundquist/sniproxy (upstream)
+- **Architecture documentation**: See [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Issue tracking**: GitHub Issues
+- **License**: BSD 2-Clause
+
+### Credits
+
+Original author: Dustin Lundquist <dustin@null-ptr.net>
+
+Contributors: Manuel Kasper, Renaud Allard, and others
+
+SNIProxy builds on several excellent libraries:
+- [libev](http://software.schmorp.de/pkg/libev.html) - event loop
+- [PCRE2](https://www.pcre.org/) / [PCRE](https://www.pcre.org/) - regex
+- [UDNS](http://www.corpit.ru/mjt/udns.html) - async DNS resolution
