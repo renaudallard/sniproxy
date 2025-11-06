@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <limits.h>
+#include <stdint.h>
 #include <ev.h>
 #include "buffer.h"
 
