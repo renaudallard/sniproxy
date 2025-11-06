@@ -38,7 +38,12 @@
 #include <stdint.h>
 #include <sys/wait.h>
 #include <ev.h>
+#include <ctype.h>
+#include <time.h>
+#include <sys/time.h>
+#include <strings.h>
 #include <errno.h>
+#include <pthread.h>
 #ifdef HAVE_LIBUDNS
 #include <udns.h>
 #endif
@@ -122,6 +127,7 @@ static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
 static uint32_t resolver_next_query_id = 1;
 static struct ResolvQuery *resolver_queries = NULL;
+static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_io resolver_ipc_watcher;
 static int default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
 
@@ -131,8 +137,9 @@ static int resolver_send_message(uint32_t type, uint32_t id,
 static void resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
-static struct ResolvQuery *resolver_find_query(uint32_t id);
-static void resolver_detach_query(struct ResolvQuery *query);
+static void resolver_attach_query(struct ResolvQuery *query);
+static struct ResolvQuery *resolver_take_query(uint32_t id);
+static int resolver_detach_query(struct ResolvQuery *query);
 static void resolver_cleanup_pending_queries(void);
 
 /* Child-side declarations */
@@ -293,8 +300,7 @@ resolv_query(const char *hostname, int mode,
     query->client_cb = client_cb;
     query->client_free_cb = client_free_cb;
     query->client_cb_data = client_cb_data;
-    query->next = resolver_queries;
-    resolver_queries = query;
+    resolver_attach_query(query);
 
     uint8_t payload[sizeof(uint32_t) + RESOLVER_MAX_HOSTNAME_LEN];
     uint32_t mode_net = htonl((uint32_t)query->resolv_mode);
@@ -320,7 +326,9 @@ resolv_cancel(struct ResolvQuery *query) {
     if (query == NULL)
         return;
 
-    resolver_detach_query(query);
+    if (!resolver_detach_query(query))
+        return;
+
     resolver_send_message(RESOLVER_CMD_CANCEL, query->id, NULL, 0);
 
     if (query->client_free_cb != NULL)
@@ -422,11 +430,9 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
 
 static void
 resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) {
-    struct ResolvQuery *query = resolver_find_query(id);
+    struct ResolvQuery *query = resolver_take_query(id);
     if (query == NULL)
         return;
-
-    resolver_detach_query(query);
 
     int32_t status = -1;
     struct Address *address = NULL;
@@ -473,37 +479,61 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
     free(query);
 }
 
-static struct ResolvQuery *
-resolver_find_query(uint32_t id) {
-    struct ResolvQuery *iter = resolver_queries;
-    while (iter != NULL) {
-        if (iter->id == id)
-            return iter;
-        iter = iter->next;
-    }
-    return NULL;
-}
-
 static void
-resolver_detach_query(struct ResolvQuery *query) {
+resolver_attach_query(struct ResolvQuery *query) {
     if (query == NULL)
         return;
 
+    pthread_mutex_lock(&resolver_queries_lock);
+    query->next = resolver_queries;
+    resolver_queries = query;
+    pthread_mutex_unlock(&resolver_queries_lock);
+}
+
+static struct ResolvQuery *
+resolver_take_query(uint32_t id) {
+    pthread_mutex_lock(&resolver_queries_lock);
+    struct ResolvQuery **iter = &resolver_queries;
+    while (*iter != NULL) {
+        if ((*iter)->id == id) {
+            struct ResolvQuery *found = *iter;
+            *iter = found->next;
+            found->next = NULL;
+            pthread_mutex_unlock(&resolver_queries_lock);
+            return found;
+        }
+        iter = &(*iter)->next;
+    }
+    pthread_mutex_unlock(&resolver_queries_lock);
+    return NULL;
+}
+
+static int
+resolver_detach_query(struct ResolvQuery *query) {
+    if (query == NULL)
+        return 0;
+
+    pthread_mutex_lock(&resolver_queries_lock);
     struct ResolvQuery **iter = &resolver_queries;
     while (*iter != NULL) {
         if (*iter == query) {
             *iter = query->next;
             query->next = NULL;
-            return;
+            pthread_mutex_unlock(&resolver_queries_lock);
+            return 1;
         }
         iter = &(*iter)->next;
     }
+    pthread_mutex_unlock(&resolver_queries_lock);
+    return 0;
 }
 
 static void
 resolver_cleanup_pending_queries(void) {
+    pthread_mutex_lock(&resolver_queries_lock);
     struct ResolvQuery *iter = resolver_queries;
     resolver_queries = NULL;
+    pthread_mutex_unlock(&resolver_queries_lock);
 
     while (iter != NULL) {
         struct ResolvQuery *next = iter->next;
