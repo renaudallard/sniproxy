@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <sys/queue.h>
 #include <assert.h>
 #include "backend.h"
@@ -34,14 +35,37 @@
 #include "logger.h"
 
 #if defined(HAVE_LIBPCRE2_8)
-#define BACKEND_REGEX_MATCH_LIMIT 10000
 #define BACKEND_REGEX_DEPTH_LIMIT 1000
 #elif defined(HAVE_LIBPCRE)
-#define BACKEND_REGEX_MATCH_LIMIT 10000
 #define BACKEND_REGEX_RECURSION_LIMIT 500
 #endif
 
+#define BACKEND_REGEX_MATCH_LIMIT 10000
+#define BACKEND_REGEX_MATCH_BASE 256
+#define BACKEND_REGEX_MATCH_PER_CHAR 32
+
 static const char *backend_config_options(const struct Backend *);
+static uint32_t backend_regex_match_limit_for_len(size_t len);
+
+static uint32_t
+backend_regex_match_limit_for_len(size_t len) {
+    uint64_t limit = BACKEND_REGEX_MATCH_BASE;
+
+    if (len > 0) {
+        uint64_t extra = (uint64_t)len * BACKEND_REGEX_MATCH_PER_CHAR;
+        if (extra > UINT32_MAX)
+            extra = UINT32_MAX;
+        limit += extra;
+    }
+
+    if (limit > BACKEND_REGEX_MATCH_LIMIT)
+        limit = BACKEND_REGEX_MATCH_LIMIT;
+
+    if (limit < BACKEND_REGEX_MATCH_BASE)
+        limit = BACKEND_REGEX_MATCH_BASE;
+
+    return (uint32_t)limit;
+}
 
 #if defined(HAVE_LIBPCRE2_8)
 static pcre2_match_context *backend_match_ctx;
@@ -207,6 +231,10 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
         name_len = 0;
     }
 
+#if defined(HAVE_LIBPCRE2_8) || defined(HAVE_LIBPCRE)
+    uint32_t match_limit = backend_regex_match_limit_for_len(name_len);
+#endif
+
     for (iter = STAILQ_FIRST(head); iter != NULL; iter = STAILQ_NEXT(iter, entries)) {
         if (iter->pattern_re == NULL)
             continue;
@@ -215,10 +243,12 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
         if (md == NULL)
             continue;
 
+        pcre2_set_match_limit(backend_match_ctx, match_limit);
         int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, backend_match_ctx);
         if (ret >= 0)
             return iter;
 #elif defined(HAVE_LIBPCRE)
+        backend_match_extra_storage.match_limit = match_limit;
         if (pcre_exec(iter->pattern_re, backend_match_extra,
                     name, name_len, 0, 0, NULL, 0) >= 0)
             return iter;
