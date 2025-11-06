@@ -91,9 +91,14 @@ next_word(FILE *file, char *buffer, int buffer_len) {
     int quoted = 0;
     int escaped = 0;
 
-    while ((ch = getc(file)) != EOF && len < buffer_len) {
+    if (buffer_len <= 0)
+        return -1;
+
+    while ((ch = getc(file)) != EOF) {
         if (escaped) {
             escaped = 0;
+            if (len >= buffer_len - 1)
+                return -1;
             buffer[len] = (char)ch;
             len++;
             continue;
@@ -125,6 +130,8 @@ next_word(FILE *file, char *buffer, int buffer_len) {
                 }
                 /* fall through */
             default:
+                if (len >= buffer_len - 1)
+                    return -1;
                 buffer[len] = (char)ch;
                 len++;
         }
