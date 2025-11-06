@@ -64,6 +64,7 @@ new_buffer(size_t size, struct ev_loop *loop) {
     buf->size_mask = size - 1;
     buf->len = 0;
     buf->head = 0;
+    buf->max_size = BUFFER_MAX_SIZE;
     buf->tx_bytes = 0;
     buf->rx_bytes = 0;
     const ev_tstamp now = ev_now(loop);
@@ -83,7 +84,7 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
     if (NOT_POWER_OF_2(new_size))
         return -4;
 
-    if (new_size > BUFFER_MAX_SIZE)
+    if (new_size > buf->max_size)
         return -3;
 
     if (new_size < buf->len)
@@ -139,14 +140,14 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
     if (min_room == 0 || buffer_room(buf) >= min_room)
         return 0;
 
-    if (min_room > BUFFER_MAX_SIZE - buf->len)
+    if (buf->len >= buf->max_size || min_room > buf->max_size - buf->len)
         return -1;
 
     size_t required = buf->len + min_room;
     size_t current_size = buffer_size(buf);
     size_t new_size = next_power_of_two(required);
 
-    if (new_size == 0 || new_size > BUFFER_MAX_SIZE)
+    if (new_size == 0 || new_size > buf->max_size)
         return -1;
 
     if (new_size < current_size)
@@ -157,6 +158,22 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
 
     return buffer_resize(buf, new_size) < 0 ? -1 : 0;
 }
+
+void
+buffer_set_max_size(struct Buffer *buf, size_t max_size) {
+    if (buf == NULL)
+        return;
+
+    if (max_size == 0 || max_size > BUFFER_MAX_SIZE)
+        max_size = BUFFER_MAX_SIZE;
+
+    size_t current_size = buffer_size(buf);
+    if (max_size < current_size)
+        max_size = current_size;
+
+    buf->max_size = max_size;
+}
+
 
 int
 buffer_maybe_shrink(struct Buffer *buf) {

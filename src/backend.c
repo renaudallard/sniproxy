@@ -33,8 +33,27 @@
 #include "address.h"
 #include "logger.h"
 
+#if defined(HAVE_LIBPCRE2_8)
+#define BACKEND_REGEX_MATCH_LIMIT 10000
+#define BACKEND_REGEX_DEPTH_LIMIT 1000
+#elif defined(HAVE_LIBPCRE)
+#define BACKEND_REGEX_MATCH_LIMIT 10000
+#define BACKEND_REGEX_RECURSION_LIMIT 500
+#endif
 
 static const char *backend_config_options(const struct Backend *);
+
+#if defined(HAVE_LIBPCRE2_8)
+static pcre2_match_context *backend_match_ctx;
+static int backend_match_ctx_registered;
+static void backend_regex_runtime_init(void);
+static void backend_regex_cleanup(void);
+#elif defined(HAVE_LIBPCRE)
+static pcre_extra backend_match_extra_storage;
+static pcre_extra *backend_match_extra;
+static int backend_match_extra_initialized;
+static void backend_regex_runtime_init(void);
+#endif
 
 
 struct Backend *
@@ -179,6 +198,10 @@ struct Backend *
 lookup_backend(const struct Backend_head *head, const char *name, size_t name_len) {
     struct Backend *iter;
 
+#if defined(HAVE_LIBPCRE2_8) || defined(HAVE_LIBPCRE)
+    backend_regex_runtime_init();
+#endif
+
     if (name == NULL) {
         name = "";
         name_len = 0;
@@ -192,11 +215,11 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
         if (md == NULL)
             continue;
 
-        int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, NULL);
+        int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, backend_match_ctx);
         if (ret >= 0)
             return iter;
 #elif defined(HAVE_LIBPCRE)
-        if (pcre_exec(iter->pattern_re, NULL,
+        if (pcre_exec(iter->pattern_re, backend_match_extra,
                     name, name_len, 0, 0, NULL, 0) >= 0)
             return iter;
 #endif
@@ -247,3 +270,50 @@ free_backend(struct Backend *backend) {
 #endif
     free(backend);
 }
+
+#if defined(HAVE_LIBPCRE2_8)
+static void
+backend_regex_cleanup(void) {
+    if (backend_match_ctx != NULL) {
+        pcre2_match_context_free(backend_match_ctx);
+        backend_match_ctx = NULL;
+    }
+}
+
+static void
+backend_regex_runtime_init(void) {
+    if (backend_match_ctx != NULL || backend_match_ctx_registered == -1)
+        return;
+
+    backend_match_ctx = pcre2_match_context_create(NULL);
+    if (backend_match_ctx == NULL) {
+        err("Failed to allocate PCRE2 match context for backend lookups");
+        backend_match_ctx_registered = -1;
+        return;
+    }
+
+    pcre2_set_match_limit(backend_match_ctx, BACKEND_REGEX_MATCH_LIMIT);
+    pcre2_set_depth_limit(backend_match_ctx, BACKEND_REGEX_DEPTH_LIMIT);
+
+    if (!backend_match_ctx_registered) {
+        atexit(backend_regex_cleanup);
+        backend_match_ctx_registered = 1;
+    }
+}
+#elif defined(HAVE_LIBPCRE)
+static void
+backend_regex_runtime_init(void) {
+    if (backend_match_extra_initialized)
+        return;
+
+    memset(&backend_match_extra_storage, 0, sizeof(backend_match_extra_storage));
+    backend_match_extra_storage.flags = PCRE_EXTRA_MATCH_LIMIT;
+    backend_match_extra_storage.match_limit = BACKEND_REGEX_MATCH_LIMIT;
+#ifdef PCRE_EXTRA_MATCH_LIMIT_RECURSION
+    backend_match_extra_storage.flags |= PCRE_EXTRA_MATCH_LIMIT_RECURSION;
+    backend_match_extra_storage.match_limit_recursion = BACKEND_REGEX_RECURSION_LIMIT;
+#endif
+    backend_match_extra = &backend_match_extra_storage;
+    backend_match_extra_initialized = 1;
+}
+#endif

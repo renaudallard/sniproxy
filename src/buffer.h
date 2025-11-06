@@ -37,6 +37,7 @@ struct Buffer {
     size_t size_mask;       /* bit mask for buffer size */
     size_t head;            /* index of first byte of content */
     size_t len;             /* size of content */
+    size_t max_size;        /* hard cap for buffer_size() */
     ev_tstamp last_recv;
     ev_tstamp last_send;
     size_t tx_bytes;
@@ -52,6 +53,7 @@ ssize_t buffer_read(struct Buffer *, int);
 ssize_t buffer_write(struct Buffer *, int);
 ssize_t buffer_resize(struct Buffer *, size_t);
 int buffer_reserve(struct Buffer *, size_t);
+void buffer_set_max_size(struct Buffer *, size_t);
 int buffer_maybe_shrink(struct Buffer *);
 size_t buffer_peek(const struct Buffer *, void *, size_t);
 size_t buffer_coalesce(struct Buffer *, const void **);

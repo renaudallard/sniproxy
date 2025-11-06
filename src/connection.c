@@ -55,6 +55,8 @@
                                       _errno == EINTR)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define SERVER_BUFFER_MIN_SIZE 2048
+#define CLIENT_BUFFER_MAX_SIZE (1U << 20)
+#define CONNECTION_IDLE_TIMEOUT 60.0
 
 
 struct resolv_cb_data {
@@ -91,6 +93,9 @@ static void log_bad_request(struct Connection *, const char *, size_t, int);
 static void free_connection(struct Connection *);
 static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(struct resolv_cb_data *);
+static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
+static void reset_idle_timer(struct Connection *, struct ev_loop *);
+static void stop_idle_timer(struct Connection *, struct ev_loop *);
 
 
 void
@@ -171,6 +176,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     TAILQ_INSERT_HEAD(&connections, con, entries);
 
     ev_io_start(loop, client_watcher);
+    reset_idle_timer(con, loop);
 
     if (con->listener->table->use_proxy_header ||
             con->listener->fallback_use_proxy_header)
@@ -320,11 +326,14 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
     if (revents & EV_READ && buffer_room(input_buffer)) {
         ssize_t bytes_received = 0;
+        int read_activity = 0;
 
         do {
             bytes_received = buffer_recv(input_buffer, w->fd, 0, loop);
-            if (bytes_received > 0)
+            if (bytes_received > 0) {
+                read_activity = 1;
                 continue;
+            }
 
             /*
              * Stop retrying within this callback even when interrupted so
@@ -333,6 +342,9 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
              */
             break;
         } while (buffer_room(input_buffer));
+
+        if (read_activity)
+            reset_idle_timer(con, loop);
 
         if (bytes_received < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("recv(%s): %s, closing connection",
@@ -350,15 +362,21 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     /* Transmit */
     if (revents & EV_WRITE && buffer_len(output_buffer)) {
         ssize_t bytes_transmitted = 0;
+        int write_activity = 0;
 
         do {
             bytes_transmitted = buffer_send(output_buffer, w->fd, 0, loop);
-            if (bytes_transmitted > 0)
+            if (bytes_transmitted > 0) {
+                write_activity = 1;
                 continue;
+            }
 
             /* See comment above for receive side. */
             break;
         } while (buffer_len(output_buffer));
+
+        if (write_activity)
+            reset_idle_timer(con, loop);
 
         if (bytes_transmitted < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("send(%s): %s, closing connection",
@@ -388,6 +406,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         close_server_socket(con, loop);
 
     if (con->state == CLOSED) {
+        stop_idle_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
 
         if (con->listener->access_log)
@@ -453,6 +472,40 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w,
         ev_io_set(w, w->fd, events);
         ev_io_start(loop, w);
     }
+}
+
+static void
+reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
+    if (CONNECTION_IDLE_TIMEOUT <= 0.0)
+        return;
+
+    ev_timer_stop(loop, &con->idle_timer);
+    ev_timer_set(&con->idle_timer, CONNECTION_IDLE_TIMEOUT, 0.0);
+    ev_timer_start(loop, &con->idle_timer);
+}
+
+static void
+stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
+    if (ev_is_active(&con->idle_timer))
+        ev_timer_stop(loop, &con->idle_timer);
+}
+
+static void
+connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attribute__((unused))) {
+    struct Connection *con = w->data;
+    char client[INET6_ADDRSTRLEN + 8];
+
+    warn("Closing idle connection from %s after %.0f seconds without activity",
+            display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
+            CONNECTION_IDLE_TIMEOUT);
+
+    close_connection(con, loop);
+    TAILQ_REMOVE(&connections, con, entries);
+
+    if (con->listener->access_log)
+        log_connection(con);
+
+    free_connection(con);
 }
 
 static void
@@ -944,6 +997,8 @@ static void
 close_connection(struct Connection *con, struct ev_loop *loop) {
     assert(con->state != NEW); /* only used during initialization */
 
+    stop_idle_timer(con, loop);
+
     if (server_socket_open(con))
         close_server_socket(con, loop);
 
@@ -981,12 +1036,15 @@ new_connection(struct ev_loop *loop) {
     con->header_len = 0;
     con->query_handle = NULL;
     con->use_proxy_header = 0;
+    ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
+    con->idle_timer.data = con;
 
     con->client.buffer = new_buffer(2048, loop);
     if (con->client.buffer == NULL) {
         free_connection(con);
         return NULL;
     }
+    buffer_set_max_size(con->client.buffer, CLIENT_BUFFER_MAX_SIZE);
 
     con->server.buffer = new_buffer(16384, loop);
     if (con->server.buffer == NULL) {
