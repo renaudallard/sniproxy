@@ -447,9 +447,10 @@ Contributions are welcome! Areas of particular interest:
 
 ### Credits
 
-Original author: Dustin Lundquist <dustin@null-ptr.net>
+Thanks to the original author: Dustin Lundquist <dustin@null-ptr.net>
+Current author: Renaud Allard <renaud@allard.it>
 
-Contributors: Manuel Kasper, Renaud Allard, and others
+Contributors: Manuel Kasper and others
 
 SNIProxy builds on several excellent libraries:
 - [libev](http://software.schmorp.de/pkg/libev.html) - event loop
