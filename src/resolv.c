@@ -1038,7 +1038,7 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
     if (!query->cancelled)
         resolver_child_send_result(query->id, best_address, best_address == NULL ? -1 : 0);
 
-    resolver_child_maybe_free_query(query);
+    /* Query lifetime is managed by the caller once pending lookups finish. */
 }
 
 static char *
