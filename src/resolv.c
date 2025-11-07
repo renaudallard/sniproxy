@@ -639,9 +639,21 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
         ev_timer_stop(loop, &child_dns_timeout_watcher);
 
     if (child_channel != NULL) {
-        ares_cancel(child_channel);
+        /* ares_destroy will invoke callbacks for all pending queries.
+         * After it returns, c-ares no longer holds any query pointers. */
         ares_destroy(child_channel);
         child_channel = NULL;
+    }
+
+    /* Free any remaining queries that weren't freed by callbacks.
+     * This can happen if callbacks failed to allocate memory or
+     * if there were internal c-ares issues. */
+    struct ResolverChildQuery *query = child_queries;
+    child_queries = NULL;
+    while (query != NULL) {
+        struct ResolverChildQuery *next = query->next;
+        resolver_child_free_query(query);
+        query = next;
     }
 }
 
@@ -840,18 +852,13 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
 
 static void
 resolver_child_cancel_all(void) {
-    if (child_channel != NULL)
-        ares_cancel(child_channel);
-
+    /* Mark all queries as cancelled but don't free them yet.
+     * The c-ares channel cleanup will deliver cancellation callbacks,
+     * which will handle freeing via maybe_free_query(). */
     struct ResolverChildQuery *query = child_queries;
-    child_queries = NULL;
-
     while (query != NULL) {
-        struct ResolverChildQuery *next = query->next;
-        query->next = NULL;
         query->cancelled = 1;
-        resolver_child_maybe_free_query(query);
-        query = next;
+        query = query->next;
     }
 }
 
