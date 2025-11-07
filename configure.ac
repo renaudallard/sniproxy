@@ -21,6 +21,8 @@ AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [],
 
 AC_CHECK_HEADERS([ares.h], [],
   [AC_MSG_ERROR([c-ares headers are required])])
+AC_CHECK_HEADERS([ares_dns.h], [],
+  [AC_MSG_ERROR([c-ares addrinfo headers are required])])
 AC_CHECK_LIB([cares], [ares_library_init], [],
   [AC_MSG_ERROR([c-ares is required])])
 

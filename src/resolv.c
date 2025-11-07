@@ -46,6 +46,10 @@
 #include <errno.h>
 #include <pthread.h>
 #include <ares.h>
+#include <ares_dns.h>
+#ifndef ARES_GETSOCK_MAXNUM
+#define ARES_GETSOCK_MAXNUM 16
+#endif
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -120,15 +124,17 @@ static void resolver_child_remove_query(struct ResolverChildQuery *query);
 static void resolver_child_free_query(struct ResolverChildQuery *query);
 static void resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_schedule_timeout(struct ev_loop *loop);
-static void resolver_child_update_cares_watchers(struct ev_loop *loop);
 static void resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents);
+static void resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, int writable);
+static void resolver_child_watch_fd(struct ev_loop *loop, ares_socket_t fd, int events);
 static void resolver_child_process_callback(struct ResolverChildQuery *query);
 static void resolver_child_maybe_process_callback(struct ResolverChildQuery *query);
 static struct Address *resolver_child_choose_ipv4_first(struct ResolverChildQuery *query);
 static struct Address *resolver_child_choose_ipv6_first(struct ResolverChildQuery *query);
 static struct Address *resolver_child_choose_any(struct ResolverChildQuery *query);
-static void resolver_child_dns_query_v4_cb(void *arg, int status, int timeouts, struct hostent *result);
-static void resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts, struct hostent *result);
+static void resolver_child_dns_query_v4_cb(void *arg, int status, int timeouts, struct ares_addrinfo *result);
+static void resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts, struct ares_addrinfo *result);
+static void resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, struct ares_addrinfo *result, int family);
 static void resolver_child_maybe_free_query(struct ResolverChildQuery *query);
 static char *resolver_child_nameservers_csv(char **nameservers);
 
@@ -136,7 +142,7 @@ static int child_default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
 static int child_sock = -1;
 static struct ev_loop *child_loop = NULL;
 static struct ResolverChildQuery *child_queries = NULL;
-static ares_channel_t child_channel = NULL;
+static ares_channel_t *child_channel = NULL;
 static struct ev_io child_ipc_watcher;
 static struct ev_timer child_dns_timeout_watcher;
 struct resolver_child_cares_io {
@@ -566,8 +572,20 @@ static void
 resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         char **search_domains, int default_mode) {
     struct ares_options options;
+    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
+        child_dns_watchers[i].active = 0;
+        child_dns_watchers[i].events = 0;
+        child_dns_watchers[i].fd = ARES_SOCKET_BAD;
+    }
+
+    struct ares_options *options_ptr = NULL;
     int optmask = 0;
     memset(&options, 0, sizeof(options));
+
+    options.sock_state_cb = resolver_child_sock_state_cb;
+    options.sock_state_cb_data = loop;
+    optmask |= ARES_OPT_SOCK_STATE_CB;
+    options_ptr = &options;
 
     if (search_domains != NULL && search_domains[0] != NULL) {
         int ndomains = 0;
@@ -578,9 +596,7 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         optmask |= ARES_OPT_DOMAINS;
     }
 
-    int status = (optmask != 0) ?
-            ares_init_options(&child_channel, &options, optmask) :
-            ares_init(&child_channel);
+    int status = ares_init_options(&child_channel, options_ptr, optmask);
     if (status != ARES_SUCCESS) {
         err("resolver child: ares_init failed: %s", ares_strerror(status));
         _exit(EXIT_FAILURE);
@@ -604,7 +620,6 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
 
     ev_timer_init(&child_dns_timeout_watcher, resolver_child_dns_timeout_cb, 0.0, 0.0);
 
-    resolver_child_update_cares_watchers(loop);
     resolver_child_schedule_timeout(loop);
 }
 
@@ -615,6 +630,8 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
             ev_io_stop(loop, &child_dns_watchers[i].watcher);
             child_dns_watchers[i].active = 0;
         }
+        child_dns_watchers[i].events = 0;
+        child_dns_watchers[i].fd = ARES_SOCKET_BAD;
     }
 
     if (ev_is_active(&child_dns_timeout_watcher))
@@ -740,8 +757,13 @@ resolver_child_submit_query(uint32_t id, int mode,
     }
 
     if (query->resolv_mode != RESOLV_MODE_IPV6_ONLY) {
+        struct ares_addrinfo_hints hints = {
+            .ai_family = AF_INET,
+            .ai_socktype = SOCK_STREAM,
+            .ai_protocol = IPPROTO_TCP,
+        };
         query->pending_v4 = 1;
-        int status = ares_gethostbyname(child_channel, hostname_copy, AF_INET,
+        int status = ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v4_cb, query);
         if (status != ARES_SUCCESS) {
             err("resolver child: failed to submit A query: %s",
@@ -751,8 +773,13 @@ resolver_child_submit_query(uint32_t id, int mode,
     }
 
     if (query->resolv_mode != RESOLV_MODE_IPV4_ONLY) {
+        struct ares_addrinfo_hints hints = {
+            .ai_family = AF_INET6,
+            .ai_socktype = SOCK_STREAM,
+            .ai_protocol = IPPROTO_TCP,
+        };
         query->pending_v6 = 1;
-        int status = ares_gethostbyname(child_channel, hostname_copy, AF_INET6,
+        int status = ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v6_cb, query);
         if (status != ARES_SUCCESS) {
             err("resolver child: failed to submit AAAA query: %s",
@@ -767,7 +794,6 @@ resolver_child_submit_query(uint32_t id, int mode,
         return;
     }
 
-    resolver_child_update_cares_watchers(child_loop);
     resolver_child_schedule_timeout(child_loop);
 }
 
@@ -877,6 +903,83 @@ resolver_child_free_query(struct ResolverChildQuery *query) {
     free(query);
 }
 
+static struct resolver_child_cares_io *
+resolver_child_find_watch_slot(ares_socket_t fd) {
+    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
+        if (child_dns_watchers[i].active && child_dns_watchers[i].fd == fd)
+            return &child_dns_watchers[i];
+    }
+
+    return NULL;
+}
+
+static struct resolver_child_cares_io *
+resolver_child_get_free_watch_slot(void) {
+    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++)
+        if (!child_dns_watchers[i].active)
+            return &child_dns_watchers[i];
+
+    return NULL;
+}
+
+static void
+resolver_child_watch_fd(struct ev_loop *loop, ares_socket_t fd, int events) {
+    struct resolver_child_cares_io *slot = resolver_child_find_watch_slot(fd);
+
+    if (events == 0) {
+        if (slot != NULL && slot->active) {
+            ev_io_stop(loop, &slot->watcher);
+            slot->active = 0;
+            slot->events = 0;
+            slot->fd = ARES_SOCKET_BAD;
+        }
+        return;
+    }
+
+    if (slot == NULL) {
+        slot = resolver_child_get_free_watch_slot();
+        if (slot == NULL) {
+            err("resolver child: no free watcher slots for DNS sockets");
+            return;
+        }
+        slot->fd = fd;
+        slot->events = events;
+        ev_io_init(&slot->watcher, resolver_child_cares_io_cb, fd, events);
+        slot->active = 1;
+        ev_io_start(loop, &slot->watcher);
+        return;
+    }
+
+    if (!slot->active) {
+        ev_io_init(&slot->watcher, resolver_child_cares_io_cb, fd, events);
+        slot->events = events;
+        slot->active = 1;
+        ev_io_start(loop, &slot->watcher);
+        return;
+    }
+
+    if (slot->events != events) {
+        ev_io_stop(loop, &slot->watcher);
+        ev_io_set(&slot->watcher, fd, events);
+        slot->events = events;
+        ev_io_start(loop, &slot->watcher);
+    }
+}
+
+static void
+resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, int writable) {
+    struct ev_loop *loop = (struct ev_loop *)data;
+    int events = 0;
+
+    if (readable)
+        events |= EV_READ;
+    if (writable)
+        events |= EV_WRITE;
+
+    resolver_child_watch_fd(loop, socket_fd, events);
+    resolver_child_schedule_timeout(loop);
+}
+
 static void
 resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (child_channel == NULL)
@@ -887,7 +990,6 @@ resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
     ares_process_fd(child_channel, read_fd, write_fd);
 
-    resolver_child_update_cares_watchers(loop);
     resolver_child_schedule_timeout(loop);
 }
 
@@ -898,7 +1000,6 @@ resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w __attribu
 
     ares_process_fd(child_channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
 
-    resolver_child_update_cares_watchers(loop);
     resolver_child_schedule_timeout(loop);
 }
 
@@ -925,49 +1026,6 @@ resolver_child_schedule_timeout(struct ev_loop *loop) {
         ev_timer_start(loop, &child_dns_timeout_watcher);
 }
 
-static void
-resolver_child_update_cares_watchers(struct ev_loop *loop) {
-    if (child_channel == NULL)
-        return;
-
-    ares_socket_t sockets[ARES_GETSOCK_MAXNUM];
-    int bitmask = ares_getsock(child_channel, sockets, ARES_GETSOCK_MAXNUM);
-
-    for (int i = 0; i < ARES_GETSOCK_MAXNUM; i++) {
-        int want_read = ARES_GETSOCK_READABLE(bitmask, i);
-        int want_write = ARES_GETSOCK_WRITABLE(bitmask, i);
-        int want_events = 0;
-        if (want_read)
-            want_events |= EV_READ;
-        if (want_write)
-            want_events |= EV_WRITE;
-
-        struct resolver_child_cares_io *slot = &child_dns_watchers[i];
-
-        if (want_events == 0) {
-            if (slot->active) {
-                ev_io_stop(loop, &slot->watcher);
-                slot->active = 0;
-            }
-            continue;
-        }
-
-        if (!slot->active || slot->fd != sockets[i]) {
-            if (slot->active)
-                ev_io_stop(loop, &slot->watcher);
-            ev_io_init(&slot->watcher, resolver_child_cares_io_cb, sockets[i], want_events);
-            slot->fd = sockets[i];
-            slot->events = want_events;
-            slot->active = 1;
-            ev_io_start(loop, &slot->watcher);
-        } else if (slot->events != want_events) {
-            ev_io_stop(loop, &slot->watcher);
-            ev_io_set(&slot->watcher, slot->fd, want_events);
-            slot->events = want_events;
-            ev_io_start(loop, &slot->watcher);
-        }
-    }
-}
 
 static void
 resolver_child_process_callback(struct ResolverChildQuery *query) {
@@ -1098,100 +1156,62 @@ resolver_child_choose_any(struct ResolverChildQuery *query) {
 }
 
 static void
-resolver_child_dns_query_v4_cb(void *arg, int status, int timeouts __attribute__((unused)), struct hostent *result) {
+resolver_child_dns_query_v4_cb(void *arg, int status, int timeouts __attribute__((unused)), struct ares_addrinfo *result) {
     struct ResolverChildQuery *query = (struct ResolverChildQuery *)arg;
-    size_t responses_added = 0;
 
-    if (status == ARES_SUCCESS && result != NULL &&
-            result->h_addrtype == AF_INET && result->h_addr_list != NULL) {
-        int addr_count = 0;
-        for (char **addr = result->h_addr_list; addr != NULL && *addr != NULL; addr++)
-            addr_count++;
-
-        if (addr_count > 0) {
-            struct Address **new_responses = realloc(query->responses,
-                    (query->response_count + (size_t)addr_count) * sizeof(struct Address *));
-            if (new_responses == NULL) {
-                err("resolver child: failed to allocate memory for DNS responses");
-            } else {
-                query->responses = new_responses;
-                for (int i = 0; i < addr_count; i++) {
-                    struct sockaddr_in sa = {
-                        .sin_family = AF_INET,
-                        .sin_port = 0,
-                    };
-                    memcpy(&sa.sin_addr, result->h_addr_list[i], sizeof(sa.sin_addr));
-
-                    struct Address *response =
-                            new_address_sa((struct sockaddr *)&sa, sizeof(sa));
-                    if (response == NULL) {
-                        err("resolver child: failed to allocate memory for DNS query result address");
-                        continue;
-                    }
-                    query->responses[query->response_count++] = response;
-                    responses_added++;
-                }
-            }
-        }
-    } else if (status != ARES_ENOTFOUND && status != ARES_ENODATA && status != ARES_EDESTRUCTION) {
-        info("resolver child: %s", ares_strerror(status));
-    }
-
-    if (result != NULL)
-        ares_free_hostent(result);
-
-    query->ipv4_response_count += responses_added;
-    query->pending_v4 = 0;
-
-    resolver_child_maybe_process_callback(query);
-    resolver_child_maybe_free_query(query);
+    resolver_child_handle_addrinfo(query, status, result, AF_INET);
 }
 
 static void
-resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts __attribute__((unused)), struct hostent *result) {
+resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts __attribute__((unused)), struct ares_addrinfo *result) {
     struct ResolverChildQuery *query = (struct ResolverChildQuery *)arg;
+
+    resolver_child_handle_addrinfo(query, status, result, AF_INET6);
+}
+
+static void
+resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, struct ares_addrinfo *result, int family) {
     size_t responses_added = 0;
 
-    if (status == ARES_SUCCESS && result != NULL &&
-            result->h_addrtype == AF_INET6 && result->h_addr_list != NULL) {
-        int addr_count = 0;
-        for (char **addr = result->h_addr_list; addr != NULL && *addr != NULL; addr++)
-            addr_count++;
+    if (status == ARES_SUCCESS && result != NULL) {
+        for (struct ares_addrinfo_node *node = result->nodes; node != NULL; node = node->ai_next) {
+            if (node->ai_family != family || node->ai_addr == NULL)
+                continue;
 
-        if (addr_count > 0) {
-            struct Address **new_responses = realloc(query->responses,
-                    (query->response_count + (size_t)addr_count) * sizeof(struct Address *));
-            if (new_responses == NULL) {
-                err("resolver child: failed to allocate memory for DNS responses");
-            } else {
-                query->responses = new_responses;
-                for (int i = 0; i < addr_count; i++) {
-                    struct sockaddr_in6 sa = {
-                        .sin6_family = AF_INET6,
-                        .sin6_port = 0,
-                    };
-                    memcpy(&sa.sin6_addr, result->h_addr_list[i], sizeof(sa.sin6_addr));
-
-                    struct Address *response =
-                            new_address_sa((struct sockaddr *)&sa, sizeof(sa));
-                    if (response == NULL) {
-                        err("resolver child: failed to allocate memory for DNS query result address");
-                        continue;
-                    }
-                    query->responses[query->response_count++] = response;
-                    responses_added++;
-                }
+            struct Address *response = new_address_sa(node->ai_addr, (socklen_t)node->ai_addrlen);
+            if (response == NULL) {
+                err("resolver child: failed to allocate memory for DNS query result address");
+                continue;
             }
+
+            struct Address **tmp = realloc(query->responses,
+                    (query->response_count + 1) * sizeof(struct Address *));
+            if (tmp == NULL) {
+                err("resolver child: failed to expand DNS response list");
+                free(response);
+                break;
+            }
+
+            query->responses = tmp;
+            query->responses[query->response_count++] = response;
+            responses_added++;
         }
     } else if (status != ARES_ENOTFOUND && status != ARES_ENODATA && status != ARES_EDESTRUCTION) {
         info("resolver child: %s", ares_strerror(status));
     }
 
     if (result != NULL)
-        ares_free_hostent(result);
+        ares_freeaddrinfo(result);
 
-    query->ipv6_response_count += responses_added;
-    query->pending_v6 = 0;
+    if (family == AF_INET)
+        query->ipv4_response_count += responses_added;
+    else
+        query->ipv6_response_count += responses_added;
+
+    if (family == AF_INET)
+        query->pending_v4 = 0;
+    else
+        query->pending_v6 = 0;
 
     resolver_child_maybe_process_callback(query);
     resolver_child_maybe_free_query(query);
