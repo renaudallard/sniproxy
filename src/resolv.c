@@ -763,13 +763,8 @@ resolver_child_submit_query(uint32_t id, int mode,
             .ai_protocol = IPPROTO_TCP,
         };
         query->pending_v4 = 1;
-        int status = ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
+        ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v4_cb, query);
-        if (status != ARES_SUCCESS) {
-            err("resolver child: failed to submit A query: %s",
-                    ares_strerror(status));
-            query->pending_v4 = 0;
-        }
     }
 
     if (query->resolv_mode != RESOLV_MODE_IPV4_ONLY) {
@@ -779,13 +774,8 @@ resolver_child_submit_query(uint32_t id, int mode,
             .ai_protocol = IPPROTO_TCP,
         };
         query->pending_v6 = 1;
-        int status = ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
+        ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v6_cb, query);
-        if (status != ARES_SUCCESS) {
-            err("resolver child: failed to submit AAAA query: %s",
-                    ares_strerror(status));
-            query->pending_v6 = 0;
-        }
     }
 
     if (query->pending_v4 == 0 && query->pending_v6 == 0) {
