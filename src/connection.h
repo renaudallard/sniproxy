@@ -72,8 +72,6 @@ void print_connections(void);
 #define DEFAULT_DNS_QUERY_CONCURRENCY 256
 
 void connections_set_per_ip_connection_rate(double rate);
-#ifdef HAVE_LIBUDNS
 void connections_set_dns_query_limit(size_t limit);
-#endif
 
 #endif

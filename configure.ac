@@ -19,13 +19,10 @@ AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [],
 	     [AC_CHECK_LIB([pcre], [pcre_exec], [],
 			   [AC_MSG_ERROR([libpcre is required])])])
 
-AC_ARG_ENABLE([dns],
-	      [AS_HELP_STRING([--enable-dns], [Enable DNS resolution])])
-
-AM_CONDITIONAL([DNS_ENABLED], [test "$enable_dns"])
-
-AS_IF([test "$enable_dns"],
-      [AC_CHECK_LIB([udns], [dns_init])])
+AC_CHECK_HEADERS([ares.h], [],
+  [AC_MSG_ERROR([c-ares headers are required])])
+AC_CHECK_LIB([cares], [ares_library_init], [],
+  [AC_MSG_ERROR([c-ares is required])])
 
 AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],

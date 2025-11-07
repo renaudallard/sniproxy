@@ -344,15 +344,9 @@ accept_listener_fallback_address(struct Listener *listener, const char *fallback
             listener->fallback_address = fallback_address;
             return 1;
         } else if (address_is_hostname(fallback_address)) {
-#ifndef HAVE_LIBUDNS
-            err("Only fallback socket addresses permitted when compiled without libudns");
-            free(fallback_address);
-            return 0;
-#else
             warn("Using hostname as fallback address is strongly discouraged");
             listener->fallback_address = fallback_address;
             return 1;
-#endif
         } else if (address_is_wildcard(fallback_address)) {
             /* The wildcard functionality requires successfully parsing the
              * hostname from the client's request, if we couldn't find the

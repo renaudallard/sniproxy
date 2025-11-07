@@ -126,10 +126,8 @@ static int sockaddr_equal_ip(const struct sockaddr_storage *,
 static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
 static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
 
-#ifdef HAVE_LIBUDNS
 static int dns_query_acquire(void);
 static void dns_query_release(void);
-#endif
 
 
 void
@@ -707,7 +705,6 @@ connections_set_per_ip_connection_rate(double rate) {
     rate_limit_reset();
 }
 
-#ifdef HAVE_LIBUDNS
 static size_t max_concurrent_dns_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
 static size_t active_dns_queries;
 
@@ -733,7 +730,6 @@ connections_set_dns_query_limit(size_t limit) {
 
     max_concurrent_dns_queries = limit;
 }
-#endif
 
 static void
 connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attribute__((unused))) {
@@ -930,19 +926,6 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         abort_connection(con);
         return;
     } else if (address_is_hostname(result.address)) {
-#ifndef HAVE_LIBUDNS
-        warn("DNS lookups not supported unless sniproxy compiled with libudns");
-
-        if (result.caller_free_address)
-            free((void *)result.address);
-
-        abort_connection(con);
-        (void)loop;
-        (void)free_resolv_cb_data;
-        (void)resolv_cb;
-
-        return;
-#else
         struct resolv_cb_data *cb_data = malloc(sizeof(struct resolv_cb_data));
         if (cb_data == NULL) {
             err("%s: malloc", __func__);
@@ -1035,7 +1018,6 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
             return;
         }
-#endif
     } else if (address_is_sockaddr(result.address)) {
         con->server.addr_len = address_sa_len(result.address);
         assert(con->server.addr_len <= sizeof(con->server.addr));
@@ -1059,9 +1041,7 @@ resolv_cb(struct Address *result, void *data) {
     struct Connection *con = cb_data->connection;
     struct ev_loop *loop = cb_data->loop;
 
-#ifdef HAVE_LIBUDNS
     dns_query_release();
-#endif
 
     if (con->state != RESOLVING) {
         warn("resolv_cb() called for connection not in RESOLVING state");
@@ -1243,9 +1223,7 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
     if (con->state == RESOLVING) {
         if (con->query_handle != NULL) {
             resolv_cancel(con->query_handle);
-#ifdef HAVE_LIBUDNS
             dns_query_release();
-#endif
         }
         con->query_handle = NULL;
         con->state = PARSED;

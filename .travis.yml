@@ -4,7 +4,7 @@ compiler:
   - gcc
 install:
   - sudo apt-get update
-  - DEBIAN_FRONTEND=noninteractive sudo apt-get install -y apache2-utils cdbs dh-autoreconf devscripts libev-dev libpcre2-dev libudns-dev lintian rpm valgrind
+  - DEBIAN_FRONTEND=noninteractive sudo apt-get install -y apache2-utils cdbs dh-autoreconf devscripts libev-dev libpcre2-dev libcares-dev lintian rpm valgrind
   - mkdir -p ~/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
   - ./autogen.sh
 script:
@@ -41,6 +41,7 @@ script:
   - sudo netstat -lptn | egrep ':::81.+/sniproxy'
   - sudo service sniproxy stop
   - sudo apt-get remove sniproxy
-  - echo "Rebuilding without DNS and rerunning unit tests"
-  - ./configure --disable-dns
-  - make clean all check CFLAGS="-Werror -Wno-error=unused-function -Wno-error=unused-parameter"
+  - echo "Rebuilding from a clean tree and rerunning unit tests"
+  - make distclean || true
+  - ./configure
+  - make all check CFLAGS="-Werror -Wno-error=unused-function -Wno-error=unused-parameter"

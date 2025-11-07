@@ -118,12 +118,6 @@ accept_backend_arg(struct Backend *backend, const char *arg) {
             err("invalid address: %s", arg);
             return -1;
         }
-#ifndef HAVE_LIBUDNS
-        if (!address_is_sockaddr(backend->address)) {
-            err("Only socket address backends are permitted when compiled without libudns");
-            return -1;
-        }
-#endif
     } else if (address_port(backend->address) == 0 && is_numeric(arg)) {
         if (!address_set_port_str(backend->address, arg)) {
             err("Invalid port: %s", arg);

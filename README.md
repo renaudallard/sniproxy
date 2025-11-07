@@ -47,7 +47,7 @@ Features
 + **Comprehensive fuzzing**: TLS and HTTP/2 protocol fuzzers included
 
 ### DNS Resolution
-+ **Asynchronous DNS** via dedicated resolver process (when built with UDNS)
++ **Asynchronous DNS** via dedicated resolver process (powered by c-ares)
 + **IPv4/IPv6 preference modes**: default, IPv4-only, IPv6-only, IPv4-first, IPv6-first
 + **Configurable nameservers** and search domains
 + **Concurrency limits** to prevent resource exhaustion
@@ -103,12 +103,12 @@ For Debian or Fedora based Linux distributions see building packages below.
 **Prerequisites**
 
 + Autotools (autoconf, automake, gettext and libtool)
-+ libev4, libpcre2 (or libpcre) and libudns development headers
++ libev4, libpcre2 (or libpcre) and c-ares development headers
 + Perl and cURL for test suite
 
 **Install**
 
-    ./autogen.sh && ./configure --enable-dns && make check && sudo make install
+    ./autogen.sh && ./configure && make check && sudo make install
 
 **Building Debian/Ubuntu package**
 
@@ -116,7 +116,7 @@ This is the preferred installation method on recent Debian based distributions:
 
 1. Install required packages
 
-        sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev gettext libev-dev libpcre2-dev libudns-dev pkg-config fakeroot devscripts
+        sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev gettext libev-dev libpcre2-dev libcares-dev pkg-config fakeroot devscripts
 
 2. Build a Debian package
 
@@ -132,11 +132,11 @@ This is the preferred installation method for modern Fedora based distributions.
 
 1. Install required packages
 
-        sudo yum install autoconf automake curl gettext-devel libev-devel pcre-devel perl pkgconfig rpm-build udns-devel
+        sudo yum install autoconf automake curl gettext-devel libev-devel pcre-devel perl pkgconfig rpm-build c-ares-devel
 
 2. Build a distribution tarball:
 
-        ./autogen.sh && ./configure --enable-dns && make dist
+        ./autogen.sh && ./configure && make dist
 
 3. Build a RPM package
 
@@ -155,7 +155,7 @@ may not even work.
 
 1. install dependencies.
 
-        brew install libev pcre udns autoconf automake gettext libtool
+        brew install libev pcre c-ares autoconf automake gettext libtool
 
 2. Read the warning about gettext and force link it so autogen.sh works. We need the GNU gettext for the macro `AC_LIB_HAVE_LINKFLAGS` which isn't present in the default OS X package.
 
@@ -163,7 +163,7 @@ may not even work.
 
 3. Make it so
 
-        ./autogen.sh && ./configure --enable-dns && make
+        ./autogen.sh && ./configure && make
 
 OS X support is a best effort, and isn't a primary target platform.
 
@@ -230,7 +230,7 @@ Set the value to `0` to disable the limiter (default).
         # DNS resolution mode: ipv4_only, ipv6_only, ipv4_first, ipv6_first
         mode ipv4_first
 
-        # Custom nameservers (requires --enable-dns)
+        # Custom nameservers (handled by c-ares)
         nameserver 8.8.8.8
         nameserver 2001:4860:4860::8888
 
@@ -267,22 +267,16 @@ Set the value to `0` to disable the limiter (default).
 DNS Resolution
 --------------
 
-Using hostnames or wildcard entries in the configuration requires SNIProxy to
-be built with [UDNS](http://www.corpit.ru/mjt/udns.html) (`--enable-dns` flag).
-SNIProxy will still build without UDNS, but DNS-dependent features will be
-unavailable.
+Using hostnames or wildcard entries in the configuration relies on [c-ares](https://c-ares.org) for asynchronous resolution. DNS-dependent features such as fallback hostnames, wildcard tables, and transparent proxy mode all use this resolver.
 
-When DNS support is enabled, SNIProxy spawns a separate `sniproxy-resolver`
-process that handles all DNS queries asynchronously. This architecture provides:
+SNIProxy spawns a dedicated `sniproxy-resolver` process that handles all DNS queries asynchronously. This architecture provides:
 
 - **Process isolation**: DNS operations are separated from the main proxy
 - **Concurrency control**: Configurable limits prevent resolver exhaustion
 - **IPv4/IPv6 flexibility**: Multiple resolution modes for different deployment needs
 - **Custom nameservers**: Override system DNS configuration per SNIProxy instance
 
-**Security note**: UDNS uses a single UDP socket with 16-bit query IDs. It is
-strongly recommended to use a local caching DNS resolver (e.g., unbound,
-dnsmasq) to minimize exposure to DNS spoofing attacks.
+**Security note**: Run SNIProxy alongside a local caching DNS resolver (e.g., unbound, dnsmasq) to reduce exposure to spoofed responses and improve performance.
 
 
 Security & Hardening
@@ -374,7 +368,7 @@ Troubleshooting
 - Enable `bad_requests log` to see rejected requests in error log
 
 **DNS resolution not working**
-- Ensure SNIProxy was built with `--enable-dns` and UDNS library
+- Ensure the c-ares development headers were available when SNIProxy was built
 - Check `sniproxy-resolver` process is running (should appear in process list)
 - Verify nameserver configuration and network connectivity
 
@@ -460,4 +454,4 @@ Contributors: Manuel Kasper, Renaud Allard, and others
 SNIProxy builds on several excellent libraries:
 - [libev](http://software.schmorp.de/pkg/libev.html) - event loop
 - [PCRE2](https://www.pcre.org/) / [PCRE](https://www.pcre.org/) - regex
-- [UDNS](http://www.corpit.ru/mjt/udns.html) - async DNS resolution
+- [c-ares](https://c-ares.org) - async DNS resolution

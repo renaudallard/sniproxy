@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/src -g $(LIBEV_CFLAGS) $(LIBPCRE_CFLAGS) $(LIBUDNS_CFLAGS)
+AM_CPPFLAGS = -I$(top_srcdir)/src -g $(LIBEV_CFLAGS) $(LIBPCRE_CFLAGS)
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings
 
 .NOTPARALLEL:
@@ -23,11 +23,9 @@ TESTS += functional_test \
          reuseport_test \
          slow_client_test \
          transparent_proxy_test
-if DNS_ENABLED
-  TESTS += config_test \
-           resolv_test \
-           bad_dns_request_test
-endif
+TESTS += config_test \
+         resolv_test \
+         bad_dns_request_test
 
 check_PROGRAMS = http_test \
                  tls_test \
@@ -82,14 +80,14 @@ config_test_SOURCES = config_test.c \
                       ../src/http2.c \
                       ../src/http2_huffman.c
 
-config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS) $(LIBUDNS_LIBS)
+config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS)
 
 resolv_test_SOURCES = resolv_test.c \
                       ../src/resolv.c \
                       ../src/address.c \
                       ../src/logger.c
 
-resolv_test_LDADD = $(LIBEV_LIBS) $(LIBUDNS_LIBS)
+resolv_test_LDADD = $(LIBEV_LIBS)
 
 table_test_SOURCES = table_test.c \
                       ../src/backend.c \

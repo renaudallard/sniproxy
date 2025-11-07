@@ -341,10 +341,8 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->per_ip_connection_rate = new_config->per_ip_connection_rate;
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
 
-#ifdef HAVE_LIBUDNS
     config->resolver.max_concurrent_queries = new_config->resolver.max_concurrent_queries;
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
-#endif
 
     free_config(new_config, loop);
 }
