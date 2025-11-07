@@ -213,7 +213,9 @@ void
 print_connections(void) {
     char filename[] = "/tmp/sniproxy-connections-XXXXXX";
 
+    mode_t old_umask = umask(077);
     int fd = mkstemp(filename);
+    umask(old_umask);
     if (fd < 0) {
         warn("mkstemp failed: %s", strerror(errno));
         return;
