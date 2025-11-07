@@ -53,6 +53,20 @@ pidfile /var/run/sniproxy.pid
 Specify the path to the pid file, the directory must be writeable by the
 user sniproxy runs as.
 
+.SS PER_IP_CONNECTION_RATE
+
+.PP
+.nf
+per_ip_connection_rate 20
+.fi
+.PP
+
+Limit how many new client connections a single source IP address may open
+per second. The value is interpreted as connections per second and is
+applied globally across all listeners using a token-bucket policy that
+allows short bursts up to the configured rate. Set the value to 0 (the
+default) to disable per-IP rate limiting.
+
 .SS ERROR_LOG
 
 .PP

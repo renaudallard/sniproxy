@@ -46,6 +46,7 @@ struct LoggerBuilder {
 static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
 static int accept_pidfile(struct Config *, const char *);
+static int accept_per_ip_connection_rate(struct Config *, const char *);
 static int end_listener_stanza(struct Config *, struct Listener *);
 static int end_table_stanza(struct Config *, struct Table *);
 static int end_backend(struct Table *, struct Backend *);
@@ -184,6 +185,10 @@ static struct Keyword global_grammar[] = {
     {
         .keyword="pidfile",
         .parse_arg=(int(*)(void *, const char *))accept_pidfile,
+    },
+    {
+        .keyword="per_ip_connection_rate",
+        .parse_arg=(int(*)(void *, const char *))accept_per_ip_connection_rate,
     },
     {
         .keyword="resolver",
@@ -333,6 +338,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     listeners_reload(&config->listeners, &new_config->listeners,
             &config->tables, loop);
 
+    config->per_ip_connection_rate = new_config->per_ip_connection_rate;
+    connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
+
 #ifdef HAVE_LIBUDNS
     config->resolver.max_concurrent_queries = new_config->resolver.max_concurrent_queries;
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
@@ -354,6 +362,9 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->pidfile)
         fprintf(file, "pidfile %s\n\n", config->pidfile);
+
+    if (config->per_ip_connection_rate > 0.0)
+        fprintf(file, "per_ip_connection_rate %.3f\n\n", config->per_ip_connection_rate);
 
     print_resolver_config(file, &config->resolver);
 
@@ -407,6 +418,25 @@ accept_pidfile(struct Config *config, const char *pidfile) {
         err("%s: strdup", __func__);
         return -1;
     }
+
+    return 1;
+}
+
+static int
+accept_per_ip_connection_rate(struct Config *config, const char *value) {
+    char *endptr = NULL;
+    double rate = strtod(value, &endptr);
+
+    if (endptr == value || (endptr != NULL && *endptr != '\0')) {
+        err("Unable to parse per_ip_connection_rate '%s'", value);
+        return 0;
+    }
+    if (rate < 0.0) {
+        err("per_ip_connection_rate must be non-negative: %s", value);
+        return 0;
+    }
+
+    config->per_ip_connection_rate = rate;
 
     return 1;
 }

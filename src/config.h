@@ -43,6 +43,7 @@ struct Config {
         size_t max_concurrent_queries;
     } resolver;
     struct Logger *access_log;
+    double per_ip_connection_rate;
     struct Listener_head listeners;
     struct Table_head tables;
 };

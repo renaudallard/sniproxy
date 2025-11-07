@@ -338,6 +338,8 @@ main(int argc, char **argv) {
 
     set_limits(max_nofiles);
 
+    connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
+
 #ifdef HAVE_LIBUDNS
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
 #endif

@@ -102,6 +102,30 @@ static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 
+#define RATE_LIMIT_TABLE_SIZE 1024
+#define RATE_LIMIT_IDLE_TTL 300.0
+#define RATE_LIMIT_CLEANUP_INTERVAL 60.0
+
+struct RateLimitBucket {
+    struct sockaddr_storage addr;
+    ev_tstamp last_check;
+    double allowance;
+    struct RateLimitBucket *next;
+};
+
+static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
+static ev_tstamp rate_limit_last_cleanup;
+static double per_ip_connection_rate_limit;
+
+static inline double rate_limit_bucket_capacity(void);
+static void rate_limit_reset(void);
+static void rate_limit_cleanup(ev_tstamp);
+static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *);
+static int sockaddr_equal_ip(const struct sockaddr_storage *,
+        const struct sockaddr_storage *);
+static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
+static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
+
 #ifdef HAVE_LIBUDNS
 static int dns_query_acquire(void);
 static void dns_query_release(void);
@@ -111,6 +135,7 @@ static void dns_query_release(void);
 void
 init_connections(void) {
     TAILQ_INIT(&connections);
+    rate_limit_reset();
 }
 
 /**
@@ -165,6 +190,18 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 #endif
 
+    ev_tstamp now = ev_now(loop);
+
+    if (!rate_limit_allow_connection(&con->client.addr, now)) {
+        char addrbuf[INET6_ADDRSTRLEN];
+        const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
+
+        info("Per-IP connection rate exceeded for %s", ip != NULL ? ip : "(unknown)");
+        close(sockfd);
+        free_connection(con);
+        return 1;
+    }
+
     if (getsockname(sockfd, (struct sockaddr *)&con->client.local_addr,
                 &con->client.local_addr_len) != 0) {
         int saved_errno = errno;
@@ -181,7 +218,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     ev_io_init(client_watcher, connection_cb, sockfd, EV_READ);
     con->client.watcher.data = con;
     con->state = ACCEPTED;
-    con->established_timestamp = ev_now(loop);
+    con->established_timestamp = now;
 
     TAILQ_INSERT_HEAD(&connections, con, entries);
 
@@ -506,6 +543,168 @@ stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
         ev_timer_stop(loop, &con->idle_timer);
 
     ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
+}
+
+static inline double
+rate_limit_bucket_capacity(void) {
+    return per_ip_connection_rate_limit <= 1.0 ? 1.0 : per_ip_connection_rate_limit;
+}
+
+static void
+rate_limit_reset(void) {
+    for (size_t i = 0; i < RATE_LIMIT_TABLE_SIZE; i++) {
+        struct RateLimitBucket *bucket = rate_limit_table[i];
+
+        while (bucket != NULL) {
+            struct RateLimitBucket *next = bucket->next;
+            free(bucket);
+            bucket = next;
+        }
+
+        rate_limit_table[i] = NULL;
+    }
+
+    rate_limit_last_cleanup = 0.0;
+}
+
+static void
+rate_limit_cleanup(ev_tstamp now) {
+    if (now - rate_limit_last_cleanup < RATE_LIMIT_CLEANUP_INTERVAL)
+        return;
+
+    for (size_t i = 0; i < RATE_LIMIT_TABLE_SIZE; i++) {
+        struct RateLimitBucket **current = &rate_limit_table[i];
+
+        while (*current != NULL) {
+            struct RateLimitBucket *bucket = *current;
+
+            if (now - bucket->last_check > RATE_LIMIT_IDLE_TTL) {
+                *current = bucket->next;
+                free(bucket);
+            } else {
+                current = &bucket->next;
+            }
+        }
+    }
+
+    rate_limit_last_cleanup = now;
+}
+
+static uint32_t
+hash_sockaddr_ip(const struct sockaddr_storage *addr) {
+    switch (addr->ss_family) {
+        case AF_INET: {
+            const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+            uint32_t value = ntohl(in->sin_addr.s_addr);
+            value ^= value >> 16;
+            return value;
+        }
+        case AF_INET6: {
+            const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+            uint32_t words[4];
+            memcpy(words, &in6->sin6_addr, sizeof(words));
+            uint32_t value = words[0] ^ words[1] ^ words[2] ^ words[3];
+            value ^= in6->sin6_scope_id;
+            return value;
+        }
+        default:
+            return 0;
+    }
+}
+
+static int
+sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storage *b) {
+    if (a->ss_family != b->ss_family)
+        return 0;
+
+    if (a->ss_family == AF_INET) {
+        const struct sockaddr_in *in_a = (const struct sockaddr_in *)a;
+        const struct sockaddr_in *in_b = (const struct sockaddr_in *)b;
+        return memcmp(&in_a->sin_addr, &in_b->sin_addr, sizeof(struct in_addr)) == 0;
+    } else if (a->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *in_a = (const struct sockaddr_in6 *)a;
+        const struct sockaddr_in6 *in_b = (const struct sockaddr_in6 *)b;
+
+        if (in_a->sin6_scope_id != in_b->sin6_scope_id)
+            return 0;
+
+        return memcmp(&in_a->sin6_addr, &in_b->sin6_addr, sizeof(struct in6_addr)) == 0;
+    }
+
+    return 0;
+}
+
+static int
+rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) {
+    if (per_ip_connection_rate_limit <= 0.0)
+        return 1;
+
+    if (addr->ss_family != AF_INET && addr->ss_family != AF_INET6)
+        return 1;
+
+    rate_limit_cleanup(now);
+
+    uint32_t hash = hash_sockaddr_ip(addr);
+    size_t bucket_index = hash % RATE_LIMIT_TABLE_SIZE;
+    struct RateLimitBucket *bucket = rate_limit_table[bucket_index];
+    double capacity = rate_limit_bucket_capacity();
+
+    while (bucket != NULL && !sockaddr_equal_ip(&bucket->addr, addr))
+        bucket = bucket->next;
+
+    if (bucket == NULL) {
+        bucket = calloc(1, sizeof(*bucket));
+        if (bucket == NULL) {
+            err("calloc: %s", strerror(errno));
+            return 1;
+        }
+
+        bucket->addr = *addr;
+        bucket->last_check = now;
+        bucket->allowance = capacity - 1.0;
+        bucket->next = rate_limit_table[bucket_index];
+        rate_limit_table[bucket_index] = bucket;
+        return 1;
+    }
+
+    double allowance = bucket->allowance;
+    allowance += (now - bucket->last_check) * per_ip_connection_rate_limit;
+    if (allowance > capacity)
+        allowance = capacity;
+
+    bucket->last_check = now;
+
+    if (allowance < 1.0) {
+        bucket->allowance = allowance;
+        return 0;
+    }
+
+    bucket->allowance = allowance - 1.0;
+    return 1;
+}
+
+static const char *
+format_sockaddr_ip(const struct sockaddr_storage *addr, char *buffer, size_t len) {
+    if (addr->ss_family == AF_INET) {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+        if (inet_ntop(AF_INET, &in->sin_addr, buffer, len) != NULL)
+            return buffer;
+    } else if (addr->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+        if (inet_ntop(AF_INET6, &in6->sin6_addr, buffer, len) != NULL)
+            return buffer;
+    }
+
+    return NULL;
+}
+
+void
+connections_set_per_ip_connection_rate(double rate) {
+    if (rate < 0.0)
+        rate = 0.0;
+
+    per_ip_connection_rate_limit = rate;
+    rate_limit_reset();
 }
 
 #ifdef HAVE_LIBUDNS

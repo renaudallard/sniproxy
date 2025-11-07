@@ -40,6 +40,7 @@ Features
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
 + **DNS query concurrency limits**: Prevents resolver exhaustion
 + **Connection idle timeouts**: Automatic cleanup of stalled connections
++ **Per-IP connection rate limiting**: Token-bucket guardrail on new client connections across all listeners
 + **Privilege separation**: Separate processes for logging and DNS resolution
 + **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
 + **Input sanitization**: Hostname validation, control character removal
@@ -169,6 +170,16 @@ OS X support is a best effort, and isn't a primary target platform.
 
 Configuration Syntax
 --------------------
+
+Global directives appear before any `listener` or `table` blocks. In addition to
+standard items such as `user`, `group`, `pidfile`, `resolver`, and `access_log`,
+you can keep abusive clients in check with a global per-IP rate limiter:
+
+```
+per_ip_connection_rate 50   # allow 50 new connections per second per source IP
+```
+
+Set the value to `0` to disable the limiter (default).
 
 ### Basic Configuration
 
