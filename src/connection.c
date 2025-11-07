@@ -1000,13 +1000,17 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             return;
         }
 
+        con->dns_query_acquired = 1;
         con->state = RESOLVING;
         con->query_handle = resolv_query(hostname,
                 resolv_mode, resolv_cb,
                 (void (*)(void *))free_resolv_cb_data, cb_data);
 
         if (con->query_handle == NULL) {
-            dns_query_release();
+            if (con->dns_query_acquired) {
+                dns_query_release();
+                con->dns_query_acquired = 0;
+            }
             if (con->state == RESOLVING) {
                 notice("unable to resolve %s, closing connection", hostname_buf);
 
@@ -1041,7 +1045,10 @@ resolv_cb(struct Address *result, void *data) {
     struct Connection *con = cb_data->connection;
     struct ev_loop *loop = cb_data->loop;
 
-    dns_query_release();
+    if (con->dns_query_acquired) {
+        dns_query_release();
+        con->dns_query_acquired = 0;
+    }
 
     if (con->state != RESOLVING) {
         warn("resolv_cb() called for connection not in RESOLVING state");
@@ -1224,6 +1231,7 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         if (con->query_handle != NULL) {
             resolv_cancel(con->query_handle);
             dns_query_release();
+            con->dns_query_acquired = 0;
         }
         con->query_handle = NULL;
         con->state = PARSED;

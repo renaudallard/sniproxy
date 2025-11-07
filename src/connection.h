@@ -58,6 +58,7 @@ struct Connection {
     size_t hostname_len;
     size_t header_len;
     struct ResolvQuery *query_handle;
+    int dns_query_acquired;
     ev_tstamp established_timestamp;
     int use_proxy_header;
 
