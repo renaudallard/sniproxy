@@ -57,6 +57,7 @@ struct header_block {
     size_t len;
     size_t cap;
     uint32_t stream_id;
+    size_t continuation_count;
 };
 
 struct host_accumulator {
@@ -230,16 +231,22 @@ static int
 parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
     struct hpack_decoder decoder;
     hpack_decoder_init(&decoder);
-    struct header_block block = { NULL, 0, 0, 0 };
+    struct header_block block = { NULL, 0, 0, 0, 0 };
     struct host_accumulator hosts = { NULL, 0 };
 
     size_t pos = 0;
     int result = -1;
+    size_t frame_count = 0;
 
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 9)
             break;
+
+        if (++frame_count > HTTP2_MAX_FRAMES_PER_CONNECTION) {
+            result = -4;
+            goto done;
+        }
 
         uint32_t length = ((uint32_t)data[pos] << 16) |
                           ((uint32_t)data[pos + 1] << 8) |
@@ -251,6 +258,11 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                              ((uint32_t)data[pos + 7] << 8) |
                              data[pos + 8];
         pos += 9;
+
+        if (length > HTTP2_MAX_FRAME_SIZE) {
+            result = -4;
+            goto done;
+        }
 
         if (length > data_len - pos) {
             result = -1;
@@ -300,6 +312,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                         goto done;
                     }
                     block.stream_id = stream_id;
+                    block.continuation_count = 0;
                     if (!header_block_append(&block, payload + idx, fragment_len)) {
                         result = -4;
                         goto done;
@@ -320,6 +333,10 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
             }
             case 0x9: { /* CONTINUATION */
                 if (block.stream_id == 0 || block.stream_id != stream_id) {
+                    result = -4;
+                    goto done;
+                }
+                if (++block.continuation_count > HTTP2_MAX_CONTINUATION_FRAMES) {
                     result = -4;
                     goto done;
                 }
@@ -847,6 +864,7 @@ static void
 header_block_reset(struct header_block *block) {
     block->len = 0;
     block->stream_id = 0;
+    block->continuation_count = 0;
 }
 
 static void

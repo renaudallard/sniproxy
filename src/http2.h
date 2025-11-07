@@ -48,6 +48,25 @@
  */
 #define HTTP2_MAX_AGGREGATE_DYNAMIC_TABLE_SIZE (4U << 20)
 
+/*
+ * Limit total frames parsed per connection to prevent CPU exhaustion from
+ * clients sending millions of tiny frames (e.g., empty PING, SETTINGS).
+ */
+#define HTTP2_MAX_FRAMES_PER_CONNECTION 1000
+
+/*
+ * Limit consecutive CONTINUATION frames to prevent attackers from sending
+ * HEADERS followed by thousands of 1-byte CONTINUATION frames.
+ */
+#define HTTP2_MAX_CONTINUATION_FRAMES 32
+
+/*
+ * Maximum frame payload size. RFC 7540 allows up to 16MB but we limit to
+ * 16KB by default to prevent memory exhaustion. Clients can request larger
+ * via SETTINGS but we reject frames exceeding this limit.
+ */
+#define HTTP2_MAX_FRAME_SIZE (16 * 1024)
+
 int parse_http2_header(const unsigned char *data, size_t data_len, char **hostname);
 
 #endif
