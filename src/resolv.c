@@ -143,6 +143,7 @@ static int child_sock = -1;
 static struct ev_loop *child_loop = NULL;
 static struct ResolverChildQuery *child_queries = NULL;
 static ares_channel_t *child_channel = NULL;
+static int child_shutting_down = 0;
 static struct ev_io child_ipc_watcher;
 static struct ev_timer child_dns_timeout_watcher;
 struct resolver_child_cares_io {
@@ -852,9 +853,11 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
 
 static void
 resolver_child_cancel_all(void) {
-    /* Mark all queries as cancelled but don't free them yet.
-     * The c-ares channel cleanup will deliver cancellation callbacks,
-     * which will handle freeing via maybe_free_query(). */
+    /* Set shutdown flag to prevent callbacks from freeing queries.
+     * Mark all queries as cancelled but don't free them yet.
+     * The cleanup will happen in shutdown_dns after ares_destroy(). */
+    child_shutting_down = 1;
+
     struct ResolverChildQuery *query = child_queries;
     while (query != NULL) {
         query->cancelled = 1;
@@ -1041,7 +1044,10 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
     else
         best_address = resolver_child_choose_any(query);
 
-    resolver_child_remove_query(query);
+    /* During shutdown, keep queries in the list so cleanup can free them all.
+     * During normal operation, remove from list so it can be freed when ready. */
+    if (!child_shutting_down)
+        resolver_child_remove_query(query);
 
     if (!query->cancelled)
         resolver_child_send_result(query->id, best_address, best_address == NULL ? -1 : 0);
@@ -1082,6 +1088,11 @@ resolver_child_nameservers_csv(char **nameservers) {
 static void
 resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
     if (query == NULL)
+        return;
+
+    /* During shutdown, don't free queries here. Let shutdown_dns handle it
+     * after ares_destroy() completes to avoid use-after-free. */
+    if (child_shutting_down)
         return;
 
     if (query->pending_v4 == 0 && query->pending_v6 == 0 &&
