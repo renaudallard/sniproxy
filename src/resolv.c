@@ -165,6 +165,7 @@ struct ResolverChildQuery {
     int pending_v4;
     int pending_v6;
     char *hostname;
+    struct Address *best_address;
     struct ResolverChildQuery *next;
 };
 
@@ -849,7 +850,7 @@ resolver_child_cancel_all(void) {
         struct ResolverChildQuery *next = query->next;
         query->next = NULL;
         query->cancelled = 1;
-        resolver_child_free_query(query);
+        resolver_child_maybe_free_query(query);
         query = next;
     }
 }
