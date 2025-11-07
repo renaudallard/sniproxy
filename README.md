@@ -445,7 +445,7 @@ Contributions are welcome! Areas of particular interest:
 
 ### Resources
 
-- **Source code**: https://github.com/dlundquist/sniproxy (upstream)
+- **Source code**: https://github.com/renaudallard/sniproxy
 - **Architecture documentation**: See [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Issue tracking**: GitHub Issues
 - **License**: BSD 2-Clause
