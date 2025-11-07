@@ -1,3 +1,9 @@
+sniproxy (0.8.6) unstable; urgency=medium
+
+  * Prepare 0.8.6 release
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 04 Sep 2025 16:37:25 -0700
+
 sniproxy (0.7.0) unstable; urgency=medium
 
   * Deprecate project

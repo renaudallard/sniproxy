@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.71])
-AC_INIT([sniproxy],[0.7.0])
+AC_INIT([sniproxy],[0.8.6])
 AM_INIT_AUTOMAKE([subdir-objects])
 AM_SILENT_RULES([yes])
 AC_USE_SYSTEM_EXTENSIONS

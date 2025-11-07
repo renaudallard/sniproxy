@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.7.0
+Version: 0.8.6
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,9 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Thu Sep 4 2025 Renaud Allard <renaud@allard.it> 0.8.6-1
+- Prepare 0.8.6 release
+
 * Thu Sep 4 2024 Dustin Lundquist <dustin@null-ptr.net> 0.7.0-1
 - Deprecate project
 - Cleanup autoconf
