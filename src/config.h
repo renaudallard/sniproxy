@@ -41,6 +41,7 @@ struct Config {
         char **search;
         int mode;
         size_t max_concurrent_queries;
+        int dnssec_validation;
     } resolver;
     struct Logger *access_log;
     double per_ip_connection_rate;

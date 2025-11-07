@@ -358,7 +358,8 @@ main(int argc, char **argv) {
     ev_signal_start(EV_DEFAULT, &sigterm_watcher);
 
     resolv_init(EV_DEFAULT, config->resolver.nameservers,
-            config->resolver.search, config->resolver.mode);
+            config->resolver.search, config->resolver.mode,
+            config->resolver.dnssec_validation);
 
     init_connections();
 

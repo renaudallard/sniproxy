@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <assert.h>
 #include "cfg_parser.h"
@@ -62,7 +63,9 @@ static int accept_resolver_nameserver(struct ResolverConfig *, const char *);
 static int accept_resolver_search(struct ResolverConfig *, const char *);
 static int accept_resolver_mode(struct ResolverConfig *, const char *);
 static int accept_resolver_max_queries(struct ResolverConfig *, const char *);
+static int accept_resolver_dnssec_validation(struct ResolverConfig *, const char *);
 static int end_resolver_stanza(struct Config *, struct ResolverConfig *);
+static int parse_boolean_option(const char *);
 static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
 static void free_string_vector(char **);
@@ -103,6 +106,10 @@ static const struct Keyword resolver_stanza_grammar[] = {
     {
         .keyword="max_concurrent_queries",
         .parse_arg=(int(*)(void *, const char *))accept_resolver_max_queries,
+    },
+    {
+        .keyword="dnssec_validation",
+        .parse_arg=(int(*)(void *, const char *))accept_resolver_dnssec_validation,
     },
     {
         .keyword = NULL,
@@ -654,6 +661,7 @@ new_resolver_config(void) {
         resolver->search = NULL;
         resolver->mode = 0;
         resolver->max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+        resolver->dnssec_validation = 0;
     }
 
     return resolver;
@@ -702,6 +710,36 @@ free_string_vector(char **vector) {
 }
 
 static int
+parse_boolean_option(const char *value) {
+    const char *true_values[] = {
+        "yes",
+        "true",
+        "on",
+    };
+    const char *false_values[] = {
+        "no",
+        "false",
+        "off",
+    };
+
+    if (value == NULL) {
+        err("Unable to parse boolean value: (null)");
+        return -1;
+    }
+
+    for (size_t i = 0; i < sizeof(true_values) / sizeof(true_values[0]); i++)
+        if (strcasecmp(value, true_values[i]) == 0)
+            return 1;
+
+    for (size_t i = 0; i < sizeof(false_values) / sizeof(false_values[0]); i++)
+        if (strcasecmp(value, false_values[i]) == 0)
+            return 0;
+
+    err("Unable to parse boolean value '%s'", value);
+    return -1;
+}
+
+static int
 accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserver) {
     /* Validate address is a valid IP */
     struct Address *ns_address = new_address(nameserver);
@@ -740,6 +778,17 @@ accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
         }
 
     return -1;
+}
+
+static int
+accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *value) {
+    int parsed = parse_boolean_option(value);
+
+    if (parsed < 0)
+        return parsed;
+
+    resolver->dnssec_validation = parsed;
+    return 1;
 }
 
 static int
@@ -784,6 +833,8 @@ print_resolver_config(FILE *file, struct ResolverConfig *resolver) {
 
     fprintf(file, "\tmode %s\n", resolver_mode_names[resolver->mode]);
     fprintf(file, "\tmax_concurrent_queries %zu\n", resolver->max_concurrent_queries);
+    fprintf(file, "\tdnssec_validation %s\n",
+            resolver->dnssec_validation ? "on" : "off");
 
     fprintf(file, "}\n\n");
 }

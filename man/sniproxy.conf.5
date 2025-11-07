@@ -138,6 +138,15 @@ ipv6_first: query for both A and AAAA records, wait for both queries to
 complete, use the first AAAA record if any, otherwise use the first A
 record.
 
+The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
+may be in flight at once (default 256). Lower values cap resolver resource
+usage.
+
+Set \fBdnssec_validation\fR to 'on' to require DNS answers that have been
+validated with DNSSEC by your upstream resolver. This option defaults to
+'off' and requires a c-ares build with DNSSEC/Trust AD support; SNIProxy
+will refuse to start if the feature is unavailable.
+
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is
 predictable, leaving the query only protected from spoofed replies

@@ -109,9 +109,9 @@ static void resolver_cleanup_pending_queries(void);
 struct ResolverChildQuery;
 
 static void resolver_child_main(int sockfd, char **nameservers,
-        char **search_domains, int default_mode) __attribute__((noreturn));
+        char **search_domains, int default_mode, int dnssec_validation) __attribute__((noreturn));
 static void resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
-        char **search_domains, int default_mode);
+        char **search_domains, int default_mode, int dnssec_validation);
 static void resolver_child_shutdown_dns(struct ev_loop *loop);
 static void resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_submit_query(uint32_t id, int mode,
@@ -171,9 +171,14 @@ struct ResolverChildQuery {
 };
 
 int
-resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode) {
+resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_validation) {
     int sockets[2];
     int socket_type = SOCK_DGRAM;
+#if !defined(ARES_FLAG_TRUSTAD)
+    if (dnssec_validation) {
+        fatal("DNSSEC validation requested but not supported by this c-ares build");
+    }
+#endif
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;
 #endif
@@ -204,7 +209,8 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode) {
         fatal("resolver fork failed: %s", strerror(errno));
     } else if (pid == 0) {
         close(sockets[0]);
-        resolver_child_main(sockets[1], nameservers, search, mode);
+        resolver_child_main(sockets[1], nameservers, search, mode,
+                dnssec_validation);
     }
 
     close(sockets[1]);
@@ -520,7 +526,7 @@ resolver_cleanup_pending_queries(void) {
 }
 
 static void
-resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode) {
+resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_validation) {
     child_sock = sockfd;
     child_default_resolv_mode = default_mode;
 
@@ -550,7 +556,8 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
         _exit(EXIT_FAILURE);
     }
 
-    resolver_child_setup_dns(child_loop, nameservers, search_domains, default_mode);
+    resolver_child_setup_dns(child_loop, nameservers, search_domains,
+            default_mode, dnssec_validation);
 
     ev_io_init(&child_ipc_watcher, resolver_child_ipc_cb, child_sock, EV_READ);
     ev_io_start(child_loop, &child_ipc_watcher);
@@ -572,7 +579,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 
 static void
 resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
-        char **search_domains, int default_mode) {
+        char **search_domains, int default_mode, int dnssec_validation) {
     struct ares_options options;
     for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
         child_dns_watchers[i].active = 0;
@@ -588,6 +595,24 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
     options.sock_state_cb_data = loop;
     optmask |= ARES_OPT_SOCK_STATE_CB;
     options_ptr = &options;
+
+#if defined(ARES_FLAG_TRUSTAD)
+    if (dnssec_validation) {
+        options.flags |= ARES_FLAG_TRUSTAD;
+#ifdef ARES_FLAG_EDNS
+        options.flags |= ARES_FLAG_EDNS;
+#endif
+#ifdef ARES_FLAG_DNSSECOK
+        options.flags |= ARES_FLAG_DNSSECOK;
+#endif
+        optmask |= ARES_OPT_FLAGS;
+    }
+#else
+    if (dnssec_validation) {
+        err("resolver child: DNSSEC validation requested but not supported by this c-ares build");
+        _exit(EXIT_FAILURE);
+    }
+#endif
 
     if (search_domains != NULL && search_domains[0] != NULL) {
         int ndomains = 0;
