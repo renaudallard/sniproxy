@@ -392,7 +392,7 @@ This will:
 
 Validate configuration syntax:
 
-    sniproxy-configtest -c /path/to/config.conf
+    sniproxy-cfg -c /path/to/config.conf
 
 Use `-p` to dump the normalized configuration when you need to inspect the
 resolved listener/table definitions.

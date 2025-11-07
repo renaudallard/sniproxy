@@ -1,6 +1,6 @@
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings
 
-sbin_PROGRAMS = sniproxy sniproxy-configtest
+sbin_PROGRAMS = sniproxy sniproxy-cfg
 
 sniproxy_common_sources = address.c \
                           address.h \
@@ -41,5 +41,5 @@ sniproxy_common_sources = address.c \
 sniproxy_SOURCES = sniproxy.c \
                    $(sniproxy_common_sources)
 
-sniproxy_configtest_SOURCES = config_validator.c \
+sniproxy_cfg_SOURCES = config_validator.c \
                               $(sniproxy_common_sources)
