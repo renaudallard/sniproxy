@@ -379,9 +379,13 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
         memmove(buffer->buffer + first_len, buffer->buffer, second_len);
         memcpy(buffer->buffer, temp, first_len);
     } else {
-        memcpy(temp, buffer->buffer, second_len);
-        memmove(buffer->buffer, buffer->buffer + head, first_len);
-        memcpy(buffer->buffer + first_len, temp, second_len);
+        if (first_len >= second_len * 2) {
+            memmove(buffer->buffer + second_len, buffer->buffer + head, first_len);
+        } else {
+            memcpy(temp, buffer->buffer, second_len);
+            memmove(buffer->buffer, buffer->buffer + head, first_len);
+            memcpy(buffer->buffer + first_len, temp, second_len);
+        }
     }
 
     if (temp_on_heap)
