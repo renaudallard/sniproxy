@@ -37,7 +37,7 @@
 
 
 static int parse_http_header(const char *, size_t, char **);
-static int get_header(const char *, const char *, size_t, char **);
+static int get_header(const char *, size_t, const char *, size_t, char **);
 static size_t next_header(const char **, size_t *);
 
 
@@ -87,7 +87,8 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
         }
     }
 
-    result = get_header("Host:", data, data_len, hostname);
+    static const char host_header[] = "Host:";
+    result = get_header(host_header, sizeof(host_header) - 1, data, data_len, hostname);
     if (result < 0)
         return result;
 
@@ -148,9 +149,8 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
 }
 
 static int
-get_header(const char *header, const char *data, size_t data_len, char **value) {
+get_header(const char *header, size_t header_len, const char *data, size_t data_len, char **value) {
     size_t len;
-    size_t header_len = strlen(header);
     char *found_value = NULL;
     size_t found_len = 0;
     int found = 0;
