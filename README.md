@@ -63,6 +63,8 @@ Features
 + **Privilege dropping** to non-root user/group after binding privileged ports
 + **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
   keywords
++ **Resolver debug tracing**: Enable verbose DNS resolver logs on demand with the
+  `-d` CLI flag for troubleshooting query flow
 
 Architecture
 ------------
@@ -87,12 +89,13 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
 Usage
 -----
 
-    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T]
+    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T] [-d]
         -c  configuration file, defaults to /etc/sniproxy.conf
         -f  run in foreground, do not drop privileges
         -n  specify file descriptor limit
         -V  print the version of SNIProxy and exit
         -T  allow TLS 1.0 client hellos (default requires TLS 1.2+)
+        -d  enable resolver debug logging (verbose DNS tracing to stderr/error log)
 
 
 Installation
@@ -389,14 +392,14 @@ Troubleshooting
 
 ### Debug Mode
 
-Run in foreground with debug logging:
+Run in foreground with resolver debug logging enabled:
 
-    sniproxy -f -c /path/to/config.conf
+    sniproxy -f -d -c /path/to/config.conf
 
 This will:
 - Keep process in foreground (not daemonize)
 - Not drop privileges (runs as invoking user)
-- Show detailed logging to stderr
+- Show detailed resolver tracing on stderr/error log to troubleshoot DNS issues
 
 ### Configuration Testing
 

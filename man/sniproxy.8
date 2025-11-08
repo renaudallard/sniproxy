@@ -7,7 +7,7 @@ SNIProxy \- transparent session based TLS and HTTP proxy
 .SH SYNOPSIS
 
 \fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ]
-[ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR ]
+[ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR ] [ -\fBd\fR ]
 
 .SH DESCRIPTION
 
@@ -42,3 +42,7 @@ Print the version of SNIProxy and exit\&.
 .TP
 -T
 Allow TLS 1.0 client hellos in addition to newer TLS versions\&.
+
+.TP
+-d
+Enable verbose resolver debug logging to stderr and the error log to aid DNS troubleshooting\&.
