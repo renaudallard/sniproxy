@@ -140,7 +140,7 @@ static void connection_account_remove(void);
 static inline double rate_limit_bucket_capacity(void);
 static void rate_limit_reset(void);
 static void rate_limit_cleanup(ev_tstamp);
-static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *);
+static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *, uint32_t *);
 static int sockaddr_equal_ip(const struct sockaddr_storage *,
         const struct sockaddr_storage *);
 static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
