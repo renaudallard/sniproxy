@@ -45,6 +45,7 @@
 #include <strings.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 #include <ares.h>
 #include <ares_dns.h>
 #ifndef ARES_GETSOCK_MAXNUM
@@ -589,11 +590,38 @@ resolver_restart(void) {
 }
 
 static void
+resolver_child_crash_handler(int signum) {
+    const char *signame = "UNKNOWN";
+    switch (signum) {
+        case SIGSEGV: signame = "SIGSEGV (segmentation fault)"; break;
+        case SIGBUS: signame = "SIGBUS (bus error)"; break;
+        case SIGABRT: signame = "SIGABRT (abort)"; break;
+        case SIGILL: signame = "SIGILL (illegal instruction)"; break;
+        case SIGFPE: signame = "SIGFPE (floating point exception)"; break;
+    }
+    /* Use async-signal-safe functions only */
+    err("resolver child crashed with signal %d: %s", signum, signame);
+    /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
+}
+
+static void
 resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_mode) {
     child_sock = sockfd;
     child_default_resolv_mode = default_mode;
 
     notice("resolver child starting (pid=%d)", getpid());
+
+    /* Install crash handlers to log what went wrong */
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = resolver_child_crash_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESETHAND; /* Reset to default after first signal */
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGFPE, &sa, NULL);
 
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-resolver", 0, 0, 0);
@@ -1133,6 +1161,11 @@ resolver_child_schedule_timeout(struct ev_loop *loop) {
 
 static void
 resolver_child_process_callback(struct ResolverChildQuery *query) {
+    if (query == NULL) {
+        err("resolver child: process_callback called with NULL query");
+        return;
+    }
+
     if (query->callback_completed || query->cancelled)
         return;
 
@@ -1190,8 +1223,10 @@ resolver_child_nameservers_csv(char **nameservers) {
 
 static void
 resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
-    if (query == NULL)
+    if (query == NULL) {
+        err("resolver child: maybe_free_query called with NULL query");
         return;
+    }
 
     /* During shutdown, don't free queries here. Let shutdown_dns handle it
      * after ares_destroy() completes to avoid use-after-free. */
@@ -1206,6 +1241,9 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
 
 static void
 resolver_child_maybe_process_callback(struct ResolverChildQuery *query) {
+    if (query == NULL)
+        return;
+
     if (query->callback_completed || query->cancelled)
         return;
 
@@ -1241,8 +1279,12 @@ resolver_child_maybe_process_callback(struct ResolverChildQuery *query) {
 
 static struct Address *
 resolver_child_choose_ipv4_first(struct ResolverChildQuery *query) {
+    if (query == NULL || query->responses == NULL)
+        return NULL;
+
     for (size_t i = 0; i < query->response_count; i++)
-        if (address_is_sockaddr(query->responses[i]) &&
+        if (query->responses[i] != NULL &&
+                address_is_sockaddr(query->responses[i]) &&
                 address_sa(query->responses[i])->sa_family == AF_INET)
             return query->responses[i];
 
@@ -1251,8 +1293,12 @@ resolver_child_choose_ipv4_first(struct ResolverChildQuery *query) {
 
 static struct Address *
 resolver_child_choose_ipv6_first(struct ResolverChildQuery *query) {
+    if (query == NULL || query->responses == NULL)
+        return NULL;
+
     for (size_t i = 0; i < query->response_count; i++)
-        if (address_is_sockaddr(query->responses[i]) &&
+        if (query->responses[i] != NULL &&
+                address_is_sockaddr(query->responses[i]) &&
                 address_sa(query->responses[i])->sa_family == AF_INET6)
             return query->responses[i];
 
@@ -1261,7 +1307,10 @@ resolver_child_choose_ipv6_first(struct ResolverChildQuery *query) {
 
 static struct Address *
 resolver_child_choose_any(struct ResolverChildQuery *query) {
-    if (query->response_count >= 1)
+    if (query == NULL || query->responses == NULL)
+        return NULL;
+
+    if (query->response_count >= 1 && query->responses[0] != NULL)
         return query->responses[0];
 
     return NULL;
@@ -1271,12 +1320,26 @@ static void
 resolver_child_dns_query_v4_cb(void *arg, int status, int timeouts __attribute__((unused)), struct ares_addrinfo *result) {
     struct ResolverChildQuery *query = (struct ResolverChildQuery *)arg;
 
+    if (query == NULL) {
+        err("resolver child: v4 callback received NULL query pointer");
+        if (result != NULL)
+            ares_freeaddrinfo(result);
+        return;
+    }
+
     resolver_child_handle_addrinfo(query, status, result, AF_INET);
 }
 
 static void
 resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts __attribute__((unused)), struct ares_addrinfo *result) {
     struct ResolverChildQuery *query = (struct ResolverChildQuery *)arg;
+
+    if (query == NULL) {
+        err("resolver child: v6 callback received NULL query pointer");
+        if (result != NULL)
+            ares_freeaddrinfo(result);
+        return;
+    }
 
     resolver_child_handle_addrinfo(query, status, result, AF_INET6);
 }
