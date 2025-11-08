@@ -87,6 +87,7 @@ static void reactivate_watcher(struct ev_loop *, struct ev_io *,
 static void connection_cb(struct ev_loop *, struct ev_io *, int);
 static void resolv_cb(struct Address *, void *);
 static void reactivate_watchers(struct Connection *, struct ev_loop *);
+static void reactivate_watchers_with_state(struct Connection *, struct ev_loop *, int, int);
 static void insert_proxy_v1_header(struct Connection *);
 static void parse_client_request(struct Connection *);
 static void resolve_server_address(struct Connection *, struct ev_loop *);
@@ -388,6 +389,9 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         is_client ? con->server.buffer : con->client.buffer;
     void (*close_socket)(struct Connection *, struct ev_loop *) =
         is_client ? close_client_socket : close_server_socket;
+    int client_open = client_socket_open(con);
+    int server_open = server_socket_open(con);
+    int *current_socket_open = is_client ? &client_open : &server_open;
 
     /* Receive first in case the socket was closed */
     if (revents & EV_READ && buffer_room(input_buffer) == 0) {
@@ -402,6 +406,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                         buffer_size(input_buffer));
 
                 close_socket(con, loop);
+                *current_socket_open = 0;
                 return;
             }
         }
@@ -435,9 +440,11 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                     strerror(errno));
 
             close_socket(con, loop);
+            *current_socket_open = 0;
             revents = 0; /* Clear revents so we don't try to send */
         } else if (bytes_received == 0) { /* peer closed socket */
             close_socket(con, loop);
+            *current_socket_open = 0;
             revents = 0;
         }
     }
@@ -467,6 +474,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                     strerror(errno));
 
             close_socket(con, loop);
+            *current_socket_open = 0;
         }
     }
 
@@ -476,14 +484,20 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         parse_client_request(con);
     if (is_client && con->state == PARSED)
         resolve_server_address(con, loop);
-    if (is_client && con->state == RESOLVED)
+    if (is_client && con->state == RESOLVED) {
         initiate_server_connect(con, loop);
+        server_open = server_socket_open(con);
+    }
 
     /* Close other socket if we have flushed corresponding buffer */
-    if (con->state == SERVER_CLOSED && buffer_len(con->server.buffer) == 0)
+    if (con->state == SERVER_CLOSED && buffer_len(con->server.buffer) == 0) {
         close_client_socket(con, loop);
-    if (con->state == CLIENT_CLOSED && buffer_len(con->client.buffer) == 0)
+        client_open = 0;
+    }
+    if (con->state == CLIENT_CLOSED && buffer_len(con->client.buffer) == 0) {
         close_server_socket(con, loop);
+        server_open = 0;
+    }
 
     if (con->state == CLOSED) {
         stop_idle_timer(con, loop);
@@ -498,26 +512,34 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
     }
 
-    reactivate_watchers(con, loop);
+    reactivate_watchers_with_state(con, loop, client_open, server_open);
 }
 
 static void
 reactivate_watchers(struct Connection *con, struct ev_loop *loop) {
+    reactivate_watchers_with_state(con, loop,
+            client_socket_open(con),
+            server_socket_open(con));
+}
+
+static void
+reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
+        int client_open, int server_open) {
     struct ev_io *client_watcher = &con->client.watcher;
     struct ev_io *server_watcher = &con->server.watcher;
 
     /* Reactivate watchers */
-    if (client_socket_open(con))
+    if (client_open)
         reactivate_watcher(loop, client_watcher,
                 con->client.buffer, con->server.buffer);
 
-    if (server_socket_open(con))
+    if (server_open)
         reactivate_watcher(loop, server_watcher,
                 con->server.buffer, con->client.buffer);
 
     /* Neither watcher is active when the corresponding socket is closed */
-    assert(client_socket_open(con) || !ev_is_active(client_watcher));
-    assert(server_socket_open(con) || !ev_is_active(server_watcher));
+    assert(client_open || !ev_is_active(client_watcher));
+    assert(server_open || !ev_is_active(server_watcher));
 
     /* At least one watcher is still active for this connection,
      * or DNS callback active */
