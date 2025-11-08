@@ -102,8 +102,12 @@ static struct ResolvQuery *resolver_queries = NULL;
 static uint32_t
 resolver_next_query_prng(void) {
     uint32_t x = resolver_next_query_seed;
-    if (x == 0)
-        x = (uint32_t)ev_now(resolver_loop_ref ? resolver_loop_ref : EV_DEFAULT);
+    if (x == 0) {
+        struct timeval tv;
+        if (gettimeofday(&tv, NULL) == 0)
+            x = (uint32_t)(tv.tv_sec ^ tv.tv_usec);
+        x ^= (uint32_t)getpid();
+    }
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
