@@ -182,6 +182,7 @@ struct ResolverChildQuery {
     int cancelled;
     int pending_v4;
     int pending_v6;
+    int marked_for_free;  /* Prevents duplicate marking for deferred free */
     char *hostname;
     struct Address *best_address;
     struct ResolverChildQuery *next;
@@ -918,6 +919,7 @@ resolver_child_submit_query(uint32_t id, int mode,
     query->cancelled = 0;
     query->pending_v4 = 0;
     query->pending_v6 = 0;
+    query->marked_for_free = 0;
     query->next = child_queries;
     child_queries = query;
 
@@ -1325,8 +1327,17 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
 
     if (query->pending_v4 == 0 && query->pending_v6 == 0 &&
             (query->callback_completed || query->cancelled)) {
+
+        /* Check if already marked to prevent duplicate free */
+        if (query->marked_for_free) {
+            debug_log("resolver child: query_id=%u already marked for free, skipping", query->id);
+            return;
+        }
+
         debug_log("resolver child: MARKING query_id=%u for deferred free (callback_completed=%d cancelled=%d)",
                   query->id, query->callback_completed, query->cancelled);
+
+        query->marked_for_free = 1;
 
         /* Add to deferred free list instead of freeing immediately.
          * This prevents use-after-free if c-ares calls another callback
