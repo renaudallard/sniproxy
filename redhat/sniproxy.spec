@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.8.6
+Version: 0.9.0
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,19 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Fri Nov 8 2025 Renaud Allard <renaud@allard.it> 0.9.0-1
+- Major performance and security release
+- Security: DNS query IDs use PRNG (xorshift32) instead of linear counter
+- Security: c-ares resolver hardening (async-signal-safe, integer overflow protection)
+- Security: TLS parser improvements (reject invalid ClientHello variants)
+- Performance: Per-backend pattern match caching (skip repeated PCRE evaluations)
+- Performance: HTTP/2 HPACK optimization (precomputed lengths, binary search)
+- Performance: Optimized buffer shrink decisions (periodic timer)
+- Performance: Connection memory tracking and accounting
+- Performance: Rate limit hash table optimization (IPv4 fast path, LRU)
+- Performance: Protocol parser optimizations (TLS, HTTP, HTTP/2)
+- Performance: PROXY v1 header composition optimization
+
 * Thu Sep 4 2025 Renaud Allard <renaud@allard.it> 0.8.6-1
 - Prepare 0.8.6 release
 

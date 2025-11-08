@@ -144,6 +144,9 @@ Backends represent destination servers with pattern-based routing rules.
 - Regular expressions: PCRE/PCRE2 patterns with wildcards (*, ., etc.)
 - Security: Regex match limits prevent algorithmic complexity attacks
 - NUL bytes in patterns are rejected
+- **Performance optimization (0.9.0)**: Per-backend cache stores the most recent
+  hostname lookup result, allowing repeated lookups to skip expensive PCRE regex
+  evaluation entirely
 
 ### Connection
 
@@ -184,6 +187,9 @@ NEW -> ACCEPTED -> PARSED -> RESOLVING -> RESOLVED -> CONNECTED
 - `idle_timer`: Connection timeout watcher
 - `established_timestamp`: For connection duration logging
 - `use_proxy_header`: Whether to send PROXY header to backend
+- **Memory tracking (0.9.0)**: Connections participate in global memory accounting,
+  tracking both connection structure size and associated buffer memory for
+  operational visibility
 
 **Client and Server sub-structures:**
 - `addr`, `local_addr`: Socket addresses
@@ -211,6 +217,10 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 - Shrinking when underutilized
 - Zero-copy operations where possible
 - Overflow protection: `buf->len + min_room` wraparound detection
+- **Performance optimization (0.9.0)**: Periodic shrink timer reduces per-event
+  timestamp operations, eliminating unnecessary buffer size checks on every I/O event
+- **Memory tracking (0.9.0)**: Global memory observer tracks total buffer memory
+  usage across all connections, providing visibility into peak memory consumption
 
 ### Protocol
 
@@ -242,6 +252,9 @@ Protocol handlers parse application-layer headers to extract hostnames.
    - HPACK decompression with dynamic table
    - Handles HEADERS and CONTINUATION frames
    - Huffman decoding support
+   - **Performance optimization (0.9.0)**: Static HPACK table uses precomputed
+     name/value lengths and binary search for header name lookups, eliminating
+     repeated strlen calls and linear table scans
    - Security limits:
      - Max header block size: 64KB
      - Max dynamic table size per connection: 64KB
@@ -258,6 +271,11 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
 - Concurrent query limiting to prevent resource exhaustion
 - Integration with libev event loop
 - Thread-safe query list with mutex protection
+- **Security enhancement (0.9.0)**: DNS query IDs generated using xorshift32 PRNG
+  (seeded from time and PID) instead of linear counter, preventing timing-based
+  query ID prediction attacks
+- **Robustness (0.9.0)**: Async-signal-safe signal handlers, integer overflow
+  protection in memory operations, and proper cleanup to prevent memory leaks
 
 **Modes:**
 - `RESOLV_MODE_DEFAULT`: System default behavior
@@ -390,6 +408,9 @@ Once CONNECTED, the connection enters steady-state proxying:
   - DNS query concurrency limits
 
 - **Rate limiting**:
+  - Per-IP connection rate limiting with token bucket algorithm
+  - **Performance optimization (0.9.0)**: IPv4 fast path with cached 32-bit address
+    comparison and LRU eviction moves recently-used entries to front of hash chains
   - Accept backoff timer on repeated errors
   - Idle connection timeouts
 
@@ -402,6 +423,9 @@ preserving original client IP and port. Configurable per-table or per-backend.
 - Passing client source info to backend servers
 - Integration with HAProxy and other PROXY-aware services
 - Required for fallback backends when transparent proxy unavailable
+
+**Performance optimization (0.9.0)**: PROXY v1 header composition uses single-pass
+buffer assembly, reducing the number of buffer operations required
 
 ### Privilege Separation
 
@@ -443,6 +467,24 @@ preserving original client IP and port. Configurable per-table or per-backend.
 - **SO_REUSEPORT**: Multiple processes can accept on same port
 - **Connection pooling**: Reuses connection structures
 - **Compiled regexes**: One-time compilation, cached for all lookups
+
+### Performance Optimizations in 0.9.0
+
+- **Pattern match caching**: Backends cache the most recent hostname lookup result,
+  eliminating repeated PCRE regex evaluations for the same hostname
+- **HTTP/2 HPACK**: Precomputed static table entry lengths and binary search for
+  header names eliminate strlen calls and linear table scans
+- **Buffer management**: Periodic shrink timer reduces per-event operations,
+  eliminating unnecessary timestamp checks on every I/O callback
+- **Rate limiting**: IPv4 fast path with 32-bit integer comparison and LRU hash
+  chain management improves high-volume connection acceptance
+- **Protocol parsers**: TLS, HTTP, and HTTP/2 parsers use compile-time length
+  constants and optimized data structures to minimize per-request overhead
+- **PROXY protocol**: Single-pass header composition reduces buffer operations
+- **Memory accounting**: Global tracking provides operational visibility without
+  per-operation overhead
+- **Socket state caching**: Connection callbacks cache socket open state to avoid
+  repeated checks
 
 ## Testing
 

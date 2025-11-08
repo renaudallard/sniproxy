@@ -9,6 +9,25 @@ proxy machine.
 SNIProxy is a production-ready, high-performance transparent proxy with a focus
 on security, reliability, and minimal resource usage.
 
+What's New in 0.9.0
+-------------------
+
+This release focuses on **performance optimizations** and **security hardening**:
+
+### Security Improvements
++ **Cryptographically stronger DNS query IDs**: Replaced linear counter with xorshift32 PRNG to prevent timing-based ID prediction
++ **c-ares resolver hardening**: Async-signal-safe signal handlers, integer overflow protection, and memory leak fixes
++ **TLS parser hardening**: Early rejection of ClientHello variants that cannot contain SNI extension
+
+### Performance Enhancements
++ **Pattern match caching**: Per-backend cache remembers the most recent hostname lookup, skipping expensive PCRE regex evaluation for repeated hostnames
++ **HTTP/2 HPACK optimization**: Precomputed static table entry lengths and binary search for header name lookups eliminate repeated strlen calls
++ **Optimized buffer management**: Periodic buffer shrink timer reduces per-event timestamp operations
++ **Connection memory tracking**: Global accounting provides visibility into memory usage and peak connection counts
++ **Rate limiting optimization**: IPv4 fast path with LRU-based hash table improves performance for high-volume IPv4 traffic
++ **Protocol parser micro-optimizations**: Reduced strlen calls, compile-time length constants, and optimized data structures across TLS, HTTP, and HTTP/2 parsers
++ **PROXY protocol optimization**: Single-pass PROXY v1 header composition reduces buffer operations
+
 Features
 --------
 
@@ -34,10 +53,12 @@ Features
 
 ### Security & Hardening
 + **TLS 1.2+ required by default** - optionally allow TLS 1.0 with `-T` flag
++ **Cryptographic DNS query IDs**: xorshift32 PRNG prevents timing-based prediction attacks
 + **Regex DoS prevention**: Match limits scale with hostname length
 + **Buffer overflow protection**: Strict bounds checking in all protocol parsers
 + **NULL byte rejection**: Prevents hostname validation bypasses
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
++ **DNS resolver hardening**: Async-signal-safe handlers, integer overflow protection
 + **DNS query concurrency limits**: Prevents resolver exhaustion
 + **Connection idle timeouts**: Automatic cleanup of stalled connections
 + **Per-IP connection rate limiting**: Token-bucket guardrail on new client connections across all listeners
@@ -294,6 +315,12 @@ SNIProxy includes extensive security hardening:
 
 ### Recent Security Improvements
 
+- **DNS query ID strengthening (0.9.0)**: Switched from linear counter to xorshift32
+  PRNG to prevent timing-based query ID prediction attacks
+- **c-ares resolver hardening (0.9.0)**: Async-signal-safe signal handlers, integer
+  overflow protection in memory operations, and memory leak fixes
+- **TLS parser hardening (0.9.0)**: Early rejection of SSL 2.0, SSL 3.0, and other
+  ClientHello variants that cannot support SNI extension
 - **Regex DoS mitigation**: Match limits now scale with hostname length to
   prevent catastrophic backtracking attacks on malicious hostnames
 - **Buffer overflow protection**: Added strict overflow guards in `buffer_reserve()`
