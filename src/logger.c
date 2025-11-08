@@ -1568,7 +1568,8 @@ logger_child_main(int sockfd) {
 #endif
 
 #ifdef __OpenBSD__
-    if (pledge("stdio rpath wpath cpath fattr unix", NULL) == -1) {
+    /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
+    if (pledge("stdio rpath wpath cpath fattr id unix", NULL) == -1) {
         perror("logger pledge");
         _exit(EXIT_FAILURE);
     }
