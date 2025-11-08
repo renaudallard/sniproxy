@@ -47,7 +47,7 @@ Features
 + **Comprehensive fuzzing**: TLS and HTTP/2 protocol fuzzers included
 
 ### DNS Resolution
-+ **Asynchronous DNS** via dedicated resolver process (powered by c-ares)
++ **Asynchronous DNS** via dedicated resolver process (powered by c-ares from 0.8.7)
 + **IPv4/IPv6 preference modes**: default, IPv4-only, IPv6-only, IPv4-first, IPv6-first
 + **Configurable nameservers** and search domains
 + **Concurrency limits** to prevent resource exhaustion
