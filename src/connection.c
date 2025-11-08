@@ -886,87 +886,61 @@ maybe_stop_buffer_shrink_timer(struct ev_loop *loop) {
 
 static void
 insert_proxy_v1_header(struct Connection *con) {
-    char buf[INET6_ADDRSTRLEN] = { '\0' };
-    size_t buf_len;
-
-    con->header_len += buffer_push(con->client.buffer, "PROXY ", 6);
+    char header[256];
+    size_t len;
 
     switch (con->client.addr.ss_family) {
-        case AF_INET:
-            con->header_len += buffer_push(con->client.buffer, "TCP4 ", 5);
+        case AF_INET: {
+            char src_ip[INET_ADDRSTRLEN];
+            char dst_ip[INET_ADDRSTRLEN];
+            const struct sockaddr_in *src =
+                    (const struct sockaddr_in *)&con->client.addr;
+            const struct sockaddr_in *dst =
+                    (const struct sockaddr_in *)&con->client.local_addr;
 
-            inet_ntop(AF_INET,
-                      &((const struct sockaddr_in *)&con->client.addr)->
-                      sin_addr, buf, sizeof(buf));
-            buf_len = strlen(buf);
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
+            if (inet_ntop(AF_INET, &src->sin_addr, src_ip, sizeof(src_ip)) == NULL ||
+                    inet_ntop(AF_INET, &dst->sin_addr, dst_ip, sizeof(dst_ip)) == NULL)
+                goto unknown;
 
-            con->header_len += buffer_push(con->client.buffer, " ", 1);
+            int n = snprintf(header, sizeof(header),
+                    "PROXY TCP4 %s %s %u %u\r\n",
+                    src_ip, dst_ip, ntohs(src->sin_port), ntohs(dst->sin_port));
+            if (n <= 0 || (size_t)n >= sizeof(header))
+                goto unknown;
 
-            inet_ntop(AF_INET,
-                      &((const struct sockaddr_in *)&con->client.local_addr)->
-                      sin_addr, buf, sizeof(buf));
-            buf_len = strlen(buf);
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
+            len = (size_t)n;
+            con->header_len += buffer_push(con->client.buffer, header, len);
+            return;
+        }
+        case AF_INET6: {
+            char src_ip[INET6_ADDRSTRLEN];
+            char dst_ip[INET6_ADDRSTRLEN];
+            const struct sockaddr_in6 *src =
+                    (const struct sockaddr_in6 *)&con->client.addr;
+            const struct sockaddr_in6 *dst =
+                    (const struct sockaddr_in6 *)&con->client.local_addr;
 
-            buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
-                              ntohs(((const struct sockaddr_in *)&con->
-                              client.addr)->sin_port));
-            if ((ssize_t)buf_len < 0)
-                buf_len = 0;
-            else if (buf_len >= sizeof(buf))
-                buf_len = sizeof(buf) - 1;
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
+            if (inet_ntop(AF_INET6, &src->sin6_addr, src_ip, sizeof(src_ip)) == NULL ||
+                    inet_ntop(AF_INET6, &dst->sin6_addr, dst_ip, sizeof(dst_ip)) == NULL)
+                goto unknown;
 
-            buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
-                              ntohs(((const struct sockaddr_in *)&con->
-                              client.local_addr)->sin_port));
-            if ((ssize_t)buf_len < 0)
-                buf_len = 0;
-            else if (buf_len >= sizeof(buf))
-                buf_len = sizeof(buf) - 1;
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
+            int n = snprintf(header, sizeof(header),
+                    "PROXY TCP6 %s %s %u %u\r\n",
+                    src_ip, dst_ip, ntohs(src->sin6_port), ntohs(dst->sin6_port));
+            if (n <= 0 || (size_t)n >= sizeof(header))
+                goto unknown;
 
-            break;
-        case AF_INET6:
-            con->header_len += buffer_push(con->client.buffer, "TCP6 ", 5);
-            inet_ntop(AF_INET6,
-                    &((const struct sockaddr_in6 *)&con->client.addr)->
-                    sin6_addr, buf, sizeof(buf));
-            buf_len = strlen(buf);
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
-
-            con->header_len += buffer_push(con->client.buffer, " ", 1);
-
-            inet_ntop(AF_INET6,
-                      &((const struct sockaddr_in6 *)&con->
-                      client.local_addr)->sin6_addr, buf, sizeof(buf));
-            buf_len = strlen(buf);
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
-
-            buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
-                              ntohs(((const struct sockaddr_in6 *)&con->
-                              client.addr)->sin6_port));
-            if ((ssize_t)buf_len < 0)
-                buf_len = 0;
-            else if (buf_len >= sizeof(buf))
-                buf_len = sizeof(buf) - 1;
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
-
-            buf_len = snprintf(buf, sizeof(buf), " %" PRIu16,
-                              ntohs(((const struct sockaddr_in6 *)&con->
-                              client.local_addr)->sin6_port));
-            if ((ssize_t)buf_len < 0)
-                buf_len = 0;
-            else if (buf_len >= sizeof(buf))
-                buf_len = sizeof(buf) - 1;
-            con->header_len += buffer_push(con->client.buffer, buf, buf_len);
-
-            break;
+            len = (size_t)n;
+            con->header_len += buffer_push(con->client.buffer, header, len);
+            return;
+        }
         default:
-            con->header_len += buffer_push(con->client.buffer, "UNKNOWN", 7);
+            break;
     }
-    con->header_len += buffer_push(con->client.buffer, "\r\n", 2);
+
+unknown:
+    con->header_len += buffer_push(con->client.buffer,
+            "PROXY UNKNOWN\r\n", sizeof("PROXY UNKNOWN\r\n") - 1);
 }
 
 static void
