@@ -184,7 +184,14 @@ struct ResolverChildQuery {
 int
 resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_mode) {
     int sockets[2];
-    int socket_type = SOCK_STREAM;
+    /* Use SOCK_SEQPACKET for message boundaries with reliable delivery.
+     * Falls back to SOCK_DGRAM if SEQPACKET is not available. */
+#ifdef SOCK_SEQPACKET
+    int socket_type = SOCK_SEQPACKET;
+#else
+    int socket_type = SOCK_DGRAM;
+    notice("SOCK_SEQPACKET not available, using SOCK_DGRAM for resolver IPC");
+#endif
 
     resolver_loop_ref = loop;
     resolver_saved_nameservers = nameservers;
@@ -207,8 +214,24 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     socket_type |= SOCK_NONBLOCK;
 #endif
 
-    if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0)
-        fatal("resolver socketpair failed: %s", strerror(errno));
+    if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0) {
+#ifdef SOCK_SEQPACKET
+        /* SEQPACKET might not be supported, try DGRAM as fallback */
+        if (errno == EPROTONOSUPPORT || errno == EPROTOTYPE) {
+            notice("SOCK_SEQPACKET not supported, falling back to SOCK_DGRAM for resolver IPC");
+            socket_type = SOCK_DGRAM;
+#ifdef SOCK_CLOEXEC
+            socket_type |= SOCK_CLOEXEC;
+#endif
+#ifdef SOCK_NONBLOCK
+            socket_type |= SOCK_NONBLOCK;
+#endif
+            if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0)
+                fatal("resolver socketpair failed: %s", strerror(errno));
+        } else
+#endif
+            fatal("resolver socketpair failed: %s", strerror(errno));
+    }
 
 #ifndef SOCK_CLOEXEC
     if (set_cloexec(sockets[0]) < 0 || set_cloexec(sockets[1]) < 0)
