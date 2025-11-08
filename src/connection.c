@@ -850,6 +850,7 @@ parse_client_request(struct Connection *con) {
     int result = con->listener->protocol->parse_packet(payload, payload_len, &hostname);
     if (result < 0) {
         char client[INET6_ADDRSTRLEN + 8];
+        int fatal_parse_error = 0;
 
         if (result == -1) { /* incomplete request */
             if (buffer_room(con->client.buffer) > 0)
@@ -869,6 +870,12 @@ parse_client_request(struct Connection *con) {
                     display_sockaddr(&con->client.addr,
                         con->client.addr_len,
                         client, sizeof(client)));
+        } else if (result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO) {
+            warn("Client from %s sent a ClientHello version that cannot carry SNI, rejecting",
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
+            fatal_parse_error = 1;
         } else if (result == -2) {
             warn("Request from %s did not include a hostname",
                     display_sockaddr(&con->client.addr,
@@ -885,7 +892,12 @@ parse_client_request(struct Connection *con) {
                 log_bad_request(con, payload, payload_len, result);
         }
 
-        if (con->listener->fallback_address == NULL) {
+        if (hostname != NULL) {
+            free(hostname);
+            hostname = NULL;
+        }
+
+        if (fatal_parse_error || con->listener->fallback_address == NULL) {
             abort_connection(con);
             return;
         }
@@ -893,11 +905,6 @@ parse_client_request(struct Connection *con) {
         /* Parsing failed but a fallback backend is configured. Treat this as a
          * request without a usable hostname so downstream lookups do not see a
          * bogus length derived from the negative parser return value. */
-        if (hostname != NULL) {
-            free(hostname);
-            hostname = NULL;
-        }
-
         result = 0;
     }
 

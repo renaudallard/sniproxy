@@ -116,7 +116,7 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
      */
     if (data[0] & 0x80 && data[2] == 1) {
         debug("Received SSL 2.0 Client Hello which can not support SNI.");
-        return -2;
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
     tls_content_type = data[0];
@@ -131,7 +131,7 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
         debug("Received SSL %" PRIu8 ".%" PRIu8 " handshake which can not support SNI.",
               tls_version_major, tls_version_minor);
 
-        return -2;
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
     /* TLS record length */
@@ -167,6 +167,13 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
 
     uint8_t client_hello_version_major = data[pos + 4];
     uint8_t client_hello_version_minor = data[pos + 5];
+
+    if (client_hello_version_major < 3 ||
+            (client_hello_version_major == 3 && client_hello_version_minor == 0)) {
+        debug("Client hello TLS version %" PRIu8 ".%" PRIu8 " cannot carry SNI, rejecting.",
+              client_hello_version_major, client_hello_version_minor);
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+    }
 
     if (client_hello_version_major < min_client_hello_version_major ||
             (client_hello_version_major == min_client_hello_version_major &&
@@ -204,8 +211,8 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     pos += 1 + len;
 
     if (pos == data_len && tls_version_major == 3 && tls_version_minor == 0) {
-        debug("Received SSL 3.0 handshake without extensions");
-        return -2;
+        debug("Received SSL 3.0 handshake without extensions, rejecting");
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
     /* Extensions */

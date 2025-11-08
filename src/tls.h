@@ -34,5 +34,6 @@ extern const struct Protocol *const tls_protocol;
 void tls_set_min_client_hello_version(uint8_t major, uint8_t minor);
 
 #define TLS_ERR_CLIENT_RENEGOTIATION (-6)
+#define TLS_ERR_UNSUPPORTED_CLIENT_HELLO (-7)
 
 #endif
