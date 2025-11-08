@@ -1189,14 +1189,8 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
         return;
     }
 
-    if (query->callback_completed || query->cancelled) {
-        notice("resolver child: process_callback skipping query_id=%u already_completed=%d cancelled=%d",
-               query->id, query->callback_completed, query->cancelled);
+    if (query->callback_completed || query->cancelled)
         return;
-    }
-
-    notice("resolver child: process_callback query_id=%u responses=%zu pending_v4=%d pending_v6=%d",
-           query->id, query->response_count, query->pending_v4, query->pending_v6);
 
     query->callback_completed = 1;
 
@@ -1208,8 +1202,6 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
         best_address = resolver_child_choose_ipv6_first(query);
     else
         best_address = resolver_child_choose_any(query);
-
-    notice("resolver child: query_id=%u selected address=%p", query->id, (void*)best_address);
 
     /* During shutdown, keep queries in the list so cleanup can free them all.
      * During normal operation, remove from list so it can be freed when ready. */
@@ -1266,8 +1258,6 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
 
     if (query->pending_v4 == 0 && query->pending_v6 == 0 &&
             (query->callback_completed || query->cancelled)) {
-        notice("resolver child: freeing query_id=%u callback_completed=%d cancelled=%d",
-               query->id, query->callback_completed, query->cancelled);
         resolver_child_free_query(query);
     }
 }
@@ -1400,8 +1390,10 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
         return;
     }
 
+    /* Verbose logging disabled - enable for debugging:
     notice("resolver child: handle_addrinfo query_id=%u family=%d status=%d pending_v4=%d pending_v6=%d callback_completed=%d",
            query->id, family, status, query->pending_v4, query->pending_v6, query->callback_completed);
+    */
 
     if (status == ARES_SUCCESS && result != NULL) {
         for (struct ares_addrinfo_node *node = result->nodes; node != NULL; node = node->ai_next) {
@@ -1438,19 +1430,20 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
     else
         query->ipv6_response_count += responses_added;
 
-    if (family == AF_INET) {
-        notice("resolver child: query_id=%u marking v4 complete", query->id);
+    if (family == AF_INET)
         query->pending_v4 = 0;
-    } else {
-        notice("resolver child: query_id=%u marking v6 complete", query->id);
+    else
         query->pending_v6 = 0;
-    }
 
-    notice("resolver child: query_id=%u calling maybe_process_callback", query->id);
     resolver_child_maybe_process_callback(query);
 
-    notice("resolver child: query_id=%u calling maybe_free_query", query->id);
+    /* Save query ID before potentially freeing the query to avoid use-after-free */
+    uint32_t saved_query_id = query->id;
+
     resolver_child_maybe_free_query(query);
 
-    notice("resolver child: query_id=%u handle_addrinfo complete", query->id);
+    /* Verbose logging disabled - enable for debugging:
+    notice("resolver child: query_id=%u handle_addrinfo complete", saved_query_id);
+    */
+    (void)saved_query_id;  /* Suppress unused variable warning */
 }
