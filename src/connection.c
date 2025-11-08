@@ -74,6 +74,9 @@ struct resolv_cb_data {
 
 static TAILQ_HEAD(ConnectionHead, Connection) connections;
 
+static struct ev_timer buffer_shrink_timer;
+static struct ev_loop *buffer_shrink_loop;
+static int buffer_shrink_timer_configured;
 
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
@@ -101,6 +104,11 @@ static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
+
+static void buffer_shrink_timer_cb(struct ev_loop *, struct ev_timer *, int);
+static void start_buffer_shrink_timer(struct ev_loop *);
+static void stop_buffer_shrink_timer(struct ev_loop *);
+static void maybe_stop_buffer_shrink_timer(struct ev_loop *);
 
 #define RATE_LIMIT_TABLE_SIZE 1024
 #define RATE_LIMIT_IDLE_TTL 300.0
@@ -145,6 +153,14 @@ init_connections(void) {
     TAILQ_INIT(&connections);
     rate_limit_reset();
     buffer_set_memory_observer(buffer_memory_observer);
+
+    if (BUFFER_SHRINK_IDLE_SECONDS > 0.0) {
+        ev_timer_init(&buffer_shrink_timer, buffer_shrink_timer_cb,
+                BUFFER_SHRINK_IDLE_SECONDS, BUFFER_SHRINK_IDLE_SECONDS);
+        buffer_shrink_timer.data = NULL;
+        buffer_shrink_timer_configured = 1;
+        buffer_shrink_loop = NULL;
+    }
 }
 
 /**
@@ -231,6 +247,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     TAILQ_INSERT_HEAD(&connections, con, entries);
     connection_account_add();
+    start_buffer_shrink_timer(loop);
 
     ev_io_start(loop, client_watcher);
     reset_idle_timer(con, loop);
@@ -254,6 +271,7 @@ free_connections(struct ev_loop *loop) {
         close_connection(iter, loop);
         free_connection(iter);
     }
+    stop_buffer_shrink_timer(loop);
 }
 
 /* dumps a list of all connections for debugging */
@@ -450,15 +468,6 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         }
     }
 
-    if (is_client && BUFFER_SHRINK_IDLE_SECONDS > 0.0) {
-        ev_tstamp now = ev_now(loop);
-        if (now >= con->next_buffer_shrink_check) {
-            buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-            buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-            con->next_buffer_shrink_check = now + BUFFER_SHRINK_IDLE_SECONDS;
-        }
-    }
-
     /* Handle any state specific logic, note we may transition through several
      * states during a single call */
     if (is_client && con->state == ACCEPTED)
@@ -483,6 +492,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             log_connection(con);
 
         free_connection(con);
+        maybe_stop_buffer_shrink_timer(loop);
         return;
     }
 
@@ -819,6 +829,59 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
         log_connection(con);
 
     free_connection(con);
+    maybe_stop_buffer_shrink_timer(loop);
+}
+
+static void
+buffer_shrink_timer_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((unused)),
+        int revents __attribute__((unused))) {
+    if (TAILQ_EMPTY(&connections))
+        return;
+
+    ev_tstamp now = ev_now(loop);
+    struct Connection *con;
+    TAILQ_FOREACH(con, &connections, entries) {
+        buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+        buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+    }
+}
+
+static void
+start_buffer_shrink_timer(struct ev_loop *loop) {
+    if (!buffer_shrink_timer_configured || BUFFER_SHRINK_IDLE_SECONDS <= 0.0)
+        return;
+
+    if (buffer_shrink_loop == NULL)
+        buffer_shrink_loop = loop;
+
+    assert(buffer_shrink_loop == loop);
+
+    if (!ev_is_active(&buffer_shrink_timer))
+        ev_timer_start(loop, &buffer_shrink_timer);
+}
+
+static void
+stop_buffer_shrink_timer(struct ev_loop *loop __attribute__((unused))) {
+    if (!buffer_shrink_timer_configured || BUFFER_SHRINK_IDLE_SECONDS <= 0.0)
+        return;
+
+    if (buffer_shrink_loop == NULL)
+        return;
+
+    struct ev_loop *active_loop = buffer_shrink_loop;
+
+    if (ev_is_active(&buffer_shrink_timer))
+        ev_timer_stop(active_loop, &buffer_shrink_timer);
+    else if (ev_is_pending((struct ev_watcher *)&buffer_shrink_timer))
+        ev_clear_pending(active_loop, (struct ev_watcher *)&buffer_shrink_timer);
+
+    buffer_shrink_loop = NULL;
+}
+
+static void
+maybe_stop_buffer_shrink_timer(struct ev_loop *loop) {
+    if (TAILQ_EMPTY(&connections))
+        stop_buffer_shrink_timer(loop);
 }
 
 static void
@@ -1392,7 +1455,6 @@ new_connection(struct ev_loop *loop) {
     con->header_len = 0;
     con->query_handle = NULL;
     con->use_proxy_header = 0;
-    con->next_buffer_shrink_check = 0.0;
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
     con->idle_timer.data = con;
 

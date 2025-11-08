@@ -60,7 +60,6 @@ struct Connection {
     struct ResolvQuery *query_handle;
     int dns_query_acquired;
     ev_tstamp established_timestamp;
-    ev_tstamp next_buffer_shrink_check;
     int use_proxy_header;
 
     TAILQ_ENTRY(Connection) entries;
