@@ -237,8 +237,8 @@ Set the value to `0` to disable the limiter (default).
         # Limit concurrent DNS queries to prevent resource exhaustion
         max_concurrent_queries 256
 
-        # Require DNS answers validated via DNSSEC by the upstream resolver
-        dnssec_validation on
+        # DNSSEC policy: off | relaxed | strict
+        dnssec_validation strict
     }
 
     listener [::]:443 {
@@ -281,7 +281,7 @@ SNIProxy spawns a dedicated `sniproxy-resolver` process that handles all DNS que
 
 **Security note**: Run SNIProxy alongside a local caching DNS resolver (e.g., unbound, dnsmasq) to reduce exposure to spoofed responses and improve performance.
 
-Enabling `dnssec_validation on` inside the `resolver` block forces SNIProxy to only use DNS answers that your upstream resolver has validated with DNSSEC. This requires a version of c-ares built with DNSSEC/Trust AD support; when unavailable, SNIProxy will refuse to start rather than silently disable the protection.
+Set `dnssec_validation strict` inside the `resolver` block to require DNS replies that carry the AD (Authenticated Data) flag from a validating upstream resolver. This mode needs a c-ares build with DNSSEC/Trust AD support and will fail to resolve unsigned zones. Use `dnssec_validation relaxed` to request DNSSEC data while still falling back to unsigned answers when AD is unavailable.
 
 
 Security & Hardening

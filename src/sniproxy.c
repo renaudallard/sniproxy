@@ -359,7 +359,7 @@ main(int argc, char **argv) {
 
     resolv_init(EV_DEFAULT, config->resolver.nameservers,
             config->resolver.search, config->resolver.mode,
-            config->resolver.dnssec_validation);
+            config->resolver.dnssec_validation_mode);
 
     init_connections();
 

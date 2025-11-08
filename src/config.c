@@ -65,7 +65,6 @@ static int accept_resolver_mode(struct ResolverConfig *, const char *);
 static int accept_resolver_max_queries(struct ResolverConfig *, const char *);
 static int accept_resolver_dnssec_validation(struct ResolverConfig *, const char *);
 static int end_resolver_stanza(struct Config *, struct ResolverConfig *);
-static int parse_boolean_option(const char *);
 static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
 static void free_string_vector(char **);
@@ -247,6 +246,12 @@ static const char *const resolver_mode_names[] = {
     "ipv6_only",
     "ipv4_first",
     "ipv6_first",
+};
+
+static const char *const dnssec_validation_mode_names[] = {
+    "off",
+    "relaxed",
+    "strict",
 };
 
 
@@ -661,7 +666,7 @@ new_resolver_config(void) {
         resolver->search = NULL;
         resolver->mode = 0;
         resolver->max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
-        resolver->dnssec_validation = 0;
+        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_OFF;
     }
 
     return resolver;
@@ -710,36 +715,6 @@ free_string_vector(char **vector) {
 }
 
 static int
-parse_boolean_option(const char *value) {
-    const char *true_values[] = {
-        "yes",
-        "true",
-        "on",
-    };
-    const char *false_values[] = {
-        "no",
-        "false",
-        "off",
-    };
-
-    if (value == NULL) {
-        err("Unable to parse boolean value: (null)");
-        return -1;
-    }
-
-    for (size_t i = 0; i < sizeof(true_values) / sizeof(true_values[0]); i++)
-        if (strcasecmp(value, true_values[i]) == 0)
-            return 1;
-
-    for (size_t i = 0; i < sizeof(false_values) / sizeof(false_values[0]); i++)
-        if (strcasecmp(value, false_values[i]) == 0)
-            return 0;
-
-    err("Unable to parse boolean value '%s'", value);
-    return -1;
-}
-
-static int
 accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserver) {
     /* Validate address is a valid IP */
     struct Address *ns_address = new_address(nameserver);
@@ -782,13 +757,32 @@ accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
 
 static int
 accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *value) {
-    int parsed = parse_boolean_option(value);
+    if (value == NULL || *value == '\0')
+        return -1;
 
-    if (parsed < 0)
-        return parsed;
+    if (strcasecmp(value, "off") == 0 || strcasecmp(value, "no") == 0 ||
+            strcasecmp(value, "false") == 0 || strcasecmp(value, "disable") == 0 ||
+            strcasecmp(value, "disabled") == 0) {
+        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_OFF;
+        return 1;
+    }
 
-    resolver->dnssec_validation = parsed;
-    return 1;
+    if (strcasecmp(value, "relaxed") == 0 || strcasecmp(value, "allow_insecure") == 0 ||
+            strcasecmp(value, "permissive") == 0 || strcasecmp(value, "fail_open") == 0 ||
+            strcasecmp(value, "fail-open") == 0) {
+        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_RELAXED;
+        return 1;
+    }
+
+    if (strcasecmp(value, "strict") == 0 || strcasecmp(value, "require") == 0 ||
+            strcasecmp(value, "enforce") == 0 || strcasecmp(value, "on") == 0 ||
+            strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0) {
+        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_STRICT;
+        return 1;
+    }
+
+    err("Unknown dnssec_validation mode '%s'", value);
+    return -1;
 }
 
 static int
@@ -834,7 +828,7 @@ print_resolver_config(FILE *file, struct ResolverConfig *resolver) {
     fprintf(file, "\tmode %s\n", resolver_mode_names[resolver->mode]);
     fprintf(file, "\tmax_concurrent_queries %zu\n", resolver->max_concurrent_queries);
     fprintf(file, "\tdnssec_validation %s\n",
-            resolver->dnssec_validation ? "on" : "off");
+            dnssec_validation_mode_names[resolver->dnssec_validation_mode]);
 
     fprintf(file, "}\n\n");
 }

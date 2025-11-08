@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include "table.h"
 #include "listener.h"
+#include "resolv.h"
 
 struct Config {
     char *filename;
@@ -41,7 +42,7 @@ struct Config {
         char **search;
         int mode;
         size_t max_concurrent_queries;
-        int dnssec_validation;
+        int dnssec_validation_mode;
     } resolver;
     struct Logger *access_log;
     double per_ip_connection_rate;

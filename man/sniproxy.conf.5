@@ -142,10 +142,11 @@ The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
 may be in flight at once (default 256). Lower values cap resolver resource
 usage.
 
-Set \fBdnssec_validation\fR to 'on' to require DNS answers that have been
-validated with DNSSEC by your upstream resolver. This option defaults to
-'off' and requires a c-ares build with DNSSEC/Trust AD support; SNIProxy
-will refuse to start if the feature is unavailable.
+Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
+relaxed mode requests DNSSEC data but falls back to unsigned answers when
+your resolver cannot authenticate the response. The strict mode requires
+the AD flag, so unsigned zones fail to resolve and a c-ares build with
+DNSSEC/Trust AD support is mandatory.
 
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is
