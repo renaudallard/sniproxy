@@ -70,4 +70,8 @@ void debug(const char *, ...)
 void log_msg(struct Logger *, int, const char *, ...)
     __attribute__ ((format (printf, 3, 4)));
 
+/* Global resolver debug flag */
+void set_resolver_debug(int enabled);
+int get_resolver_debug(void);
+
 #endif

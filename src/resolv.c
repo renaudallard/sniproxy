@@ -64,6 +64,9 @@
  * Implement DNS resolution interface using a dedicated resolver child process
  */
 
+/* Helper macro for debug logging - only logs if resolver debug is enabled */
+#define debug_log(...) do { if (get_resolver_debug()) notice(__VA_ARGS__); } while (0)
+
 #define RESOLVER_CMD_QUERY      1u
 #define RESOLVER_CMD_CANCEL     2u
 #define RESOLVER_CMD_RESULT     3u
@@ -633,6 +636,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     child_default_resolv_mode = default_mode;
 
     notice("resolver child starting (pid=%d)", getpid());
+    debug_log("resolver child: debug logging ENABLED");
 
     /* Install crash handlers to log what went wrong */
     struct sigaction sa;
@@ -1048,14 +1052,22 @@ resolver_child_free_query(struct ResolverChildQuery *query) {
     if (query == NULL)
         return;
 
+    uint32_t query_id = query->id;
+    debug_log("resolver child: free_query START query_id=%u response_count=%zu",
+              query_id, query->response_count);
+
     if (query->responses != NULL) {
-        for (size_t i = 0; i < query->response_count; i++)
-            free(query->responses[i]);
+        for (size_t i = 0; i < query->response_count; i++) {
+            if (query->responses[i] != NULL)
+                free(query->responses[i]);
+        }
         free(query->responses);
     }
 
     free(query->hostname);
     free(query);
+
+    debug_log("resolver child: free_query END query_id=%u", query_id);
 }
 
 static struct resolver_child_cares_io *
@@ -1189,8 +1201,14 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
         return;
     }
 
-    if (query->callback_completed || query->cancelled)
+    if (query->callback_completed || query->cancelled) {
+        debug_log("resolver child: process_callback SKIP query_id=%u (callback_completed=%d cancelled=%d)",
+                  query->id, query->callback_completed, query->cancelled);
         return;
+    }
+
+    debug_log("resolver child: process_callback PROCESSING query_id=%u responses=%zu",
+              query->id, query->response_count);
 
     query->callback_completed = 1;
 
@@ -1205,11 +1223,15 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
 
     /* During shutdown, keep queries in the list so cleanup can free them all.
      * During normal operation, remove from list so it can be freed when ready. */
-    if (!child_shutting_down)
+    if (!child_shutting_down) {
+        debug_log("resolver child: removing query_id=%u from list", query->id);
         resolver_child_remove_query(query);
+    }
 
-    if (!query->cancelled)
+    if (!query->cancelled) {
+        debug_log("resolver child: sending result for query_id=%u", query->id);
         resolver_child_send_result(query->id, best_address, best_address == NULL ? -1 : 0);
+    }
 
     /* Query lifetime is managed by the caller once pending lookups finish. */
 }
@@ -1258,6 +1280,8 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
 
     if (query->pending_v4 == 0 && query->pending_v6 == 0 &&
             (query->callback_completed || query->cancelled)) {
+        debug_log("resolver child: FREEING query_id=%u (callback_completed=%d cancelled=%d)",
+                  query->id, query->callback_completed, query->cancelled);
         resolver_child_free_query(query);
     }
 }
@@ -1390,10 +1414,8 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
         return;
     }
 
-    /* Verbose logging disabled - enable for debugging:
-    notice("resolver child: handle_addrinfo query_id=%u family=%d status=%d pending_v4=%d pending_v6=%d callback_completed=%d",
-           query->id, family, status, query->pending_v4, query->pending_v6, query->callback_completed);
-    */
+    debug_log("resolver child: handle_addrinfo START query_id=%u family=%d status=%d pending_v4=%d pending_v6=%d callback_completed=%d",
+              query->id, family, status, query->pending_v4, query->pending_v6, query->callback_completed);
 
     if (status == ARES_SUCCESS && result != NULL) {
         for (struct ares_addrinfo_node *node = result->nodes; node != NULL; node = node->ai_next) {
@@ -1430,20 +1452,23 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
     else
         query->ipv6_response_count += responses_added;
 
-    if (family == AF_INET)
-        query->pending_v4 = 0;
-    else
-        query->pending_v6 = 0;
-
-    resolver_child_maybe_process_callback(query);
-
-    /* Save query ID before potentially freeing the query to avoid use-after-free */
+    /* Save query ID early to avoid any use-after-free */
     uint32_t saved_query_id = query->id;
 
+    if (family == AF_INET) {
+        debug_log("resolver child: query_id=%u marking v4 complete", saved_query_id);
+        query->pending_v4 = 0;
+    } else {
+        debug_log("resolver child: query_id=%u marking v6 complete", saved_query_id);
+        query->pending_v6 = 0;
+    }
+
+    debug_log("resolver child: query_id=%u calling maybe_process_callback (pending_v4=%d pending_v6=%d)",
+              saved_query_id, query->pending_v4, query->pending_v6);
+    resolver_child_maybe_process_callback(query);
+
+    debug_log("resolver child: query_id=%u calling maybe_free_query", saved_query_id);
     resolver_child_maybe_free_query(query);
 
-    /* Verbose logging disabled - enable for debugging:
-    notice("resolver child: query_id=%u handle_addrinfo complete", saved_query_id);
-    */
-    (void)saved_query_id;  /* Suppress unused variable warning */
+    debug_log("resolver child: query_id=%u handle_addrinfo END", saved_query_id);
 }

@@ -229,7 +229,7 @@ main(int argc, char **argv) {
 
     logger_prepare_process_title(argc, argv);
 
-    while ((opt = getopt(argc, argv, "fc:n:VT")) != -1) {
+    while ((opt = getopt(argc, argv, "fc:n:VTd")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -245,6 +245,10 @@ main(int argc, char **argv) {
                 return EXIT_SUCCESS;
             case 'T':
                 allow_tls10 = 1;
+                break;
+            case 'd': /* debug */
+                set_resolver_debug(1);
+                fprintf(stderr, "Resolver debug logging enabled\n");
                 break;
             default:
                 usage();
@@ -502,7 +506,8 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T] [-d]\n");
+    fprintf(stderr, "       -d enable resolver debug logging\n");
     fprintf(stderr, "       -T allow TLS 1.0 client hellos\n");
 }
 

@@ -1607,3 +1607,16 @@ void
 logger_parent_notify_fs_locked(void) {
     logger_parent_fs_locked = 1;
 }
+
+/* Global resolver debug flag */
+static int resolver_debug_enabled = 0;
+
+void
+set_resolver_debug(int enabled) {
+    resolver_debug_enabled = enabled;
+}
+
+int
+get_resolver_debug(void) {
+    return resolver_debug_enabled;
+}
