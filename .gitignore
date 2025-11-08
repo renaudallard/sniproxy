@@ -13,6 +13,7 @@ tests/http_test
 .vimrc
 depcomp
 compile
+tests/fuzz/bin/
 config.guess
 config.sub
 core

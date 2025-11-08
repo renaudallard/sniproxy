@@ -11,6 +11,7 @@ script:
   - echo "Running unit and functional tests"
   - ./configure
   - make all check CFLAGS=-Werror
+  - if [ "$CC" = "clang" ]; then FUZZ_OPTIONAL=0 FUZZ_RUNTIME=60 tests/fuzz/run_fuzz.sh; fi
   - bash -c "cd tests && sudo ./transparent_proxy_test"
   - echo "Checking for memory leaks"
   - bash -c "cd tests && ./bad_dns_request_test valgrind --leak-check=full --error-exitcode=1"
