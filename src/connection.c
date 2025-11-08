@@ -387,12 +387,9 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         is_client ? con->client.buffer : con->server.buffer;
     struct Buffer *output_buffer =
         is_client ? con->server.buffer : con->client.buffer;
-    void (*close_socket)(struct Connection *, struct ev_loop *) =
-        is_client ? close_client_socket : close_server_socket;
-    int client_open = client_socket_open(con);
+        int client_open = client_socket_open(con);
     int server_open = server_socket_open(con);
-    int *current_socket_open = is_client ? &client_open : &server_open;
-
+    
     /* Receive first in case the socket was closed */
     if (revents & EV_READ && buffer_room(input_buffer) == 0) {
         if (!is_client) {
@@ -405,8 +402,13 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                             server, sizeof(server)),
                         buffer_size(input_buffer));
 
-                close_socket(con, loop);
-                *current_socket_open = 0;
+                if (is_client) {
+                    close_client_socket(con, loop);
+                    client_open = 0;
+                } else {
+                    close_server_socket(con, loop);
+                    server_open = 0;
+                }
                 return;
             }
         }
@@ -439,12 +441,22 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                     socket_name,
                     strerror(errno));
 
-            close_socket(con, loop);
-            *current_socket_open = 0;
+            if (is_client) {
+                close_client_socket(con, loop);
+                client_open = 0;
+            } else {
+                close_server_socket(con, loop);
+                server_open = 0;
+            }
             revents = 0; /* Clear revents so we don't try to send */
         } else if (bytes_received == 0) { /* peer closed socket */
-            close_socket(con, loop);
-            *current_socket_open = 0;
+            if (is_client) {
+                close_client_socket(con, loop);
+                client_open = 0;
+            } else {
+                close_server_socket(con, loop);
+                server_open = 0;
+            }
             revents = 0;
         }
     }
@@ -473,8 +485,13 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                     socket_name,
                     strerror(errno));
 
-            close_socket(con, loop);
-            *current_socket_open = 0;
+            if (is_client) {
+                close_client_socket(con, loop);
+                client_open = 0;
+            } else {
+                close_server_socket(con, loop);
+                server_open = 0;
+            }
         }
     }
 
