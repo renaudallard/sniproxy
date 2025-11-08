@@ -46,6 +46,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/uio.h>
 #include <ares.h>
 #include <ares_dns.h>
 #ifndef ARES_GETSOCK_MAXNUM
@@ -71,6 +72,7 @@
 #define RESOLVER_CMD_CANCEL     2u
 #define RESOLVER_CMD_RESULT     3u
 #define RESOLVER_CMD_SHUTDOWN   4u
+#define RESOLVER_CMD_CRASH     5u
 
 #define RESOLVER_MAX_HOSTNAME_LEN    1023
 #define RESOLVER_IPC_MAX_PAYLOAD     4096
@@ -113,6 +115,7 @@ static int resolver_send_message(uint32_t type, uint32_t id,
         const void *payload, size_t payload_len);
 static void resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
+static void resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
 static void resolver_attach_query(struct ResolvQuery *query);
 static struct ResolvQuery *resolver_take_query(uint32_t id);
@@ -495,9 +498,36 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
         case RESOLVER_CMD_RESULT:
             resolver_handle_result(id, payload, payload_len);
             break;
+        case RESOLVER_CMD_CRASH:
+            resolver_handle_crash_notice(payload, payload_len);
+            break;
         default:
             break;
     }
+}
+
+static void
+resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len) {
+    if (payload == NULL) {
+        err("resolver child crash reported with NULL payload");
+        return;
+    }
+
+    size_t copy_len = payload_len;
+    if (copy_len > RESOLVER_IPC_MAX_PAYLOAD)
+        copy_len = RESOLVER_IPC_MAX_PAYLOAD;
+
+    char message[RESOLVER_IPC_MAX_PAYLOAD + 1];
+    if (copy_len > 0)
+        memcpy(message, payload, copy_len);
+    message[copy_len] = '\0';
+
+    if (copy_len == 0) {
+        err("resolver child crash reported with empty payload");
+        return;
+    }
+
+    err("%s", message);
 }
 
 static void
@@ -645,42 +675,57 @@ resolver_restart(void) {
 
 static void
 resolver_child_crash_handler(int signum) {
-    /* Use only async-signal-safe functions (write is safe, err/printf/strlen are not) */
+    /* Only async-signal-safe operations below. */
     const char msg_prefix[] = "resolver child crashed with signal ";
-    const char *signame = NULL;
-    size_t signame_len = 0;
+    const size_t msg_prefix_len = sizeof(msg_prefix) - 1;
+    const char *signame = "UNKNOWN";
+    size_t signame_len = sizeof("UNKNOWN") - 1;
 
     switch (signum) {
         case SIGSEGV:
-            signame = "SIGSEGV (segmentation fault)\n";
-            signame_len = 30;
+            signame = "SIGSEGV (segmentation fault)";
+            signame_len = sizeof("SIGSEGV (segmentation fault)") - 1;
             break;
         case SIGBUS:
-            signame = "SIGBUS (bus error)\n";
-            signame_len = 19;
+            signame = "SIGBUS (bus error)";
+            signame_len = sizeof("SIGBUS (bus error)") - 1;
             break;
         case SIGABRT:
-            signame = "SIGABRT (abort)\n";
-            signame_len = 16;
+            signame = "SIGABRT (abort)";
+            signame_len = sizeof("SIGABRT (abort)") - 1;
             break;
         case SIGILL:
-            signame = "SIGILL (illegal instruction)\n";
-            signame_len = 30;
+            signame = "SIGILL (illegal instruction)";
+            signame_len = sizeof("SIGILL (illegal instruction)") - 1;
             break;
         case SIGFPE:
-            signame = "SIGFPE (floating point exception)\n";
-            signame_len = 35;
+            signame = "SIGFPE (floating point exception)";
+            signame_len = sizeof("SIGFPE (floating point exception)") - 1;
             break;
         default:
-            signame = "UNKNOWN\n";
-            signame_len = 8;
             break;
     }
 
-    /* write() is async-signal-safe */
-    (void)write(STDERR_FILENO, msg_prefix, sizeof(msg_prefix) - 1);
-    if (signame != NULL)
-        (void)write(STDERR_FILENO, signame, signame_len);
+    size_t total_len = msg_prefix_len + signame_len;
+    if (child_sock >= 0 && total_len <= RESOLVER_IPC_MAX_PAYLOAD) {
+        struct resolver_ipc_header header;
+        header.type = htonl(RESOLVER_CMD_CRASH);
+        header.id = htonl(0);
+        header.payload_len = htonl((uint32_t)total_len);
+
+        struct iovec iov[3];
+        iov[0].iov_base = &header;
+        iov[0].iov_len = sizeof(header);
+        iov[1].iov_base = (void *)msg_prefix;
+        iov[1].iov_len = msg_prefix_len;
+        iov[2].iov_base = (void *)signame;
+        iov[2].iov_len = signame_len;
+        (void)writev(child_sock, iov, 3);
+    }
+
+    (void)write(STDERR_FILENO, msg_prefix, msg_prefix_len);
+    (void)write(STDERR_FILENO, signame, signame_len);
+    (void)write(STDERR_FILENO, "\n", 1);
 
     /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
 }
@@ -1556,7 +1601,7 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
             }
 
             /* Check for overflow before realloc */
-            if (query->response_count >= SIZE_MAX / sizeof(struct Address *) - 1) {
+            if (query->response_count >= SIZE_MAX / sizeof(struct Address *)) {
                 err("resolver child: too many DNS responses, cannot expand list");
                 free(response);
                 break;
