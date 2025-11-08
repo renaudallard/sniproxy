@@ -50,6 +50,7 @@
 #ifndef ARES_GETSOCK_MAXNUM
 #define ARES_GETSOCK_MAXNUM 16
 #endif
+
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -93,6 +94,12 @@ static struct ResolvQuery *resolver_queries = NULL;
 static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_io resolver_ipc_watcher;
 static int default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
+static struct ev_loop *resolver_loop_ref = NULL;
+static char **resolver_saved_nameservers = NULL;
+static char **resolver_saved_search = NULL;
+static int resolver_saved_dnssec_mode = DNSSEC_VALIDATION_OFF;
+static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
+
 
 /* Parent-side helpers */
 static int resolver_send_message(uint32_t type, uint32_t id,
@@ -104,6 +111,7 @@ static void resolver_attach_query(struct ResolvQuery *query);
 static struct ResolvQuery *resolver_take_query(uint32_t id);
 static int resolver_detach_query(struct ResolvQuery *query);
 static void resolver_cleanup_pending_queries(void);
+static int resolver_restart(void);
 
 /* Child-side declarations */
 struct ResolverChildQuery;
@@ -174,11 +182,21 @@ int
 resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_mode) {
     int sockets[2];
     int socket_type = SOCK_DGRAM;
+
+    resolver_loop_ref = loop;
+    resolver_saved_nameservers = nameservers;
+    resolver_saved_search = search;
+    resolver_saved_mode = mode;
+
 #if !defined(ARES_FLAG_TRUSTAD)
     if (dnssec_mode == DNSSEC_VALIDATION_STRICT) {
-        fatal("DNSSEC validation requested but not supported by this c-ares build");
+        notice("DNSSEC strict mode requested but this c-ares build lacks Trust AD support; falling back to relaxed mode");
+        dnssec_mode = DNSSEC_VALIDATION_RELAXED;
     }
 #endif
+
+    resolver_saved_dnssec_mode = dnssec_mode;
+
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;
 #endif
@@ -342,6 +360,10 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
     ssize_t written = send(resolver_sock, buffer, sizeof(header) + payload_len, 0);
     if (written < 0) {
         err("resolver send failed: %s", strerror(errno));
+        if (errno == EDESTADDRREQ || errno == ENOTCONN || errno == ECONNRESET || errno == EPIPE) {
+            if (resolver_restart() < 0)
+                err("resolver restart failed");
+        }
         return -1;
     }
 
@@ -525,6 +547,19 @@ resolver_cleanup_pending_queries(void) {
     }
 }
 
+static int
+resolver_restart(void) {
+    if (resolver_loop_ref == NULL)
+        return -1;
+
+    notice("resolver child restarting after IPC failure");
+    resolv_shutdown(resolver_loop_ref);
+
+    return resolv_init(resolver_loop_ref, resolver_saved_nameservers,
+            resolver_saved_search, resolver_saved_mode,
+            resolver_saved_dnssec_mode);
+}
+
 static void
 resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_mode) {
     child_sock = sockfd;
@@ -611,8 +646,8 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
     }
 #else
     if (dnssec_mode == DNSSEC_VALIDATION_STRICT) {
-        err("resolver child: DNSSEC validation requested but not supported by this c-ares build");
-        _exit(EXIT_FAILURE);
+        err("resolver child: DNSSEC strict mode requested but not supported by this c-ares build; falling back to relaxed mode");
+        dnssec_mode = DNSSEC_VALIDATION_RELAXED;
     }
 #endif
 
