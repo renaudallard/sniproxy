@@ -249,15 +249,26 @@ void
 resolv_shutdown(struct ev_loop *loop) {
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);
-        resolver_send_message(RESOLVER_CMD_SHUTDOWN, 0, NULL, 0);
+        /* Only send SHUTDOWN if not restarting (socket may be dead during restart) */
+        if (!resolver_restart_in_progress) {
+            resolver_send_message(RESOLVER_CMD_SHUTDOWN, 0, NULL, 0);
+        }
         close(resolver_sock);
         resolver_sock = -1;
     }
 
     if (resolver_pid > 0) {
         int status;
-        if (waitpid(resolver_pid, &status, 0) < 0)
-            err("waitpid on resolver failed: %s", strerror(errno));
+        pid_t result = waitpid(resolver_pid, &status, WNOHANG);
+        if (result < 0) {
+            /* ECHILD means child was already reaped, not an error */
+            if (errno != ECHILD)
+                err("waitpid on resolver failed: %s", strerror(errno));
+        } else if (result == 0) {
+            /* Child still running, wait for it */
+            if (waitpid(resolver_pid, &status, 0) < 0 && errno != ECHILD)
+                err("waitpid on resolver failed: %s", strerror(errno));
+        }
         resolver_pid = -1;
     }
 
@@ -388,6 +399,12 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 continue;
 
             err("resolver recv failed: %s", strerror(errno));
+            /* Trigger restart on recv failures indicating dead child */
+            if (!resolver_restart_in_progress &&
+                    (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)) {
+                if (resolver_restart() < 0)
+                    err("resolver restart failed");
+            }
             break;
         }
 
