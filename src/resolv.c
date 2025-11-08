@@ -96,7 +96,21 @@ struct ResolvQuery {
 static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
 static uint32_t resolver_next_query_id = 1;
+static uint32_t resolver_next_query_seed = 0x12345678;
+static uint32_t resolver_next_query_prng(void);
 static struct ResolvQuery *resolver_queries = NULL;
+static uint32_t
+resolver_next_query_prng(void) {
+    uint32_t x = resolver_next_query_seed;
+    if (x == 0)
+        x = (uint32_t)ev_now(resolver_loop_ref ? resolver_loop_ref : EV_DEFAULT);
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    resolver_next_query_seed = x ? x : 0xA5A5A5A5;
+    return resolver_next_query_seed;
+}
+
 static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_io resolver_ipc_watcher;
 static int default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
@@ -344,7 +358,9 @@ resolv_query(const char *hostname, int mode,
         return NULL;
     }
 
-    query->id = resolver_next_query_id++;
+    query->id = resolver_next_query_prng();
+    if (query->id == 0)
+        query->id = resolver_next_query_prng();
     query->resolv_mode = mode != RESOLV_MODE_DEFAULT ?
             mode : default_resolv_mode;
     query->client_cb = client_cb;
