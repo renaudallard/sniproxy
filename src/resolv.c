@@ -1589,7 +1589,10 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
     debug_log("resolver child: handle_addrinfo START query_id=%u family=%d status=%d pending_v4=%d pending_v6=%d callback_completed=%d",
               query->id, family, status, query->pending_v4, query->pending_v6, query->callback_completed);
 
-    if (status == ARES_SUCCESS && result != NULL) {
+    if (query->cancelled) {
+        debug_log("resolver child: query_id=%u cancelled, ignoring response family=%d status=%d",
+                query->id, family, status);
+    } else if (status == ARES_SUCCESS && result != NULL) {
         for (struct ares_addrinfo_node *node = result->nodes; node != NULL; node = node->ai_next) {
             if (node->ai_family != family || node->ai_addr == NULL)
                 continue;
