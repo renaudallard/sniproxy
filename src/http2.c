@@ -67,72 +67,198 @@ struct host_accumulator {
 
 struct hpack_table_entry {
     const char *name;
+    size_t name_len;
     const char *value;
+    size_t value_len;
 };
 
+#define STATIC_TABLE_ENTRY(name_literal, value_literal) \
+    { \
+        name_literal, sizeof(name_literal) - 1, \
+        value_literal, sizeof(value_literal) - 1 \
+    }
+
 static const struct hpack_table_entry static_table[] = {
-    {":authority", ""},
-    {":method", "GET"},
-    {":method", "POST"},
-    {":path", "/"},
-    {":path", "/index.html"},
-    {":scheme", "http"},
-    {":scheme", "https"},
-    {":status", "200"},
-    {":status", "204"},
-    {":status", "206"},
-    {":status", "304"},
-    {":status", "400"},
-    {":status", "404"},
-    {":status", "500"},
-    {"accept-charset", ""},
-    {"accept-encoding", "gzip, deflate"},
-    {"accept-language", ""},
-    {"accept-ranges", ""},
-    {"accept", ""},
-    {"access-control-allow-origin", ""},
-    {"age", ""},
-    {"allow", ""},
-    {"authorization", ""},
-    {"cache-control", ""},
-    {"content-disposition", ""},
-    {"content-encoding", ""},
-    {"content-language", ""},
-    {"content-length", ""},
-    {"content-location", ""},
-    {"content-range", ""},
-    {"content-type", ""},
-    {"cookie", ""},
-    {"date", ""},
-    {"etag", ""},
-    {"expect", ""},
-    {"expires", ""},
-    {"from", ""},
-    {"host", ""},
-    {"if-match", ""},
-    {"if-modified-since", ""},
-    {"if-none-match", ""},
-    {"if-range", ""},
-    {"if-unmodified-since", ""},
-    {"last-modified", ""},
-    {"link", ""},
-    {"location", ""},
-    {"max-forwards", ""},
-    {"proxy-authenticate", ""},
-    {"proxy-authorization", ""},
-    {"range", ""},
-    {"referer", ""},
-    {"refresh", ""},
-    {"retry-after", ""},
-    {"server", ""},
-    {"set-cookie", ""},
-    {"strict-transport-security", ""},
-    {"transfer-encoding", ""},
-    {"user-agent", ""},
-    {"vary", ""},
-    {"via", ""},
-    {"www-authenticate", ""},
+    STATIC_TABLE_ENTRY(":authority", ""),
+    STATIC_TABLE_ENTRY(":method", "GET"),
+    STATIC_TABLE_ENTRY(":method", "POST"),
+    STATIC_TABLE_ENTRY(":path", "/"),
+    STATIC_TABLE_ENTRY(":path", "/index.html"),
+    STATIC_TABLE_ENTRY(":scheme", "http"),
+    STATIC_TABLE_ENTRY(":scheme", "https"),
+    STATIC_TABLE_ENTRY(":status", "200"),
+    STATIC_TABLE_ENTRY(":status", "204"),
+    STATIC_TABLE_ENTRY(":status", "206"),
+    STATIC_TABLE_ENTRY(":status", "304"),
+    STATIC_TABLE_ENTRY(":status", "400"),
+    STATIC_TABLE_ENTRY(":status", "404"),
+    STATIC_TABLE_ENTRY(":status", "500"),
+    STATIC_TABLE_ENTRY("accept-charset", ""),
+    STATIC_TABLE_ENTRY("accept-encoding", "gzip, deflate"),
+    STATIC_TABLE_ENTRY("accept-language", ""),
+    STATIC_TABLE_ENTRY("accept-ranges", ""),
+    STATIC_TABLE_ENTRY("accept", ""),
+    STATIC_TABLE_ENTRY("access-control-allow-origin", ""),
+    STATIC_TABLE_ENTRY("age", ""),
+    STATIC_TABLE_ENTRY("allow", ""),
+    STATIC_TABLE_ENTRY("authorization", ""),
+    STATIC_TABLE_ENTRY("cache-control", ""),
+    STATIC_TABLE_ENTRY("content-disposition", ""),
+    STATIC_TABLE_ENTRY("content-encoding", ""),
+    STATIC_TABLE_ENTRY("content-language", ""),
+    STATIC_TABLE_ENTRY("content-length", ""),
+    STATIC_TABLE_ENTRY("content-location", ""),
+    STATIC_TABLE_ENTRY("content-range", ""),
+    STATIC_TABLE_ENTRY("content-type", ""),
+    STATIC_TABLE_ENTRY("cookie", ""),
+    STATIC_TABLE_ENTRY("date", ""),
+    STATIC_TABLE_ENTRY("etag", ""),
+    STATIC_TABLE_ENTRY("expect", ""),
+    STATIC_TABLE_ENTRY("expires", ""),
+    STATIC_TABLE_ENTRY("from", ""),
+    STATIC_TABLE_ENTRY("host", ""),
+    STATIC_TABLE_ENTRY("if-match", ""),
+    STATIC_TABLE_ENTRY("if-modified-since", ""),
+    STATIC_TABLE_ENTRY("if-none-match", ""),
+    STATIC_TABLE_ENTRY("if-range", ""),
+    STATIC_TABLE_ENTRY("if-unmodified-since", ""),
+    STATIC_TABLE_ENTRY("last-modified", ""),
+    STATIC_TABLE_ENTRY("link", ""),
+    STATIC_TABLE_ENTRY("location", ""),
+    STATIC_TABLE_ENTRY("max-forwards", ""),
+    STATIC_TABLE_ENTRY("proxy-authenticate", ""),
+    STATIC_TABLE_ENTRY("proxy-authorization", ""),
+    STATIC_TABLE_ENTRY("range", ""),
+    STATIC_TABLE_ENTRY("referer", ""),
+    STATIC_TABLE_ENTRY("refresh", ""),
+    STATIC_TABLE_ENTRY("retry-after", ""),
+    STATIC_TABLE_ENTRY("server", ""),
+    STATIC_TABLE_ENTRY("set-cookie", ""),
+    STATIC_TABLE_ENTRY("strict-transport-security", ""),
+    STATIC_TABLE_ENTRY("transfer-encoding", ""),
+    STATIC_TABLE_ENTRY("user-agent", ""),
+    STATIC_TABLE_ENTRY("vary", ""),
+    STATIC_TABLE_ENTRY("via", ""),
+    STATIC_TABLE_ENTRY("www-authenticate", ""),
 };
+
+struct hpack_static_name_index {
+    const char *name;
+    size_t name_len;
+    uint8_t first_index;
+    uint8_t count;
+};
+
+#define STATIC_NAME_INDEX_ENTRY(first_idx, entry_count) \
+    { \
+        static_table[(first_idx) - 1].name, \
+        static_table[(first_idx) - 1].name_len, \
+        (uint8_t)(first_idx), \
+        (uint8_t)(entry_count) \
+    }
+
+static const struct hpack_static_name_index static_name_index[] = {
+    STATIC_NAME_INDEX_ENTRY(1, 1),   /* :authority */
+    STATIC_NAME_INDEX_ENTRY(2, 2),   /* :method */
+    STATIC_NAME_INDEX_ENTRY(4, 2),   /* :path */
+    STATIC_NAME_INDEX_ENTRY(6, 2),   /* :scheme */
+    STATIC_NAME_INDEX_ENTRY(8, 7),   /* :status */
+    STATIC_NAME_INDEX_ENTRY(19, 1),  /* accept */
+    STATIC_NAME_INDEX_ENTRY(15, 1),  /* accept-charset */
+    STATIC_NAME_INDEX_ENTRY(16, 1),  /* accept-encoding */
+    STATIC_NAME_INDEX_ENTRY(17, 1),  /* accept-language */
+    STATIC_NAME_INDEX_ENTRY(18, 1),  /* accept-ranges */
+    STATIC_NAME_INDEX_ENTRY(20, 1),  /* access-control-allow-origin */
+    STATIC_NAME_INDEX_ENTRY(21, 1),  /* age */
+    STATIC_NAME_INDEX_ENTRY(22, 1),  /* allow */
+    STATIC_NAME_INDEX_ENTRY(23, 1),  /* authorization */
+    STATIC_NAME_INDEX_ENTRY(24, 1),  /* cache-control */
+    STATIC_NAME_INDEX_ENTRY(25, 1),  /* content-disposition */
+    STATIC_NAME_INDEX_ENTRY(26, 1),  /* content-encoding */
+    STATIC_NAME_INDEX_ENTRY(27, 1),  /* content-language */
+    STATIC_NAME_INDEX_ENTRY(28, 1),  /* content-length */
+    STATIC_NAME_INDEX_ENTRY(29, 1),  /* content-location */
+    STATIC_NAME_INDEX_ENTRY(30, 1),  /* content-range */
+    STATIC_NAME_INDEX_ENTRY(31, 1),  /* content-type */
+    STATIC_NAME_INDEX_ENTRY(32, 1),  /* cookie */
+    STATIC_NAME_INDEX_ENTRY(33, 1),  /* date */
+    STATIC_NAME_INDEX_ENTRY(34, 1),  /* etag */
+    STATIC_NAME_INDEX_ENTRY(35, 1),  /* expect */
+    STATIC_NAME_INDEX_ENTRY(36, 1),  /* expires */
+    STATIC_NAME_INDEX_ENTRY(37, 1),  /* from */
+    STATIC_NAME_INDEX_ENTRY(38, 1),  /* host */
+    STATIC_NAME_INDEX_ENTRY(39, 1),  /* if-match */
+    STATIC_NAME_INDEX_ENTRY(40, 1),  /* if-modified-since */
+    STATIC_NAME_INDEX_ENTRY(41, 1),  /* if-none-match */
+    STATIC_NAME_INDEX_ENTRY(42, 1),  /* if-range */
+    STATIC_NAME_INDEX_ENTRY(43, 1),  /* if-unmodified-since */
+    STATIC_NAME_INDEX_ENTRY(44, 1),  /* last-modified */
+    STATIC_NAME_INDEX_ENTRY(45, 1),  /* link */
+    STATIC_NAME_INDEX_ENTRY(46, 1),  /* location */
+    STATIC_NAME_INDEX_ENTRY(47, 1),  /* max-forwards */
+    STATIC_NAME_INDEX_ENTRY(48, 1),  /* proxy-authenticate */
+    STATIC_NAME_INDEX_ENTRY(49, 1),  /* proxy-authorization */
+    STATIC_NAME_INDEX_ENTRY(50, 1),  /* range */
+    STATIC_NAME_INDEX_ENTRY(51, 1),  /* referer */
+    STATIC_NAME_INDEX_ENTRY(52, 1),  /* refresh */
+    STATIC_NAME_INDEX_ENTRY(53, 1),  /* retry-after */
+    STATIC_NAME_INDEX_ENTRY(54, 1),  /* server */
+    STATIC_NAME_INDEX_ENTRY(55, 1),  /* set-cookie */
+    STATIC_NAME_INDEX_ENTRY(56, 1),  /* strict-transport-security */
+    STATIC_NAME_INDEX_ENTRY(57, 1),  /* transfer-encoding */
+    STATIC_NAME_INDEX_ENTRY(58, 1),  /* user-agent */
+    STATIC_NAME_INDEX_ENTRY(59, 1),  /* vary */
+    STATIC_NAME_INDEX_ENTRY(60, 1),  /* via */
+    STATIC_NAME_INDEX_ENTRY(61, 1),  /* www-authenticate */
+};
+
+#define STATIC_NAME_INDEX_COUNT (sizeof(static_name_index) / sizeof(static_name_index[0]))
+
+static int
+compare_static_name(const char *name, size_t name_len,
+        const struct hpack_static_name_index *entry) {
+    if (name_len < entry->name_len)
+        return -1;
+    if (name_len > entry->name_len)
+        return 1;
+    return memcmp(name, entry->name, name_len);
+}
+
+static const struct hpack_static_name_index *
+hpack_lookup_static_name(const char *name, size_t name_len) {
+    if (name == NULL)
+        return NULL;
+
+    if (name_len == static_table[0].name_len &&
+            memcmp(name, static_table[0].name, name_len) == 0)
+        return &static_name_index[0];
+
+    if (STATIC_NAME_INDEX_COUNT <= 1)
+        return NULL;
+
+    size_t low = 1;
+    size_t high = STATIC_NAME_INDEX_COUNT - 1;
+
+    while (low <= high) {
+        size_t mid = low + (high - low) / 2;
+        const struct hpack_static_name_index *entry = &static_name_index[mid];
+        int cmp = compare_static_name(name, name_len, entry);
+        if (cmp == 0)
+            return entry;
+        if (cmp < 0) {
+            if (mid == 0)
+                break;
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+
+    return NULL;
+}
+
+#define HPACK_STATIC_INDEX_AUTHORITY 1
+#define HPACK_STATIC_INDEX_HOST 38
 
 #define STATIC_TABLE_LENGTH (sizeof(static_table) / sizeof(static_table[0]))
 
@@ -160,6 +286,7 @@ static void hpack_drop_last_entry(struct hpack_decoder *decoder);
 static void header_block_reset(struct header_block *block);
 static void header_block_free(struct header_block *block);
 static int header_block_append(struct header_block *block, const unsigned char *data, size_t len);
+static const struct hpack_static_name_index *hpack_lookup_static_name(const char *, size_t);
 
 static int
 hpack_global_try_reserve(size_t size) {
@@ -513,10 +640,25 @@ append_hostname_if_needed(struct host_accumulator *hosts,
         return 0;
 
     int is_host = 0;
-    if (name_len == 10 && memcmp(name, ":authority", 10) == 0)
+    const struct hpack_table_entry *authority_entry =
+            &static_table[HPACK_STATIC_INDEX_AUTHORITY - 1];
+    const struct hpack_table_entry *host_entry =
+            &static_table[HPACK_STATIC_INDEX_HOST - 1];
+
+    if (name == authority_entry->name ||
+            (name_len == authority_entry->name_len &&
+             memcmp(name, authority_entry->name, name_len) == 0)) {
         is_host = 1;
-    else if (name_len == 4 && memcmp(name, "host", 4) == 0)
+    } else if (name == host_entry->name) {
         is_host = 1;
+    } else {
+        const struct hpack_static_name_index *static_name =
+                hpack_lookup_static_name(name, name_len);
+        if (static_name != NULL &&
+                (static_name->first_index == HPACK_STATIC_INDEX_AUTHORITY ||
+                 static_name->first_index == HPACK_STATIC_INDEX_HOST))
+            is_host = 1;
+    }
 
     if (!is_host)
         return 0;
@@ -717,11 +859,11 @@ hpack_get_indexed(const struct hpack_decoder *decoder, size_t index,
         const struct hpack_table_entry *entry = &static_table[index - 1];
         if (name != NULL) {
             *name = entry->name;
-            *name_len = strlen(entry->name);
+            *name_len = entry->name_len;
         }
         if (value != NULL) {
             *value = entry->value;
-            *value_len = strlen(entry->value);
+            *value_len = entry->value_len;
         }
         return 1;
     }
