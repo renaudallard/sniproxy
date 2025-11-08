@@ -46,6 +46,8 @@
 
 static const char *backend_config_options(const struct Backend *);
 static uint32_t backend_regex_match_limit_for_len(size_t len);
+static int backend_cached_result(const struct Backend *, const char *, size_t, int *);
+static void backend_store_match_cache(struct Backend *, const char *, size_t, int);
 
 static uint32_t
 backend_regex_match_limit_for_len(size_t len) {
@@ -66,6 +68,56 @@ backend_regex_match_limit_for_len(size_t len) {
 
     return (uint32_t)limit;
 }
+
+static int
+backend_cached_result(const struct Backend *backend, const char *name, size_t len, int *matched) {
+    if (backend == NULL || !backend->last_lookup_valid)
+        return 0;
+
+    if (backend->last_lookup_len != len)
+        return 0;
+
+    if (len > 0) {
+        if (backend->last_lookup_name == NULL)
+            return 0;
+        if (memcmp(backend->last_lookup_name, name, len) != 0)
+            return 0;
+    }
+
+    if (matched != NULL)
+        *matched = backend->last_lookup_result;
+    return 1;
+}
+
+static void
+backend_store_match_cache(struct Backend *backend, const char *name, size_t len, int matched) {
+    if (backend == NULL)
+        return;
+
+    if (len > 0) {
+        size_t needed = len + 1;
+        if (needed > backend->last_lookup_capacity) {
+            char *tmp = realloc(backend->last_lookup_name, needed);
+            if (tmp == NULL) {
+                backend->last_lookup_valid = 0;
+                return;
+            }
+            backend->last_lookup_name = tmp;
+            backend->last_lookup_capacity = needed;
+        }
+        if (backend->last_lookup_name != NULL && name != NULL) {
+            memcpy(backend->last_lookup_name, name, len);
+            backend->last_lookup_name[len] = '\0';
+        }
+    } else if (backend->last_lookup_name != NULL) {
+        backend->last_lookup_name[0] = '\0';
+    }
+
+    backend->last_lookup_len = len;
+    backend->last_lookup_result = matched ? 1 : 0;
+    backend->last_lookup_valid = 1;
+}
+
 
 #if defined(HAVE_LIBPCRE2_8)
 static pcre2_match_context *backend_match_ctx;
@@ -99,6 +151,11 @@ new_backend(void) {
 #elif defined(HAVE_LIBPCRE)
     backend->pattern_re = NULL;
 #endif
+    backend->last_lookup_name = NULL;
+    backend->last_lookup_len = 0;
+    backend->last_lookup_capacity = 0;
+    backend->last_lookup_result = 0;
+    backend->last_lookup_valid = 0;
 
     return backend;
 }
@@ -232,6 +289,13 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
     for (iter = STAILQ_FIRST(head); iter != NULL; iter = STAILQ_NEXT(iter, entries)) {
         if (iter->pattern_re == NULL)
             continue;
+
+        int cached_result;
+        if (backend_cached_result(iter, name, name_len, &cached_result)) {
+            if (cached_result)
+                return iter;
+            continue;
+        }
 #if defined(HAVE_LIBPCRE2_8)
         pcre2_match_data *md = iter->pattern_match_data;
         if (md == NULL)
@@ -239,12 +303,15 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
 
         pcre2_set_match_limit(backend_match_ctx, match_limit);
         int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, backend_match_ctx);
+        backend_store_match_cache(iter, name, name_len, ret >= 0);
         if (ret >= 0)
             return iter;
 #elif defined(HAVE_LIBPCRE)
         backend_match_extra_storage.match_limit = match_limit;
-        if (pcre_exec(iter->pattern_re, backend_match_extra,
-                    name, name_len, 0, 0, NULL, 0) >= 0)
+        int ret = pcre_exec(iter->pattern_re, backend_match_extra,
+                    name, name_len, 0, 0, NULL, 0);
+        backend_store_match_cache(iter, name, name_len, ret >= 0);
+        if (ret >= 0)
             return iter;
 #endif
     }
@@ -283,6 +350,7 @@ free_backend(struct Backend *backend) {
 
     free(backend->pattern);
     free(backend->address);
+    free(backend->last_lookup_name);
 #if defined(HAVE_LIBPCRE2_8)
     if (backend->pattern_match_data != NULL)
         pcre2_match_data_free(backend->pattern_match_data);
