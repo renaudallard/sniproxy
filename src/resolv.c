@@ -100,6 +100,8 @@ static char **resolver_saved_search = NULL;
 static int resolver_saved_dnssec_mode = DNSSEC_VALIDATION_OFF;
 static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 
+static int resolver_restart_in_progress = 0;
+
 
 /* Parent-side helpers */
 static int resolver_send_message(uint32_t type, uint32_t id,
@@ -360,7 +362,8 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
     ssize_t written = send(resolver_sock, buffer, sizeof(header) + payload_len, 0);
     if (written < 0) {
         err("resolver send failed: %s", strerror(errno));
-        if (errno == EDESTADDRREQ || errno == ENOTCONN || errno == ECONNRESET || errno == EPIPE) {
+        if (!resolver_restart_in_progress &&
+                (errno == EDESTADDRREQ || errno == ENOTCONN || errno == ECONNRESET || errno == EPIPE)) {
             if (resolver_restart() < 0)
                 err("resolver restart failed");
         }
@@ -552,12 +555,15 @@ resolver_restart(void) {
     if (resolver_loop_ref == NULL)
         return -1;
 
+    resolver_restart_in_progress = 1;
     notice("resolver child restarting after IPC failure");
     resolv_shutdown(resolver_loop_ref);
-
-    return resolv_init(resolver_loop_ref, resolver_saved_nameservers,
+    int rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
             resolver_saved_search, resolver_saved_mode,
             resolver_saved_dnssec_mode);
+    resolver_restart_in_progress = 0;
+
+    return rc;
 }
 
 static void
