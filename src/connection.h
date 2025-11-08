@@ -69,6 +69,10 @@ void init_connections(void);
 int accept_connection(struct Listener *, struct ev_loop *);
 void free_connections(struct ev_loop *);
 void print_connections(void);
+size_t connections_memory_usage_bytes(void);
+size_t connections_memory_peak_bytes(void);
+size_t connections_active_count(void);
+size_t connections_peak_count(void);
 
 #define DEFAULT_DNS_QUERY_CONCURRENCY 256
 

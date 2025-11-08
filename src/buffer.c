@@ -53,6 +53,19 @@ static inline void advance_read_position(struct Buffer *, size_t);
 static size_t next_power_of_two(size_t);
 
 
+static void (*buffer_memory_observer)(ssize_t delta);
+
+static inline void
+buffer_notify_memory(ssize_t delta) {
+    if (buffer_memory_observer != NULL && delta != 0)
+        buffer_memory_observer(delta);
+}
+
+void
+buffer_set_memory_observer(void (*observer)(ssize_t delta)) {
+    buffer_memory_observer = observer;
+}
+
 struct Buffer *
 new_buffer(size_t size, struct ev_loop *loop) {
     if (NOT_POWER_OF_2(size))
@@ -60,6 +73,8 @@ new_buffer(size_t size, struct ev_loop *loop) {
     struct Buffer *buf = malloc(sizeof(struct Buffer));
     if (buf == NULL)
         return NULL;
+
+    buffer_notify_memory((ssize_t)sizeof(struct Buffer));
 
     buf->min_size = size;
     buf->size_mask = size - 1;
@@ -73,9 +88,12 @@ new_buffer(size_t size, struct ev_loop *loop) {
     buf->last_send = now;
     buf->buffer = malloc(size);
     if (buf->buffer == NULL) {
+        buffer_notify_memory(-(ssize_t)sizeof(struct Buffer));
         free(buf);
-        buf = NULL;
+        return NULL;
     }
+
+    buffer_notify_memory((ssize_t)size);
 
     return buf;
 }
@@ -129,6 +147,8 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
         buf->head = 0;
         buf->size_mask = new_size - 1;
     }
+
+    buffer_notify_memory((ssize_t)new_size - (ssize_t)current_size);
 
     if (new_size < buf->min_size)
         buf->min_size = new_size;
@@ -225,7 +245,12 @@ free_buffer(struct Buffer *buf) {
     if (buf == NULL)
         return;
 
-    free(buf->buffer);
+    if (buf->buffer != NULL) {
+        buffer_notify_memory(-(ssize_t)buffer_size(buf));
+        free(buf->buffer);
+    }
+
+    buffer_notify_memory(-(ssize_t)sizeof(struct Buffer));
     free(buf);
 }
 

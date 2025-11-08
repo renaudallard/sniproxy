@@ -117,6 +117,16 @@ static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
 static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 
+static size_t connection_memory_in_use;
+static size_t connection_memory_peak;
+static size_t connection_active_count;
+static size_t connection_peak_count;
+
+static void connection_memory_adjust(ssize_t delta);
+static void buffer_memory_observer(ssize_t delta);
+static void connection_account_add(void);
+static void connection_account_remove(void);
+
 static inline double rate_limit_bucket_capacity(void);
 static void rate_limit_reset(void);
 static void rate_limit_cleanup(ev_tstamp);
@@ -134,6 +144,7 @@ void
 init_connections(void) {
     TAILQ_INIT(&connections);
     rate_limit_reset();
+    buffer_set_memory_observer(buffer_memory_observer);
 }
 
 /**
@@ -219,6 +230,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     con->established_timestamp = now;
 
     TAILQ_INSERT_HEAD(&connections, con, entries);
+    connection_account_add();
 
     ev_io_start(loop, client_watcher);
     reset_idle_timer(con, loop);
@@ -238,6 +250,7 @@ free_connections(struct ev_loop *loop) {
     struct Connection *iter;
     while ((iter = TAILQ_FIRST(&connections)) != NULL) {
         TAILQ_REMOVE(&connections, iter, entries);
+        connection_account_remove();
         close_connection(iter, loop);
         free_connection(iter);
     }
@@ -290,6 +303,9 @@ print_connections(void) {
     }
 
     fprintf(temp, "Running connections:\n");
+    fprintf(temp, "  active=%zu peak=%zu memory=%zuB peak_memory=%zuB\n\n",
+            connections_active_count(), connections_peak_count(),
+            connections_memory_usage_bytes(), connections_memory_peak_bytes());
     struct Connection *iter = TAILQ_FIRST(&connections);
     while (iter != NULL) {
         print_connection(temp, iter);
@@ -458,6 +474,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (con->state == CLOSED) {
         stop_idle_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
+        connection_account_remove();
 
         if (con->listener->access_log)
             log_connection(con);
@@ -732,6 +749,59 @@ connections_set_dns_query_limit(size_t limit) {
 }
 
 static void
+connection_memory_adjust(ssize_t delta) {
+    if (delta >= 0) {
+        connection_memory_in_use += (size_t)delta;
+        if (connection_memory_in_use > connection_memory_peak)
+            connection_memory_peak = connection_memory_in_use;
+    } else {
+        size_t abs_delta = (size_t)(-delta);
+        if (abs_delta > connection_memory_in_use)
+            connection_memory_in_use = 0;
+        else
+            connection_memory_in_use -= abs_delta;
+    }
+}
+
+static void
+buffer_memory_observer(ssize_t delta) {
+    connection_memory_adjust(delta);
+}
+
+static void
+connection_account_add(void) {
+    connection_active_count++;
+    if (connection_active_count > connection_peak_count)
+        connection_peak_count = connection_active_count;
+}
+
+static void
+connection_account_remove(void) {
+    if (connection_active_count > 0)
+        connection_active_count--;
+}
+
+size_t
+connections_memory_usage_bytes(void) {
+    return connection_memory_in_use;
+}
+
+size_t
+connections_memory_peak_bytes(void) {
+    return connection_memory_peak;
+}
+
+size_t
+connections_active_count(void) {
+    return connection_active_count;
+}
+
+size_t
+connections_peak_count(void) {
+    return connection_peak_count;
+}
+
+static void
 connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attribute__((unused))) {
     struct Connection *con = w->data;
     char client[INET6_ADDRSTRLEN + 8];
@@ -742,6 +812,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
 
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
+    connection_account_remove();
 
     if (con->listener->access_log)
         log_connection(con);
@@ -1306,6 +1377,8 @@ new_connection(struct ev_loop *loop) {
     if (con == NULL)
         return NULL;
 
+    connection_memory_adjust((ssize_t)sizeof(struct Connection));
+
     con->state = NEW;
     con->client.addr_len = sizeof(con->client.addr);
     con->client.local_addr = (struct sockaddr_storage){.ss_family = AF_UNSPEC};
@@ -1400,6 +1473,7 @@ free_connection(struct Connection *con) {
     free_buffer(con->client.buffer);
     free_buffer(con->server.buffer);
     free((void *)con->hostname); /* cast away const'ness */
+    connection_memory_adjust(-(ssize_t)sizeof(struct Connection));
     free(con);
 }
 
