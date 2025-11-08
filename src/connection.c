@@ -103,6 +103,7 @@ static void free_connection(struct Connection *);
 static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
+static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 
@@ -790,6 +791,31 @@ format_sockaddr_ip(const struct sockaddr_storage *addr, char *buffer, size_t len
     return NULL;
 }
 
+static void
+copy_sockaddr_to_storage(struct sockaddr_storage *dst, const void *src, socklen_t len) {
+    if (dst == NULL)
+        return;
+
+    if (src == NULL || len == 0) {
+        memset(dst, 0, sizeof(*dst));
+        return;
+    }
+
+    if (len == sizeof(struct sockaddr_in)) {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)src;
+        *(struct sockaddr_in *)dst = *in;
+    } else if (len == sizeof(struct sockaddr_in6)) {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)src;
+        *(struct sockaddr_in6 *)dst = *in6;
+    } else {
+        memcpy(dst, src, len);
+    }
+
+    if (len < (socklen_t)sizeof(*dst)) {
+        memset((char *)dst + len, 0, sizeof(*dst) - (size_t)len);
+    }
+}
+
 void
 connections_set_per_ip_connection_rate(double rate) {
     if (rate < 0.0)
@@ -1207,8 +1233,9 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
     } else if (address_is_sockaddr(result.address)) {
         con->server.addr_len = address_sa_len(result.address);
         assert(con->server.addr_len <= sizeof(con->server.addr));
-        memcpy(&con->server.addr, address_sa(result.address),
-            con->server.addr_len);
+        copy_sockaddr_to_storage(&con->server.addr,
+                address_sa(result.address),
+                (socklen_t)con->server.addr_len);
         con->use_proxy_header = result.use_proxy_header;
 
         if (result.caller_free_address)
@@ -1249,7 +1276,8 @@ resolv_cb(struct Address *result, void *data) {
 
         con->server.addr_len = address_sa_len(result);
         assert(con->server.addr_len <= sizeof(con->server.addr));
-        memcpy(&con->server.addr, address_sa(result), con->server.addr_len);
+        copy_sockaddr_to_storage(&con->server.addr, address_sa(result),
+                (socklen_t)con->server.addr_len);
 
         con->state = RESOLVED;
 
