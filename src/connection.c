@@ -119,6 +119,8 @@ struct RateLimitBucket {
     ev_tstamp last_check;
     double allowance;
     struct RateLimitBucket *next;
+    uint32_t addr_hash;
+    uint32_t addr_v4;
 };
 
 static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
@@ -617,11 +619,16 @@ rate_limit_cleanup(ev_tstamp now) {
 }
 
 static uint32_t
-hash_sockaddr_ip(const struct sockaddr_storage *addr) {
+hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
+    if (out_v4 != NULL)
+        *out_v4 = 0;
+
     switch (addr->ss_family) {
         case AF_INET: {
             const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
             uint32_t value = ntohl(in->sin_addr.s_addr);
+            if (out_v4 != NULL)
+                *out_v4 = value;
             value ^= value >> 16;
             return value;
         }
@@ -640,6 +647,8 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr) {
 
 static int
 sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storage *b) {
+    if (a == b)
+        return 1;
     if (a->ss_family != b->ss_family)
         return 0;
 
@@ -670,13 +679,23 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
 
     rate_limit_cleanup(now);
 
-    uint32_t hash = hash_sockaddr_ip(addr);
+    uint32_t addr_v4 = 0;
+    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4);
     size_t bucket_index = hash % RATE_LIMIT_TABLE_SIZE;
     struct RateLimitBucket *bucket = rate_limit_table[bucket_index];
+    struct RateLimitBucket *prev = NULL;
     double capacity = rate_limit_bucket_capacity();
 
-    while (bucket != NULL && !sockaddr_equal_ip(&bucket->addr, addr))
+    while (bucket != NULL) {
+        if (bucket->addr_hash == hash) {
+            if (addr->ss_family == AF_INET && bucket->addr_v4 == addr_v4)
+                break;
+            if (addr->ss_family == AF_INET6 && sockaddr_equal_ip(&bucket->addr, addr))
+                break;
+        }
+        prev = bucket;
         bucket = bucket->next;
+    }
 
     if (bucket == NULL) {
         bucket = calloc(1, sizeof(*bucket));
@@ -686,11 +705,19 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         }
 
         bucket->addr = *addr;
+        bucket->addr_hash = hash;
+        bucket->addr_v4 = addr_v4;
         bucket->last_check = now;
         bucket->allowance = capacity - 1.0;
         bucket->next = rate_limit_table[bucket_index];
         rate_limit_table[bucket_index] = bucket;
         return 1;
+    }
+
+    if (prev != NULL) {
+        prev->next = bucket->next;
+        bucket->next = rate_limit_table[bucket_index];
+        rate_limit_table[bucket_index] = bucket;
     }
 
     double allowance = bucket->allowance;
