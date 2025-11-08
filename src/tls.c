@@ -43,6 +43,7 @@
 #define TLS_HEADER_LEN 5
 #define TLS_HANDSHAKE_CONTENT_TYPE 0x16
 #define TLS_HANDSHAKE_TYPE_CLIENT_HELLO 0x01
+#define CLIENT_HELLO_VERSION_RANDOM_LEN 34
 
 #ifndef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -146,27 +147,32 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     /*
      * Handshake
      */
-    if (pos > data_len || data_len - pos < 1) {
+    size_t record_remaining = data_len - pos;
+    if (record_remaining < 4)
         return -5;
-    }
-    if (data[pos] != TLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
+
+    const uint8_t *handshake = data + pos;
+    if (handshake[0] != TLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
         debug("Not a client hello");
 
         return -5;
     }
 
-    if (pos > data_len || data_len - pos < 6)
+    len = ((size_t)handshake[1] << 16) +
+        ((size_t)handshake[2] << 8) +
+        (size_t)handshake[3];
+
+    if (len + 4 > record_remaining)
         return -5;
 
-    len = ((size_t)data[pos + 1] << 16) +
-        ((size_t)data[pos + 2] << 8) +
-        (size_t)data[pos + 3];
+    const uint8_t *body = handshake + 4;
+    const uint8_t *body_end = body + len;
 
-    if (pos > data_len || data_len - pos < 4 || len > data_len - pos - 4)
+    if ((size_t)(body_end - body) < CLIENT_HELLO_VERSION_RANDOM_LEN)
         return -5;
 
-    uint8_t client_hello_version_major = data[pos + 4];
-    uint8_t client_hello_version_minor = data[pos + 5];
+    uint8_t client_hello_version_major = body[0];
+    uint8_t client_hello_version_minor = body[1];
 
     if (client_hello_version_major < 3 ||
             (client_hello_version_major == 3 && client_hello_version_minor == 0)) {
@@ -183,47 +189,49 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
         return -2;
     }
 
-    /* Skip past fixed length records:
-       1	Handshake Type
-       3	Length
-       2	Version (again)
-       32	Random
-       to	Session ID Length
-     */
-    pos += 38;
+    body += CLIENT_HELLO_VERSION_RANDOM_LEN;
 
     /* Session ID */
-    if (pos > data_len || data_len - pos < 1)
+    if ((size_t)(body_end - body) < 1)
         return -5;
-    len = (size_t)data[pos];
-    pos += 1 + len;
+    len = (size_t)body[0];
+    body += 1;
+    if ((size_t)(body_end - body) < len)
+        return -5;
+    body += len;
 
     /* Cipher Suites */
-    if (pos > data_len || data_len - pos < 2)
+    if ((size_t)(body_end - body) < 2)
         return -5;
-    len = ((size_t)data[pos] << 8) + (size_t)data[pos + 1];
-    pos += 2 + len;
+    len = ((size_t)body[0] << 8) + (size_t)body[1];
+    body += 2;
+    if ((size_t)(body_end - body) < len)
+        return -5;
+    body += len;
 
     /* Compression Methods */
-    if (pos > data_len || data_len - pos < 1)
+    if ((size_t)(body_end - body) < 1)
         return -5;
-    len = (size_t)data[pos];
-    pos += 1 + len;
+    len = (size_t)body[0];
+    body += 1;
+    if ((size_t)(body_end - body) < len)
+        return -5;
+    body += len;
 
-    if (pos == data_len && tls_version_major == 3 && tls_version_minor == 0) {
+    if (body == body_end && tls_version_major == 3 && tls_version_minor == 0) {
         debug("Received SSL 3.0 handshake without extensions, rejecting");
         return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
     /* Extensions */
-    if (pos > data_len || data_len - pos < 2)
+    if ((size_t)(body_end - body) < 2)
         return -5;
-    len = ((size_t)data[pos] << 8) + (size_t)data[pos + 1];
-    pos += 2;
+    len = ((size_t)body[0] << 8) + (size_t)body[1];
+    body += 2;
 
-    if (pos > data_len || len > data_len - pos)
+    if ((size_t)(body_end - body) < len)
         return -5;
-    return parse_extensions(data + pos, len, hostname);
+    return parse_extensions(body, len, hostname);
 }
 
 static int
