@@ -1567,6 +1567,13 @@ logger_child_main(int sockfd) {
     logger_set_process_title_fallback("sniproxy-logger");
 #endif
 
+#ifdef __OpenBSD__
+    if (pledge("stdio rpath wpath cpath fattr unix", NULL) == -1) {
+        perror("logger pledge");
+        _exit(EXIT_FAILURE);
+    }
+#endif
+
     for (;;) {
         struct logger_ipc_header header;
         int received_fd = -1;

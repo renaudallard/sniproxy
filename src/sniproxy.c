@@ -352,6 +352,14 @@ main(int argc, char **argv) {
     drop_perms(config->user ? config->user : default_username, config->group);
     rename_main_process();
 
+#ifdef __OpenBSD__
+    /* Tighten pledge after dropping privileges - no longer need getpw */
+    if (pledge("stdio inet dns rpath proc id unix", NULL) == -1) {
+        fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+#endif
+
     ev_signal_init(&sighup_watcher, signal_cb, SIGHUP);
     ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
     ev_signal_init(&sigint_watcher, signal_cb, SIGINT);

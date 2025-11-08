@@ -175,6 +175,13 @@ binder_main(int sockfd) {
     setproctitle("sniproxy-binder");
 #endif
 
+#ifdef __OpenBSD__
+    if (pledge("stdio unix inet", NULL) == -1) {
+        perror("binder pledge");
+        _exit(EXIT_FAILURE);
+    }
+#endif
+
     for (;;) {
         char buffer[256];
         int len = recv(sockfd, buffer, sizeof(buffer), 0);

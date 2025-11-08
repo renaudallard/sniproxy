@@ -799,6 +799,13 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     resolver_child_setup_dns(child_loop, nameservers, search_domains,
             default_mode, dnssec_mode);
 
+#ifdef __OpenBSD__
+    if (pledge("stdio inet dns unix", NULL) == -1) {
+        perror("resolver pledge");
+        _exit(EXIT_FAILURE);
+    }
+#endif
+
     ev_io_init(&child_ipc_watcher, resolver_child_ipc_cb, child_sock, EV_READ);
     ev_io_start(child_loop, &child_ipc_watcher);
 
