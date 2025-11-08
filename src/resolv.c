@@ -137,6 +137,7 @@ static struct ResolverChildQuery *resolver_child_find_query(uint32_t id);
 static void resolver_child_remove_query(struct ResolverChildQuery *query);
 static void resolver_child_free_query(struct ResolverChildQuery *query);
 static void resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
+static void resolver_child_deferred_free_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_schedule_timeout(struct ev_loop *loop);
 static void resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, int writable);
@@ -160,6 +161,8 @@ static ares_channel_t *child_channel = NULL;
 static int child_shutting_down = 0;
 static struct ev_io child_ipc_watcher;
 static struct ev_timer child_dns_timeout_watcher;
+static struct ev_timer child_deferred_free_timer;
+static struct ResolverChildQuery *child_queries_to_free = NULL;
 struct resolver_child_cares_io {
     struct ev_io watcher;
     ares_socket_t fd;
@@ -771,6 +774,7 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
     child_default_resolv_mode = default_mode;
 
     ev_timer_init(&child_dns_timeout_watcher, resolver_child_dns_timeout_cb, 0.0, 0.0);
+    ev_timer_init(&child_deferred_free_timer, resolver_child_deferred_free_cb, 0.0, 0.0);
 
     resolver_child_schedule_timeout(loop);
 }
@@ -788,6 +792,9 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
 
     if (ev_is_active(&child_dns_timeout_watcher))
         ev_timer_stop(loop, &child_dns_timeout_watcher);
+
+    if (ev_is_active(&child_deferred_free_timer))
+        ev_timer_stop(loop, &child_deferred_free_timer);
 
     if (child_channel != NULL) {
         /* ares_destroy will invoke callbacks for all pending queries.
@@ -1048,6 +1055,44 @@ resolver_child_remove_query(struct ResolverChildQuery *query) {
 }
 
 static void
+resolver_child_deferred_free_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
+    (void)loop;
+    (void)revents;
+    (void)w;
+
+    debug_log("resolver child: deferred_free_cb processing free list");
+
+    struct ResolverChildQuery *query = child_queries_to_free;
+    child_queries_to_free = NULL;
+
+    while (query != NULL) {
+        struct ResolverChildQuery *next = query->next;
+        query->next = NULL;
+
+        uint32_t query_id = query->id;
+        debug_log("resolver child: deferred free_query START query_id=%u response_count=%zu",
+                  query_id, query->response_count);
+
+        if (query->responses != NULL) {
+            for (size_t i = 0; i < query->response_count; i++) {
+                if (query->responses[i] != NULL)
+                    free(query->responses[i]);
+            }
+            free(query->responses);
+        }
+
+        free(query->hostname);
+        free(query);
+
+        debug_log("resolver child: deferred free_query END query_id=%u", query_id);
+
+        query = next;
+    }
+
+    debug_log("resolver child: deferred_free_cb complete");
+}
+
+static void
 resolver_child_free_query(struct ResolverChildQuery *query) {
     if (query == NULL)
         return;
@@ -1280,9 +1325,20 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
 
     if (query->pending_v4 == 0 && query->pending_v6 == 0 &&
             (query->callback_completed || query->cancelled)) {
-        debug_log("resolver child: FREEING query_id=%u (callback_completed=%d cancelled=%d)",
+        debug_log("resolver child: MARKING query_id=%u for deferred free (callback_completed=%d cancelled=%d)",
                   query->id, query->callback_completed, query->cancelled);
-        resolver_child_free_query(query);
+
+        /* Add to deferred free list instead of freeing immediately.
+         * This prevents use-after-free if c-ares calls another callback
+         * with the same pointer after we return from this callback. */
+        query->next = child_queries_to_free;
+        child_queries_to_free = query;
+
+        /* Schedule immediate timer to free queries outside of c-ares callbacks */
+        if (!ev_is_active(&child_deferred_free_timer)) {
+            ev_timer_set(&child_deferred_free_timer, 0.0, 0.0);
+            ev_timer_start(child_loop, &child_deferred_free_timer);
+        }
     }
 }
 
