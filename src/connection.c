@@ -450,10 +450,13 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         }
     }
 
-    if (is_client) {
+    if (is_client && BUFFER_SHRINK_IDLE_SECONDS > 0.0) {
         ev_tstamp now = ev_now(loop);
-        buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-        buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+        if (now >= con->next_buffer_shrink_check) {
+            buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+            buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+            con->next_buffer_shrink_check = now + BUFFER_SHRINK_IDLE_SECONDS;
+        }
     }
 
     /* Handle any state specific logic, note we may transition through several
@@ -510,9 +513,6 @@ reactivate_watchers(struct Connection *con, struct ev_loop *loop) {
            (ev_is_active(server_watcher) && con->server.watcher.events) ||
            con->state == RESOLVING);
 
-    /* Move to head of queue, so we can find inactive connections */
-    TAILQ_REMOVE(&connections, con, entries);
-    TAILQ_INSERT_HEAD(&connections, con, entries);
 }
 
 static void
@@ -546,8 +546,9 @@ reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
     if (CONNECTION_IDLE_TIMEOUT <= 0.0)
         return;
 
-    ev_timer_stop(loop, &con->idle_timer);
-    ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
+    if (ev_is_active(&con->idle_timer))
+        ev_timer_stop(loop, &con->idle_timer);
+
     ev_timer_set(&con->idle_timer, CONNECTION_IDLE_TIMEOUT, 0.0);
     ev_timer_start(loop, &con->idle_timer);
 }
@@ -556,8 +557,8 @@ static void
 stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
     if (ev_is_active(&con->idle_timer))
         ev_timer_stop(loop, &con->idle_timer);
-
-    ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
+    else if (ev_is_pending((struct ev_watcher *)&con->idle_timer))
+        ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
 }
 
 static inline double
@@ -1391,6 +1392,7 @@ new_connection(struct ev_loop *loop) {
     con->header_len = 0;
     con->query_handle = NULL;
     con->use_proxy_header = 0;
+    con->next_buffer_shrink_check = 0.0;
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
     con->idle_timer.data = con;
 
