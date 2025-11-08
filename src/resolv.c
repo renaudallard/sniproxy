@@ -183,7 +183,7 @@ struct ResolverChildQuery {
 int
 resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_mode) {
     int sockets[2];
-    int socket_type = SOCK_DGRAM;
+    int socket_type = SOCK_STREAM;
 
     resolver_loop_ref = loop;
     resolver_saved_nameservers = nameservers;
@@ -409,11 +409,16 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         }
 
         if (len == 0) {
-            warn("resolver socket closed");
+            warn("resolver socket closed by child");
             ev_io_stop(loop, w);
             if (resolver_sock >= 0) {
                 close(resolver_sock);
                 resolver_sock = -1;
+            }
+            /* Child exited unexpectedly, restart if not shutting down */
+            if (!resolver_restart_in_progress) {
+                if (resolver_restart() < 0)
+                    err("resolver restart failed");
             }
             break;
         }
@@ -588,6 +593,8 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     child_sock = sockfd;
     child_default_resolv_mode = default_mode;
 
+    notice("resolver child starting (pid=%d)", getpid());
+
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-resolver", 0, 0, 0);
 #endif
@@ -760,12 +767,13 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             if (errno == EINTR)
                 continue;
 
-            err("resolver child recv failed: %s", strerror(errno));
+            err("resolver child recv failed: %s (errno=%d), exiting", strerror(errno), errno);
             ev_break(loop, EVBREAK_ALL);
             break;
         }
 
         if (len == 0) {
+            notice("resolver child: parent closed socket, exiting");
             ev_break(loop, EVBREAK_ALL);
             break;
         }
@@ -935,8 +943,15 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
     memcpy(buffer, &header, sizeof(header));
     memcpy(buffer + sizeof(header), payload, offset + (status == 0 ? addr_len : 0));
 
-    if (send(child_sock, buffer, sizeof(header) + offset + (status == 0 ? addr_len : 0), 0) < 0)
-        err("resolver child send failed: %s", strerror(errno));
+    if (send(child_sock, buffer, sizeof(header) + offset + (status == 0 ? addr_len : 0), 0) < 0) {
+        err("resolver child send failed: %s (errno=%d)", strerror(errno), errno);
+        /* If parent socket is dead, child should exit gracefully */
+        if (errno == ECONNRESET || errno == EPIPE || errno == ENOTCONN) {
+            notice("resolver child: parent socket dead, exiting");
+            if (child_loop != NULL)
+                ev_break(child_loop, EVBREAK_ALL);
+        }
+    }
 }
 
 static void
