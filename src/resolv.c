@@ -105,6 +105,7 @@ static int resolver_saved_dnssec_mode = DNSSEC_VALIDATION_OFF;
 static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 
 static int resolver_restart_in_progress = 0;
+static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
 /* Parent-side helpers */
@@ -281,7 +282,10 @@ resolv_shutdown(struct ev_loop *loop) {
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);
         /* Only send SHUTDOWN if not restarting (socket may be dead during restart) */
-        if (!resolver_restart_in_progress) {
+        pthread_mutex_lock(&resolver_restart_lock);
+        int restarting = resolver_restart_in_progress;
+        pthread_mutex_unlock(&resolver_restart_lock);
+        if (!restarting) {
             resolver_send_message(RESOLVER_CMD_SHUTDOWN, 0, NULL, 0);
         }
         close(resolver_sock);
@@ -404,7 +408,10 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
     ssize_t written = send(resolver_sock, buffer, sizeof(header) + payload_len, 0);
     if (written < 0) {
         err("resolver send failed: %s", strerror(errno));
-        if (!resolver_restart_in_progress &&
+        pthread_mutex_lock(&resolver_restart_lock);
+        int restarting = resolver_restart_in_progress;
+        pthread_mutex_unlock(&resolver_restart_lock);
+        if (!restarting &&
                 (errno == EDESTADDRREQ || errno == ENOTCONN || errno == ECONNRESET || errno == EPIPE)) {
             if (resolver_restart() < 0)
                 err("resolver restart failed");
@@ -431,7 +438,10 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
             err("resolver recv failed: %s", strerror(errno));
             /* Trigger restart on recv failures indicating dead child */
-            if (!resolver_restart_in_progress &&
+            pthread_mutex_lock(&resolver_restart_lock);
+            int restarting = resolver_restart_in_progress;
+            pthread_mutex_unlock(&resolver_restart_lock);
+            if (!restarting &&
                     (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)) {
                 if (resolver_restart() < 0)
                     err("resolver restart failed");
@@ -447,7 +457,10 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 resolver_sock = -1;
             }
             /* Child exited unexpectedly, restart if not shutting down */
-            if (!resolver_restart_in_progress) {
+            pthread_mutex_lock(&resolver_restart_lock);
+            int restarting = resolver_restart_in_progress;
+            pthread_mutex_unlock(&resolver_restart_lock);
+            if (!restarting) {
                 if (resolver_restart() < 0)
                     err("resolver restart failed");
             }
@@ -608,29 +621,67 @@ resolver_restart(void) {
     if (resolver_loop_ref == NULL)
         return -1;
 
+    /* Prevent concurrent restart attempts */
+    pthread_mutex_lock(&resolver_restart_lock);
+    if (resolver_restart_in_progress) {
+        pthread_mutex_unlock(&resolver_restart_lock);
+        return -1;
+    }
     resolver_restart_in_progress = 1;
+    pthread_mutex_unlock(&resolver_restart_lock);
+
     notice("resolver child restarting after IPC failure");
     resolv_shutdown(resolver_loop_ref);
     int rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
             resolver_saved_search, resolver_saved_mode,
             resolver_saved_dnssec_mode);
+
+    pthread_mutex_lock(&resolver_restart_lock);
     resolver_restart_in_progress = 0;
+    pthread_mutex_unlock(&resolver_restart_lock);
 
     return rc;
 }
 
 static void
 resolver_child_crash_handler(int signum) {
-    const char *signame = "UNKNOWN";
+    /* Use only async-signal-safe functions (write is safe, err/printf/strlen are not) */
+    const char msg_prefix[] = "resolver child crashed with signal ";
+    const char *signame = NULL;
+    size_t signame_len = 0;
+
     switch (signum) {
-        case SIGSEGV: signame = "SIGSEGV (segmentation fault)"; break;
-        case SIGBUS: signame = "SIGBUS (bus error)"; break;
-        case SIGABRT: signame = "SIGABRT (abort)"; break;
-        case SIGILL: signame = "SIGILL (illegal instruction)"; break;
-        case SIGFPE: signame = "SIGFPE (floating point exception)"; break;
+        case SIGSEGV:
+            signame = "SIGSEGV (segmentation fault)\n";
+            signame_len = 30;
+            break;
+        case SIGBUS:
+            signame = "SIGBUS (bus error)\n";
+            signame_len = 19;
+            break;
+        case SIGABRT:
+            signame = "SIGABRT (abort)\n";
+            signame_len = 16;
+            break;
+        case SIGILL:
+            signame = "SIGILL (illegal instruction)\n";
+            signame_len = 30;
+            break;
+        case SIGFPE:
+            signame = "SIGFPE (floating point exception)\n";
+            signame_len = 35;
+            break;
+        default:
+            signame = "UNKNOWN\n";
+            signame_len = 8;
+            break;
     }
-    /* Use async-signal-safe functions only */
-    err("resolver child crashed with signal %d: %s", signum, signame);
+
+    /* write() is async-signal-safe */
+    (void)write(STDERR_FILENO, msg_prefix, sizeof(msg_prefix) - 1);
+    if (signame != NULL)
+        (void)write(STDERR_FILENO, signame, signame_len);
+
     /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
 }
 
@@ -809,6 +860,15 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
      * if there were internal c-ares issues. */
     struct ResolverChildQuery *query = child_queries;
     child_queries = NULL;
+    while (query != NULL) {
+        struct ResolverChildQuery *next = query->next;
+        resolver_child_free_query(query);
+        query = next;
+    }
+
+    /* Free any queries pending deferred free */
+    query = child_queries_to_free;
+    child_queries_to_free = NULL;
     while (query != NULL) {
         struct ResolverChildQuery *next = query->next;
         resolver_child_free_query(query);
@@ -1493,6 +1553,13 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
             if (response == NULL) {
                 err("resolver child: failed to allocate memory for DNS query result address");
                 continue;
+            }
+
+            /* Check for overflow before realloc */
+            if (query->response_count >= SIZE_MAX / sizeof(struct Address *) - 1) {
+                err("resolver child: too many DNS responses, cannot expand list");
+                free(response);
+                break;
             }
 
             struct Address **tmp = realloc(query->responses,
