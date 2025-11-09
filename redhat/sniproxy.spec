@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.0
+Version: 0.9.1
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,9 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Sun Nov 9 2025 Renaud Allard <renaud@allard.it> 0.9.1-1
+- Prepare 0.9.1 release
+
 * Fri Nov 8 2025 Renaud Allard <renaud@allard.it> 0.9.0-1
 - Major performance and security release
 - Security: DNS query IDs use PRNG (xorshift32) instead of linear counter

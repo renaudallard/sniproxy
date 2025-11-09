@@ -1,3 +1,9 @@
+sniproxy (0.9.1) unstable; urgency=medium
+
+  * Prepare 0.9.1 release
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 09 Nov 2025 11:27:40 +0100
+
 sniproxy (0.9.0) unstable; urgency=medium
 
   * Major performance and security release

@@ -9,25 +9,6 @@ proxy machine.
 SNIProxy is a production-ready, high-performance transparent proxy with a focus
 on security, reliability, and minimal resource usage.
 
-What's New in 0.9.0
--------------------
-
-This release focuses on **performance optimizations** and **security hardening**:
-
-### Security Improvements
-+ **Cryptographically stronger DNS query IDs**: Replaced linear counter with xorshift32 PRNG to prevent timing-based ID prediction
-+ **c-ares resolver hardening**: Async-signal-safe signal handlers, integer overflow protection, and memory leak fixes
-+ **TLS parser hardening**: Early rejection of ClientHello variants that cannot contain SNI extension
-
-### Performance Enhancements
-+ **Pattern match caching**: Per-backend cache remembers the most recent hostname lookup, skipping expensive PCRE regex evaluation for repeated hostnames
-+ **HTTP/2 HPACK optimization**: Precomputed static table entry lengths and binary search for header name lookups eliminate repeated strlen calls
-+ **Optimized buffer management**: Periodic buffer shrink timer reduces per-event timestamp operations
-+ **Connection memory tracking**: Global accounting provides visibility into memory usage and peak connection counts
-+ **Rate limiting optimization**: IPv4 fast path with LRU-based hash table improves performance for high-volume IPv4 traffic
-+ **Protocol parser micro-optimizations**: Reduced strlen calls, compile-time length constants, and optimized data structures across TLS, HTTP, and HTTP/2 parsers
-+ **PROXY protocol optimization**: Single-pass PROXY v1 header composition reduces buffer operations
-
 Features
 --------
 
@@ -313,28 +294,18 @@ Security & Hardening
 
 SNIProxy includes extensive security hardening:
 
-### Recent Security Improvements
+### Security Controls
 
-- **DNS query ID strengthening (0.9.0)**: Switched from linear counter to xorshift32
-  PRNG to prevent timing-based query ID prediction attacks
-- **c-ares resolver hardening (0.9.0)**: Async-signal-safe signal handlers, integer
-  overflow protection in memory operations, and memory leak fixes
-- **TLS parser hardening (0.9.0)**: Early rejection of SSL 2.0, SSL 3.0, and other
-  ClientHello variants that cannot support SNI extension
-- **Regex DoS mitigation**: Match limits now scale with hostname length to
-  prevent catastrophic backtracking attacks on malicious hostnames
-- **Buffer overflow protection**: Added strict overflow guards in `buffer_reserve()`
-  to detect and prevent integer wraparound attacks
-- **NUL byte filtering**: TLS SNI parsing rejects server names with embedded NUL
-  bytes before hostname validation, preventing filter bypass
-- **HTTP/2 memory limits**: Enforced per-connection (64KB) and global (4MB) HPACK
-  dynamic table size limits to prevent memory exhaustion
-- **PROXY header hardening**: Truncated snprintf results can no longer trick
-  buffer operations into reading past temporary buffers
-- **Connection timeout protection**: Idle timers now properly clear pending events
-  to prevent use-after-free conditions
-- **DNS concurrency limits**: Configurable limits with mutex protection around
-  the global resolver query list
+- **DNS query ID randomization**: Uses a xorshift32 PRNG instead of a linear counter to prevent timing-based prediction attacks
+- **c-ares resolver hardening**: Async-signal-safe signal handlers, integer overflow protection, and leak fixes keep the resolver stable under load
+- **TLS parser hardening**: Early rejection of SSL 2.0/3.0 and malformed ClientHello variants that cannot carry the SNI extension
+- **Regex DoS mitigation**: Match limits scale with hostname length to prevent catastrophic backtracking on hostile hostnames
+- **Buffer overflow protection**: `buffer_reserve()` enforces strict overflow guards to block integer wraparound attempts
+- **NUL byte filtering**: TLS SNI parsing rejects server names with embedded NUL bytes before hostname validation
+- **HTTP/2 memory limits**: Enforces per-connection (64KB) and global (4MB) HPACK table limits to avoid memory exhaustion
+- **PROXY header hardening**: Single-pass header composition eliminates read-past-buffer bugs
+- **Connection timeout protection**: Idle timers clear pending events to prevent use-after-free conditions
+- **DNS concurrency limits**: Mutex-protected resolver queues enforce configurable caps on in-flight lookups
 
 ### Testing Infrastructure
 
@@ -350,15 +321,14 @@ Run tests with: `make check`
 
 ### OpenBSD Sandboxing
 
-On OpenBSD, SNIProxy uses pledge(2) and unveil(2) for system call and filesystem
-restrictions:
+On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper process constrained:
 
-- **unveil()**: Restricts access to configuration file, pidfile, log files, and
-  Unix domain sockets referenced in the configuration
-- **pledge()**: Reduces available system calls to minimum required set:
-  - Main process: `stdio rpath inet dns proc exec`
-  - Logger process: `stdio rpath wpath cpath fattr`
-  - Resolver process: `stdio inet dns`
+- **unveil()**: Restricts access to the configuration file, pidfile, log destinations, and Unix domain sockets declared in the configuration
+- **pledge()**: Promise sets are tailored per process to minimize available system calls:
+  - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix` while reading configuration, then tightens to `stdio inet dns rpath proc id unix` after dropping privileges
+  - Binder process: `stdio unix inet` while handling privileged socket creation
+  - Logger process: `stdio rpath wpath cpath fattr id unix` so it can rotate and chown log files but cannot reach the network
+  - Resolver process: `stdio inet dns unix` to perform DNS lookups in isolation
 
 All paths are collected from the loaded configuration, so custom locations work
 as long as files/directories exist before launch. After unveiling resources,
