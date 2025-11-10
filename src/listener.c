@@ -38,6 +38,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#include <stdint.h>
 #include <arpa/inet.h>
 #include <assert.h>
 #include "address.h"
@@ -56,6 +57,14 @@ static int init_listener(struct Listener *, const struct Table_head *, struct ev
 static void listener_update(struct Listener *, struct Listener *,  const struct Table_head *);
 static void free_listener(struct Listener *);
 static int parse_boolean(const char *);
+
+
+static void listener_acl_clear(struct Listener *);
+static void listener_acl_move(struct Listener *, struct Listener *);
+static int listener_acl_contains(const struct Listener *, const struct sockaddr_storage *);
+static int listener_acl_rule_match_v4(const struct ListenerACLRule *, const struct in_addr *);
+static int listener_acl_rule_match_v6(const struct ListenerACLRule *, const struct in6_addr *);
+static const char *listener_acl_rule_to_string(const struct ListenerACLRule *, char *, size_t);
 
 
 static int
@@ -83,6 +92,136 @@ parse_boolean(const char *boolean) {
     err("Unable to parse '%s' as a boolean value", boolean);
 
     return -1;
+}
+
+static void
+listener_acl_clear(struct Listener *listener) {
+    struct ListenerACLRule *rule;
+
+    if (listener == NULL)
+        return;
+
+    while ((rule = SLIST_FIRST(&listener->acl_rules)) != NULL) {
+        SLIST_REMOVE_HEAD(&listener->acl_rules, entries);
+        free(rule);
+    }
+
+    listener->acl_mode = LISTENER_ACL_MODE_DISABLED;
+}
+
+static void
+listener_acl_move(struct Listener *dst, struct Listener *src) {
+    if (dst == NULL || src == NULL)
+        return;
+
+    listener_acl_clear(dst);
+    dst->acl_mode = src->acl_mode;
+    dst->acl_rules = src->acl_rules;
+    SLIST_INIT(&src->acl_rules);
+    src->acl_mode = LISTENER_ACL_MODE_DISABLED;
+}
+
+static int
+listener_acl_rule_match_v4(const struct ListenerACLRule *rule, const struct in_addr *addr) {
+    if (rule == NULL || addr == NULL)
+        return 0;
+
+    if (rule->prefix_len == 0)
+        return 1;
+
+    uint32_t mask = rule->prefix_len == 32 ? UINT32_MAX : (~0u << (32 - rule->prefix_len));
+    uint32_t addr_val = ntohl(addr->s_addr);
+    uint32_t net_val = ntohl(rule->network.in.s_addr);
+
+    return (addr_val & mask) == (net_val & mask);
+}
+
+static int
+listener_acl_rule_match_v6(const struct ListenerACLRule *rule, const struct in6_addr *addr) {
+    if (rule == NULL || addr == NULL)
+        return 0;
+
+    if (rule->prefix_len == 0)
+        return 1;
+
+    unsigned full_bytes = rule->prefix_len / 8;
+    unsigned remaining_bits = rule->prefix_len % 8;
+
+    if (full_bytes > 0) {
+        if (memcmp(addr->s6_addr, rule->network.in6.s6_addr, full_bytes) != 0)
+            return 0;
+    }
+
+    if (remaining_bits > 0 && full_bytes < sizeof(rule->network.in6.s6_addr)) {
+        uint8_t mask = (uint8_t)(0xFF << (8 - remaining_bits));
+        if ((addr->s6_addr[full_bytes] & mask) !=
+                (rule->network.in6.s6_addr[full_bytes] & mask))
+            return 0;
+    }
+
+    return 1;
+}
+
+static int
+listener_acl_contains(const struct Listener *listener, const struct sockaddr_storage *addr) {
+    const struct ListenerACLRule *rule;
+
+    if (listener == NULL || addr == NULL)
+        return 0;
+
+    if (addr->ss_family == AF_INET) {
+        const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
+        SLIST_FOREACH(rule, &listener->acl_rules, entries) {
+            if (rule->family == AF_INET &&
+                    listener_acl_rule_match_v4(rule, &sin->sin_addr))
+                return 1;
+        }
+    } else if (addr->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)addr;
+        if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
+            struct in_addr v4;
+            memcpy(&v4.s_addr, &sin6->sin6_addr.s6_addr[12], sizeof(v4.s_addr));
+            SLIST_FOREACH(rule, &listener->acl_rules, entries) {
+                if (rule->family == AF_INET &&
+                        listener_acl_rule_match_v4(rule, &v4))
+                    return 1;
+            }
+        } else {
+            SLIST_FOREACH(rule, &listener->acl_rules, entries) {
+                if (rule->family == AF_INET6 &&
+                        listener_acl_rule_match_v6(rule, &sin6->sin6_addr))
+                    return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static const char *
+listener_acl_rule_to_string(const struct ListenerACLRule *rule, char *buffer, size_t len) {
+    const void *addr = NULL;
+
+    if (rule == NULL || buffer == NULL || len == 0)
+        return NULL;
+
+    if (rule->family == AF_INET)
+        addr = &rule->network.in;
+    else if (rule->family == AF_INET6)
+        addr = &rule->network.in6;
+    else
+        return NULL;
+
+    if (inet_ntop(rule->family, addr, buffer, len) == NULL)
+        return NULL;
+
+    size_t used = strlen(buffer);
+    if (used + 5 >= len)
+        return NULL;
+
+    snprintf(buffer + used, len - used, "/%u", rule->prefix_len);
+
+    return buffer;
 }
 
 /*
@@ -194,6 +333,8 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
     existing_listener->reuseport = new_listener->reuseport;
     existing_listener->ipv6_v6only = new_listener->ipv6_v6only;
 
+    listener_acl_move(existing_listener, new_listener);
+
     struct Table *new_table =
             table_lookup(tables, existing_listener->table_name);
 
@@ -227,6 +368,8 @@ new_listener(void) {
     listener->ipv6_v6only = 0;
     listener->transparent_proxy = 0;
     listener->fallback_use_proxy_header = 0;
+    listener->acl_mode = LISTENER_ACL_MODE_DISABLED;
+    SLIST_INIT(&listener->acl_rules);
     listener->reference_count = 0;
     /* Initializes sock fd to negative sentinel value to indicate watchers
      * are not active */
@@ -723,9 +866,30 @@ listener_lookup_server_address(const struct Listener *listener,
     }
 }
 
+int
+listener_acl_allows(const struct Listener *listener,
+        const struct sockaddr_storage *addr) {
+    if (listener == NULL)
+        return 0;
+
+    if (listener->acl_mode == LISTENER_ACL_MODE_DISABLED)
+        return 1;
+
+    int matched = listener_acl_contains(listener, addr);
+
+    if (listener->acl_mode == LISTENER_ACL_MODE_ALLOW_EXCEPT)
+        return matched ? 0 : 1;
+
+    if (listener->acl_mode == LISTENER_ACL_MODE_DENY_EXCEPT)
+        return matched ? 1 : 0;
+
+    return 1;
+}
+
 void
 print_listener_config(FILE *file, const struct Listener *listener) {
     char address[ADDRESS_BUFFER_SIZE];
+    const struct ListenerACLRule *rule;
 
     fprintf(file, "listener %s {\n",
             display_address(listener->address, address, sizeof(address)));
@@ -755,6 +919,19 @@ print_listener_config(FILE *file, const struct Listener *listener) {
     if (listener->reuseport)
         fprintf(file, "\treuseport on\n");
 
+    if (listener->acl_mode != LISTENER_ACL_MODE_DISABLED) {
+        const char *policy = listener->acl_mode == LISTENER_ACL_MODE_ALLOW_EXCEPT ?
+                "allow_except" : "deny_except";
+        fprintf(file, "\tacl %s {\n", policy);
+        SLIST_FOREACH(rule, &listener->acl_rules, entries) {
+            char cidr_buf[INET6_ADDRSTRLEN + 8];
+            const char *cidr = listener_acl_rule_to_string(rule, cidr_buf, sizeof(cidr_buf));
+            if (cidr != NULL)
+                fprintf(file, "\t\tcidr %s\n", cidr);
+        }
+        fprintf(file, "\t}\n");
+    }
+
     fprintf(file, "}\n\n");
 }
 
@@ -773,6 +950,8 @@ static void
 free_listener(struct Listener *listener) {
     if (listener == NULL)
         return;
+
+    listener_acl_clear(listener);
 
     free(listener->address);
     free(listener->fallback_address);

@@ -219,6 +219,19 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 #endif
 
+    if (!listener_acl_allows(listener, &con->client.addr)) {
+        char addrbuf[INET6_ADDRSTRLEN];
+        char listener_buf[ADDRESS_BUFFER_SIZE];
+        const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
+
+        info("Connection from %s denied by ACL on %s",
+                ip != NULL ? ip : "(unknown)",
+                display_address(listener->address, listener_buf, sizeof(listener_buf)));
+        close(sockfd);
+        free_connection(con);
+        return 1;
+    }
+
     ev_tstamp now = ev_now(loop);
 
     if (!rate_limit_allow_connection(&con->client.addr, now)) {

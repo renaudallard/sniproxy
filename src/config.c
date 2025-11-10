@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <string.h>
+#include <arpa/inet.h>
 #include <strings.h>
 #include <errno.h>
 #include <assert.h>
@@ -42,6 +43,11 @@ struct LoggerBuilder {
     const char *filename;
     const char *syslog_facility;
     int priority;
+};
+
+struct ListenerACLBuilder {
+    enum ListenerACLMode mode;
+    struct ListenerACLRule_head rules;
 };
 
 static int accept_username(struct Config *, const char *);
@@ -71,6 +77,13 @@ static void free_string_vector(char **);
 static void print_resolver_config(FILE *, struct ResolverConfig *);
 
 
+static void *new_listener_acl_builder(void);
+static int accept_listener_acl_policy(struct ListenerACLBuilder *, const char *);
+static int accept_listener_acl_cidr(struct ListenerACLBuilder *, const char *);
+static int end_listener_acl_stanza(struct Listener *, struct ListenerACLBuilder *);
+static struct ListenerACLRule *new_listener_acl_rule_from_cidr(const char *);
+static void free_listener_acl_builder(struct ListenerACLBuilder *);
+
 static const struct Keyword logger_stanza_grammar[] = {
     {
         .keyword="filename",
@@ -83,6 +96,13 @@ static const struct Keyword logger_stanza_grammar[] = {
     {
         .keyword="priority",
         .parse_arg=(int(*)(void *, const char *))accept_logger_priority,
+    },
+    {
+        .keyword="acl",
+        .create=(void *(*)(void))new_listener_acl_builder,
+        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_policy,
+        .block_grammar=listener_acl_stanza_grammar,
+        .finalize=(int(*)(void *, void *))end_listener_acl_stanza,
     },
     {
         .keyword = NULL,
@@ -154,6 +174,16 @@ static const struct Keyword listener_stanza_grammar[] = {
     {
         .keyword="bad_requests",
         .parse_arg= (int(*)(void *, const char *))accept_listener_bad_request_action,
+    },
+    {
+        .keyword = NULL,
+    },
+};
+
+static const struct Keyword listener_acl_stanza_grammar[] = {
+    {
+        .keyword="cidr",
+        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_cidr,
     },
     {
         .keyword = NULL,
@@ -385,6 +415,161 @@ print_config(FILE *file, struct Config *config) {
     SLIST_FOREACH(table, &config->tables, entries) {
         print_table_config(file, table);
     }
+}
+
+static void *
+new_listener_acl_builder(void) {
+    struct ListenerACLBuilder *builder = calloc(1, sizeof(*builder));
+    if (builder == NULL) {
+        err("%s: calloc", __func__);
+        return NULL;
+    }
+
+    builder->mode = LISTENER_ACL_MODE_ALLOW_EXCEPT;
+    SLIST_INIT(&builder->rules);
+
+    return builder;
+}
+
+static void
+free_listener_acl_builder(struct ListenerACLBuilder *builder) {
+    struct ListenerACLRule *rule;
+
+    if (builder == NULL)
+        return;
+
+    while ((rule = SLIST_FIRST(&builder->rules)) != NULL) {
+        SLIST_REMOVE_HEAD(&builder->rules, entries);
+        free(rule);
+    }
+
+    free(builder);
+}
+
+static struct ListenerACLRule *
+new_listener_acl_rule_from_cidr(const char *value) {
+    struct ListenerACLRule *rule = NULL;
+    char *tmp = NULL;
+    char *slash = NULL;
+    char *prefix = NULL;
+    char *endptr = NULL;
+    long prefix_len;
+
+    if (value == NULL)
+        return NULL;
+
+    tmp = strdup(value);
+    if (tmp == NULL) {
+        err("%s: strdup", __func__);
+        return NULL;
+    }
+
+    slash = strchr(tmp, '/');
+    if (slash == NULL) {
+        err("ACL entry must be specified as CIDR: %s", value);
+        free(tmp);
+        return NULL;
+    }
+
+    *slash = '\0';
+    prefix = slash + 1;
+    errno = 0;
+    prefix_len = strtol(prefix, &endptr, 10);
+    if (errno != 0 || endptr == prefix || *endptr != '\0' || prefix_len < 0) {
+        err("Invalid prefix length in ACL entry: %s", value);
+        free(tmp);
+        return NULL;
+    }
+
+    rule = calloc(1, sizeof(*rule));
+    if (rule == NULL) {
+        err("%s: calloc", __func__);
+        free(tmp);
+        return NULL;
+    }
+
+    if (inet_pton(AF_INET, tmp, &rule->network.in) == 1) {
+        if (prefix_len > 32) {
+            err("IPv4 prefix length out of range in ACL entry: %s", value);
+            free(rule);
+            free(tmp);
+            return NULL;
+        }
+        rule->family = AF_INET;
+    } else if (inet_pton(AF_INET6, tmp, &rule->network.in6) == 1) {
+        if (prefix_len > 128) {
+            err("IPv6 prefix length out of range in ACL entry: %s", value);
+            free(rule);
+            free(tmp);
+            return NULL;
+        }
+        rule->family = AF_INET6;
+    } else {
+        err("Invalid network address in ACL entry: %s", value);
+        free(rule);
+        free(tmp);
+        return NULL;
+    }
+
+    rule->prefix_len = (uint8_t)prefix_len;
+
+    free(tmp);
+
+    return rule;
+}
+
+static int
+accept_listener_acl_policy(struct ListenerACLBuilder *builder, const char *policy) {
+    if (builder == NULL || policy == NULL)
+        return 0;
+
+    if (strcasecmp(policy, "allow_except") == 0) {
+        builder->mode = LISTENER_ACL_MODE_ALLOW_EXCEPT;
+    } else if (strcasecmp(policy, "deny_except") == 0) {
+        builder->mode = LISTENER_ACL_MODE_DENY_EXCEPT;
+    } else {
+        err("Unknown ACL policy: %s", policy);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int
+accept_listener_acl_cidr(struct ListenerACLBuilder *builder, const char *value) {
+    struct ListenerACLRule *rule;
+
+    if (builder == NULL || value == NULL)
+        return 0;
+
+    rule = new_listener_acl_rule_from_cidr(value);
+    if (rule == NULL)
+        return 0;
+
+    SLIST_INSERT_HEAD(&builder->rules, rule, entries);
+    return 1;
+}
+
+static int
+end_listener_acl_stanza(struct Listener *listener, struct ListenerACLBuilder *builder) {
+    if (listener == NULL || builder == NULL) {
+        free_listener_acl_builder(builder);
+        return 0;
+    }
+
+    if (listener->acl_mode != LISTENER_ACL_MODE_DISABLED ||
+            !SLIST_EMPTY(&listener->acl_rules)) {
+        err("Duplicate ACL definition for listener");
+        free_listener_acl_builder(builder);
+        return 0;
+    }
+
+    listener->acl_mode = builder->mode;
+    listener->acl_rules = builder->rules;
+    SLIST_INIT(&builder->rules);
+
+    free_listener_acl_builder(builder);
+    return 1;
 }
 
 static int

@@ -223,6 +223,22 @@ address automatically. Do not include a port number in this address,
 because doing so will limit the proxy to one simultaneous connection to
 each server at a time.
 
+An optional acl block restricts which clients may connect to a listener
+based on CIDR ranges. The directive takes a default policy of either
+allow_except (the default, accept every client except those listed) or
+deny_except (deny every client except the listed ranges):
+
+.nf
+    acl deny_except {
+        cidr 10.0.0.0/8
+        cidr 2001:db8::/32
+    }
+.fi
+
+When an acl block is omitted every client is accepted. Multiple cidr
+statements may be provided in a block. IPv4 and IPv6 ranges may be mixed
+freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges.
+
 The access log configuration may be overridden on each listener.
 
 .SS TABLE

@@ -38,6 +38,7 @@ Features
 + **Regex DoS prevention**: Match limits scale with hostname length
 + **Buffer overflow protection**: Strict bounds checking in all protocol parsers
 + **NULL byte rejection**: Prevents hostname validation bypasses
++ **Listener ACLs**: CIDR-based allow/deny policies per listener to block or permit client ranges
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
 + **DNS resolver hardening**: Async-signal-safe handlers, integer overflow protection
 + **DNS query concurrency limits**: Prevents resolver exhaustion
@@ -259,6 +260,13 @@ Set the value to `0` to disable the limiter (default).
         # Log malformed/rejected requests
         bad_requests log
 
+        # Restrict which clients may connect (default is allow all)
+        acl deny_except {
+            cidr 10.0.0.0/8
+            cidr 2001:db8::/32
+        }
+
+
         # Fallback with PROXY protocol header
         fallback 192.0.2.50:443
         fallback_use_proxy_header yes
@@ -271,6 +279,9 @@ Set the value to `0` to disable the limiter (default).
         # Backend-specific PROXY protocol override
         secure.example.com 192.0.2.20:443 { use_proxy_header no }
     }
+
+Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly `cidr` the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs.
+
 
 DNS Resolution
 --------------

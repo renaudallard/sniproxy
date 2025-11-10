@@ -27,11 +27,30 @@
 #define LISTENER_H
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <stdint.h>
 #include <ev.h>
 #include "address.h"
 #include "table.h"
 
 SLIST_HEAD(Listener_head, Listener);
+SLIST_HEAD(ListenerACLRule_head, ListenerACLRule);
+
+enum ListenerACLMode {
+    LISTENER_ACL_MODE_DISABLED = 0,
+    LISTENER_ACL_MODE_ALLOW_EXCEPT,
+    LISTENER_ACL_MODE_DENY_EXCEPT,
+};
+
+struct ListenerACLRule {
+    int family;
+    uint8_t prefix_len;
+    union {
+        struct in_addr in;
+        struct in6_addr in6;
+    } network;
+    SLIST_ENTRY(ListenerACLRule) entries;
+};
+
 
 struct Listener {
     /* Configuration fields */
@@ -41,6 +60,8 @@ struct Listener {
     struct Logger *access_log;
     int log_bad_requests, reuseport, transparent_proxy, ipv6_v6only;
     int fallback_use_proxy_header;
+    enum ListenerACLMode acl_mode;
+    struct ListenerACLRule_head acl_rules;
 
     /* Runtime fields */
     int reference_count;
@@ -74,5 +95,6 @@ struct LookupResult listener_lookup_server_address(const struct Listener *,
 void print_listener_config(FILE *, const struct Listener *);
 void listener_ref_put(struct Listener *);
 struct Listener *listener_ref_get(struct Listener *);
+int listener_acl_allows(const struct Listener *, const struct sockaddr_storage *);
 
 #endif
