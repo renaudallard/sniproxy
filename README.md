@@ -262,8 +262,8 @@ Set the value to `0` to disable the limiter (default).
 
         # Restrict which clients may connect (default is allow all)
         acl deny_except {
-            cidr 10.0.0.0/8
-            cidr 2001:db8::/32
+            10.0.0.0/8
+            2001:db8::/32
         }
 
 
@@ -280,7 +280,7 @@ Set the value to `0` to disable the limiter (default).
         secure.example.com 192.0.2.20:443 { use_proxy_header no }
     }
 
-Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly `cidr` the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs.
+Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly list the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs. Only one policy style may appear in the configuration; mixing `allow_except` and `deny_except` blocks causes SNIProxy to exit during parsing.
 
 
 DNS Resolution

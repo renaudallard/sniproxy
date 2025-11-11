@@ -927,7 +927,7 @@ print_listener_config(FILE *file, const struct Listener *listener) {
             char cidr_buf[INET6_ADDRSTRLEN + 8];
             const char *cidr = listener_acl_rule_to_string(rule, cidr_buf, sizeof(cidr_buf));
             if (cidr != NULL)
-                fprintf(file, "\t\tcidr %s\n", cidr);
+                fprintf(file, "\t\t%s\n", cidr);
         }
         fprintf(file, "\t}\n");
     }

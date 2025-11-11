@@ -230,14 +230,14 @@ deny_except (deny every client except the listed ranges):
 
 .nf
     acl deny_except {
-        cidr 10.0.0.0/8
-        cidr 2001:db8::/32
+        10.0.0.0/8
+        2001:db8::/32
     }
 .fi
 
-When an acl block is omitted every client is accepted. Multiple cidr
+When an acl block is omitted every client is accepted. Multiple
 statements may be provided in a block. IPv4 and IPv6 ranges may be mixed
-freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges.
+freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges. Mixing allow_except and deny_except blocks anywhere in the configuration causes sniproxy to exit with a configuration error.
 
 The access log configuration may be overridden on each listener.
 

@@ -50,6 +50,18 @@ struct ListenerACLBuilder {
     struct ListenerACLRule_head rules;
 };
 
+struct ListenerACLRuleValue {
+    char *value;
+};
+
+enum GlobalACLPolicy {
+    GLOBAL_ACL_POLICY_UNSET = 0,
+    GLOBAL_ACL_POLICY_ALLOW,
+    GLOBAL_ACL_POLICY_DENY,
+};
+
+static enum GlobalACLPolicy global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
+
 static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
 static int accept_pidfile(struct Config *, const char *);
@@ -82,6 +94,9 @@ static int accept_listener_acl_policy(struct ListenerACLBuilder *, const char *)
 static int accept_listener_acl_cidr(struct ListenerACLBuilder *, const char *);
 static int end_listener_acl_stanza(struct Listener *, struct ListenerACLBuilder *);
 static struct ListenerACLRule *new_listener_acl_rule_from_cidr(const char *);
+static void *new_listener_acl_value(void);
+static int accept_listener_acl_value(struct ListenerACLRuleValue *, const char *);
+static int end_listener_acl_value(struct ListenerACLBuilder *, struct ListenerACLRuleValue *);
 static void free_listener_acl_builder(struct ListenerACLBuilder *);
 
 static const struct Keyword logger_stanza_grammar[] = {
@@ -184,6 +199,11 @@ static const struct Keyword listener_acl_stanza_grammar[] = {
     {
         .keyword="cidr",
         .parse_arg=(int(*)(void *, const char *))accept_listener_acl_cidr,
+    },
+    {
+        .create=(void *(*)(void))new_listener_acl_value,
+        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_value,
+        .finalize=(int(*)(void *, void *))end_listener_acl_value,
     },
     {
         .keyword = NULL,
@@ -305,6 +325,7 @@ init_config(const char *filename, struct ev_loop *loop) {
         return NULL;
     }
 
+    global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
 
     FILE *file = fopen(config->filename, "r");
     if (file == NULL) {
@@ -518,14 +539,77 @@ new_listener_acl_rule_from_cidr(const char *value) {
     return rule;
 }
 
+static void *
+new_listener_acl_value(void) {
+    struct ListenerACLRuleValue *value = calloc(1, sizeof(*value));
+    if (value == NULL) {
+        err("%s: calloc", __func__);
+        return NULL;
+    }
+
+    return value;
+}
+
+static int
+accept_listener_acl_value(struct ListenerACLRuleValue *entry, const char *value) {
+    if (entry == NULL || value == NULL)
+        return 0;
+
+    if (entry->value != NULL) {
+        err("Unexpected extra token in ACL entry: %s", value);
+        return 0;
+    }
+
+    entry->value = strdup(value);
+    if (entry->value == NULL) {
+        err("%s: strdup", __func__);
+        return -1;
+    }
+
+    return 1;
+}
+
+static int
+end_listener_acl_value(struct ListenerACLBuilder *builder, struct ListenerACLRuleValue *entry) {
+    int result = 0;
+
+    if (builder == NULL || entry == NULL) {
+        free(entry);
+        return 0;
+    }
+
+    if (entry->value == NULL) {
+        err("ACL entry must specify an address or network");
+        free(entry);
+        return 0;
+    }
+
+    result = accept_listener_acl_cidr(builder, entry->value);
+
+    free(entry->value);
+    free(entry);
+
+    return result;
+}
+
 static int
 accept_listener_acl_policy(struct ListenerACLBuilder *builder, const char *policy) {
     if (builder == NULL || policy == NULL)
         return 0;
 
     if (strcasecmp(policy, "allow_except") == 0) {
+        if (global_acl_policy == GLOBAL_ACL_POLICY_DENY) {
+            err("acl allow_except and deny_except stanzas are mutually exclusive");
+            return 0;
+        }
+        global_acl_policy = GLOBAL_ACL_POLICY_ALLOW;
         builder->mode = LISTENER_ACL_MODE_ALLOW_EXCEPT;
     } else if (strcasecmp(policy, "deny_except") == 0) {
+        if (global_acl_policy == GLOBAL_ACL_POLICY_ALLOW) {
+            err("acl allow_except and deny_except stanzas are mutually exclusive");
+            return 0;
+        }
+        global_acl_policy = GLOBAL_ACL_POLICY_DENY;
         builder->mode = LISTENER_ACL_MODE_DENY_EXCEPT;
     } else {
         err("Unknown ACL policy: %s", policy);
