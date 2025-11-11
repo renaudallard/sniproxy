@@ -46,6 +46,8 @@ struct Config {
     } resolver;
     struct Logger *access_log;
     double per_ip_connection_rate;
+    double io_collect_interval;
+    double timeout_collect_interval;
     struct Listener_head listeners;
     struct Table_head tables;
 };

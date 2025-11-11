@@ -34,6 +34,9 @@
 #include <errno.h>
 #include <assert.h>
 #include "cfg_parser.h"
+
+#define DEFAULT_IO_COLLECT_INTERVAL 0.0005
+#define DEFAULT_TIMEOUT_COLLECT_INTERVAL 0.005
 #include "config.h"
 #include "logger.h"
 #include "connection.h"
@@ -66,6 +69,8 @@ static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
 static int accept_pidfile(struct Config *, const char *);
 static int accept_per_ip_connection_rate(struct Config *, const char *);
+static int accept_io_collect_interval(struct Config *, const char *);
+static int accept_timeout_collect_interval(struct Config *, const char *);
 static int end_listener_stanza(struct Config *, struct Listener *);
 static int end_table_stanza(struct Config *, struct Table *);
 static int end_backend(struct Table *, struct Backend *);
@@ -249,6 +254,14 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_per_ip_connection_rate,
     },
     {
+        .keyword="io_collect_interval",
+        .parse_arg=(int(*)(void *, const char *))accept_io_collect_interval,
+    },
+    {
+        .keyword="timeout_collect_interval",
+        .parse_arg=(int(*)(void *, const char *))accept_timeout_collect_interval,
+    },
+    {
         .keyword="resolver",
         .create=(void *(*)(void))new_resolver_config,
         .block_grammar=resolver_stanza_grammar,
@@ -319,6 +332,9 @@ init_config(const char *filename, struct ev_loop *loop) {
 
     SLIST_INIT(&config->listeners);
     SLIST_INIT(&config->tables);
+
+    config->io_collect_interval = DEFAULT_IO_COLLECT_INTERVAL;
+    config->timeout_collect_interval = DEFAULT_TIMEOUT_COLLECT_INTERVAL;
 
     config->filename = strdup(filename);
     if (config->filename == NULL) {
@@ -406,6 +422,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->per_ip_connection_rate = new_config->per_ip_connection_rate;
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
 
+    config->io_collect_interval = new_config->io_collect_interval;
+    config->timeout_collect_interval = new_config->timeout_collect_interval;
+
     config->resolver.max_concurrent_queries = new_config->resolver.max_concurrent_queries;
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
 
@@ -428,6 +447,12 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->per_ip_connection_rate > 0.0)
         fprintf(file, "per_ip_connection_rate %.3f\n\n", config->per_ip_connection_rate);
+
+    if (config->io_collect_interval > 0.0)
+        fprintf(file, "io_collect_interval %.6f\n\n", config->io_collect_interval);
+
+    if (config->timeout_collect_interval > 0.0)
+        fprintf(file, "timeout_collect_interval %.6f\n\n", config->timeout_collect_interval);
 
     print_resolver_config(file, &config->resolver);
 
@@ -718,6 +743,44 @@ accept_per_ip_connection_rate(struct Config *config, const char *value) {
     }
 
     config->per_ip_connection_rate = rate;
+
+    return 1;
+}
+
+static int
+accept_io_collect_interval(struct Config *config, const char *value) {
+    char *endptr = NULL;
+    double interval = strtod(value, &endptr);
+
+    if (endptr == value || (endptr != NULL && *endptr != '\0')) {
+        err("Unable to parse io_collect_interval '%s'", value);
+        return 0;
+    }
+    if (interval < 0.0) {
+        err("io_collect_interval must be non-negative: %s", value);
+        return 0;
+    }
+
+    config->io_collect_interval = interval;
+
+    return 1;
+}
+
+static int
+accept_timeout_collect_interval(struct Config *config, const char *value) {
+    char *endptr = NULL;
+    double interval = strtod(value, &endptr);
+
+    if (endptr == value || (endptr != NULL && *endptr != '\0')) {
+        err("Unable to parse timeout_collect_interval '%s'", value);
+        return 0;
+    }
+    if (interval < 0.0) {
+        err("timeout_collect_interval must be non-negative: %s", value);
+        return 0;
+    }
+
+    config->timeout_collect_interval = interval;
 
     return 1;
 }

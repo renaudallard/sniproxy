@@ -67,6 +67,17 @@ applied globally across all listeners using a token-bucket policy that
 allows short bursts up to the configured rate. Set the value to 0 (the
 default) to disable per-IP rate limiting.
 
+.SS MAINLOOP
+
+.PP
+.nf
+io_collect_interval 0.0005
+timeout_collect_interval 0.005
+.fi
+.PP
+
+Tune how libev batches readiness notifications. \fBio_collect_interval\fR delays the next poll by up to the specified number of seconds so that multiple sockets can become ready before the kernel is queried again. \fBtimeout_collect_interval\fR performs the same batching for timers. Small non-zero values reduce system call pressure and improve throughput on busy instances at the cost of a few hundred microseconds of additional latency. Set either value to 0 to disable batching.
+
 .SS ERROR_LOG
 
 .PP

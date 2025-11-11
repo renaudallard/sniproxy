@@ -68,6 +68,7 @@ static void drop_perms(const char* username, const char* groupname);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
+static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
 
 #ifdef __OpenBSD__
 struct openbsd_unveil_data {
@@ -226,6 +227,7 @@ main(int argc, char **argv) {
     rlim_t max_nofiles = 65536;
     int opt;
     int allow_tls10 = 0;
+    struct ev_loop *loop = NULL;
 
     logger_prepare_process_title(argc, argv);
 
@@ -263,12 +265,35 @@ main(int argc, char **argv) {
     if (allow_tls10)
         tls_set_min_client_hello_version(3, 1);
 
-    config = init_config(config_file, EV_DEFAULT);
+    unsigned int loop_flags = 0;
+#ifdef EVFLAG_FORKCHECK
+    loop_flags |= EVFLAG_FORKCHECK;
+#endif
+#ifdef EVFLAG_NOENV
+    loop_flags |= EVFLAG_NOENV;
+#endif
+#ifdef __linux__
+#ifdef EVFLAG_SIGNALFD
+    loop_flags |= EVFLAG_SIGNALFD;
+#endif
+#ifdef EVFLAG_NOINOTIFY
+    loop_flags |= EVFLAG_NOINOTIFY;
+#endif
+#endif
+    loop = ev_default_loop(loop_flags);
+    if (loop == NULL) {
+        fprintf(stderr, "Unable to initialize libev main loop\n");
+        return EXIT_FAILURE;
+    }
+
+    config = init_config(config_file, loop);
     if (config == NULL) {
         fprintf(stderr, "Unable to load %s\n", config_file);
         usage();
         return EXIT_FAILURE;
     }
+
+    apply_mainloop_settings(loop, config);
 
 #ifdef __OpenBSD__
     {
@@ -346,7 +371,7 @@ main(int argc, char **argv) {
 
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
 
-    init_listeners(&config->listeners, &config->tables, EV_DEFAULT);
+    init_listeners(&config->listeners, &config->tables, loop);
 
     /* Drop permissions only when we can */
     drop_perms(config->user ? config->user : default_username, config->group);
@@ -364,23 +389,23 @@ main(int argc, char **argv) {
     ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
     ev_signal_init(&sigint_watcher, signal_cb, SIGINT);
     ev_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ev_signal_start(EV_DEFAULT, &sighup_watcher);
-    ev_signal_start(EV_DEFAULT, &sigusr1_watcher);
-    ev_signal_start(EV_DEFAULT, &sigint_watcher);
-    ev_signal_start(EV_DEFAULT, &sigterm_watcher);
+    ev_signal_start(loop, &sighup_watcher);
+    ev_signal_start(loop, &sigusr1_watcher);
+    ev_signal_start(loop, &sigint_watcher);
+    ev_signal_start(loop, &sigterm_watcher);
 
-    resolv_init(EV_DEFAULT, config->resolver.nameservers,
+    resolv_init(loop, config->resolver.nameservers,
             config->resolver.search, config->resolver.mode,
             config->resolver.dnssec_validation_mode);
 
     init_connections();
 
-    ev_run(EV_DEFAULT, 0);
+    ev_run(loop, 0);
 
-    free_connections(EV_DEFAULT);
-    resolv_shutdown(EV_DEFAULT);
+    free_connections(loop);
+    resolv_shutdown(loop);
 
-    free_config(config, EV_DEFAULT);
+    free_config(config, loop);
 
     stop_binder();
 
@@ -520,6 +545,15 @@ usage(void) {
 }
 
 static void
+apply_mainloop_settings(struct ev_loop *loop, const struct Config *cfg) {
+    if (loop == NULL || cfg == NULL)
+        return;
+
+    ev_set_io_collect_interval(loop, cfg->io_collect_interval);
+    ev_set_timeout_collect_interval(loop, cfg->timeout_collect_interval);
+}
+
+static void
 write_pidfile(const char *path, pid_t pid) {
     int open_flags = O_WRONLY | O_CREAT | O_TRUNC;
 #ifdef O_CLOEXEC
@@ -584,6 +618,7 @@ signal_cb(struct ev_loop *loop, struct ev_signal *w, int revents) {
             case SIGHUP:
                 reopen_loggers();
                 reload_config(config, loop);
+                apply_mainloop_settings(loop, config);
                 break;
             case SIGUSR1:
                 print_connections();

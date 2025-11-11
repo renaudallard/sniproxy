@@ -194,6 +194,10 @@ Set the value to `0` to disable the limiter (default).
 
     pidfile /tmp/sniproxy.pid
 
+    # Allow libev to batch events for better throughput (seconds)
+    io_collect_interval 0.0005
+    timeout_collect_interval 0.005
+
     error_log {
         filename /var/log/sniproxy/error.log
         priority notice
@@ -279,6 +283,8 @@ Set the value to `0` to disable the limiter (default).
         # Backend-specific PROXY protocol override
         secure.example.com 192.0.2.20:443 { use_proxy_header no }
     }
+
+Setting `io_collect_interval` and `timeout_collect_interval` lets libev batch I/O readiness notifications and timer recalculations, which reduces system call pressure on busy instances. The defaults (0.0005s and 0.005s respectively) favor throughput; set the values to 0 if you need the absolute lowest latency.
 
 Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly list the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs. Only one policy style may appear in the configuration; mixing `allow_except` and `deny_except` blocks causes SNIProxy to exit during parsing.
 
