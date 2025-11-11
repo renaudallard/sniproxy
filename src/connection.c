@@ -125,7 +125,13 @@ struct RateLimitBucket {
     uint32_t addr_v4;
 };
 
+static struct RateLimitBucket *rate_limit_bucket_acquire(void);
+static void rate_limit_bucket_release(struct RateLimitBucket *bucket);
+
 static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
+static struct RateLimitBucket *rate_limit_free_list;
+static size_t rate_limit_free_count;
+#define RATE_LIMIT_MAX_FREE 8192
 static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 
@@ -631,6 +637,35 @@ rate_limit_bucket_capacity(void) {
     return per_ip_connection_rate_limit <= 1.0 ? 1.0 : per_ip_connection_rate_limit;
 }
 
+static struct RateLimitBucket *
+rate_limit_bucket_acquire(void) {
+    if (rate_limit_free_list != NULL) {
+        struct RateLimitBucket *bucket = rate_limit_free_list;
+        rate_limit_free_list = bucket->next;
+        if (rate_limit_free_count > 0)
+            rate_limit_free_count--;
+        memset(bucket, 0, sizeof(*bucket));
+        return bucket;
+    }
+
+    return calloc(1, sizeof(struct RateLimitBucket));
+}
+
+static void
+rate_limit_bucket_release(struct RateLimitBucket *bucket) {
+    if (bucket == NULL)
+        return;
+
+    if (rate_limit_free_count >= RATE_LIMIT_MAX_FREE) {
+        free(bucket);
+        return;
+    }
+
+    bucket->next = rate_limit_free_list;
+    rate_limit_free_list = bucket;
+    rate_limit_free_count++;
+}
+
 static void
 rate_limit_reset(void) {
     for (size_t i = 0; i < RATE_LIMIT_TABLE_SIZE; i++) {
@@ -638,7 +673,7 @@ rate_limit_reset(void) {
 
         while (bucket != NULL) {
             struct RateLimitBucket *next = bucket->next;
-            free(bucket);
+            rate_limit_bucket_release(bucket);
             bucket = next;
         }
 
@@ -661,7 +696,7 @@ rate_limit_cleanup(ev_tstamp now) {
 
             if (now - bucket->last_check > RATE_LIMIT_IDLE_TTL) {
                 *current = bucket->next;
-                free(bucket);
+                rate_limit_bucket_release(bucket);
             } else {
                 current = &bucket->next;
             }
@@ -751,7 +786,7 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
     }
 
     if (bucket == NULL) {
-        bucket = calloc(1, sizeof(*bucket));
+        bucket = rate_limit_bucket_acquire();
         if (bucket == NULL) {
             err("calloc: %s", strerror(errno));
             return 1;

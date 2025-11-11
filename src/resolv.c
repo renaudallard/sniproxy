@@ -97,7 +97,11 @@ static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
 static uint32_t resolver_next_query_seed = 0x12345678;
 static uint32_t resolver_next_query_prng(void);
-static struct ResolvQuery *resolver_queries = NULL;
+#define RESOLVER_QUERY_BUCKETS 1024u
+static struct ResolvQuery *resolver_queries[RESOLVER_QUERY_BUCKETS];
+static inline size_t resolver_query_bucket_index(uint32_t id) {
+    return id & (RESOLVER_QUERY_BUCKETS - 1u);
+}
 static uint32_t
 resolver_next_query_prng(void) {
     uint32_t x = resolver_next_query_seed;
@@ -606,15 +610,17 @@ resolver_attach_query(struct ResolvQuery *query) {
         return;
 
     pthread_mutex_lock(&resolver_queries_lock);
-    query->next = resolver_queries;
-    resolver_queries = query;
+    size_t bucket = resolver_query_bucket_index(query->id);
+    query->next = resolver_queries[bucket];
+    resolver_queries[bucket] = query;
     pthread_mutex_unlock(&resolver_queries_lock);
 }
 
 static struct ResolvQuery *
 resolver_take_query(uint32_t id) {
+    size_t bucket = resolver_query_bucket_index(id);
     pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery **iter = &resolver_queries;
+    struct ResolvQuery **iter = &resolver_queries[bucket];
     while (*iter != NULL) {
         if ((*iter)->id == id) {
             struct ResolvQuery *found = *iter;
@@ -634,8 +640,9 @@ resolver_detach_query(struct ResolvQuery *query) {
     if (query == NULL)
         return 0;
 
+    size_t bucket = resolver_query_bucket_index(query->id);
     pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery **iter = &resolver_queries;
+    struct ResolvQuery **iter = &resolver_queries[bucket];
     while (*iter != NULL) {
         if (*iter == query) {
             *iter = query->next;
@@ -652,16 +659,20 @@ resolver_detach_query(struct ResolvQuery *query) {
 static void
 resolver_cleanup_pending_queries(void) {
     pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery *iter = resolver_queries;
-    resolver_queries = NULL;
+    struct ResolvQuery *local_buckets[RESOLVER_QUERY_BUCKETS];
+    memcpy(local_buckets, resolver_queries, sizeof(local_buckets));
+    memset(resolver_queries, 0, sizeof(resolver_queries));
     pthread_mutex_unlock(&resolver_queries_lock);
 
-    while (iter != NULL) {
-        struct ResolvQuery *next = iter->next;
-        if (iter->client_free_cb != NULL)
-            iter->client_free_cb(iter->client_cb_data);
-        free(iter);
-        iter = next;
+    for (size_t i = 0; i < RESOLVER_QUERY_BUCKETS; i++) {
+        struct ResolvQuery *iter = local_buckets[i];
+        while (iter != NULL) {
+            struct ResolvQuery *next = iter->next;
+            if (iter->client_free_cb != NULL)
+                iter->client_free_cb(iter->client_cb_data);
+            free(iter);
+            iter = next;
+        }
     }
 }
 

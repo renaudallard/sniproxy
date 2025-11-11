@@ -45,6 +45,21 @@
 #define BUFFER_COALESCE_STACK_COPY 4096
 static const size_t BUFFER_MAX_SIZE = 1024 * 1024 * 1024;
 
+struct BufferPoolClass {
+    size_t size;
+    size_t max_cached;
+    size_t cached;
+    void *head;
+};
+
+static struct BufferPoolClass buffer_pool_classes[] = {
+    { 8192, 512, 0, NULL },
+    { 16384, 256, 0, NULL },
+    { 65536, 64, 0, NULL },
+};
+
+static void *buffer_pool_acquire(size_t size);
+static int buffer_pool_release(size_t size, void *ptr);
 
 static size_t setup_write_iov(const struct Buffer *, struct iovec *, size_t);
 static size_t setup_read_iov(const struct Buffer *, struct iovec *, size_t);
@@ -54,6 +69,44 @@ static size_t next_power_of_two(size_t);
 
 
 static void (*buffer_memory_observer)(ssize_t delta);
+
+static void *
+buffer_pool_acquire(size_t size) {
+    for (size_t i = 0; i < sizeof(buffer_pool_classes) / sizeof(buffer_pool_classes[0]); i++) {
+        struct BufferPoolClass *cls = &buffer_pool_classes[i];
+        if (cls->size != size || cls->head == NULL)
+            continue;
+
+        void *mem = cls->head;
+        cls->head = *(void **)cls->head;
+        if (cls->cached > 0)
+            cls->cached--;
+        return mem;
+    }
+
+    return NULL;
+}
+
+static int
+buffer_pool_release(size_t size, void *ptr) {
+    if (ptr == NULL)
+        return 0;
+
+    for (size_t i = 0; i < sizeof(buffer_pool_classes) / sizeof(buffer_pool_classes[0]); i++) {
+        struct BufferPoolClass *cls = &buffer_pool_classes[i];
+        if (cls->size != size)
+            continue;
+        if (cls->cached >= cls->max_cached)
+            return 0;
+
+        *(void **)ptr = cls->head;
+        cls->head = ptr;
+        cls->cached++;
+        return 1;
+    }
+
+    return 0;
+}
 
 static inline void
 buffer_notify_memory(ssize_t delta) {
@@ -86,13 +139,16 @@ new_buffer(size_t size, struct ev_loop *loop) {
     const ev_tstamp now = ev_now(loop);
     buf->last_recv = now;
     buf->last_send = now;
-    buf->buffer = malloc(size);
-    if (buf->buffer == NULL) {
+    char *data = buffer_pool_acquire(size);
+    if (data == NULL)
+        data = malloc(size);
+    if (data == NULL) {
         buffer_notify_memory(-(ssize_t)sizeof(struct Buffer));
         free(buf);
         return NULL;
     }
 
+    buf->buffer = data;
     buffer_notify_memory((ssize_t)size);
 
     return buf;
@@ -246,8 +302,10 @@ free_buffer(struct Buffer *buf) {
         return;
 
     if (buf->buffer != NULL) {
-        buffer_notify_memory(-(ssize_t)buffer_size(buf));
-        free(buf->buffer);
+        size_t current_size = buffer_size(buf);
+        buffer_notify_memory(-(ssize_t)current_size);
+        if (!buffer_pool_release(current_size, buf->buffer))
+            free(buf->buffer);
     }
 
     buffer_notify_memory(-(ssize_t)sizeof(struct Buffer));

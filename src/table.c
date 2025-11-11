@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
+#include <stdint.h>
 #include "table.h"
 #include "backend.h"
 #include "address.h"
@@ -35,6 +36,11 @@
 
 
 static void free_table(struct Table *);
+
+static inline uint32_t table_hash_hostname(const char *name, size_t len);
+static struct Backend *table_cache_probe(const struct Table *, const char *, size_t, uint32_t);
+static void table_cache_store(struct Table *, const char *, size_t, uint32_t, struct Backend *);
+static void table_cache_clear(struct Table *);
 
 
 static inline struct Backend *
@@ -45,6 +51,59 @@ table_lookup_backend(const struct Table *table, const char *name, size_t name_le
 static inline void __attribute__((unused))
 remove_table_backend(struct Table *table, struct Backend *backend) {
     remove_backend(&table->backends, backend);
+}
+
+static inline uint32_t
+table_hash_hostname(const char *name, size_t len) {
+    uint32_t hash = 2166136261u;
+    for (size_t i = 0; i < len; i++) {
+        hash ^= (uint8_t)name[i];
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+static struct Backend *
+table_cache_probe(const struct Table *table, const char *name, size_t len, uint32_t hash) {
+    if (table == NULL || len == 0 || len > TABLE_CACHE_MAX_NAME_LEN)
+        return NULL;
+
+    const struct TableCacheEntry *entry = &table->cache[hash & (TABLE_CACHE_SIZE - 1u)];
+    if (entry->backend == NULL)
+        return NULL;
+    if (entry->generation != table->cache_generation)
+        return NULL;
+    if (entry->hash != hash || entry->name_len != len)
+        return NULL;
+    if (memcmp(entry->name, name, len) != 0)
+        return NULL;
+    return entry->backend;
+}
+
+static void
+table_cache_store(struct Table *table, const char *name, size_t len, uint32_t hash, struct Backend *backend) {
+    if (table == NULL || backend == NULL || len == 0 || len > TABLE_CACHE_MAX_NAME_LEN)
+        return;
+
+    struct TableCacheEntry *entry = &table->cache[hash & (TABLE_CACHE_SIZE - 1u)];
+    entry->hash = hash;
+    entry->name_len = (uint16_t)len;
+    entry->generation = table->cache_generation;
+    memcpy(entry->name, name, len);
+    entry->name[len] = '\0';
+    entry->backend = backend;
+}
+
+static void
+table_cache_clear(struct Table *table) {
+    if (table == NULL)
+        return;
+
+    table->cache_generation++;
+    if (table->cache_generation == 0)
+        table->cache_generation = 1;
+
+    memset(table->cache, 0, sizeof(table->cache));
 }
 
 
@@ -59,6 +118,8 @@ new_table(void) {
     }
 
     STAILQ_INIT(&table->backends);
+    table->cache_generation = 1;
+    memset(table->cache, 0, sizeof(table->cache));
 
     return table;
 }
@@ -135,6 +196,7 @@ void init_table(struct Table *table) {
 
         iter = next;
     }
+    table_cache_clear(table);
 }
 
 void
@@ -172,14 +234,28 @@ remove_table(struct Table_head *tables, struct Table *table) {
 
 struct LookupResult
 table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
-    struct Backend *b = table_lookup_backend(table, name, name_len);
-    if (b == NULL) {
-        info("No match found for %.*s", (int)name_len, name);
-        return (struct LookupResult){.address = NULL};
+    struct Backend *backend = NULL;
+    uint32_t hash = 0;
+    int cacheable = (table != NULL && name != NULL && name_len > 0 &&
+            name_len <= TABLE_CACHE_MAX_NAME_LEN);
+
+    if (cacheable) {
+        hash = table_hash_hostname(name, name_len);
+        backend = table_cache_probe(table, name, name_len, hash);
     }
 
-    return (struct LookupResult){.address = b->address,
-                                 .use_proxy_header = b->use_proxy_header};
+    if (backend == NULL) {
+        backend = table_lookup_backend(table, name, name_len);
+        if (backend == NULL) {
+            info("No match found for %.*s", (int)name_len, name ? name : "");
+            return (struct LookupResult){.address = NULL};
+        }
+        if (cacheable)
+            table_cache_store((struct Table *)table, name, name_len, hash, backend);
+    }
+
+    return (struct LookupResult){.address = backend->address,
+                                 .use_proxy_header = backend->use_proxy_header};
 }
 
 void

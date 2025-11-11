@@ -27,13 +27,25 @@
 #define TABLE_H
 
 #include <stdio.h>
+#include <stdint.h>
 #include <sys/queue.h>
 #include "backend.h"
 #include "address.h"
 
 #define TABLE_NAME_LEN 20
+#define TABLE_CACHE_MAX_NAME_LEN 255
+#define TABLE_CACHE_BITS 8
+#define TABLE_CACHE_SIZE (1u << TABLE_CACHE_BITS)
 
 SLIST_HEAD(Table_head, Table);
+
+struct TableCacheEntry {
+    uint32_t hash;
+    uint16_t name_len;
+    uint16_t generation;
+    char name[TABLE_CACHE_MAX_NAME_LEN + 1];
+    struct Backend *backend;
+};
 
 struct Table {
     char *name;
@@ -42,6 +54,8 @@ struct Table {
     /* Runtime fields */
     int reference_count;
     struct Backend_head backends;
+    uint16_t cache_generation;
+    struct TableCacheEntry cache[TABLE_CACHE_SIZE];
     SLIST_ENTRY(Table) entries;
 };
 
