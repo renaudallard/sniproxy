@@ -109,7 +109,12 @@ parse_config(void *context, FILE *cfg, const struct Keyword *grammar,
 
                 break;
             case TOKEN_CBRACE:
-                /* fall through */
+                if (keyword && sub_context && keyword->finalize) {
+                    result = keyword->finalize(context, sub_context);
+                    if (result <= 0)
+                        return result;
+                }
+                return 1;
             case TOKEN_END:
                 return 1;
         }
