@@ -84,13 +84,25 @@ struct resolver_ipc_header {
     uint32_t payload_len;
 };
 
+struct ResolverPending;
+
 struct ResolvQuery {
-    uint32_t id;
-    int resolv_mode;
+    struct ResolverPending *pending;
     void (*client_cb)(struct Address *, void *);
     void (*client_free_cb)(void *);
     void *client_cb_data;
-    struct ResolvQuery *next;
+    struct ResolvQuery *next_client;
+};
+
+struct ResolverPending {
+    uint32_t id;
+    int resolv_mode;
+    char *hostname;
+    size_t hostname_len;
+    uint32_t host_hash;
+    struct ResolvQuery *clients;
+    struct ResolverPending *next_id;
+    struct ResolverPending *next_host;
 };
 
 static int resolver_sock = -1;
@@ -98,12 +110,43 @@ static pid_t resolver_pid = -1;
 static uint32_t resolver_next_query_seed = 0x12345678;
 static uint32_t resolver_next_query_prng(void);
 #define RESOLVER_QUERY_BUCKETS 1024u
-static struct ResolvQuery *resolver_queries[RESOLVER_QUERY_BUCKETS];
+#define RESOLVER_HOST_BUCKETS 2048u
+static struct ResolverPending *resolver_queries[RESOLVER_QUERY_BUCKETS];
+static struct ResolverPending *resolver_hosts[RESOLVER_HOST_BUCKETS];
 static uint32_t resolver_bucket_salt;
 static inline size_t resolver_query_bucket_index(uint32_t id) {
     uint32_t mixed = id ^ resolver_bucket_salt;
     mixed ^= mixed >> 16;
     return mixed & (RESOLVER_QUERY_BUCKETS - 1u);
+}
+static inline size_t resolver_host_bucket_index(uint32_t hash) {
+    return hash & (RESOLVER_HOST_BUCKETS - 1u);
+}
+
+static uint32_t
+resolver_hostname_hash(const char *hostname, size_t len, int mode) {
+    uint32_t hash = 2166136261u;
+    for (size_t i = 0; i < len; i++) {
+        hash ^= (uint8_t)hostname[i];
+        hash *= 16777619u;
+    }
+    hash ^= (uint32_t)mode;
+    hash *= 16777619u;
+    return hash ? hash : 0x9e3779b1u;
+}
+
+static struct ResolverPending *
+resolver_find_pending_host(const char *hostname, size_t len, int mode, uint32_t hash) {
+    size_t bucket = resolver_host_bucket_index(hash);
+    struct ResolverPending *iter = resolver_hosts[bucket];
+    while (iter != NULL) {
+        if (iter->resolv_mode == mode && iter->host_hash == hash &&
+                iter->hostname_len == len &&
+                memcmp(iter->hostname, hostname, len) == 0)
+            return iter;
+        iter = iter->next_host;
+    }
+    return NULL;
 }
 static uint32_t
 resolver_next_query_prng(void) {
@@ -141,10 +184,12 @@ static void resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
 static void resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
-static void resolver_attach_query(struct ResolvQuery *query);
-static struct ResolvQuery *resolver_take_query(uint32_t id);
-static int resolver_detach_query(struct ResolvQuery *query);
+static void resolver_attach_query(struct ResolverPending *pending);
+static struct ResolverPending *resolver_take_query(uint32_t id);
+static void resolver_remove_pending(struct ResolverPending *pending);
+static struct ResolverPending *resolver_find_pending_host(const char *hostname, size_t len, int mode, uint32_t hash);
 static void resolver_cleanup_pending_queries(void);
+static uint32_t resolver_hostname_hash(const char *hostname, size_t len, int mode);
 static int resolver_restart(void);
 
 /* Child-side declarations */
@@ -368,8 +413,8 @@ resolv_query(const char *hostname, int mode,
         return NULL;
     }
 
-    struct ResolvQuery *query = calloc(1, sizeof(*query));
-    if (query == NULL) {
+    struct ResolvQuery *handle = calloc(1, sizeof(*handle));
+    if (handle == NULL) {
         err("Failed to allocate memory for DNS query callback data.");
         if (client_cb != NULL)
             client_cb(NULL, client_cb_data);
@@ -378,49 +423,141 @@ resolv_query(const char *hostname, int mode,
         return NULL;
     }
 
-    query->id = resolver_next_query_prng();
-    if (query->id == 0)
-        query->id = resolver_next_query_prng();
-    query->resolv_mode = mode != RESOLV_MODE_DEFAULT ?
-            mode : default_resolv_mode;
-    query->client_cb = client_cb;
-    query->client_free_cb = client_free_cb;
-    query->client_cb_data = client_cb_data;
-    resolver_attach_query(query);
+    handle->client_cb = client_cb;
+    handle->client_free_cb = client_free_cb;
+    handle->client_cb_data = client_cb_data;
+    handle->next_client = NULL;
 
-    uint8_t payload[sizeof(uint32_t) + RESOLVER_MAX_HOSTNAME_LEN];
-    uint32_t mode_net = htonl((uint32_t)query->resolv_mode);
-    memcpy(payload, &mode_net, sizeof(mode_net));
-    memcpy(payload + sizeof(mode_net), hostname, hostname_len);
+    int requested_mode = mode != RESOLV_MODE_DEFAULT ? mode : default_resolv_mode;
+    uint32_t host_hash = resolver_hostname_hash(hostname, hostname_len, requested_mode);
 
-    if (resolver_send_message(RESOLVER_CMD_QUERY, query->id,
-            payload, sizeof(mode_net) + hostname_len) < 0) {
-        resolver_detach_query(query);
+    pthread_mutex_lock(&resolver_queries_lock);
+    struct ResolverPending *pending = resolver_find_pending_host(hostname, hostname_len,
+            requested_mode, host_hash);
+    if (pending != NULL) {
+        handle->pending = pending;
+        handle->next_client = pending->clients;
+        pending->clients = handle;
+        pthread_mutex_unlock(&resolver_queries_lock);
+        return handle;
+    }
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    struct ResolverPending *new_pending = calloc(1, sizeof(*new_pending));
+    if (new_pending == NULL) {
+        err("Failed to allocate resolver pending entry");
+        free(handle);
         if (client_cb != NULL)
             client_cb(NULL, client_cb_data);
         if (client_free_cb != NULL)
             client_free_cb(client_cb_data);
-        free(query);
         return NULL;
     }
 
-    return query;
+    new_pending->hostname = malloc(hostname_len + 1);
+    if (new_pending->hostname == NULL) {
+        free(new_pending);
+        free(handle);
+        err("malloc failed while queuing DNS query");
+        if (client_cb != NULL)
+            client_cb(NULL, client_cb_data);
+        if (client_free_cb != NULL)
+            client_free_cb(client_cb_data);
+        return NULL;
+    }
+    memcpy(new_pending->hostname, hostname, hostname_len);
+    new_pending->hostname[hostname_len] = '\0';
+
+    new_pending->hostname_len = hostname_len;
+    new_pending->resolv_mode = requested_mode;
+    new_pending->host_hash = host_hash;
+    new_pending->id = resolver_next_query_prng();
+    if (new_pending->id == 0)
+        new_pending->id = resolver_next_query_prng();
+
+    handle->pending = new_pending;
+    handle->next_client = NULL;
+    new_pending->clients = handle;
+
+    pthread_mutex_lock(&resolver_queries_lock);
+    struct ResolverPending *race = resolver_find_pending_host(hostname, hostname_len,
+            requested_mode, host_hash);
+    if (race != NULL) {
+        free(new_pending->hostname);
+        free(new_pending);
+        handle->pending = race;
+        handle->next_client = race->clients;
+        race->clients = handle;
+        pthread_mutex_unlock(&resolver_queries_lock);
+        return handle;
+    }
+
+    resolver_attach_query(new_pending);
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    uint8_t payload[sizeof(uint32_t) + RESOLVER_MAX_HOSTNAME_LEN];
+    uint32_t mode_net = htonl((uint32_t)new_pending->resolv_mode);
+    memcpy(payload, &mode_net, sizeof(mode_net));
+    memcpy(payload + sizeof(mode_net), new_pending->hostname, hostname_len);
+
+    if (resolver_send_message(RESOLVER_CMD_QUERY, new_pending->id,
+            payload, sizeof(mode_net) + hostname_len) < 0) {
+        pthread_mutex_lock(&resolver_queries_lock);
+        resolver_remove_pending(new_pending);
+        pthread_mutex_unlock(&resolver_queries_lock);
+        if (client_cb != NULL)
+            client_cb(NULL, client_cb_data);
+        if (client_free_cb != NULL)
+            client_free_cb(client_cb_data);
+        free(handle);
+        free(new_pending->hostname);
+        free(new_pending);
+        return NULL;
+    }
+
+    return handle;
 }
 
 void
-resolv_cancel(struct ResolvQuery *query) {
-    if (query == NULL)
+resolv_cancel(struct ResolvQuery *handle) {
+    if (handle == NULL)
         return;
 
-    if (!resolver_detach_query(query))
+    struct ResolverPending *pending = handle->pending;
+    if (pending == NULL) {
+        if (handle->client_free_cb != NULL)
+            handle->client_free_cb(handle->client_cb_data);
+        free(handle);
         return;
+    }
 
-    resolver_send_message(RESOLVER_CMD_CANCEL, query->id, NULL, 0);
+    int send_cancel = 0;
+    uint32_t cancel_id = 0;
 
-    if (query->client_free_cb != NULL)
-        query->client_free_cb(query->client_cb_data);
+    pthread_mutex_lock(&resolver_queries_lock);
+    struct ResolvQuery **iter = &pending->clients;
+    while (*iter != NULL && *iter != handle)
+        iter = &(*iter)->next_client;
 
-    free(query);
+    if (*iter == handle) {
+        *iter = handle->next_client;
+        if (pending->clients == NULL) {
+            resolver_remove_pending(pending);
+            send_cancel = 1;
+            cancel_id = pending->id;
+        }
+    }
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    if (handle->client_free_cb != NULL)
+        handle->client_free_cb(handle->client_cb_data);
+    free(handle);
+
+    if (send_cancel) {
+        resolver_send_message(RESOLVER_CMD_CANCEL, cancel_id, NULL, 0);
+        free(pending->hostname);
+        free(pending);
+    }
 }
 
 static int
@@ -568,8 +705,8 @@ resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len) {
 
 static void
 resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) {
-    struct ResolvQuery *query = resolver_take_query(id);
-    if (query == NULL)
+    struct ResolverPending *pending = resolver_take_query(id);
+    if (pending == NULL)
         return;
 
     int32_t status = -1;
@@ -605,87 +742,128 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
         address = NULL;
     }
 
-    if (query->client_cb != NULL)
-        query->client_cb((status == 0) ? address : NULL, query->client_cb_data);
+    struct ResolvQuery *client = pending->clients;
+    while (client != NULL) {
+        struct ResolvQuery *next_client = client->next_client;
+        if (client->client_cb != NULL)
+            client->client_cb((status == 0) ? address : NULL, client->client_cb_data);
+        if (client->client_free_cb != NULL)
+            client->client_free_cb(client->client_cb_data);
+        free(client);
+        client = next_client;
+    }
 
     if (address != NULL)
         free(address);
 
-    if (query->client_free_cb != NULL)
-        query->client_free_cb(query->client_cb_data);
-
-    free(query);
+    free(pending->hostname);
+    free(pending);
 }
 
 static void
-resolver_attach_query(struct ResolvQuery *query) {
-    if (query == NULL)
+resolver_attach_query(struct ResolverPending *pending) {
+    if (pending == NULL)
         return;
 
-    pthread_mutex_lock(&resolver_queries_lock);
-    size_t bucket = resolver_query_bucket_index(query->id);
-    query->next = resolver_queries[bucket];
-    resolver_queries[bucket] = query;
-    pthread_mutex_unlock(&resolver_queries_lock);
+    size_t id_bucket = resolver_query_bucket_index(pending->id);
+    pending->next_id = resolver_queries[id_bucket];
+    resolver_queries[id_bucket] = pending;
+
+    size_t host_bucket = resolver_host_bucket_index(pending->host_hash);
+    pending->next_host = resolver_hosts[host_bucket];
+    resolver_hosts[host_bucket] = pending;
 }
 
-static struct ResolvQuery *
+static struct ResolverPending *
 resolver_take_query(uint32_t id) {
-    size_t bucket = resolver_query_bucket_index(id);
     pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery **iter = &resolver_queries[bucket];
+    size_t bucket = resolver_query_bucket_index(id);
+    struct ResolverPending **iter = &resolver_queries[bucket];
     while (*iter != NULL) {
         if ((*iter)->id == id) {
-            struct ResolvQuery *found = *iter;
-            *iter = found->next;
-            found->next = NULL;
+            struct ResolverPending *found = *iter;
+            *iter = found->next_id;
+
+            size_t host_bucket = resolver_host_bucket_index(found->host_hash);
+            struct ResolverPending **host_iter = &resolver_hosts[host_bucket];
+            while (*host_iter != NULL) {
+                if (*host_iter == found) {
+                    *host_iter = found->next_host;
+                    break;
+                }
+                host_iter = &(*host_iter)->next_host;
+            }
+
             pthread_mutex_unlock(&resolver_queries_lock);
+            found->next_id = NULL;
+            found->next_host = NULL;
             return found;
         }
-        iter = &(*iter)->next;
+        iter = &(*iter)->next_id;
     }
     pthread_mutex_unlock(&resolver_queries_lock);
     return NULL;
 }
 
-static int
-resolver_detach_query(struct ResolvQuery *query) {
-    if (query == NULL)
-        return 0;
+static void
+resolver_remove_pending(struct ResolverPending *pending) {
+    if (pending == NULL)
+        return;
 
-    size_t bucket = resolver_query_bucket_index(query->id);
-    pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery **iter = &resolver_queries[bucket];
+    size_t bucket = resolver_query_bucket_index(pending->id);
+    struct ResolverPending **iter = &resolver_queries[bucket];
     while (*iter != NULL) {
-        if (*iter == query) {
-            *iter = query->next;
-            query->next = NULL;
-            pthread_mutex_unlock(&resolver_queries_lock);
-            return 1;
+        if (*iter == pending) {
+            *iter = pending->next_id;
+            break;
         }
-        iter = &(*iter)->next;
+        iter = &(*iter)->next_id;
     }
-    pthread_mutex_unlock(&resolver_queries_lock);
-    return 0;
+
+    size_t host_bucket = resolver_host_bucket_index(pending->host_hash);
+    iter = &resolver_hosts[host_bucket];
+    while (*iter != NULL) {
+        if (*iter == pending) {
+            *iter = pending->next_host;
+            break;
+        }
+        iter = &(*iter)->next_host;
+    }
+
+    pending->next_id = NULL;
+    pending->next_host = NULL;
 }
 
 static void
 resolver_cleanup_pending_queries(void) {
     pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery *local_buckets[RESOLVER_QUERY_BUCKETS];
-    memcpy(local_buckets, resolver_queries, sizeof(local_buckets));
+    struct ResolverPending *pending_list = NULL;
+    for (size_t i = 0; i < RESOLVER_HOST_BUCKETS; i++) {
+        struct ResolverPending *iter = resolver_hosts[i];
+        resolver_hosts[i] = NULL;
+        while (iter != NULL) {
+            struct ResolverPending *next = iter->next_host;
+            iter->next_host = pending_list;
+            pending_list = iter;
+            iter = next;
+        }
+    }
     memset(resolver_queries, 0, sizeof(resolver_queries));
     pthread_mutex_unlock(&resolver_queries_lock);
 
-    for (size_t i = 0; i < RESOLVER_QUERY_BUCKETS; i++) {
-        struct ResolvQuery *iter = local_buckets[i];
-        while (iter != NULL) {
-            struct ResolvQuery *next = iter->next;
-            if (iter->client_free_cb != NULL)
-                iter->client_free_cb(iter->client_cb_data);
-            free(iter);
-            iter = next;
+    while (pending_list != NULL) {
+        struct ResolverPending *next_pending = pending_list->next_host;
+        struct ResolvQuery *client = pending_list->clients;
+        while (client != NULL) {
+            struct ResolvQuery *next_client = client->next_client;
+            if (client->client_free_cb != NULL)
+                client->client_free_cb(client->client_cb_data);
+            free(client);
+            client = next_client;
         }
+        free(pending_list->hostname);
+        free(pending_list);
+        pending_list = next_pending;
     }
 }
 
