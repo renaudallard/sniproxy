@@ -99,6 +99,8 @@ static int accept_listener_acl_value(struct ListenerACLRuleValue *, const char *
 static int end_listener_acl_value(struct ListenerACLBuilder *, struct ListenerACLRuleValue *);
 static void free_listener_acl_builder(struct ListenerACLBuilder *);
 
+static const struct Keyword listener_acl_stanza_grammar[];
+
 static const struct Keyword logger_stanza_grammar[] = {
     {
         .keyword="filename",
