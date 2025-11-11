@@ -95,7 +95,6 @@ struct ResolvQuery {
 
 static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
-static uint32_t resolver_next_query_id = 1;
 static uint32_t resolver_next_query_seed = 0x12345678;
 static uint32_t resolver_next_query_prng(void);
 static struct ResolvQuery *resolver_queries = NULL;
