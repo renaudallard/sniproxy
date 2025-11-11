@@ -234,6 +234,9 @@ remove_table(struct Table_head *tables, struct Table *table) {
 
 struct LookupResult
 table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
+    if (table == NULL)
+        return (struct LookupResult){.address = NULL};
+
     struct Backend *backend = NULL;
     uint32_t hash = 0;
     int cacheable = (table != NULL && name != NULL && name_len > 0 &&
@@ -247,7 +250,10 @@ table_lookup_server_address(const struct Table *table, const char *name, size_t 
     if (backend == NULL) {
         backend = table_lookup_backend(table, name, name_len);
         if (backend == NULL) {
-            info("No match found for %.*s", (int)name_len, name ? name : "");
+            if (name != NULL)
+                info("No match found for %.*s", (int)name_len, name);
+            else
+                info("No match found for <null hostname>");
             return (struct LookupResult){.address = NULL};
         }
         if (cacheable)
@@ -294,6 +300,7 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
             struct Backend_head temp = existing->backends;
             existing->backends = iter->backends;
             iter->backends = temp;
+            table_cache_clear(existing);
         } else {
             add_table(tables, iter);
         }
@@ -323,6 +330,8 @@ free_table(struct Table *table) {
 
     if (table == NULL)
         return;
+
+    table_cache_clear(table);
 
     while ((iter = STAILQ_FIRST(&table->backends)) != NULL)
         remove_backend(&table->backends, iter);

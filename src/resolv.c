@@ -99,8 +99,11 @@ static uint32_t resolver_next_query_seed = 0x12345678;
 static uint32_t resolver_next_query_prng(void);
 #define RESOLVER_QUERY_BUCKETS 1024u
 static struct ResolvQuery *resolver_queries[RESOLVER_QUERY_BUCKETS];
+static uint32_t resolver_bucket_salt;
 static inline size_t resolver_query_bucket_index(uint32_t id) {
-    return id & (RESOLVER_QUERY_BUCKETS - 1u);
+    uint32_t mixed = id ^ resolver_bucket_salt;
+    mixed ^= mixed >> 16;
+    return mixed & (RESOLVER_QUERY_BUCKETS - 1u);
 }
 static uint32_t
 resolver_next_query_prng(void) {
@@ -238,6 +241,16 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 #endif
 
     resolver_saved_dnssec_mode = dnssec_mode;
+
+    if (resolver_bucket_salt == 0) {
+#ifdef HAVE_ARC4RANDOM
+        resolver_bucket_salt = arc4random();
+#else
+        resolver_bucket_salt = (uint32_t)(getpid() ^ (uint32_t)time(NULL) ^ resolver_next_query_prng());
+#endif
+        if (resolver_bucket_salt == 0)
+            resolver_bucket_salt = 0x6d2535a1;
+    }
 
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;

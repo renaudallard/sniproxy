@@ -657,10 +657,12 @@ rate_limit_bucket_release(struct RateLimitBucket *bucket) {
         return;
 
     if (rate_limit_free_count >= RATE_LIMIT_MAX_FREE) {
+        memset(bucket, 0, sizeof(*bucket));
         free(bucket);
         return;
     }
 
+    memset(bucket, 0, sizeof(*bucket));
     bucket->next = rate_limit_free_list;
     rate_limit_free_list = bucket;
     rate_limit_free_count++;

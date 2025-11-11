@@ -37,6 +37,8 @@
 
 #define DEFAULT_IO_COLLECT_INTERVAL 0.0005
 #define DEFAULT_TIMEOUT_COLLECT_INTERVAL 0.005
+#define MAX_IO_COLLECT_INTERVAL 0.1
+#define MAX_TIMEOUT_COLLECT_INTERVAL 0.5
 #include "config.h"
 #include "logger.h"
 #include "connection.h"
@@ -760,6 +762,11 @@ accept_io_collect_interval(struct Config *config, const char *value) {
         err("io_collect_interval must be non-negative: %s", value);
         return 0;
     }
+    if (interval > MAX_IO_COLLECT_INTERVAL) {
+        warn("io_collect_interval %.6f exceeds safety limit %.3f; clamping",
+                interval, MAX_IO_COLLECT_INTERVAL);
+        interval = MAX_IO_COLLECT_INTERVAL;
+    }
 
     config->io_collect_interval = interval;
 
@@ -778,6 +785,11 @@ accept_timeout_collect_interval(struct Config *config, const char *value) {
     if (interval < 0.0) {
         err("timeout_collect_interval must be non-negative: %s", value);
         return 0;
+    }
+    if (interval > MAX_TIMEOUT_COLLECT_INTERVAL) {
+        warn("timeout_collect_interval %.6f exceeds safety limit %.3f; clamping",
+                interval, MAX_TIMEOUT_COLLECT_INTERVAL);
+        interval = MAX_TIMEOUT_COLLECT_INTERVAL;
     }
 
     config->timeout_collect_interval = interval;
