@@ -115,13 +115,6 @@ static const struct Keyword logger_stanza_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_logger_priority,
     },
     {
-        .keyword="acl",
-        .create=(void *(*)(void))new_listener_acl_builder,
-        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_policy,
-        .block_grammar=listener_acl_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_listener_acl_stanza,
-    },
-    {
         .keyword = NULL,
     },
 };
@@ -187,6 +180,13 @@ static const struct Keyword listener_stanza_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_logger_filename,
         .block_grammar=logger_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_listener_access_logger_stanza,
+    },
+    {
+        .keyword="acl",
+        .create=(void *(*)(void))new_listener_acl_builder,
+        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_policy,
+        .block_grammar=listener_acl_stanza_grammar,
+        .finalize=(int(*)(void *, void *))end_listener_acl_stanza,
     },
     {
         .keyword="bad_requests",
