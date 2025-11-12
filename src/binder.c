@@ -70,6 +70,11 @@ static pid_t binder_pid = -1;
 static struct ipc_crypto_state binder_crypto_parent;
 static struct ipc_crypto_state binder_crypto_child;
 
+static void __attribute__((noreturn))
+binder_child_exit(int status) {
+    ipc_crypto_state_clear(&binder_crypto_child);
+    _exit(status);
+}
 
 void
 start_binder(void) {
@@ -109,7 +114,7 @@ binder_spawn_child(void) {
             close(i);
 
         binder_main(sockets[1]);
-        exit(0);
+        binder_child_exit(EXIT_SUCCESS);
     }
 
     close(sockets[1]);
@@ -139,6 +144,9 @@ binder_cleanup_child(int block) {
         if (result > 0 || (result == 0 && block) || (result < 0 && errno == ECHILD))
             binder_pid = -1;
     }
+
+    if (binder_pid <= 0)
+        ipc_crypto_state_clear(&binder_crypto_parent);
 }
 
 static int
@@ -240,14 +248,14 @@ binder_main(int sockfd) {
 #ifdef __OpenBSD__
     if (pledge("stdio unix inet", NULL) == -1) {
         perror("binder pledge");
-        _exit(EXIT_FAILURE);
+        binder_child_exit(EXIT_FAILURE);
     }
 #endif
 
     if (ipc_crypto_channel_init(&binder_crypto_child, BINDER_IPC_CHANNEL_ID,
             IPC_CRYPTO_ROLE_CHILD) < 0) {
         err("binder child: failed to initialize crypto context");
-        _exit(EXIT_FAILURE);
+        binder_child_exit(EXIT_FAILURE);
     }
 
     for (;;) {

@@ -66,5 +66,6 @@ int ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
 int ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
         size_t max_payload_len, uint8_t **plaintext, size_t *plaintext_len,
         int *received_fd);
+void ipc_crypto_state_clear(struct ipc_crypto_state *state);
 
 #endif /* IPC_CRYPTO_H */

@@ -24,11 +24,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -52,6 +57,31 @@ static uint64_t host_to_be64(uint64_t host) {
 static uint8_t ipc_crypto_master_key[32];
 static pthread_mutex_t ipc_crypto_master_lock = PTHREAD_MUTEX_INITIALIZER;
 static int ipc_crypto_master_initialized = 0;
+static int ipc_crypto_master_locked = 0;
+static int ipc_crypto_cleanup_registered = 0;
+
+static void
+secure_memzero(void *ptr, size_t len) {
+#if defined(HAVE_EXPLICIT_BZERO)
+    explicit_bzero(ptr, len);
+#elif defined(HAVE_MEMSET_S)
+    (void)memset_s(ptr, len, 0, len);
+#else
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+#endif
+}
+
+static void
+ipc_crypto_master_cleanup(void) {
+    secure_memzero(ipc_crypto_master_key, sizeof(ipc_crypto_master_key));
+    if (ipc_crypto_master_locked) {
+        munlock(ipc_crypto_master_key, sizeof(ipc_crypto_master_key));
+        ipc_crypto_master_locked = 0;
+    }
+    ipc_crypto_master_initialized = 0;
+}
 
 static int
 derive_key(const uint8_t *base, size_t base_len,
@@ -75,6 +105,14 @@ ipc_crypto_system_init(void) {
         if (RAND_bytes(ipc_crypto_master_key, sizeof(ipc_crypto_master_key)) != 1) {
             pthread_mutex_unlock(&ipc_crypto_master_lock);
             return -1;
+        }
+        if (!ipc_crypto_master_locked) {
+            if (mlock(ipc_crypto_master_key, sizeof(ipc_crypto_master_key)) == 0)
+                ipc_crypto_master_locked = 1;
+        }
+        if (!ipc_crypto_cleanup_registered) {
+            if (atexit(ipc_crypto_master_cleanup) == 0)
+                ipc_crypto_cleanup_registered = 1;
         }
         ipc_crypto_master_initialized = 1;
     }
@@ -476,4 +514,11 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
 
     free(cipher);
     return 1;
+}
+
+void
+ipc_crypto_state_clear(struct ipc_crypto_state *state) {
+    if (state == NULL)
+        return;
+    secure_memzero(state, sizeof(*state));
 }

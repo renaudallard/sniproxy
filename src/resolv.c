@@ -410,6 +410,8 @@ resolv_shutdown(struct ev_loop *loop) {
     } else {
         resolver_cleanup_pending_queries();
     }
+
+    ipc_crypto_state_clear(&resolver_ipc_crypto);
 }
 
 struct ResolvQuery *
@@ -1052,6 +1054,12 @@ resolver_child_crash_handler(int signum) {
     /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
 }
 
+static void __attribute__((noreturn))
+resolver_child_exit(int status) {
+    ipc_crypto_state_clear(&resolver_ipc_crypto);
+    _exit(status);
+}
+
 static void
 resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_mode) {
     child_sock = sockfd;
@@ -1096,7 +1104,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     int ares_status = ares_library_init(ARES_LIB_INIT_ALL);
     if (ares_status != ARES_SUCCESS) {
         err("resolver child: ares_library_init failed: %s", ares_strerror(ares_status));
-        _exit(EXIT_FAILURE);
+        resolver_child_exit(EXIT_FAILURE);
     }
 
     resolver_child_setup_dns(child_loop, nameservers, search_domains,
@@ -1105,7 +1113,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 #ifdef __OpenBSD__
     if (pledge("stdio inet dns unix", NULL) == -1) {
         perror("resolver pledge");
-        _exit(EXIT_FAILURE);
+        resolver_child_exit(EXIT_FAILURE);
     }
 #endif
 
@@ -1124,7 +1132,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     if (child_loop != NULL && child_loop != EV_DEFAULT)
         ev_loop_destroy(child_loop);
 
-    _exit(EXIT_SUCCESS);
+    resolver_child_exit(EXIT_SUCCESS);
 }
 
 static void
@@ -1181,20 +1189,20 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
     int status = ares_init_options(&child_channel, options_ptr, optmask);
     if (status != ARES_SUCCESS) {
         err("resolver child: ares_init failed: %s", ares_strerror(status));
-        _exit(EXIT_FAILURE);
+        resolver_child_exit(EXIT_FAILURE);
     }
 
     if (nameservers != NULL && nameservers[0] != NULL) {
         char *csv = resolver_child_nameservers_csv(nameservers);
         if (csv == NULL) {
             err("resolver child: failed to allocate nameserver list");
-            _exit(EXIT_FAILURE);
+            resolver_child_exit(EXIT_FAILURE);
         }
         status = ares_set_servers_csv(child_channel, csv);
         free(csv);
         if (status != ARES_SUCCESS) {
             err("resolver child: ares_set_servers_csv failed: %s", ares_strerror(status));
-            _exit(EXIT_FAILURE);
+            resolver_child_exit(EXIT_FAILURE);
         }
     }
 

@@ -227,6 +227,12 @@ static FILE *logger_child_open_file(const char *filepath);
 static int logger_register_sink(struct LogSink *sink);
 static void logger_resend_sinks(void);
 
+static void __attribute__((noreturn))
+logger_child_exit(int status) {
+    ipc_crypto_state_clear(&logger_crypto_child);
+    _exit(status);
+}
+
 #define LOGGER_CMD_NEW_SINK       1U
 #define LOGGER_CMD_LOG            2U
 #define LOGGER_CMD_REOPEN         3U
@@ -1009,6 +1015,8 @@ disable_logger_process(void) {
         }
         sink = SLIST_NEXT(sink, entries);
     }
+
+    ipc_crypto_state_clear(&logger_crypto_parent);
 }
 
 static int
@@ -1080,6 +1088,7 @@ logger_process_shutdown(void) {
 
     logger_pid = -1;
     logger_process_enabled = 0;
+    ipc_crypto_state_clear(&logger_crypto_parent);
 }
 
 static int
@@ -1545,17 +1554,17 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 if (setgroups(1, groups) < 0) {
                     fprintf(stderr, "sniproxy logger: setgroups: %s\n",
                             strerror(errno));
-                    _exit(EXIT_FAILURE);
+                    logger_child_exit(EXIT_FAILURE);
                 }
                 if (setgid(gid) < 0) {
                     fprintf(stderr, "sniproxy logger: setgid: %s\n",
                             strerror(errno));
-                    _exit(EXIT_FAILURE);
+                    logger_child_exit(EXIT_FAILURE);
                 }
                 if (setuid(uid) < 0) {
                     fprintf(stderr, "sniproxy logger: setuid: %s\n",
                             strerror(errno));
-                    _exit(EXIT_FAILURE);
+                    logger_child_exit(EXIT_FAILURE);
                 }
             }
             break;
@@ -1573,7 +1582,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 child_sink_free(&child_sink_head, sink);
                 sink = next;
             }
-            _exit(EXIT_SUCCESS);
+            logger_child_exit(EXIT_SUCCESS);
         default:
             break;
     }
@@ -1599,14 +1608,14 @@ logger_child_main(int sockfd) {
     /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
     if (pledge("stdio rpath wpath cpath fattr id unix", NULL) == -1) {
         perror("logger pledge");
-        _exit(EXIT_FAILURE);
+        logger_child_exit(EXIT_FAILURE);
     }
 #endif
 
     if (ipc_crypto_channel_init(&logger_crypto_child, LOGGER_IPC_CHANNEL_ID,
             IPC_CRYPTO_ROLE_CHILD) < 0) {
         err("logger child: failed to initialize crypto context");
-        _exit(EXIT_FAILURE);
+        logger_child_exit(EXIT_FAILURE);
     }
 
     for (;;) {
@@ -1640,7 +1649,7 @@ logger_child_main(int sockfd) {
     }
 
     close(sockfd);
-    _exit(EXIT_SUCCESS);
+    logger_child_exit(EXIT_SUCCESS);
 }
 
 int
