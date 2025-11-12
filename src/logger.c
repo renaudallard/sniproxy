@@ -1531,7 +1531,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             if (payload == NULL ||
                     header->payload_len != sizeof(struct logger_privileges_payload))
                 break;
-            {
+            if (geteuid() == 0) {
                 struct logger_privileges_payload *priv =
                         (struct logger_privileges_payload *)payload;
                 gid_t gid = (gid_t)priv->gid;
