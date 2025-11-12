@@ -63,6 +63,8 @@
 #define SERVER_BUFFER_MAX_SIZE (1U << 20)
 #define BUFFER_SHRINK_IDLE_SECONDS 1.0
 #define CONNECTION_IDLE_TIMEOUT 60.0
+#define CONNECTION_MEMORY_PRESSURE_LIMIT (64U * 1024 * 1024)
+#define CONNECTION_MEMORY_PRESSURE_COOLDOWN 0.25
 
 
 struct resolv_cb_data {
@@ -78,6 +80,7 @@ static TAILQ_HEAD(ConnectionHead, Connection) connections;
 static struct ev_timer buffer_shrink_timer;
 static struct ev_loop *buffer_shrink_loop;
 static int buffer_shrink_timer_configured;
+static ev_tstamp buffer_pressure_last_run;
 
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
@@ -112,6 +115,8 @@ static void buffer_shrink_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static void start_buffer_shrink_timer(struct ev_loop *);
 static void stop_buffer_shrink_timer(struct ev_loop *);
 static void maybe_stop_buffer_shrink_timer(struct ev_loop *);
+static void shrink_idle_buffers(ev_tstamp now);
+static void connection_memory_apply_pressure(void);
 
 #define RATE_LIMIT_TABLE_SIZE 1024
 #define RATE_LIMIT_IDLE_TTL 300.0
@@ -915,6 +920,9 @@ connection_memory_adjust(ssize_t delta) {
         else
             connection_memory_in_use -= abs_delta;
     }
+
+    if (connection_memory_in_use > CONNECTION_MEMORY_PRESSURE_LIMIT)
+        connection_memory_apply_pressure();
 }
 
 static void
@@ -981,12 +989,7 @@ buffer_shrink_timer_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((u
     if (TAILQ_EMPTY(&connections))
         return;
 
-    ev_tstamp now = ev_now(loop);
-    struct Connection *con;
-    TAILQ_FOREACH(con, &connections, entries) {
-        buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-        buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-    }
+    shrink_idle_buffers(ev_now(loop));
 }
 
 static void
@@ -1025,6 +1028,32 @@ static void
 maybe_stop_buffer_shrink_timer(struct ev_loop *loop) {
     if (TAILQ_EMPTY(&connections))
         stop_buffer_shrink_timer(loop);
+}
+
+static void
+shrink_idle_buffers(ev_tstamp now) {
+    struct Connection *con;
+    TAILQ_FOREACH(con, &connections, entries) {
+        buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+        buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+    }
+}
+
+static void
+connection_memory_apply_pressure(void) {
+    if (buffer_shrink_loop == NULL)
+        return;
+
+    ev_tstamp now = ev_now(buffer_shrink_loop);
+    if (now == 0.0)
+        now = ev_time();
+
+    if (buffer_pressure_last_run != 0.0 &&
+            now - buffer_pressure_last_run < CONNECTION_MEMORY_PRESSURE_COOLDOWN)
+        return;
+
+    shrink_idle_buffers(now);
+    buffer_pressure_last_run = now;
 }
 
 static void

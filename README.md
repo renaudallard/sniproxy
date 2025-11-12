@@ -30,6 +30,7 @@ Features
 + **SO_REUSEPORT** support for multi-process scalability
 + **Event-driven architecture** using libev for efficient I/O multiplexing
 + **Dynamic ring buffers** with automatic growth/shrinking
++ **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
 + **Zero-copy operations** where supported (splice on Linux)
 
 ### Security & Hardening

@@ -4,6 +4,7 @@ sniproxy 0.9.3 (2025-11-12)
 * Security: privilege dropping now verifies real/effective UID and aborts if root.
 * Security: sniproxy and sniproxy-cfg warn when config files are readable or executable by group/others.
 * IPC: binder/logger/resolver channels now encrypt control traffic and tighten validation/error reporting.
+* Performance: idle connection buffers shrink proactively once a soft memory budget is exceeded.
 
 sniproxy 0.9.2 (2025-11-10)
 ==============================

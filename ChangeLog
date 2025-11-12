@@ -4,6 +4,7 @@
 	- Security: fail fast if dropping privileges leaves either real or effective UID at 0.
 	- Security: warn sniproxy and sniproxy-cfg when configuration files are group or world accessible.
 	- IPC: binder/logger/resolver channels encrypt control traffic and enforce stricter validation/error reporting.
+	- Performance: idle connection buffers honor a soft memory limit and shrink immediately under load.
 
 2025-11-10  Renaud Allard  <renaud@allard.it>
 
