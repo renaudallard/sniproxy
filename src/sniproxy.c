@@ -268,6 +268,10 @@ main(int argc, char **argv) {
     openbsd_unveil_path(config_file, "r", 0);
 #endif
 
+    struct stat config_st;
+    if (stat(config_file, &config_st) == 0 && (config_st.st_mode & 0077))
+        warn("Config file has overly permissive permissions");
+
     if (allow_tls10)
         tls_set_min_client_hello_version(3, 1);
 

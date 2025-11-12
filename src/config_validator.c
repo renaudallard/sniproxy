@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <ev.h>
 
 #include "config.h"
@@ -71,6 +72,10 @@ main(int argc, char **argv) {
                 return EXIT_FAILURE;
         }
     }
+
+    struct stat config_st;
+    if (stat(config_file, &config_st) == 0 && (config_st.st_mode & 0077))
+        warn("Config file has overly permissive permissions");
 
     struct ev_loop *loop = ev_loop_new(EVFLAG_AUTO);
     if (loop == NULL) {
