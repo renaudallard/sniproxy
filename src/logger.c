@@ -217,12 +217,15 @@ static int send_logger_log(struct Logger *, int, const char *);
 static int send_logger_reopen(struct LogSink *, int fd_to_send);
 static int send_logger_drop(struct LogSink *);
 static int send_logger_privileges(uid_t, gid_t);
+static int logger_send_privileges(uid_t uid, gid_t gid);
 static int recv_logger_header(int, struct logger_ipc_header *, int *);
 static int read_logger_payload(int, void *, size_t);
 static void logger_child_handle_message(int, struct logger_ipc_header *, int, char *);
 static struct ChildSink *child_sink_lookup(struct ChildSink_head *, uint32_t);
 static void child_sink_free(struct ChildSink_head *, struct ChildSink *);
 static FILE *logger_child_open_file(const char *filepath);
+static int logger_register_sink(struct LogSink *sink);
+static void logger_resend_sinks(void);
 
 #define LOGGER_CMD_NEW_SINK       1U
 #define LOGGER_CMD_LOG            2U
@@ -368,7 +371,7 @@ logger_drop_privileges(uid_t uid, gid_t gid) {
     if (!logger_process_enabled)
         return 0;
 
-    return send_logger_privileges(uid, gid);
+    return logger_send_privileges(uid, gid);
 }
 
 void
@@ -1048,6 +1051,7 @@ ensure_logger_process(void) {
             IPC_CRYPTO_ROLE_PARENT);
     logger_pid = pid;
     logger_process_enabled = 1;
+    logger_resend_sinks();
 
     return 1;
 }
@@ -1216,6 +1220,34 @@ send_logger_privileges(uid_t uid, gid_t gid) {
 }
 
 static int
+logger_send_privileges(uid_t uid, gid_t gid) {
+    if (!logger_process_enabled)
+        return 0;
+
+    int attempt = 0;
+    while (attempt < 2) {
+        if (send_logger_privileges(uid, gid) == 0)
+            return 0;
+
+        int saved_errno = errno;
+        if (saved_errno != EPIPE && saved_errno != ECONNRESET) {
+            errno = saved_errno;
+            return -1;
+        }
+
+        disable_logger_process();
+        if (!ensure_logger_process()) {
+            errno = saved_errno;
+            return -1;
+        }
+        attempt++;
+    }
+
+    errno = EIO;
+    return -1;
+}
+
+static int
 recv_logger_header(int fd, struct logger_ipc_header *header, int *received_fd) {
     uint8_t *plain = NULL;
     size_t plain_len = 0;
@@ -1332,6 +1364,75 @@ logger_child_open_file(const char *filepath) {
     setvbuf(file, NULL, _IOLBF, 0);
 
     return file;
+}
+
+static int
+logger_prepare_sink_fd(struct LogSink *sink) {
+    if (sink == NULL || sink->type != LOG_SINK_FILE)
+        return -1;
+
+    int fd = -1;
+
+    if (sink->fd != NULL && sink->fd_owned) {
+        fd = dup(fileno(sink->fd));
+        if (fd < 0)
+            return -1;
+    } else if (!logger_parent_fs_locked && sink->filepath != NULL) {
+        int open_flags = O_WRONLY | O_APPEND | O_CREAT;
+#ifdef O_CLOEXEC
+        open_flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+        open_flags |= O_NOFOLLOW;
+#endif
+        fd = open(sink->filepath, open_flags, 0600);
+        if (fd < 0)
+            return -1;
+    } else {
+        errno = EACCES;
+        return -1;
+    }
+
+    if (set_cloexec(fd) < 0) {
+        int saved_errno = errno;
+        close(fd);
+        errno = saved_errno;
+        return -1;
+    }
+
+    return fd;
+}
+
+static int
+logger_register_sink(struct LogSink *sink) {
+    if (sink == NULL || !logger_process_enabled)
+        return 0;
+
+    int fd_for_child = -1;
+    if (sink->type == LOG_SINK_FILE) {
+        fd_for_child = logger_prepare_sink_fd(sink);
+        if (fd_for_child < 0)
+            return -1;
+    }
+
+    return send_logger_new_sink(sink, fd_for_child);
+}
+
+static void
+logger_resend_sinks(void) {
+    if (!logger_process_enabled)
+        return;
+
+    struct LogSink *sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
+        if (logger_register_sink(sink) < 0) {
+            err("failed to register log sink %u with logger process: %s",
+                    sink->id, strerror(errno));
+            disable_logger_process();
+            break;
+        }
+        sink = SLIST_NEXT(sink, entries);
+    }
 }
 
 static void
@@ -1526,7 +1627,10 @@ logger_child_main(int sockfd) {
                     close(received_fd);
                 continue;
             }
-            payload[header.payload_len - 1] = '\0';
+            if (header.type == LOGGER_CMD_NEW_SINK ||
+                    header.type == LOGGER_CMD_LOG) {
+                payload[header.payload_len - 1] = '\0';
+            }
         }
 
         logger_child_handle_message(sockfd, &header, received_fd, payload);
