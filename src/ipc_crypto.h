@@ -49,6 +49,9 @@ struct ipc_crypto_state {
     uint8_t send_key[32];
     uint8_t recv_key[32];
     uint64_t send_counter;
+    uint64_t recv_counter;
+    uint32_t send_generation;
+    uint32_t recv_generation;
     enum ipc_crypto_role role;
 };
 

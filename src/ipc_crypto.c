@@ -54,6 +54,12 @@ static uint64_t host_to_be64(uint64_t host) {
 #define IPC_CRYPTO_LABEL_CHILD_SEND  "C2P"
 #define IPC_CRYPTO_LABEL_CHILD_RECV  "P2C"
 
+/* Rekey threshold: trigger rekey at 2^63 to stay well below counter max.
+ * This provides 9.2 quintillion messages before rekey, which should be
+ * sufficient for any realistic IPC workload while preventing counter
+ * exhaustion and nonce reuse. */
+#define IPC_CRYPTO_REKEY_THRESHOLD ((uint64_t)1 << 63)
+
 static uint8_t ipc_crypto_master_key[32];
 static pthread_mutex_t ipc_crypto_master_lock = PTHREAD_MUTEX_INITIALIZER;
 static int ipc_crypto_master_initialized = 0;
@@ -144,6 +150,28 @@ derive_base_key(uint32_t channel_id, uint8_t out[32]) {
 }
 
 static int
+derive_rekey_key(const uint8_t *base_key, uint32_t generation,
+        const char *label, uint8_t out[32]) {
+    uint32_t gen_be = htonl(generation);
+
+    SHA256_CTX ctx;
+    if (SHA256_Init(&ctx) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, base_key, 32) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, (const unsigned char *)"REKEY", 5) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, &gen_be, sizeof(gen_be)) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, (const unsigned char *)label, strlen(label)) != 1)
+        return -1;
+    if (SHA256_Final(out, &ctx) != 1)
+        return -1;
+
+    return 0;
+}
+
+static int
 ipc_crypto_set_directional_keys(struct ipc_crypto_state *state,
         enum ipc_crypto_role role) {
     const char *send_label;
@@ -166,6 +194,69 @@ ipc_crypto_set_directional_keys(struct ipc_crypto_state *state,
 
     state->role = role;
     state->send_counter = 0;
+    state->recv_counter = 0;
+    state->send_generation = 0;
+    state->recv_generation = 0;
+
+    return 0;
+}
+
+static int
+ipc_crypto_rekey_send(struct ipc_crypto_state *state) {
+    if (state == NULL)
+        return -1;
+
+    /* Check for generation overflow (extremely unlikely but handle safely) */
+    if (state->send_generation == UINT32_MAX)
+        return -1;
+
+    state->send_generation++;
+
+    const char *send_label;
+
+    if (state->role == IPC_CRYPTO_ROLE_PARENT) {
+        send_label = IPC_CRYPTO_LABEL_PARENT_SEND;
+    } else {
+        send_label = IPC_CRYPTO_LABEL_CHILD_SEND;
+    }
+
+    /* Derive new send key from base_key with rekey generation */
+    if (derive_rekey_key(state->base_key, state->send_generation,
+                send_label, state->send_key) < 0)
+        return -1;
+
+    /* Reset send counter for new key generation */
+    state->send_counter = 0;
+
+    return 0;
+}
+
+static int
+ipc_crypto_rekey_recv(struct ipc_crypto_state *state) {
+    if (state == NULL)
+        return -1;
+
+    /* Check for generation overflow (extremely unlikely but handle safely) */
+    if (state->recv_generation == UINT32_MAX)
+        return -1;
+
+    state->recv_generation++;
+
+    const char *recv_label;
+
+    if (state->role == IPC_CRYPTO_ROLE_PARENT) {
+        recv_label = IPC_CRYPTO_LABEL_PARENT_RECV;
+    } else {
+        recv_label = IPC_CRYPTO_LABEL_CHILD_RECV;
+    }
+
+    /* Derive new recv key from base_key with rekey generation */
+    if (derive_rekey_key(state->base_key, state->recv_generation,
+                recv_label, state->recv_key) < 0)
+        return -1;
+
+    /* Reset recv counter for new key generation */
+    state->recv_counter = 0;
 
     return 0;
 }
@@ -204,6 +295,16 @@ format_nonce(const struct ipc_crypto_state *state, uint64_t counter,
     memcpy(nonce + sizeof(channel_be), &counter_be, sizeof(counter_be));
 }
 
+static uint64_t
+extract_counter_from_nonce(const uint8_t nonce[IPC_CRYPTO_NONCE_LEN]) {
+    uint64_t counter_be;
+    memcpy(&counter_be, nonce + sizeof(uint32_t), sizeof(counter_be));
+
+    uint32_t high = ntohl((uint32_t)(counter_be >> 32));
+    uint32_t low = ntohl((uint32_t)(counter_be & 0xffffffffu));
+    return ((uint64_t)high << 32) | low;
+}
+
 
 static ssize_t
 recv_all(int fd, void *buf, size_t len) {
@@ -228,6 +329,13 @@ static int
 seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         size_t plaintext_len, uint8_t *frame, size_t frame_len) {
     (void)frame_len;
+
+    /* Check if we need to rekey send direction before using the next counter value */
+    if (state->send_counter >= IPC_CRYPTO_REKEY_THRESHOLD) {
+        if (ipc_crypto_rekey_send(state) < 0)
+            return -1;
+    }
+
     struct __attribute__((__packed__)) ipc_frame_header {
         uint32_t magic;
         uint32_t length;
@@ -331,6 +439,19 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     if (frame_len != expected)
         return -1;
 
+    /* Extract counter from nonce to detect rekey */
+    uint64_t msg_counter = extract_counter_from_nonce(header.nonce);
+
+    /* Detect if remote side has rekeyed (counter wrapped around).
+     * If the received counter is significantly less than our recv_counter,
+     * it indicates the remote side has rekeyed and reset its counter. */
+    if (state->recv_counter >= IPC_CRYPTO_REKEY_THRESHOLD &&
+            msg_counter < state->recv_counter) {
+        /* Remote side has rekeyed, we need to rekey our recv_key */
+        if (ipc_crypto_rekey_recv(state) < 0)
+            return -1;
+    }
+
     const uint8_t *ciphertext = frame + IPC_CRYPTO_HEADER_LEN;
     const uint8_t *tag = frame + IPC_CRYPTO_HEADER_LEN + payload_len;
 
@@ -378,6 +499,9 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         free(output);
         return -1;
     }
+
+    /* Update recv_counter to track remote side's counter */
+    state->recv_counter = msg_counter;
 
     *plaintext = output;
     *plaintext_len = payload_len;
