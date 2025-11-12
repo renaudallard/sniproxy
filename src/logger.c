@@ -47,6 +47,7 @@
 #endif
 #include "logger.h"
 #include "fd_util.h"
+#include "ipc_crypto.h"
 
 struct Logger {
     struct LogSink *sink;
@@ -184,6 +185,8 @@ static SLIST_HEAD(LogSink_head, LogSink) sinks = SLIST_HEAD_INITIALIZER(sinks);
 
 static pid_t logger_pid = -1;
 static int logger_sock = -1;
+static struct ipc_crypto_state logger_crypto_parent;
+static struct ipc_crypto_state logger_crypto_child;
 static uint32_t next_sink_id = 1;
 static int logger_process_enabled = 0;
 static int logger_process_failed = 0;
@@ -214,8 +217,6 @@ static int send_logger_log(struct Logger *, int, const char *);
 static int send_logger_reopen(struct LogSink *, int fd_to_send);
 static int send_logger_drop(struct LogSink *);
 static int send_logger_privileges(uid_t, gid_t);
-static ssize_t write_full(int, const void *, size_t);
-static ssize_t read_full(int, void *, size_t);
 static int recv_logger_header(int, struct logger_ipc_header *, int *);
 static int read_logger_payload(int, void *, size_t);
 static void logger_child_handle_message(int, struct logger_ipc_header *, int, char *);
@@ -229,6 +230,9 @@ static FILE *logger_child_open_file(const char *filepath);
 #define LOGGER_CMD_DROP           4U
 #define LOGGER_CMD_SHUTDOWN       5U
 #define LOGGER_CMD_PRIVILEGES     6U
+
+#define LOGGER_IPC_CHANNEL_ID 0x4c4f4752u /* LOGR */
+#define LOGGER_IPC_MAX_PAYLOAD (64 * 1024)
 
 struct logger_privileges_payload {
     uint32_t uid;
@@ -1040,6 +1044,8 @@ ensure_logger_process(void) {
 
     close(sockets[1]);
     logger_sock = sockets[0];
+    ipc_crypto_channel_init(&logger_crypto_parent, LOGGER_IPC_CHANNEL_ID,
+            IPC_CRYPTO_ROLE_PARENT);
     logger_pid = pid;
     logger_process_enabled = 1;
 
@@ -1077,33 +1083,8 @@ send_logger_header(const struct logger_ipc_header *header, int fd_to_send) {
     if (logger_sock < 0)
         return -1;
 
-    struct msghdr msg;
-    struct iovec iov;
-    char control_buf[CMSG_SPACE(sizeof(int))];
-
-    memset(&msg, 0, sizeof(msg));
-    memset(&control_buf, 0, sizeof(control_buf));
-
-    iov.iov_base = (void *)header;
-    iov.iov_len = sizeof(*header);
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-
-    if (fd_to_send >= 0) {
-        msg.msg_control = control_buf;
-        msg.msg_controllen = sizeof(control_buf);
-        struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-        cmsg->cmsg_level = SOL_SOCKET;
-        cmsg->cmsg_type = SCM_RIGHTS;
-        cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-        memcpy(CMSG_DATA(cmsg), &fd_to_send, sizeof(int));
-    }
-
-    ssize_t written = sendmsg(logger_sock, &msg, 0);
-    if (written < 0)
-        return -1;
-
-    return (written == (ssize_t)sizeof(*header)) ? 0 : -1;
+    return ipc_crypto_send_msg(&logger_crypto_parent, logger_sock, header,
+            sizeof(*header), fd_to_send);
 }
 
 static int
@@ -1111,10 +1092,8 @@ send_logger_payload(const void *payload, size_t payload_len) {
     if (payload_len == 0)
         return 0;
 
-    if (write_full(logger_sock, payload, payload_len) < 0)
-        return -1;
-
-    return 0;
+    return ipc_crypto_send_msg(&logger_crypto_parent, logger_sock, payload,
+            payload_len, -1);
 }
 
 static int
@@ -1236,90 +1215,22 @@ send_logger_privileges(uid_t uid, gid_t gid) {
     return 0;
 }
 
-static ssize_t
-write_full(int fd, const void *buf, size_t len) {
-    const char *ptr = buf;
-    size_t remaining = len;
-
-    while (remaining > 0) {
-        ssize_t n = write(fd, ptr, remaining);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        ptr += (size_t)n;
-        remaining -= (size_t)n;
-    }
-
-    return (ssize_t)len;
-}
-
-static ssize_t
-read_full(int fd, void *buf, size_t len) {
-    char *ptr = buf;
-    size_t remaining = len;
-
-    while (remaining > 0) {
-        ssize_t n = read(fd, ptr, remaining);
-        if (n == 0)
-            return len - remaining;
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        ptr += (size_t)n;
-        remaining -= (size_t)n;
-    }
-
-    return (ssize_t)len;
-}
-
 static int
 recv_logger_header(int fd, struct logger_ipc_header *header, int *received_fd) {
-    struct msghdr msg;
-    struct iovec iov;
-    char control_buf[CMSG_SPACE(sizeof(int))];
+    uint8_t *plain = NULL;
+    size_t plain_len = 0;
+    int rc = ipc_crypto_recv_msg(&logger_crypto_child, fd,
+            LOGGER_IPC_MAX_PAYLOAD, &plain, &plain_len, received_fd);
+    if (rc <= 0)
+        return rc;
 
-    memset(&msg, 0, sizeof(msg));
-    memset(control_buf, 0, sizeof(control_buf));
-
-    iov.iov_base = header;
-    iov.iov_len = sizeof(*header);
-
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control_buf;
-    msg.msg_controllen = sizeof(control_buf);
-
-    for (;;) {
-        ssize_t ret = recvmsg(fd, &msg, MSG_WAITALL);
-        if (ret < 0) {
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        if (ret == 0)
-            return 0;
-        if (ret != (ssize_t)sizeof(*header))
-            return -1;
-        break;
-    }
-
-    if ((msg.msg_flags & MSG_TRUNC) != 0)
+    if (plain_len != sizeof(*header)) {
+        free(plain);
         return -1;
-
-    if (received_fd != NULL)
-        *received_fd = -1;
-
-    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-    if (cmsg != NULL && cmsg->cmsg_level == SOL_SOCKET &&
-            cmsg->cmsg_type == SCM_RIGHTS) {
-        if (received_fd != NULL)
-            memcpy(received_fd, CMSG_DATA(cmsg), sizeof(int));
     }
 
+    memcpy(header, plain, sizeof(*header));
+    free(plain);
     return 1;
 }
 
@@ -1328,9 +1239,22 @@ read_logger_payload(int fd, void *buf, size_t len) {
     if (len == 0)
         return 0;
 
-    if (read_full(fd, buf, len) < 0)
+    uint8_t *plain = NULL;
+    size_t plain_len = 0;
+    int rc = ipc_crypto_recv_msg(&logger_crypto_child, fd,
+            LOGGER_IPC_MAX_PAYLOAD, &plain, &plain_len, NULL);
+    if (rc <= 0) {
+        free(plain);
         return -1;
+    }
 
+    if (plain_len != len) {
+        free(plain);
+        return -1;
+    }
+
+    memcpy(buf, plain, len);
+    free(plain);
     return 0;
 }
 
@@ -1574,6 +1498,12 @@ logger_child_main(int sockfd) {
         _exit(EXIT_FAILURE);
     }
 #endif
+
+    if (ipc_crypto_channel_init(&logger_crypto_child, LOGGER_IPC_CHANNEL_ID,
+            IPC_CRYPTO_ROLE_CHILD) < 0) {
+        err("logger child: failed to initialize crypto context");
+        _exit(EXIT_FAILURE);
+    }
 
     for (;;) {
         struct logger_ipc_header header;

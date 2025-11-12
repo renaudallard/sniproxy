@@ -1,0 +1,479 @@
+/*
+ * Copyright (c) 2025, Renaud Allard <renaud@allard.it>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/sha.h>
+#include "ipc_crypto.h"
+
+static uint64_t host_to_be64(uint64_t host) {
+    uint32_t high = (uint32_t)(host >> 32);
+    uint32_t low = (uint32_t)(host & 0xffffffffu);
+    uint64_t converted = ((uint64_t)htonl(high) << 32) | htonl(low);
+    return converted;
+}
+
+#define IPC_CRYPTO_LABEL_PARENT_SEND "P2C"
+#define IPC_CRYPTO_LABEL_PARENT_RECV "C2P"
+#define IPC_CRYPTO_LABEL_CHILD_SEND  "C2P"
+#define IPC_CRYPTO_LABEL_CHILD_RECV  "P2C"
+
+static uint8_t ipc_crypto_master_key[32];
+static pthread_mutex_t ipc_crypto_master_lock = PTHREAD_MUTEX_INITIALIZER;
+static int ipc_crypto_master_initialized = 0;
+
+static int
+derive_key(const uint8_t *base, size_t base_len,
+        const char *label, uint8_t out[32]) {
+    SHA256_CTX ctx;
+    if (SHA256_Init(&ctx) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, base, base_len) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, (const unsigned char *)label, strlen(label)) != 1)
+        return -1;
+    if (SHA256_Final(out, &ctx) != 1)
+        return -1;
+    return 0;
+}
+
+int
+ipc_crypto_system_init(void) {
+    pthread_mutex_lock(&ipc_crypto_master_lock);
+    if (!ipc_crypto_master_initialized) {
+        if (RAND_bytes(ipc_crypto_master_key, sizeof(ipc_crypto_master_key)) != 1) {
+            pthread_mutex_unlock(&ipc_crypto_master_lock);
+            return -1;
+        }
+        ipc_crypto_master_initialized = 1;
+    }
+    pthread_mutex_unlock(&ipc_crypto_master_lock);
+    return 0;
+}
+
+static int
+derive_base_key(uint32_t channel_id, uint8_t out[32]) {
+    if (ipc_crypto_system_init() < 0)
+        return -1;
+
+    uint8_t channel_be[4];
+    uint32_t value = htonl(channel_id);
+    memcpy(channel_be, &value, sizeof(channel_be));
+
+    SHA256_CTX ctx;
+    if (SHA256_Init(&ctx) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, ipc_crypto_master_key,
+                sizeof(ipc_crypto_master_key)) != 1)
+        return -1;
+    if (SHA256_Update(&ctx, channel_be, sizeof(channel_be)) != 1)
+        return -1;
+    if (SHA256_Final(out, &ctx) != 1)
+        return -1;
+
+    return 0;
+}
+
+static int
+ipc_crypto_set_directional_keys(struct ipc_crypto_state *state,
+        enum ipc_crypto_role role) {
+    const char *send_label;
+    const char *recv_label;
+
+    if (role == IPC_CRYPTO_ROLE_PARENT) {
+        send_label = IPC_CRYPTO_LABEL_PARENT_SEND;
+        recv_label = IPC_CRYPTO_LABEL_PARENT_RECV;
+    } else {
+        send_label = IPC_CRYPTO_LABEL_CHILD_SEND;
+        recv_label = IPC_CRYPTO_LABEL_CHILD_RECV;
+    }
+
+    if (derive_key(state->base_key, sizeof(state->base_key), send_label,
+                state->send_key) < 0)
+        return -1;
+    if (derive_key(state->base_key, sizeof(state->base_key), recv_label,
+                state->recv_key) < 0)
+        return -1;
+
+    state->role = role;
+    state->send_counter = 0;
+
+    return 0;
+}
+
+int
+ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
+        enum ipc_crypto_role role) {
+    if (state == NULL)
+        return -1;
+
+    if (derive_base_key(channel_id, state->base_key) < 0)
+        return -1;
+
+    state->channel_id = channel_id;
+    state->send_counter = 0;
+
+    return ipc_crypto_set_directional_keys(state, role);
+}
+
+int
+ipc_crypto_channel_set_role(struct ipc_crypto_state *state,
+        enum ipc_crypto_role role) {
+    if (state == NULL)
+        return -1;
+
+    return ipc_crypto_set_directional_keys(state, role);
+}
+
+static void
+format_nonce(const struct ipc_crypto_state *state, uint64_t counter,
+        uint8_t nonce[IPC_CRYPTO_NONCE_LEN]) {
+    uint32_t channel_be = htonl(state->channel_id);
+    memcpy(nonce, &channel_be, sizeof(channel_be));
+
+    uint64_t counter_be = host_to_be64(counter);
+    memcpy(nonce + sizeof(channel_be), &counter_be, sizeof(counter_be));
+}
+
+
+static ssize_t
+recv_all(int fd, void *buf, size_t len) {
+    size_t received = 0;
+    uint8_t *ptr = buf;
+
+    while (received < len) {
+        ssize_t ret = recv(fd, ptr + received, len - received, 0);
+        if (ret == 0)
+            return 0;
+        if (ret < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        received += (size_t)ret;
+    }
+
+    return (ssize_t)len;
+}
+static int
+seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
+        size_t plaintext_len, uint8_t *frame, size_t frame_len) {
+    (void)frame_len;
+    struct __attribute__((__packed__)) ipc_frame_header {
+        uint32_t magic;
+        uint32_t length;
+        uint8_t nonce[IPC_CRYPTO_NONCE_LEN];
+    } header;
+
+    header.magic = htonl(IPC_CRYPTO_MAGIC);
+    header.length = htonl((uint32_t)plaintext_len);
+
+    uint64_t counter = ++state->send_counter;
+    format_nonce(state, counter, header.nonce);
+
+    memcpy(frame, &header, sizeof(header));
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL)
+        return -1;
+
+    int ok = 0;
+    int len;
+    uint8_t *ciphertext = frame + sizeof(header);
+    uint8_t *tag = frame + sizeof(header) + plaintext_len;
+
+    do {
+        if (EVP_EncryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) != 1)
+            break;
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
+                    IPC_CRYPTO_NONCE_LEN, NULL) != 1)
+            break;
+        if (EVP_EncryptInit_ex(ctx, NULL, NULL, state->send_key,
+                    header.nonce) != 1)
+            break;
+        if (EVP_EncryptUpdate(ctx, NULL, &len, (uint8_t *)&header,
+                    sizeof(header.magic) + sizeof(header.length)) != 1)
+            break;
+        if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext,
+                    (int)plaintext_len) != 1)
+            break;
+        if (EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1)
+            break;
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG,
+                    IPC_CRYPTO_TAG_LEN, tag) != 1)
+            break;
+        ok = 1;
+    } while (0);
+
+    EVP_CIPHER_CTX_free(ctx);
+    return ok ? 0 : -1;
+}
+
+int
+ipc_crypto_seal(struct ipc_crypto_state *state, const uint8_t *plaintext,
+        size_t plaintext_len, uint8_t **frame, size_t *frame_len) {
+    if (state == NULL || plaintext == NULL || frame == NULL || frame_len == NULL)
+        return -1;
+
+    if (plaintext_len > UINT32_MAX)
+        return -1;
+
+    size_t total_len = IPC_CRYPTO_HEADER_LEN + plaintext_len + IPC_CRYPTO_TAG_LEN;
+    uint8_t *buffer = malloc(total_len);
+    if (buffer == NULL)
+        return -1;
+
+    if (seal_internal(state, plaintext, plaintext_len, buffer, total_len) < 0) {
+        free(buffer);
+        return -1;
+    }
+
+    *frame = buffer;
+    *frame_len = total_len;
+    return 0;
+}
+
+int
+ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
+        size_t frame_len, uint8_t **plaintext, size_t *plaintext_len) {
+    if (state == NULL || frame == NULL || plaintext == NULL || plaintext_len == NULL)
+        return -1;
+
+    if (frame_len < IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN)
+        return -1;
+
+    struct __attribute__((__packed__)) ipc_frame_header {
+        uint32_t magic;
+        uint32_t length;
+        uint8_t nonce[IPC_CRYPTO_NONCE_LEN];
+    } header;
+
+    memcpy(&header, frame, sizeof(header));
+
+    if (ntohl(header.magic) != IPC_CRYPTO_MAGIC)
+        return -1;
+
+    uint32_t payload_len = ntohl(header.length);
+
+    if (payload_len > UINT32_MAX)
+        return -1;
+
+    size_t expected = IPC_CRYPTO_HEADER_LEN + payload_len + IPC_CRYPTO_TAG_LEN;
+    if (frame_len != expected)
+        return -1;
+
+    const uint8_t *ciphertext = frame + IPC_CRYPTO_HEADER_LEN;
+    const uint8_t *tag = frame + IPC_CRYPTO_HEADER_LEN + payload_len;
+
+    uint8_t *output = malloc(payload_len > 0 ? payload_len : 1);
+    if (output == NULL)
+        return -1;
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL) {
+        free(output);
+        return -1;
+    }
+
+    int ok = 0;
+    int len;
+
+    do {
+        if (EVP_DecryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) != 1)
+            break;
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
+                    IPC_CRYPTO_NONCE_LEN, NULL) != 1)
+            break;
+        if (EVP_DecryptInit_ex(ctx, NULL, NULL, state->recv_key,
+                    header.nonce) != 1)
+            break;
+        if (EVP_DecryptUpdate(ctx, NULL, &len, (uint8_t *)&header,
+                    sizeof(header.magic) + sizeof(header.length)) != 1)
+            break;
+        if (payload_len > 0) {
+            if (EVP_DecryptUpdate(ctx, output, &len, ciphertext,
+                        (int)payload_len) != 1)
+                break;
+        }
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG,
+                    IPC_CRYPTO_TAG_LEN, (void *)tag) != 1)
+            break;
+        if (EVP_DecryptFinal_ex(ctx, output + len, &len) != 1)
+            break;
+        ok = 1;
+    } while (0);
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    if (!ok) {
+        free(output);
+        return -1;
+    }
+
+    *plaintext = output;
+    *plaintext_len = payload_len;
+    return 0;
+}
+
+
+int
+ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
+        const void *payload, size_t payload_len, int fd_to_send) {
+    if (state == NULL || (payload_len > 0 && payload == NULL))
+        return -1;
+
+    uint8_t *frame = NULL;
+    size_t frame_len = 0;
+    if (ipc_crypto_seal(state, payload, payload_len, &frame, &frame_len) < 0)
+        return -1;
+
+    uint32_t frame_len_net = htonl((uint32_t)frame_len);
+    struct iovec iov[2];
+    iov[0].iov_base = &frame_len_net;
+    iov[0].iov_len = sizeof(frame_len_net);
+    iov[1].iov_base = frame;
+    iov[1].iov_len = frame_len;
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 2;
+
+    char control_buf[CMSG_SPACE(sizeof(int))];
+    if (fd_to_send >= 0) {
+        msg.msg_control = control_buf;
+        msg.msg_controllen = sizeof(control_buf);
+        struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+        cmsg->cmsg_level = SOL_SOCKET;
+        cmsg->cmsg_type = SCM_RIGHTS;
+        cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+        memcpy(CMSG_DATA(cmsg), &fd_to_send, sizeof(int));
+    }
+
+    ssize_t sent = sendmsg(sockfd, &msg,
+#ifdef MSG_NOSIGNAL
+            MSG_NOSIGNAL
+#else
+            0
+#endif
+            );
+    free(frame);
+
+    if (sent < 0)
+        return -1;
+
+    return 0;
+}
+
+int
+ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
+        size_t max_payload_len, uint8_t **plaintext, size_t *plaintext_len,
+        int *received_fd) {
+    if (state == NULL || plaintext == NULL || plaintext_len == NULL)
+        return -1;
+
+    uint32_t frame_len_net;
+    ssize_t prefix = recv_all(sockfd, &frame_len_net, sizeof(frame_len_net));
+    if (prefix <= 0)
+        return (int)prefix;
+
+    uint32_t frame_len = ntohl(frame_len_net);
+    size_t max_frame = IPC_CRYPTO_HEADER_LEN + max_payload_len + IPC_CRYPTO_TAG_LEN;
+    if (frame_len == 0 || frame_len > max_frame) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    uint8_t *cipher = malloc(frame_len);
+    if (cipher == NULL)
+        return -1;
+
+    struct iovec iov;
+    iov.iov_base = cipher;
+    iov.iov_len = frame_len;
+
+    char control_buf[CMSG_SPACE(sizeof(int))];
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control_buf;
+    msg.msg_controllen = sizeof(control_buf);
+
+    ssize_t ret;
+    do {
+        ret = recvmsg(sockfd, &msg, MSG_WAITALL);
+    } while (ret < 0 && errno == EINTR);
+
+    if (ret <= 0) {
+        free(cipher);
+        return (int)ret;
+    }
+
+    if ((size_t)ret != frame_len) {
+        free(cipher);
+        errno = EIO;
+        return -1;
+    }
+
+    int fd_received = -1;
+    if (received_fd != NULL)
+        *received_fd = -1;
+
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    if (cmsg != NULL && cmsg->cmsg_level == SOL_SOCKET &&
+            cmsg->cmsg_type == SCM_RIGHTS) {
+        memcpy(&fd_received, CMSG_DATA(cmsg), sizeof(int));
+    }
+
+    if (received_fd != NULL)
+        *received_fd = fd_received;
+    else if (fd_received >= 0)
+        close(fd_received);
+
+    if (ipc_crypto_open(state, cipher, frame_len, plaintext, plaintext_len) < 0) {
+        free(cipher);
+        if (received_fd != NULL && fd_received >= 0) {
+            close(fd_received);
+            *received_fd = -1;
+        } else if (received_fd == NULL && fd_received >= 0) {
+            close(fd_received);
+        }
+        errno = EBADMSG;
+        return -1;
+    }
+
+    free(cipher);
+    return 1;
+}

@@ -60,6 +60,7 @@
 #include "address.h"
 #include "logger.h"
 #include "fd_util.h"
+#include "ipc_crypto.h"
 
 /*
  * Implement DNS resolution interface using a dedicated resolver child process
@@ -76,6 +77,8 @@
 
 #define RESOLVER_MAX_HOSTNAME_LEN    1023
 #define RESOLVER_IPC_MAX_PAYLOAD     4096
+#define RESOLVER_IPC_MAX_FRAME        (sizeof(struct resolver_ipc_header) + \
+        RESOLVER_IPC_MAX_PAYLOAD + IPC_CRYPTO_OVERHEAD)
 #define RESOLVER_MAX_ADDR_LEN        ((size_t)sizeof(struct sockaddr_storage))
 
 struct resolver_ipc_header {
@@ -105,8 +108,11 @@ struct ResolverPending {
     struct ResolverPending *next_host;
 };
 
+#define RESOLVER_IPC_CHANNEL_ID 0x52535652u
+
 static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
+static struct ipc_crypto_state resolver_ipc_crypto;
 static uint32_t resolver_next_query_seed = 0x12345678;
 static uint32_t resolver_next_query_prng(void);
 #define RESOLVER_QUERY_BUCKETS 1024u
@@ -280,6 +286,8 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 #endif
 
     resolver_loop_ref = loop;
+    ipc_crypto_channel_init(&resolver_ipc_crypto, RESOLVER_IPC_CHANNEL_ID,
+            IPC_CRYPTO_ROLE_PARENT);
     resolver_saved_nameservers = nameservers;
     resolver_saved_search = search;
     resolver_saved_mode = mode;
@@ -576,18 +584,27 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
         return -1;
     }
 
-    uint8_t buffer[sizeof(struct resolver_ipc_header) + RESOLVER_IPC_MAX_PAYLOAD];
+    uint8_t plain[sizeof(struct resolver_ipc_header) + RESOLVER_IPC_MAX_PAYLOAD];
     struct resolver_ipc_header header;
 
     header.type = htonl(type);
     header.id = htonl(id);
     header.payload_len = htonl((uint32_t)payload_len);
 
-    memcpy(buffer, &header, sizeof(header));
+    memcpy(plain, &header, sizeof(header));
     if (payload_len > 0 && payload != NULL)
-        memcpy(buffer + sizeof(header), payload, payload_len);
+        memcpy(plain + sizeof(header), payload, payload_len);
 
-    ssize_t written = send(resolver_sock, buffer, sizeof(header) + payload_len, 0);
+    uint8_t *frame = NULL;
+    size_t frame_len = 0;
+    if (ipc_crypto_seal(&resolver_ipc_crypto, plain, sizeof(header) + payload_len,
+            &frame, &frame_len) < 0) {
+        err("resolver crypto seal failed");
+        return -1;
+    }
+
+    ssize_t written = send(resolver_sock, frame, frame_len, 0);
+    free(frame);
     if (written < 0) {
         err("resolver send failed: %s", strerror(errno));
         pthread_mutex_lock(&resolver_restart_lock);
@@ -610,7 +627,7 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
 
     for (;;) {
-        uint8_t buffer[sizeof(struct resolver_ipc_header) + RESOLVER_IPC_MAX_PAYLOAD];
+        uint8_t buffer[RESOLVER_IPC_MAX_FRAME];
         ssize_t len = recv(w->fd, buffer, sizeof(buffer), 0);
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -649,7 +666,13 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             break;
         }
 
-        resolver_process_datagram(buffer, len);
+        uint8_t *plain = NULL;
+        size_t plain_len = 0;
+        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len, &plain, &plain_len) < 0)
+            continue;
+
+        resolver_process_datagram(plain, (ssize_t)plain_len);
+        free(plain);
     }
 }
 
@@ -1033,6 +1056,7 @@ static void
 resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_mode) {
     child_sock = sockfd;
     child_default_resolv_mode = default_mode;
+    ipc_crypto_channel_set_role(&resolver_ipc_crypto, IPC_CRYPTO_ROLE_CHILD);
 
     notice("resolver child starting (pid=%d)", getpid());
     debug_log("resolver child: debug logging ENABLED");
@@ -1233,7 +1257,7 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
 
     for (;;) {
-        uint8_t buffer[sizeof(struct resolver_ipc_header) + RESOLVER_IPC_MAX_PAYLOAD];
+        uint8_t buffer[RESOLVER_IPC_MAX_FRAME];
         ssize_t len = recv(w->fd, buffer, sizeof(buffer), 0);
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -1252,23 +1276,34 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             break;
         }
 
-        if (len < (ssize_t)sizeof(struct resolver_ipc_header))
+        uint8_t *plain = NULL;
+        size_t plain_len = 0;
+        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len, &plain, &plain_len) < 0)
             continue;
 
+        if (plain_len < sizeof(struct resolver_ipc_header)) {
+            free(plain);
+            continue;
+        }
+
         struct resolver_ipc_header header;
-        memcpy(&header, buffer, sizeof(header));
+        memcpy(&header, plain, sizeof(header));
 
         uint32_t type = ntohl(header.type);
         uint32_t id = ntohl(header.id);
         uint32_t payload_len = ntohl(header.payload_len);
 
-        if (payload_len > RESOLVER_IPC_MAX_PAYLOAD)
+        if (payload_len > RESOLVER_IPC_MAX_PAYLOAD) {
+            free(plain);
             continue;
+        }
 
-        if ((ssize_t)payload_len != len - (ssize_t)sizeof(header))
+        if ((ssize_t)payload_len != (ssize_t)plain_len - (ssize_t)sizeof(header)) {
+            free(plain);
             continue;
+        }
 
-        const uint8_t *payload = buffer + sizeof(header);
+        const uint8_t *payload = plain + sizeof(header);
 
         switch (type) {
             case RESOLVER_CMD_QUERY:
@@ -1292,6 +1327,8 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             default:
                 break;
         }
+
+        free(plain);
     }
 }
 
@@ -1418,15 +1455,24 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
     memcpy(buffer, &header, sizeof(header));
     memcpy(buffer + sizeof(header), payload, offset + (status == 0 ? addr_len : 0));
 
-    if (send(child_sock, buffer, sizeof(header) + offset + (status == 0 ? addr_len : 0), 0) < 0) {
+    uint8_t *frame = NULL;
+    size_t frame_len = 0;
+    if (ipc_crypto_seal(&resolver_ipc_crypto, buffer,
+            sizeof(header) + offset + (status == 0 ? addr_len : 0),
+            &frame, &frame_len) < 0) {
+        err("resolver child: crypto seal failed");
+        return;
+    }
+
+    if (send(child_sock, frame, frame_len, 0) < 0) {
         err("resolver child send failed: %s (errno=%d)", strerror(errno), errno);
-        /* If parent socket is dead, child should exit gracefully */
         if (errno == ECONNRESET || errno == EPIPE || errno == ENOTCONN) {
             notice("resolver child: parent socket dead, exiting");
             if (child_loop != NULL)
                 ev_break(child_loop, EVBREAK_ALL);
         }
     }
+    free(frame);
 }
 
 static void

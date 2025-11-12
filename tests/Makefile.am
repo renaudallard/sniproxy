@@ -44,11 +44,13 @@ http_test_SOURCES = http_test.c \
 
 tls_test_SOURCES = tls_test.c \
                    ../src/tls.c \
-                   ../src/logger.c
+                   ../src/logger.c \
+                   ../src/ipc_crypto.c
 
 binder_test_SOURCES = binder_test.c \
                       ../src/binder.c \
-                      ../src/logger.c
+                      ../src/logger.c \
+                      ../src/ipc_crypto.c
 
 buffer_test_SOURCES = buffer_test.c \
                       ../src/buffer.c
@@ -73,6 +75,7 @@ config_test_SOURCES = config_test.c \
                       ../src/connection.c \
                       ../src/buffer.c \
                       ../src/logger.c \
+                      ../src/ipc_crypto.c \
                       ../src/resolv.c \
                       ../src/resolv.h \
                       ../src/tls.c \
@@ -85,14 +88,16 @@ config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS)
 resolv_test_SOURCES = resolv_test.c \
                       ../src/resolv.c \
                       ../src/address.c \
-                      ../src/logger.c
+                      ../src/logger.c \
+                      ../src/ipc_crypto.c
 
-resolv_test_LDADD = $(LIBEV_LIBS)
+resolv_test_LDADD = $(LIBEV_LIBS) $(LIBCRYPTO_LIBS)
 
 table_test_SOURCES = table_test.c \
                       ../src/backend.c \
                       ../src/table.c \
                       ../src/address.c \
-                      ../src/logger.c
+                      ../src/logger.c \
+                      ../src/ipc_crypto.c
 
 table_test_LDADD = $(LIBPCRE_LIBS)

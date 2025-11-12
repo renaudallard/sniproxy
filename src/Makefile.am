@@ -25,6 +25,8 @@ sniproxy_common_sources = address.c \
                           http2_huffman.c \
                           http2_huffman.h \
                           http2_huffman_table.inc \
+                          ipc_crypto.c \
+                          ipc_crypto.h \
                           fd_util.h \
                           listener.c \
                           listener.h \

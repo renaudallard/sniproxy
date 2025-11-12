@@ -26,6 +26,13 @@ AC_CHECK_HEADERS([ares_dns.h], [],
 AC_CHECK_LIB([cares], [ares_library_init], [],
   [AC_MSG_ERROR([c-ares is required])])
 
+AC_CHECK_HEADERS([openssl/evp.h openssl/rand.h openssl/sha.h], [],
+  [AC_MSG_ERROR([OpenSSL/LibreSSL headers with ChaCha20-Poly1305 are required])])
+AC_CHECK_LIB([crypto], [EVP_chacha20_poly1305], [],
+  [AC_MSG_ERROR([libcrypto with ChaCha20-Poly1305 is required])])
+LIBCRYPTO_LIBS='-lcrypto'
+AC_SUBST([LIBCRYPTO_LIBS])
+
 AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],
   [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])

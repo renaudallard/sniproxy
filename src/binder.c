@@ -43,6 +43,7 @@
 #include "binder.h"
 #include "logger.h"
 #include "fd_util.h"
+#include "ipc_crypto.h"
 
 /*
  * binder is a child process we spawn before dropping privileges that is
@@ -50,11 +51,9 @@
  */
 
 static void binder_main(int);
-static int parse_ancillary_data(struct msghdr *);
 static int binder_spawn_child(void);
 static int binder_restart_child(void);
 static void binder_cleanup_child(int block);
-static ssize_t recv_full(int, void *, size_t);
 
 
 struct binder_request {
@@ -63,8 +62,13 @@ struct binder_request {
 };
 
 
+#define BINDER_IPC_MAX_PAYLOAD 512
+#define BINDER_IPC_CHANNEL_ID 0x424e4452u /* BNDR */
+
 static int binder_sock = -1; /* socket to binder */
 static pid_t binder_pid = -1;
+static struct ipc_crypto_state binder_crypto_parent;
+static struct ipc_crypto_state binder_crypto_child;
 
 
 void
@@ -110,6 +114,8 @@ binder_spawn_child(void) {
 
     close(sockets[1]);
     binder_sock = sockets[0];
+    ipc_crypto_channel_init(&binder_crypto_parent, BINDER_IPC_CHANNEL_ID,
+            IPC_CRYPTO_ROLE_PARENT);
     binder_pid = pid;
 
     return 0;
@@ -154,20 +160,12 @@ binder_restart_child(void) {
 
 int
 bind_socket(const struct sockaddr *addr, size_t addr_len) {
-    struct binder_request *request;
-    struct msghdr msg;
-    struct iovec iov[1];
-    char control_buf[64];
-    char data_buf[256];
-
-
-    if (addr_len > sizeof(data_buf) - sizeof(struct binder_request))
+    if (addr_len > BINDER_IPC_MAX_PAYLOAD - sizeof(struct binder_request))
         fatal("bind_socket: address length %zu exceeds buffer", addr_len);
 
     size_t request_len = sizeof(struct binder_request) + addr_len;
-    if (request_len > sizeof(data_buf))
-        fatal("bind_socket: request length %zu exceeds buffer", request_len);
-    request = (struct binder_request *)data_buf;
+    uint8_t buffer[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
+    struct binder_request *request = (struct binder_request *)buffer;
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
 
@@ -179,81 +177,55 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
             }
         }
 
-        if (send(binder_sock, request, request_len, 0) < 0) {
+        if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
+                buffer, request_len, -1) < 0) {
             if ((errno == EPIPE || errno == ECONNRESET) &&
                     binder_restart_child() == 0)
                 continue;
-            err("send: %s", strerror(errno));
+            err("binder request send failed: %s", strerror(errno));
             return -1;
         }
 
-        memset(&msg, 0, sizeof(msg));
-        iov[0].iov_base = data_buf;
-        iov[0].iov_len = sizeof(data_buf);
-        msg.msg_iov = iov;
-        msg.msg_iovlen = 1;
-        msg.msg_control = control_buf;
-        msg.msg_controllen = sizeof(control_buf);
-
-        int len = recvmsg(binder_sock, &msg, 0);
-        if (len < 0) {
+        uint8_t *reply = NULL;
+        size_t reply_len = 0;
+        int received_fd = -1;
+        int rc = ipc_crypto_recv_msg(&binder_crypto_parent, binder_sock,
+                BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, &received_fd);
+        if (rc <= 0) {
+            free(reply);
             if ((errno == EPIPE || errno == ECONNRESET) &&
                     binder_restart_child() == 0)
                 continue;
-            err("recvmsg: %s", strerror(errno));
-            return -1;
-        } else if (len == 0) {
-            if (binder_restart_child() == 0)
-                continue;
-            err("binder socket closed unexpectedly");
+            err("binder response recv failed: %s", strerror(errno));
             return -1;
         }
 
-        int fd = parse_ancillary_data(&msg);
-        if (fd >= 0 && set_cloexec(fd) < 0) {
-            err("failed to set close-on-exec on bound socket: %s", strerror(errno));
-            close(fd);
-            return -1;
-        }
-        if (fd < 0) {
-            err("binder returned: %.*s", len, data_buf);
-            return -1;
+        if (received_fd >= 0) {
+            free(reply);
+            if (set_cloexec(received_fd) < 0) {
+                err("failed to set close-on-exec on bound socket: %s",
+                        strerror(errno));
+                close(received_fd);
+                return -1;
+            }
+            return received_fd;
         }
 
-        return fd;
+        if (reply_len > 0)
+            err("binder returned: %.*s", (int)reply_len, (char *)reply);
+        else
+            err("binder returned unknown error");
+        free(reply);
+        return -1;
     }
 
     return -1;
 }
 
+
 void
 stop_binder(void) {
     binder_cleanup_child(1);
-}
-
-
-static ssize_t
-recv_full(int fd, void *buf, size_t len) {
-    size_t received = 0;
-    char *ptr = (char *)buf;
-
-    while (received < len) {
-        ssize_t ret = recv(fd, ptr + received, len - received, 0);
-        if (ret == 0) {
-            if (received == 0)
-                return 0;
-            errno = ECONNRESET;
-            return -1;
-        }
-        if (ret < 0) {
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        received += (size_t)ret;
-    }
-
-    return (ssize_t)received;
 }
 
 static void
@@ -272,33 +244,47 @@ binder_main(int sockfd) {
     }
 #endif
 
+    if (ipc_crypto_channel_init(&binder_crypto_child, BINDER_IPC_CHANNEL_ID,
+            IPC_CRYPTO_ROLE_CHILD) < 0) {
+        err("binder child: failed to initialize crypto context");
+        _exit(EXIT_FAILURE);
+    }
+
     for (;;) {
-        char buffer[256];
-        size_t header_size = sizeof(struct binder_request);
-        ssize_t len = recv_full(sockfd, buffer, header_size);
-        if (len == 0) {
+        uint8_t *plain = NULL;
+        size_t plain_len = 0;
+        int rc = ipc_crypto_recv_msg(&binder_crypto_child, sockfd,
+                BINDER_IPC_MAX_PAYLOAD, &plain, &plain_len, NULL);
+        if (rc == 0) {
             close(sockfd);
             break;
-        } else if (len < 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "recv(): %s", strerror(errno));
-            goto error;
+        } else if (rc < 0) {
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf), "recv(): %s", strerror(errno));
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    errbuf, strnlen(errbuf, sizeof(errbuf)), -1);
+            continue;
         }
 
-        struct binder_request *req = (struct binder_request *)buffer;
+        if (plain_len < sizeof(struct binder_request)) {
+            const char *msg = "Incomplete request";
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    msg, strlen(msg), -1);
+            free(plain);
+            continue;
+        }
 
+        struct binder_request *req = (struct binder_request *)plain;
+        size_t header_size = sizeof(*req);
         if (req->address_len == 0 ||
-                req->address_len > sizeof(buffer) - header_size) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer),
+                req->address_len > plain_len - header_size) {
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf),
                     "Invalid address length: %zu", req->address_len);
-            goto error;
-        }
-
-        if (recv_full(sockfd, buffer + header_size, req->address_len) <= 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "recv(): %s", strerror(errno));
-            goto error;
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    errbuf, strlen(errbuf), -1);
+            free(plain);
+            continue;
         }
 
         int socket_type = SOCK_STREAM;
@@ -307,88 +293,55 @@ binder_main(int sockfd) {
 #endif
         int fd = socket(req->address[0].sa_family, socket_type, 0);
         if (fd < 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "socket(): %s", strerror(errno));
-            goto error;
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf), "socket(): %s", strerror(errno));
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    errbuf, strlen(errbuf), -1);
+            free(plain);
+            continue;
         }
 
         if (set_cloexec(fd) < 0) {
             int saved_errno = errno;
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "fcntl(FD_CLOEXEC): %s", strerror(saved_errno));
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf), "fcntl(FD_CLOEXEC): %s",
+                    strerror(saved_errno));
             close(fd);
-            goto error;
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    errbuf, strlen(errbuf), -1);
+            free(plain);
+            continue;
         }
 
-        /* set SO_REUSEADDR on server socket to facilitate restart */
         int on = 1;
-        int result = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-        if (result < 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "setsockopt SO_REUSEADDR failed: %s", strerror(errno));
-            goto error;
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf),
+                    "setsockopt SO_REUSEADDR failed: %s", strerror(errno));
+            close(fd);
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    errbuf, strlen(errbuf), -1);
+            free(plain);
+            continue;
         }
 
         if (bind(fd, req->address, req->address_len) < 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "bind(): %s", strerror(errno));
-            goto error;
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf), "bind(): %s", strerror(errno));
+            close(fd);
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    errbuf, strlen(errbuf), -1);
+            free(plain);
+            continue;
         }
 
-        struct msghdr msg;
-        struct iovec iov[1];
-        struct cmsghdr *cmsg;
-        char control_data[64];
-        memset(&msg, 0, sizeof(msg));
-        memset(&iov, 0, sizeof(iov));
-        memset(&control_data, 0, sizeof(control_data));
-        iov[0].iov_base = buffer;
-        iov[0].iov_len = sizeof(buffer);
-        msg.msg_iov = iov;
-        msg.msg_iovlen = 1;
-        msg.msg_control = control_data;
-        msg.msg_controllen = sizeof(control_data);
-
-        cmsg = CMSG_FIRSTHDR(&msg);
-        cmsg->cmsg_level = SOL_SOCKET;
-        cmsg->cmsg_type = SCM_RIGHTS;
-        cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
-        int *fdptr = (int *)CMSG_DATA(cmsg);
-        memcpy(fdptr, &fd, sizeof(fd));
-        msg.msg_controllen = cmsg->cmsg_len;
-
-        if (sendmsg(sockfd, &msg, 0) < 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "send: %s", strerror(errno));
-            goto error;
+        uint8_t status = 0;
+        if (ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                &status, sizeof(status), fd) < 0) {
+            err("binder child: failed to send bound socket");
         }
-
         close(fd);
-
-        continue;
-
-        error:
-
-        if (send(sockfd, buffer, strlen(buffer), 0) < 0) {
-            err("send: %s", strerror(errno));
-            close(sockfd);
-            break;
-        }
+        free(plain);
     }
 }
 
-static int
-parse_ancillary_data(struct msghdr *m) {
-    struct cmsghdr *cmsg;
-    int fd = -1;
-    int *fdptr;
-
-    for (cmsg = CMSG_FIRSTHDR(m); cmsg != NULL; cmsg = CMSG_NXTHDR(m, cmsg)) {
-        if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
-            fdptr = (int *)CMSG_DATA(cmsg);
-            memcpy(&fd, fdptr, sizeof(fd));
-        }
-    }
-
-    return fd;
-}
