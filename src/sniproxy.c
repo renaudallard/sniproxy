@@ -506,8 +506,10 @@ drop_perms(const char *username, const char *groupname) {
       gid = group->gr_gid;
     }
 
-    if (logger_drop_privileges(user->pw_uid, gid) < 0)
-        fatal("logger_drop_privileges(): %s", strerror(errno));
+    if (logger_drop_privileges(user->pw_uid, gid) < 0) {
+        warn("logger_drop_privileges failed: %s; disabling logger helper",
+                strerror(errno));
+    }
 
     /* drop any supplementary groups */
     if (setgroups(1, &gid) < 0)
