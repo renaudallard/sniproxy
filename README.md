@@ -62,8 +62,11 @@ Features
 + **Access logs** with connection duration and byte transfer statistics
 + **Process renaming**: Processes show as `sniproxy-mainloop` (Linux only),
   `sniproxy-binder`, `sniproxy-logger`, and `sniproxy-resolver` in process listings
++ **IPC hardening**: binder/logger/resolver channels encrypt control messages, validate framing, and emit clear restart guidance
 + **PID file support** for process management
 + **Privilege dropping** to non-root user/group after binding privileged ports
++ **Privilege verification**: startup fails fast if real or effective UID remains root after dropping privileges
++ **Config permission guard**: sniproxy and sniproxy-cfg warn when the configuration file is accessible to group/other users
 + **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
   keywords
 + **Resolver debug tracing**: Enable verbose DNS resolver logs on demand with the
@@ -456,7 +459,6 @@ Contributions are welcome! Areas of particular interest:
 - Additional protocol parsers (QUIC, etc.)
 - Performance optimizations
 - Security improvements
-- Platform support (Windows, other operating systems)
 - Documentation improvements
 - Bug reports and test cases
 

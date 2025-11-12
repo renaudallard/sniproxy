@@ -1,3 +1,10 @@
+sniproxy (0.9.3) unstable; urgency=medium
+
+  * Security: verify privilege drop failure aborts the daemon immediately
+  * Security: warn when configuration files are group/world accessible
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 12 Nov 2025 15:47:17 +0100
+
 sniproxy (0.9.2) unstable; urgency=medium
 
   * Harden resolver restarts and preserve in-flight DNS queries

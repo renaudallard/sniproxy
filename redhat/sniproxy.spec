@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.2
+Version: 0.9.3
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,10 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Wed Nov 12 2025 Renaud Allard <renaud@allard.it> 0.9.3-1
+- Fail hard when privilege dropping does not remove root privileges
+- Warn when configuration files are readable or executable by group/others
+
 * Mon Nov 10 2025 Renaud Allard <renaud@allard.it> 0.9.2-1
 - Harden resolver restarts and keep pending DNS queries alive
 - Restart binder helper on IPC failures and fix partial read handling

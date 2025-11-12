@@ -1,6 +1,6 @@
 #!/bin/sh
 
-VERSION=0.9.2
+VERSION=0.9.3
 
 SOURCE_DIR=$(dirname $0)
 GIT_DIR=${SOURCE_DIR}/.git
