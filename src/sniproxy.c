@@ -57,6 +57,7 @@
 #include "listener.h"
 #include "resolv.h"
 #include "logger.h"
+#include "ipc_crypto.h"
 #include "tls.h"
 
 
@@ -230,6 +231,11 @@ main(int argc, char **argv) {
     struct ev_loop *loop = NULL;
 
     logger_prepare_process_title(argc, argv);
+
+    if (ipc_crypto_system_init() < 0) {
+        fprintf(stderr, "Unable to initialize IPC crypto\n");
+        return EXIT_FAILURE;
+    }
 
     while ((opt = getopt(argc, argv, "fc:n:VTd")) != -1) {
         switch (opt) {
@@ -506,10 +512,8 @@ drop_perms(const char *username, const char *groupname) {
       gid = group->gr_gid;
     }
 
-    if (logger_drop_privileges(user->pw_uid, gid) < 0) {
-        warn("logger_drop_privileges failed: %s; disabling logger helper",
-                strerror(errno));
-    }
+    if (logger_drop_privileges(user->pw_uid, gid) < 0)
+        fatal("logger_drop_privileges(): %s", strerror(errno));
 
     /* drop any supplementary groups */
     if (setgroups(1, &gid) < 0)

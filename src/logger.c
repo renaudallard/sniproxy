@@ -1411,8 +1411,11 @@ logger_register_sink(struct LogSink *sink) {
     int fd_for_child = -1;
     if (sink->type == LOG_SINK_FILE) {
         fd_for_child = logger_prepare_sink_fd(sink);
-        if (fd_for_child < 0)
-            return -1;
+        if (fd_for_child < 0) {
+            if (!(errno == EACCES && sink->filepath != NULL))
+                return -1;
+            fd_for_child = -1;
+        }
     }
 
     return send_logger_new_sink(sink, fd_for_child);
@@ -1662,3 +1665,4 @@ int
 get_resolver_debug(void) {
     return resolver_debug_enabled;
 }
+
