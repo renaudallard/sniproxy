@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.1
+Version: 0.9.2
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,11 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Mon Nov 10 2025 Renaud Allard <renaud@allard.it> 0.9.2-1
+- Harden resolver restarts and keep pending DNS queries alive
+- Restart binder helper on IPC failures and fix partial read handling
+- Retry outbound connects on transient EADDRNOTAVAIL errors
+
 * Sun Nov 9 2025 Renaud Allard <renaud@allard.it> 0.9.1-1
 - Prepare 0.9.1 release
 

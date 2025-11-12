@@ -1,1 +1,8 @@
+2025-11-10  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.2
+	- Harden resolver restarts and keep pending DNS queries alive
+	- Restart binder helper on IPC failures and fix partial read handling
+	- Retry outbound connects on transient EADDRNOTAVAIL errors
+
 Check https://github.com/renaudallard/sniproxy/commits/

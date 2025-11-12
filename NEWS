@@ -1,0 +1,10 @@
+sniproxy 0.9.2 (2025-11-10)
+==============================
+
+* Reliability: resolver restarts keep pending DNS queries and
+  automatically retry after the child process respawns.
+* Reliability: binder helper respawns on IPC failures and uses
+  length-prefixed framing to handle partial reads safely.
+* Networking: outbound connects retry transient EADDRNOTAVAIL
+  errors to smooth bursts of transparent proxy traffic.
+
