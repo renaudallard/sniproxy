@@ -38,6 +38,7 @@
 #include <unistd.h> /* close */
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <time.h>
 #include <ev.h>
 #include <assert.h>
 #include <sys/stat.h>
@@ -1435,10 +1436,24 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         }
     }
 
-    int result = connect(sockfd,
-            (struct sockaddr *)&con->server.addr,
-            con->server.addr_len);
-    /* TODO retry connect in EADDRNOTAVAIL case */
+    const int max_connect_retries = 3;
+    int attempt = 0;
+    int result;
+
+    do {
+        result = connect(sockfd,
+                (struct sockaddr *)&con->server.addr,
+                con->server.addr_len);
+        if (result == 0 || errno == EINPROGRESS)
+            break;
+        if (errno != EADDRNOTAVAIL || attempt >= max_connect_retries)
+            break;
+        attempt++;
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 25000000 };
+        while (nanosleep(&ts, &ts) < 0 && errno == EINTR)
+            ;
+    } while (1);
+
     if (result < 0 && errno != EINPROGRESS) {
         close(sockfd);
         char server[INET6_ADDRSTRLEN + 8];

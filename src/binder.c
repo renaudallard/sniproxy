@@ -39,6 +39,7 @@
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
+#include <signal.h>
 #include "binder.h"
 #include "logger.h"
 #include "fd_util.h"
@@ -50,6 +51,10 @@
 
 static void binder_main(int);
 static int parse_ancillary_data(struct msghdr *);
+static int binder_spawn_child(void);
+static int binder_restart_child(void);
+static void binder_cleanup_child(int block);
+static ssize_t recv_full(int, void *, size_t);
 
 
 struct binder_request {
@@ -64,6 +69,12 @@ static pid_t binder_pid = -1;
 
 void
 start_binder(void) {
+    if (binder_spawn_child() < 0)
+        err("failed to start binder helper");
+}
+
+static int
+binder_spawn_child(void) {
     int sockets[2];
     int socket_type = SOCK_STREAM;
 #ifdef SOCK_CLOEXEC
@@ -72,14 +83,14 @@ start_binder(void) {
 
     if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0) {
         err("sockpair: %s", strerror(errno));
-        return;
+        return -1;
     }
 
     if (set_cloexec(sockets[0]) < 0 || set_cloexec(sockets[1]) < 0) {
         err("failed to set close-on-exec on binder socket: %s", strerror(errno));
         close(sockets[0]);
         close(sockets[1]);
-        return;
+        return -1;
     }
 
     pid_t pid = fork();
@@ -87,6 +98,7 @@ start_binder(void) {
         err("fork: %s", strerror(errno));
         close(sockets[0]);
         close(sockets[1]);
+        return -1;
     } else if (pid == 0) { /* child */
         /* don't leak file descriptors to the child process */
         for (int i = 0; i < sockets[1]; i++)
@@ -94,11 +106,50 @@ start_binder(void) {
 
         binder_main(sockets[1]);
         exit(0);
-    } else { /* parent */
-        close(sockets[1]);
-        binder_sock = sockets[0];
-        binder_pid = pid;
     }
+
+    close(sockets[1]);
+    binder_sock = sockets[0];
+    binder_pid = pid;
+
+    return 0;
+}
+
+static void
+binder_cleanup_child(int block) {
+    if (binder_sock >= 0) {
+        close(binder_sock);
+        binder_sock = -1;
+    }
+
+    if (binder_pid > 0) {
+        int status;
+        int options = block ? 0 : WNOHANG;
+        pid_t result;
+        do {
+            result = waitpid(binder_pid, &status, options);
+        } while (result < 0 && errno == EINTR);
+
+        if (result > 0 || (result == 0 && block) || (result < 0 && errno == ECHILD))
+            binder_pid = -1;
+    }
+}
+
+static int
+binder_restart_child(void) {
+    binder_cleanup_child(0);
+
+    if (binder_pid > 0) {
+        kill(binder_pid, SIGTERM);
+        binder_cleanup_child(1);
+    }
+
+    if (geteuid() != 0) {
+        err("cannot restart binder after privilege drop");
+        return -1;
+    }
+
+    return binder_spawn_child();
 }
 
 int
@@ -110,11 +161,6 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
     char data_buf[256];
 
 
-    if (binder_pid <= 0) {
-        err("%s: Binder not started", __func__);
-        return -1;
-    }
-
     if (addr_len > sizeof(data_buf) - sizeof(struct binder_request))
         fatal("bind_socket: address length %zu exceeds buffer", addr_len);
 
@@ -125,46 +171,90 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
 
-    if (send(binder_sock, request, request_len, 0) < 0) {
-        err("send: %s", strerror(errno));
-        return -1;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (binder_pid <= 0 || binder_sock < 0) {
+            if (binder_restart_child() < 0) {
+                err("%s: Binder not started", __func__);
+                return -1;
+            }
+        }
+
+        if (send(binder_sock, request, request_len, 0) < 0) {
+            if ((errno == EPIPE || errno == ECONNRESET) &&
+                    binder_restart_child() == 0)
+                continue;
+            err("send: %s", strerror(errno));
+            return -1;
+        }
+
+        memset(&msg, 0, sizeof(msg));
+        iov[0].iov_base = data_buf;
+        iov[0].iov_len = sizeof(data_buf);
+        msg.msg_iov = iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control_buf;
+        msg.msg_controllen = sizeof(control_buf);
+
+        int len = recvmsg(binder_sock, &msg, 0);
+        if (len < 0) {
+            if ((errno == EPIPE || errno == ECONNRESET) &&
+                    binder_restart_child() == 0)
+                continue;
+            err("recvmsg: %s", strerror(errno));
+            return -1;
+        } else if (len == 0) {
+            if (binder_restart_child() == 0)
+                continue;
+            err("binder socket closed unexpectedly");
+            return -1;
+        }
+
+        int fd = parse_ancillary_data(&msg);
+        if (fd >= 0 && set_cloexec(fd) < 0) {
+            err("failed to set close-on-exec on bound socket: %s", strerror(errno));
+            close(fd);
+            return -1;
+        }
+        if (fd < 0) {
+            err("binder returned: %.*s", len, data_buf);
+            return -1;
+        }
+
+        return fd;
     }
 
-    memset(&msg, 0, sizeof(msg));
-    iov[0].iov_base = data_buf;
-    iov[0].iov_len = sizeof(data_buf);
-    msg.msg_iov = iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control_buf;
-    msg.msg_controllen = sizeof(control_buf);
-
-    int len = recvmsg(binder_sock, &msg, 0);
-    if (len < 0) {
-        err("recvmsg: %s", strerror(errno));
-        return -1;
-    }
-
-    int fd = parse_ancillary_data(&msg);
-    if (fd >= 0 && set_cloexec(fd) < 0) {
-        err("failed to set close-on-exec on bound socket: %s", strerror(errno));
-        close(fd);
-        return -1;
-    }
-    if (fd < 0)
-        err("binder returned: %.*s", len, data_buf);
-
-    return fd;
+    return -1;
 }
 
 void
 stop_binder(void) {
-    close(binder_sock);
-
-    int status;
-    if (waitpid(binder_pid, &status, 0) < 0)
-        err("waitpid: %s", strerror(errno));
+    binder_cleanup_child(1);
 }
 
+
+static ssize_t
+recv_full(int fd, void *buf, size_t len) {
+    size_t received = 0;
+    char *ptr = (char *)buf;
+
+    while (received < len) {
+        ssize_t ret = recv(fd, ptr + received, len - received, 0);
+        if (ret == 0) {
+            if (received == 0)
+                return 0;
+            errno = ECONNRESET;
+            return -1;
+        }
+        if (ret < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        received += (size_t)ret;
+    }
+
+    return (ssize_t)received;
+}
 
 static void
 binder_main(int sockfd) {
@@ -184,29 +274,30 @@ binder_main(int sockfd) {
 
     for (;;) {
         char buffer[256];
-        int len = recv(sockfd, buffer, sizeof(buffer), 0);
-        if (len < 0) {
-            memset(buffer, 0, sizeof(buffer));
-            snprintf(buffer, sizeof(buffer), "recv(): %s", strerror(errno));
-            goto error;
-        } else if (len == 0) {
-            /* socket was closed */
+        size_t header_size = sizeof(struct binder_request);
+        ssize_t len = recv_full(sockfd, buffer, header_size);
+        if (len == 0) {
             close(sockfd);
             break;
-        } else if (len < (int)sizeof(struct binder_request)) {
+        } else if (len < 0) {
             memset(buffer, 0, sizeof(buffer));
-            strncpy(buffer, "Incomplete error:", sizeof(buffer));
+            snprintf(buffer, sizeof(buffer), "recv(): %s", strerror(errno));
             goto error;
         }
 
         struct binder_request *req = (struct binder_request *)buffer;
 
-        size_t header_size = sizeof(struct binder_request);
-        if (req->address_len > sizeof(buffer) - header_size ||
-                req->address_len > (size_t)len - header_size) {
+        if (req->address_len == 0 ||
+                req->address_len > sizeof(buffer) - header_size) {
             memset(buffer, 0, sizeof(buffer));
             snprintf(buffer, sizeof(buffer),
                     "Invalid address length: %zu", req->address_len);
+            goto error;
+        }
+
+        if (recv_full(sockfd, buffer + header_size, req->address_len) <= 0) {
+            memset(buffer, 0, sizeof(buffer));
+            snprintf(buffer, sizeof(buffer), "recv(): %s", strerror(errno));
             goto error;
         }
 
