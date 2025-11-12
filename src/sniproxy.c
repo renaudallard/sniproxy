@@ -525,6 +525,9 @@ drop_perms(const char *username, const char *groupname) {
 
     if (setuid(user->pw_uid) < 0)
         fatal("setuid(): %s", strerror(errno));
+
+    if (getuid() == 0 || geteuid() == 0)
+        fatal("Failed to drop privileges");
 }
 
 static void
