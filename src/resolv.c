@@ -357,7 +357,10 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
         fatal("resolver fork failed: %s", strerror(errno));
     } else if (pid == 0) {
         close(sockets[0]);
-        resolver_child_main(sockets[1], nameservers, search, mode,
+        int child_fd = fd_preserve_only(sockets[1]);
+        if (child_fd < 0)
+            _exit(EXIT_FAILURE);
+        resolver_child_main(child_fd, nameservers, search, mode,
                 dnssec_mode);
     }
 

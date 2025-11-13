@@ -28,6 +28,7 @@
 #define FD_UTIL_H
 
 #include <fcntl.h>
+#include <unistd.h>
 
 static inline int
 set_cloexec(int fd)
@@ -48,3 +49,36 @@ set_cloexec(int fd)
 }
 
 #endif /* FD_UTIL_H */
+static inline int
+fd_preserve_only(int fd)
+{
+#ifdef HAVE_CLOSEFROM
+    if (fd < 0) {
+        closefrom(0);
+        return -1;
+    }
+
+    if (fd != 0) {
+        if (dup2(fd, 0) < 0)
+            return -1;
+        close(fd);
+        fd = 0;
+    }
+
+    closefrom(1);
+    return fd;
+#else
+    long max_fd = sysconf(_SC_OPEN_MAX);
+    if (max_fd < 0)
+        max_fd = 256;
+
+    for (int current = (int)max_fd - 1; current >= 0; current--) {
+        if (current == fd)
+            continue;
+        close(current);
+    }
+
+    return fd;
+#endif
+}
+

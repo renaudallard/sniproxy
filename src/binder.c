@@ -109,11 +109,12 @@ binder_spawn_child(void) {
         close(sockets[1]);
         return -1;
     } else if (pid == 0) { /* child */
-        /* don't leak file descriptors to the child process */
-        for (int i = 0; i < sockets[1]; i++)
-            close(i);
+        close(sockets[0]);
+        int child_fd = fd_preserve_only(sockets[1]);
+        if (child_fd < 0)
+            binder_child_exit(EXIT_FAILURE);
 
-        binder_main(sockets[1]);
+        binder_main(child_fd);
         binder_child_exit(EXIT_SUCCESS);
     }
 

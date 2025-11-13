@@ -1050,7 +1050,10 @@ ensure_logger_process(void) {
         return 0;
     } else if (pid == 0) {
         close(sockets[0]);
-        logger_child_main(sockets[1]);
+        int child_fd = fd_preserve_only(sockets[1]);
+        if (child_fd < 0)
+            _exit(EXIT_FAILURE);
+        logger_child_main(child_fd);
     }
 
     close(sockets[1]);
