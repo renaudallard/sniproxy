@@ -1,3 +1,10 @@
+sniproxy 0.9.4 (2025-11-14)
+==============================
+
+* Resource: connection_buffer_limit/client_buffer_limit/server_buffer_limit cap per-connection buffering.
+* Security: configs with group/world permissions now abort startup instead of warning.
+* IPC: helper children close all inherited descriptors other than their IPC socket.
+
 sniproxy 0.9.3 (2025-11-12)
 ==============================
 

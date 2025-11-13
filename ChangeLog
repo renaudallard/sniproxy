@@ -1,3 +1,10 @@
+2025-11-14  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.4
+	- Resource: configurable per-connection buffer caps prevent slow clients from pinning unbounded RAM.
+	- Security: configuration files with group/world permissions now abort startup instead of warning.
+	- IPC: binder/logger/resolver children close all inherited FDs except their control socket.
+
 2025-11-12  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.3

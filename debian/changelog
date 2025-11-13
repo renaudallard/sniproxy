@@ -1,3 +1,11 @@
+sniproxy (0.9.4) unstable; urgency=medium
+
+  * Security: configs with group/world permissions now abort startup.
+  * Resource: new per-connection buffer limits prevent RAM pinning.
+  * IPC: helper children no longer inherit unrelated file descriptors.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 14 Nov 2025 09:00:00 +0100
+
 sniproxy (0.9.3) unstable; urgency=medium
 
   * Security: verify privilege drop failure aborts the daemon immediately
