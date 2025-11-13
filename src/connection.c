@@ -82,6 +82,8 @@ static struct ev_timer buffer_shrink_timer;
 static struct ev_loop *buffer_shrink_loop;
 static int buffer_shrink_timer_configured;
 static ev_tstamp buffer_pressure_last_run;
+static size_t client_buffer_max_size = CLIENT_BUFFER_MAX_SIZE;
+static size_t server_buffer_max_size = SERVER_BUFFER_MAX_SIZE;
 
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
@@ -916,6 +918,25 @@ connections_set_dns_query_limit(size_t limit) {
     max_concurrent_dns_queries = limit;
 }
 
+void
+connections_set_buffer_limits(size_t client_limit, size_t server_limit) {
+    if (client_limit == 0)
+        client_limit = CLIENT_BUFFER_MAX_SIZE;
+    if (server_limit == 0)
+        server_limit = SERVER_BUFFER_MAX_SIZE;
+
+    client_buffer_max_size = client_limit;
+    server_buffer_max_size = server_limit;
+
+    if (!TAILQ_EMPTY(&connections)) {
+        struct Connection *con;
+        TAILQ_FOREACH(con, &connections, entries) {
+            buffer_set_max_size(con->client.buffer, client_buffer_max_size);
+            buffer_set_max_size(con->server.buffer, server_buffer_max_size);
+        }
+    }
+}
+
 static void
 connection_memory_adjust(ssize_t delta) {
     if (delta >= 0) {
@@ -1726,7 +1747,7 @@ new_connection(struct ev_loop *loop) {
         free_connection(con);
         return NULL;
     }
-    buffer_set_max_size(con->client.buffer, CLIENT_BUFFER_MAX_SIZE);
+    buffer_set_max_size(con->client.buffer, client_buffer_max_size);
     con->client.buffer->min_size = CLIENT_BUFFER_MIN_SIZE;
 
     con->server.buffer = new_buffer(SERVER_BUFFER_INITIAL_SIZE, loop);
@@ -1735,7 +1756,7 @@ new_connection(struct ev_loop *loop) {
         return NULL;
     }
 
-    buffer_set_max_size(con->server.buffer, SERVER_BUFFER_MAX_SIZE);
+    buffer_set_max_size(con->server.buffer, server_buffer_max_size);
     con->server.buffer->min_size = SERVER_BUFFER_MIN_SIZE;
 
     return con;

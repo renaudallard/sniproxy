@@ -31,6 +31,7 @@ Features
 + **Event-driven architecture** using libev for efficient I/O multiplexing
 + **Dynamic ring buffers** with automatic growth/shrinking
 + **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
++ **Per-connection buffer caps**: configurable `connection_buffer_limit` (or per-side overrides) prevent slow clients from pinning unbounded RAM
 + **Zero-copy operations** where supported (splice on Linux)
 
 ### Security & Hardening
@@ -190,6 +191,15 @@ per_ip_connection_rate 50   # allow 50 new connections per second per source IP
 ```
 
 Set the value to `0` to disable the limiter (default).
+
+To cap how much memory any one connection can pin, set a shared limit (or
+override each side independently):
+
+```
+connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
+# client_buffer_limit 4M       # optional per-side overrides
+# server_buffer_limit 8M
+```
 
 ### Basic Configuration
 

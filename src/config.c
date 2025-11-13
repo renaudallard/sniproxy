@@ -33,6 +33,7 @@
 #include <strings.h>
 #include <errno.h>
 #include <assert.h>
+#include <ctype.h>
 #include "cfg_parser.h"
 
 #define DEFAULT_IO_COLLECT_INTERVAL 0.0005
@@ -73,6 +74,10 @@ static int accept_pidfile(struct Config *, const char *);
 static int accept_per_ip_connection_rate(struct Config *, const char *);
 static int accept_io_collect_interval(struct Config *, const char *);
 static int accept_timeout_collect_interval(struct Config *, const char *);
+static int accept_connection_buffer_limit(struct Config *, const char *);
+static int accept_client_buffer_limit(struct Config *, const char *);
+static int accept_server_buffer_limit(struct Config *, const char *);
+static int parse_size_value(const char *value, size_t min, size_t max, size_t *out);
 static int end_listener_stanza(struct Config *, struct Listener *);
 static int end_table_stanza(struct Config *, struct Table *);
 static int end_backend(struct Table *, struct Backend *);
@@ -264,6 +269,18 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_timeout_collect_interval,
     },
     {
+        .keyword="connection_buffer_limit",
+        .parse_arg=(int(*)(void *, const char *))accept_connection_buffer_limit,
+    },
+    {
+        .keyword="client_buffer_limit",
+        .parse_arg=(int(*)(void *, const char *))accept_client_buffer_limit,
+    },
+    {
+        .keyword="server_buffer_limit",
+        .parse_arg=(int(*)(void *, const char *))accept_server_buffer_limit,
+    },
+    {
         .keyword="resolver",
         .create=(void *(*)(void))new_resolver_config,
         .block_grammar=resolver_stanza_grammar,
@@ -331,6 +348,8 @@ init_config(const char *filename, struct ev_loop *loop) {
     }
 
     config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+    config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
+    config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
 
     SLIST_INIT(&config->listeners);
     SLIST_INIT(&config->tables);
@@ -429,6 +448,10 @@ reload_config(struct Config *config, struct ev_loop *loop) {
 
     config->resolver.max_concurrent_queries = new_config->resolver.max_concurrent_queries;
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
+    config->client_buffer_limit = new_config->client_buffer_limit;
+    config->server_buffer_limit = new_config->server_buffer_limit;
+    connections_set_buffer_limits(config->client_buffer_limit,
+            config->server_buffer_limit);
 
     free_config(new_config, loop);
 }
@@ -456,6 +479,14 @@ print_config(FILE *file, struct Config *config) {
     if (config->timeout_collect_interval > 0.0)
         fprintf(file, "timeout_collect_interval %.6f\n\n", config->timeout_collect_interval);
 
+    if (config->client_buffer_limit == config->server_buffer_limit)
+        fprintf(file, "connection_buffer_limit %zu\n\n",
+                config->client_buffer_limit);
+    else {
+        fprintf(file, "client_buffer_limit %zu\n", config->client_buffer_limit);
+        fprintf(file, "server_buffer_limit %zu\n\n", config->server_buffer_limit);
+    }
+
     print_resolver_config(file, &config->resolver);
 
     SLIST_FOREACH(listener, &config->listeners, entries) {
@@ -465,6 +496,87 @@ print_config(FILE *file, struct Config *config) {
     SLIST_FOREACH(table, &config->tables, entries) {
         print_table_config(file, table);
     }
+}
+
+static int
+parse_size_value(const char *value, size_t min, size_t max, size_t *out) {
+    if (value == NULL || out == NULL)
+        return -1;
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long long base = strtoull(value, &end, 10);
+    if (errno != 0 || end == value)
+        return -1;
+
+    unsigned long long factor = 1;
+    if (*end != '\0') {
+        if (end[1] != '\0')
+            return -1;
+        switch (tolower((unsigned char)*end)) {
+            case 'k':
+                factor = 1024ULL;
+                break;
+            case 'm':
+                factor = 1024ULL * 1024ULL;
+                break;
+            case 'g':
+                factor = 1024ULL * 1024ULL * 1024ULL;
+                break;
+            default:
+                return -1;
+        }
+    }
+
+    if (base > ULLONG_MAX / factor)
+        return -1;
+
+    unsigned long long bytes = base * factor;
+    if (bytes < min || bytes > max)
+        return -1;
+
+    *out = (size_t)bytes;
+    return 0;
+}
+
+static int
+accept_connection_buffer_limit(struct Config *config, const char *value) {
+    size_t bytes;
+    if (parse_size_value(value, MIN_CONNECTION_BUFFER_LIMIT,
+            MAX_CONNECTION_BUFFER_LIMIT, &bytes) < 0) {
+        err("Invalid connection_buffer_limit '%s'", value);
+        return -1;
+    }
+
+    config->client_buffer_limit = bytes;
+    config->server_buffer_limit = bytes;
+    return 0;
+}
+
+static int
+accept_client_buffer_limit(struct Config *config, const char *value) {
+    size_t bytes;
+    if (parse_size_value(value, MIN_CONNECTION_BUFFER_LIMIT,
+            MAX_CONNECTION_BUFFER_LIMIT, &bytes) < 0) {
+        err("Invalid client_buffer_limit '%s'", value);
+        return -1;
+    }
+
+    config->client_buffer_limit = bytes;
+    return 0;
+}
+
+static int
+accept_server_buffer_limit(struct Config *config, const char *value) {
+    size_t bytes;
+    if (parse_size_value(value, MIN_CONNECTION_BUFFER_LIMIT,
+            MAX_CONNECTION_BUFFER_LIMIT, &bytes) < 0) {
+        err("Invalid server_buffer_limit '%s'", value);
+        return -1;
+    }
+
+    config->server_buffer_limit = bytes;
+    return 0;
 }
 
 static void *

@@ -5,6 +5,7 @@
 	- Security: warn sniproxy and sniproxy-cfg when configuration files are group or world accessible.
 	- IPC: binder/logger/resolver channels encrypt control traffic and enforce stricter validation/error reporting.
 	- Performance: idle connection buffers honor a soft memory limit and shrink immediately under load.
+	- Resource: configurable per-connection buffer caps prevent slow clients from pinning unbounded RAM.
 
 2025-11-10  Renaud Allard  <renaud@allard.it>
 

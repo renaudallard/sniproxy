@@ -27,6 +27,14 @@
 #define CONFIG_H
 
 #include <stddef.h>
+#define DEFAULT_CLIENT_BUFFER_LIMIT (1U << 20)
+#define DEFAULT_SERVER_BUFFER_LIMIT (1U << 20)
+#define MIN_CONNECTION_BUFFER_LIMIT (8U * 1024)
+#define MAX_CONNECTION_BUFFER_LIMIT (1024U * 1024 * 1024U)
+
+#define DEFAULT_CLIENT_BUFFER_LIMIT (1U << 20)
+#define DEFAULT_SERVER_BUFFER_LIMIT (1U << 20)
+
 #include <stdio.h>
 #include "table.h"
 #include "listener.h"
@@ -48,6 +56,8 @@ struct Config {
     double per_ip_connection_rate;
     double io_collect_interval;
     double timeout_collect_interval;
+    size_t client_buffer_limit;
+    size_t server_buffer_limit;
     struct Listener_head listeners;
     struct Table_head tables;
 };

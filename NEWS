@@ -5,6 +5,7 @@ sniproxy 0.9.3 (2025-11-12)
 * Security: sniproxy and sniproxy-cfg warn when config files are readable or executable by group/others.
 * IPC: binder/logger/resolver channels now encrypt control traffic and tighten validation/error reporting.
 * Performance: idle connection buffers shrink proactively once a soft memory budget is exceeded.
+* Resource: new connection_buffer_limit/client_buffer_limit/server_buffer_limit directives cap per-connection buffering.
 
 sniproxy 0.9.2 (2025-11-10)
 ==============================
