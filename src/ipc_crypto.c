@@ -60,6 +60,47 @@ static uint64_t host_to_be64(uint64_t host) {
  * exhaustion and nonce reuse. */
 #define IPC_CRYPTO_REKEY_THRESHOLD ((uint64_t)1 << 63)
 
+static int
+sha256_digest(const unsigned char *parts[], const size_t lens[], size_t count, uint8_t out[32]) {
+    if (parts == NULL || lens == NULL || count == 0 || out == NULL)
+        return -1;
+
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (ctx == NULL)
+        return -1;
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    EVP_MD *md = EVP_MD_fetch(NULL, "SHA256", NULL);
+    const EVP_MD *sha256 = md != NULL ? md : EVP_sha256();
+#else
+    const EVP_MD *sha256 = EVP_sha256();
+#endif
+    int ok = 0;
+
+    if (EVP_DigestInit_ex(ctx, sha256, NULL) != 1)
+        goto done;
+
+    for (size_t i = 0; i < count; i++) {
+        if (parts[i] == NULL || lens[i] == 0)
+            continue;
+        if (EVP_DigestUpdate(ctx, parts[i], lens[i]) != 1)
+            goto done;
+    }
+
+    if (EVP_DigestFinal_ex(ctx, out, NULL) != 1)
+        goto done;
+
+    ok = 1;
+
+ done:
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    if (md != NULL)
+        EVP_MD_free(md);
+#endif
+    EVP_MD_CTX_free(ctx);
+    return ok ? 0 : -1;
+}
+
 static uint8_t ipc_crypto_master_key[32];
 static pthread_mutex_t ipc_crypto_master_lock = PTHREAD_MUTEX_INITIALIZER;
 static int ipc_crypto_master_initialized = 0;
@@ -92,16 +133,9 @@ ipc_crypto_master_cleanup(void) {
 static int
 derive_key(const uint8_t *base, size_t base_len,
         const char *label, uint8_t out[32]) {
-    SHA256_CTX ctx;
-    if (SHA256_Init(&ctx) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, base, base_len) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, (const unsigned char *)label, strlen(label)) != 1)
-        return -1;
-    if (SHA256_Final(out, &ctx) != 1)
-        return -1;
-    return 0;
+    const unsigned char *parts[] = { base, (const unsigned char *)label };
+    size_t lens[] = { base_len, label != NULL ? strlen(label) : 0 };
+    return sha256_digest(parts, lens, sizeof(parts) / sizeof(parts[0]), out);
 }
 
 int
@@ -135,40 +169,19 @@ derive_base_key(uint32_t channel_id, uint8_t out[32]) {
     uint32_t value = htonl(channel_id);
     memcpy(channel_be, &value, sizeof(channel_be));
 
-    SHA256_CTX ctx;
-    if (SHA256_Init(&ctx) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, ipc_crypto_master_key,
-                sizeof(ipc_crypto_master_key)) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, channel_be, sizeof(channel_be)) != 1)
-        return -1;
-    if (SHA256_Final(out, &ctx) != 1)
-        return -1;
-
-    return 0;
+    const unsigned char *parts[] = { ipc_crypto_master_key, channel_be };
+    size_t lens[] = { sizeof(ipc_crypto_master_key), sizeof(channel_be) };
+    return sha256_digest(parts, lens, sizeof(parts) / sizeof(parts[0]), out);
 }
 
 static int
 derive_rekey_key(const uint8_t *base_key, uint32_t generation,
         const char *label, uint8_t out[32]) {
     uint32_t gen_be = htonl(generation);
-
-    SHA256_CTX ctx;
-    if (SHA256_Init(&ctx) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, base_key, 32) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, (const unsigned char *)"REKEY", 5) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, &gen_be, sizeof(gen_be)) != 1)
-        return -1;
-    if (SHA256_Update(&ctx, (const unsigned char *)label, strlen(label)) != 1)
-        return -1;
-    if (SHA256_Final(out, &ctx) != 1)
-        return -1;
-
-    return 0;
+    const unsigned char *parts[] = { base_key, (const unsigned char *)"REKEY",
+            (const unsigned char *)&gen_be, (const unsigned char *)label };
+    size_t lens[] = { 32, 5, sizeof(gen_be), label != NULL ? strlen(label) : 0 };
+    return sha256_digest(parts, lens, sizeof(parts) / sizeof(parts[0]), out);
 }
 
 static int
