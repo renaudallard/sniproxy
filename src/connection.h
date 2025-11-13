@@ -63,6 +63,9 @@ struct Connection {
     int use_proxy_header;
 
     TAILQ_ENTRY(Connection) entries;
+    TAILQ_ENTRY(Connection) shrink_entries;
+    int shrink_candidate;
+    ev_tstamp shrink_deadline;
 };
 
 void init_connections(void);

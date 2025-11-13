@@ -76,6 +76,7 @@ struct resolv_cb_data {
 
 
 static TAILQ_HEAD(ConnectionHead, Connection) connections;
+static TAILQ_HEAD(BufferIdleQueue, Connection) shrink_candidates;
 
 static struct ev_timer buffer_shrink_timer;
 static struct ev_loop *buffer_shrink_loop;
@@ -115,8 +116,12 @@ static void buffer_shrink_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static void start_buffer_shrink_timer(struct ev_loop *);
 static void stop_buffer_shrink_timer(struct ev_loop *);
 static void maybe_stop_buffer_shrink_timer(struct ev_loop *);
-static void shrink_idle_buffers(ev_tstamp now);
+static void shrink_idle_buffers(ev_tstamp now, int force);
 static void connection_memory_apply_pressure(void);
+static void shrink_candidate_update(struct Connection *, struct ev_loop *);
+static void shrink_candidate_remove(struct Connection *);
+static void shrink_candidate_insert(struct Connection *);
+static ev_tstamp connection_last_activity(const struct Connection *);
 
 #define RATE_LIMIT_TABLE_SIZE 1024
 #define RATE_LIMIT_IDLE_TTL 300.0
@@ -167,6 +172,8 @@ static void dns_query_release(void);
 void
 init_connections(void) {
     TAILQ_INIT(&connections);
+    TAILQ_INIT(&shrink_candidates);
+    buffer_pressure_last_run = 0.0;
     rate_limit_reset();
     buffer_set_memory_observer(buffer_memory_observer);
 
@@ -285,6 +292,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
             con->listener->fallback_use_proxy_header)
         insert_proxy_v1_header(con);
 
+    shrink_candidate_update(con, loop);
     return 1;
 }
 
@@ -590,6 +598,7 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
            (ev_is_active(server_watcher) && con->server.watcher.events) ||
            con->state == RESOLVING);
 
+    shrink_candidate_update(con, loop);
 }
 
 static void
@@ -989,7 +998,7 @@ buffer_shrink_timer_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((u
     if (TAILQ_EMPTY(&connections))
         return;
 
-    shrink_idle_buffers(ev_now(loop));
+    shrink_idle_buffers(ev_now(loop), 0);
 }
 
 static void
@@ -1030,12 +1039,98 @@ maybe_stop_buffer_shrink_timer(struct ev_loop *loop) {
         stop_buffer_shrink_timer(loop);
 }
 
+
+static ev_tstamp
+connection_last_activity(const struct Connection *con) {
+    ev_tstamp last = 0.0;
+    const struct Buffer *buffers[2] = { con->client.buffer, con->server.buffer };
+
+    for (size_t i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++) {
+        if (buffers[i] == NULL)
+            continue;
+        if (buffers[i]->last_recv > last)
+            last = buffers[i]->last_recv;
+        if (buffers[i]->last_send > last)
+            last = buffers[i]->last_send;
+    }
+
+    return last;
+}
+
 static void
-shrink_idle_buffers(ev_tstamp now) {
+shrink_candidate_insert(struct Connection *con) {
+    struct Connection *iter;
+
+    TAILQ_FOREACH(iter, &shrink_candidates, shrink_entries) {
+        if (con->shrink_deadline < iter->shrink_deadline) {
+            TAILQ_INSERT_BEFORE(iter, con, shrink_entries);
+            return;
+        }
+    }
+
+    TAILQ_INSERT_TAIL(&shrink_candidates, con, shrink_entries);
+}
+
+static void
+shrink_candidate_remove(struct Connection *con) {
+    if (!buffer_shrink_timer_configured || !con->shrink_candidate)
+        return;
+
+    TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
+    con->shrink_candidate = 0;
+}
+
+static void
+shrink_candidate_update(struct Connection *con, struct ev_loop *loop) {
+    if (!buffer_shrink_timer_configured || BUFFER_SHRINK_IDLE_SECONDS <= 0.0) {
+        shrink_candidate_remove(con);
+        return;
+    }
+
+    if (con->state == CLOSED ||
+            buffer_len(con->client.buffer) != 0 ||
+            buffer_len(con->server.buffer) != 0) {
+        shrink_candidate_remove(con);
+        return;
+    }
+
+    ev_tstamp now = 0.0;
+    if (loop != NULL)
+        now = ev_now(loop);
+    else if (buffer_shrink_loop != NULL)
+        now = ev_now(buffer_shrink_loop);
+    else
+        now = ev_time();
+
+    ev_tstamp last_activity = connection_last_activity(con);
+    if (last_activity == 0.0)
+        last_activity = now;
+
+    con->shrink_deadline = last_activity + BUFFER_SHRINK_IDLE_SECONDS;
+
+    if (con->shrink_candidate)
+        TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
+    else
+        con->shrink_candidate = 1;
+
+    shrink_candidate_insert(con);
+}
+
+static void
+shrink_idle_buffers(ev_tstamp now, int force) {
     struct Connection *con;
-    TAILQ_FOREACH(con, &connections, entries) {
+
+    while ((con = TAILQ_FIRST(&shrink_candidates)) != NULL) {
+        if (!force && con->shrink_deadline > now)
+            break;
+
+        TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
+        con->shrink_candidate = 0;
+
         buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
         buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+
+        shrink_candidate_update(con, buffer_shrink_loop);
     }
 }
 
@@ -1052,7 +1147,7 @@ connection_memory_apply_pressure(void) {
             now - buffer_pressure_last_run < CONNECTION_MEMORY_PRESSURE_COOLDOWN)
         return;
 
-    shrink_idle_buffers(now);
+    shrink_idle_buffers(now, 1);
     buffer_pressure_last_run = now;
 }
 
@@ -1576,6 +1671,7 @@ static void
 close_connection(struct Connection *con, struct ev_loop *loop) {
     assert(con->state != NEW); /* only used during initialization */
 
+    shrink_candidate_remove(con);
     stop_idle_timer(con, loop);
 
     if (server_socket_open(con))
@@ -1694,6 +1790,8 @@ static void
 free_connection(struct Connection *con) {
     if (con == NULL)
         return;
+
+    shrink_candidate_remove(con);
 
     listener_ref_put(con->listener);
     free_buffer(con->client.buffer);
