@@ -197,6 +197,7 @@ struct logger_ipc_header;
 static void free_logger(struct Logger *);
 static void init_default_logger(void);
 static void vlog_msg(struct Logger *, int, const char *, va_list);
+static size_t format_log_payload(char *, size_t, const char *, va_list);
 static void free_at_exit(void);
 static int lookup_syslog_facility(const char *);
 static size_t timestamp(char *, size_t);
@@ -213,7 +214,7 @@ static void logger_child_main(int) __attribute__((noreturn));
 static int send_logger_header(const struct logger_ipc_header *, int);
 static int send_logger_payload(const void *, size_t);
 static int send_logger_new_sink(struct LogSink *, int fd_to_send);
-static int send_logger_log(struct Logger *, int, const char *);
+static int send_logger_log(struct Logger *, int, const char *, size_t);
 static int send_logger_reopen(struct LogSink *, int fd_to_send);
 static int send_logger_drop(struct LogSink *);
 static int send_logger_privileges(uid_t, gid_t);
@@ -512,23 +513,19 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
     if (priority > logger->priority)
         return;
 
-    if (logger_process_enabled && logger->sink != NULL) {
-        char buffer[1024];
-        size_t len = timestamp(buffer, sizeof(buffer));
-        int remaining = (int)(sizeof(buffer) - len);
-        if (remaining < 0)
-            remaining = 0;
-        int written = vsnprintf(buffer + len, (size_t)remaining, format, args);
-        if (written < 0)
-            return;
-        size_t total = len + (size_t)written;
-        if (total >= sizeof(buffer))
-            total = sizeof(buffer) - 1;
-        if (total + 2 >= sizeof(buffer))
-            total = sizeof(buffer) - 2;
-        buffer[total++] = '\n';
-        buffer[total] = '\0';
-        if (send_logger_log(logger, priority, buffer) == 0)
+    char buffer[1024];
+    size_t payload_len = 0;
+    int have_formatted = 0;
+
+    va_list args_copy;
+    va_copy(args_copy, args);
+    payload_len = format_log_payload(buffer, sizeof(buffer), format, args_copy);
+    va_end(args_copy);
+    if (payload_len > 0)
+        have_formatted = 1;
+
+    if (logger_process_enabled && logger->sink != NULL && have_formatted) {
+        if (send_logger_log(logger, priority, buffer, payload_len) == 0)
             return;
 
         disable_logger_process();
@@ -536,15 +533,8 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
 
     if (logger->sink->type == LOG_SINK_SYSLOG) {
         vsyslog(logger->facility | priority, format, args);
-    } else if (logger->sink->fd != NULL) {
-        char buffer[1024];
-
-        size_t len = timestamp(buffer, sizeof(buffer));
-
-        vsnprintf(buffer + len, sizeof(buffer) - len, format, args);
-        buffer[sizeof(buffer) - 1] = '\0'; /* ensure buffer null terminated */
-
-        fprintf(logger->sink->fd, "%s\n", buffer);
+    } else if (logger->sink->fd != NULL && have_formatted) {
+        (void)fwrite(buffer, 1, payload_len, logger->sink->fd);
     }
 }
 
@@ -932,6 +922,29 @@ free_sink(struct LogSink *sink) {
 }
 
 static size_t
+format_log_payload(char *buffer, size_t buffer_len, const char *format, va_list args) {
+    if (buffer == NULL || buffer_len == 0)
+        return 0;
+
+    size_t len = timestamp(buffer, buffer_len);
+    size_t remaining = buffer_len > len ? buffer_len - len : 0;
+
+    int written = vsnprintf(buffer + len, remaining, format, args);
+    if (written < 0)
+        return 0;
+
+    size_t total = len + (size_t)written;
+    if (total >= buffer_len)
+        total = buffer_len - 1;
+    if (total + 2 >= buffer_len)
+        total = buffer_len - 2;
+    buffer[total++] = '\n';
+    buffer[total] = '\0';
+
+    return total;
+}
+
+static size_t
 timestamp(char *dst, size_t dst_len) {
     /* TODO change to ev_now() */
     time_t now = time(NULL);
@@ -1149,7 +1162,8 @@ send_logger_new_sink(struct LogSink *sink, int fd_to_send) {
 }
 
 static int
-send_logger_log(struct Logger *logger, int priority, const char *message) {
+send_logger_log(struct Logger *logger, int priority, const char *message,
+        size_t len) {
     if (logger == NULL || logger->sink == NULL)
         return -1;
 
@@ -1158,7 +1172,7 @@ send_logger_log(struct Logger *logger, int priority, const char *message) {
         .sink_id = logger->sink->id,
         .arg0 = (uint32_t)priority,
         .arg1 = (uint32_t)logger->facility,
-        .payload_len = (uint32_t)(strlen(message) + 1),
+        .payload_len = (uint32_t)(len + 1),
     };
 
     if (send_logger_header(&header, -1) < 0)
@@ -1512,8 +1526,10 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             if (sink->type == LOG_SINK_SYSLOG) {
                 if (payload != NULL)
                     syslog((int)header->arg1 | (int)header->arg0, "%s", payload);
-            } else if (sink->file != NULL && payload != NULL) {
-                fputs(payload, sink->file);
+            } else if (sink->file != NULL && payload != NULL &&
+                    header->payload_len > 0) {
+                size_t write_len = header->payload_len - 1;
+                (void)fwrite(payload, 1, write_len, sink->file);
             }
             break;
         case LOGGER_CMD_REOPEN:
@@ -1677,4 +1693,3 @@ int
 get_resolver_debug(void) {
     return resolver_debug_enabled;
 }
-
