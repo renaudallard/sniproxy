@@ -107,6 +107,7 @@ static struct Connection *new_connection(struct ev_loop *);
 static void log_connection(struct Connection *);
 static void log_bad_request(struct Connection *, const char *, size_t, int);
 static void free_connection(struct Connection *);
+static int cache_client_local_addr(struct Connection *, int);
 static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
@@ -268,11 +269,14 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         return 1;
     }
 
-    if (getsockname(sockfd, (struct sockaddr *)&con->client.local_addr,
-                &con->client.local_addr_len) != 0) {
+    int needs_proxy_header = listener->table->use_proxy_header ||
+            listener->fallback_use_proxy_header;
+    if (needs_proxy_header &&
+            cache_client_local_addr(con, sockfd) != 0) {
         int saved_errno = errno;
 
         warn("getsockname failed: %s", strerror(errno));
+        close(sockfd);
         free_connection(con);
 
         errno = saved_errno;
@@ -293,8 +297,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     ev_io_start(loop, client_watcher);
     reset_idle_timer_with_now(con, loop, now);
 
-    if (con->listener->table->use_proxy_header ||
-            con->listener->fallback_use_proxy_header)
+    if (needs_proxy_header)
         insert_proxy_v1_header(con);
 
     shrink_candidate_update(con, loop, 0.0);
@@ -1668,6 +1671,11 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
     assert(con->state != CLOSED
             && con->state != CLIENT_CLOSED);
 
+    if (con->listener->access_log &&
+            con->client.local_addr.ss_family == AF_UNSPEC &&
+            cache_client_local_addr(con, con->client.watcher.fd) != 0)
+        warn("getsockname failed: %s", strerror(errno));
+
     ev_io_stop(loop, &con->client.watcher);
 
     if (close(con->client.watcher.fd) < 0)
@@ -1846,6 +1854,19 @@ free_connection(struct Connection *con) {
     free((void *)con->hostname); /* cast away const'ness */
     connection_memory_adjust(-(ssize_t)sizeof(struct Connection));
     free(con);
+}
+
+static int
+cache_client_local_addr(struct Connection *con, int fd) {
+    if (con->client.local_addr.ss_family != AF_UNSPEC)
+        return 0;
+
+    socklen_t len = sizeof(con->client.local_addr);
+    if (getsockname(fd, (struct sockaddr *)&con->client.local_addr, &len) != 0)
+        return -1;
+
+    con->client.local_addr_len = len;
+    return 0;
 }
 
 static void
