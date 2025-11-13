@@ -112,7 +112,9 @@ static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer_with_now(struct Connection *, struct ev_loop *, ev_tstamp);
+#if defined(DEBUG)
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
+#endif
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 
 static void buffer_shrink_timer_cb(struct ev_loop *, struct ev_timer *, int);
@@ -653,10 +655,12 @@ reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstam
     ev_timer_start(loop, &con->idle_timer);
 }
 
+#if defined(DEBUG)
 static void
 reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
     reset_idle_timer_with_now(con, loop, ev_now(loop));
 }
+#endif
 
 static void
 stop_idle_timer(struct Connection *con, struct ev_loop *loop) {

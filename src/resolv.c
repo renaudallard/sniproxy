@@ -1063,9 +1063,12 @@ resolver_child_crash_handler(int signum) {
     if (write(STDERR_FILENO, "\n", 1) < 0)
         perror("write");
 #else
-    (void)write(STDERR_FILENO, msg_prefix, msg_prefix_len);
-    (void)write(STDERR_FILENO, signame, signame_len);
-    (void)write(STDERR_FILENO, "\n", 1);
+    ssize_t _w1 = write(STDERR_FILENO, msg_prefix, msg_prefix_len);
+    ssize_t _w2 = write(STDERR_FILENO, signame, signame_len);
+    ssize_t _w3 = write(STDERR_FILENO, "\n", 1);
+    (void)_w1;
+    (void)_w2;
+    (void)_w3;
 #endif
 
     /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
