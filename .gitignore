@@ -32,3 +32,8 @@ INSTALL
 sniproxy-*.tar.gz
 tags
 test-driver
+deps/
+configure~
+*.core
+src/sniproxy-cfg
+src/sniproxy
