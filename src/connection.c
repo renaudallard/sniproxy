@@ -111,6 +111,7 @@ static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
+static void reset_idle_timer_with_now(struct Connection *, struct ev_loop *, ev_tstamp);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 
@@ -288,7 +289,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     start_buffer_shrink_timer(loop);
 
     ev_io_start(loop, client_watcher);
-    reset_idle_timer(con, loop);
+    reset_idle_timer_with_now(con, loop, now);
 
     if (con->listener->table->use_proxy_header ||
             con->listener->fallback_use_proxy_header)
@@ -416,6 +417,7 @@ server_socket_open(const struct Connection *con) {
 static void
 connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Connection *con = (struct Connection *)w->data;
+    const ev_tstamp now = ev_now(loop);
     int is_client = &con->client.watcher == w;
     const char *socket_name =
         is_client ? "client" : "server";
@@ -429,7 +431,12 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     /* Receive first in case the socket was closed */
     if (revents & EV_READ && buffer_room(input_buffer) == 0) {
         if (!is_client) {
-            if (buffer_reserve(input_buffer, buffer_size(input_buffer)) < 0) {
+            size_t current = buffer_size(input_buffer);
+            size_t desired = current << 1;
+            size_t load = buffer_len(input_buffer);
+            if (load < current * 3 / 4 && current > 0)
+                desired = current;
+            if (buffer_reserve(input_buffer, desired) < 0) {
                 char server[INET6_ADDRSTRLEN + 8];
 
                 warn("Response from %s exceeded %zu byte buffer size",
@@ -470,7 +477,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         } while (buffer_room(input_buffer));
 
         if (read_activity)
-            reset_idle_timer(con, loop);
+            reset_idle_timer_with_now(con, loop, now);
 
         if (bytes_received < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("recv(%s): %s, closing connection",
@@ -514,7 +521,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         } while (buffer_len(output_buffer));
 
         if (write_activity)
-            reset_idle_timer(con, loop);
+            reset_idle_timer_with_now(con, loop, now);
 
         if (bytes_transmitted < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("send(%s): %s, closing connection",
@@ -630,15 +637,25 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w,
 }
 
 static void
-reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
+reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstamp now) {
     if (CONNECTION_IDLE_TIMEOUT <= 0.0)
         return;
 
-    if (ev_is_active(&con->idle_timer))
+    if (ev_is_active(&con->idle_timer)) {
+        double remaining = con->idle_timer.at - now;
+        if (remaining > CONNECTION_IDLE_TIMEOUT * 0.5)
+            return;
         ev_timer_stop(loop, &con->idle_timer);
+    }
 
     ev_timer_set(&con->idle_timer, CONNECTION_IDLE_TIMEOUT, 0.0);
+    con->idle_timer.at = now + CONNECTION_IDLE_TIMEOUT;
     ev_timer_start(loop, &con->idle_timer);
+}
+
+static void
+reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
+    reset_idle_timer_with_now(con, loop, ev_now(loop));
 }
 
 static void
