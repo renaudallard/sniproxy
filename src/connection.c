@@ -118,7 +118,7 @@ static void stop_buffer_shrink_timer(struct ev_loop *);
 static void maybe_stop_buffer_shrink_timer(struct ev_loop *);
 static void shrink_idle_buffers(ev_tstamp now, int force);
 static void connection_memory_apply_pressure(void);
-static void shrink_candidate_update(struct Connection *, struct ev_loop *);
+static void shrink_candidate_update(struct Connection *, struct ev_loop *, ev_tstamp);
 static void shrink_candidate_remove(struct Connection *);
 static void shrink_candidate_insert(struct Connection *);
 static ev_tstamp connection_last_activity(const struct Connection *);
@@ -292,7 +292,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
             con->listener->fallback_use_proxy_header)
         insert_proxy_v1_header(con);
 
-    shrink_candidate_update(con, loop);
+    shrink_candidate_update(con, loop, 0.0);
     return 1;
 }
 
@@ -598,7 +598,7 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
            (ev_is_active(server_watcher) && con->server.watcher.events) ||
            con->state == RESOLVING);
 
-    shrink_candidate_update(con, loop);
+    shrink_candidate_update(con, loop, 0.0);
 }
 
 static void
@@ -1081,7 +1081,7 @@ shrink_candidate_remove(struct Connection *con) {
 }
 
 static void
-shrink_candidate_update(struct Connection *con, struct ev_loop *loop) {
+shrink_candidate_update(struct Connection *con, struct ev_loop *loop, ev_tstamp now_hint) {
     if (!buffer_shrink_timer_configured || BUFFER_SHRINK_IDLE_SECONDS <= 0.0) {
         shrink_candidate_remove(con);
         return;
@@ -1094,19 +1094,24 @@ shrink_candidate_update(struct Connection *con, struct ev_loop *loop) {
         return;
     }
 
-    ev_tstamp now = 0.0;
-    if (loop != NULL)
-        now = ev_now(loop);
-    else if (buffer_shrink_loop != NULL)
-        now = ev_now(buffer_shrink_loop);
-    else
-        now = ev_time();
+    ev_tstamp now = now_hint;
+    if (now == 0.0) {
+        if (loop != NULL)
+            now = ev_now(loop);
+        else if (buffer_shrink_loop != NULL)
+            now = ev_now(buffer_shrink_loop);
+        else
+            now = ev_time();
+    }
 
     ev_tstamp last_activity = connection_last_activity(con);
     if (last_activity == 0.0)
         last_activity = now;
 
-    con->shrink_deadline = last_activity + BUFFER_SHRINK_IDLE_SECONDS;
+    ev_tstamp deadline = last_activity + BUFFER_SHRINK_IDLE_SECONDS;
+    if (deadline <= now)
+        deadline = now + BUFFER_SHRINK_IDLE_SECONDS;
+    con->shrink_deadline = deadline;
 
     if (con->shrink_candidate)
         TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
@@ -1130,7 +1135,7 @@ shrink_idle_buffers(ev_tstamp now, int force) {
         buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
         buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
 
-        shrink_candidate_update(con, buffer_shrink_loop);
+        shrink_candidate_update(con, buffer_shrink_loop, now);
     }
 }
 
