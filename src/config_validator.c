@@ -75,7 +75,7 @@ main(int argc, char **argv) {
 
     struct stat config_st;
     if (stat(config_file, &config_st) == 0 && (config_st.st_mode & 0077))
-        warn("Config file has overly permissive permissions");
+        fatal("Config file %s must not be group/world accessible", config_file);
 
     struct ev_loop *loop = ev_loop_new(EVFLAG_AUTO);
     if (loop == NULL) {

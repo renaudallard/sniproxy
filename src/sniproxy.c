@@ -270,7 +270,7 @@ main(int argc, char **argv) {
 
     struct stat config_st;
     if (stat(config_file, &config_st) == 0 && (config_st.st_mode & 0077))
-        warn("Config file has overly permissive permissions");
+        fatal("Config file %s must not be group/world accessible", config_file);
 
     if (allow_tls10)
         tls_set_min_client_hello_version(3, 1);
