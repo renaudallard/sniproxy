@@ -1047,16 +1047,28 @@ resolver_child_crash_handler(int signum) {
         iov[1].iov_len = msg_prefix_len;
         iov[2].iov_base = (void *)signame;
         iov[2].iov_len = signame_len;
-        if (writev(child_sock, iov, 3) < 0)
-            ;
+        if (writev(child_sock, iov, 3) < 0) {
+#ifdef DEBUG
+            perror("writev");
+#endif
+        }
     }
 
-    if (write(STDERR_FILENO, msg_prefix, msg_prefix_len) < 0)
-        ;
-    if (write(STDERR_FILENO, signame, signame_len) < 0)
-        ;
-    if (write(STDERR_FILENO, "\n", 1) < 0)
-        ;
+    if (write(STDERR_FILENO, msg_prefix, msg_prefix_len) < 0) {
+#ifdef DEBUG
+        perror("write");
+#endif
+    }
+    if (write(STDERR_FILENO, signame, signame_len) < 0) {
+#ifdef DEBUG
+        perror("write");
+#endif
+    }
+    if (write(STDERR_FILENO, "\n", 1) < 0) {
+#ifdef DEBUG
+        perror("write");
+#endif
+    }
 
     /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
 }
