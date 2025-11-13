@@ -111,8 +111,6 @@ static int accept_listener_acl_value(struct ListenerACLRuleValue *, const char *
 static int end_listener_acl_value(struct ListenerACLBuilder *, struct ListenerACLRuleValue *);
 static void free_listener_acl_builder(struct ListenerACLBuilder *);
 
-static const struct Keyword listener_acl_stanza_grammar[];
-
 static const struct Keyword logger_stanza_grammar[] = {
     {
         .keyword="filename",
@@ -151,6 +149,21 @@ static const struct Keyword resolver_stanza_grammar[] = {
     {
         .keyword="dnssec_validation",
         .parse_arg=(int(*)(void *, const char *))accept_resolver_dnssec_validation,
+    },
+    {
+        .keyword = NULL,
+    },
+};
+
+static const struct Keyword listener_acl_stanza_grammar[] = {
+    {
+        .keyword="cidr",
+        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_cidr,
+    },
+    {
+        .create=(void *(*)(void))new_listener_acl_value,
+        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_value,
+        .finalize=(int(*)(void *, void *))end_listener_acl_value,
     },
     {
         .keyword = NULL,
@@ -203,21 +216,6 @@ static const struct Keyword listener_stanza_grammar[] = {
     {
         .keyword="bad_requests",
         .parse_arg= (int(*)(void *, const char *))accept_listener_bad_request_action,
-    },
-    {
-        .keyword = NULL,
-    },
-};
-
-static const struct Keyword listener_acl_stanza_grammar[] = {
-    {
-        .keyword="cidr",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_cidr,
-    },
-    {
-        .create=(void *(*)(void))new_listener_acl_value,
-        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_value,
-        .finalize=(int(*)(void *, void *))end_listener_acl_value,
     },
     {
         .keyword = NULL,
