@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.4
+Version: 0.9.5
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,11 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Sat Nov 15 2025 Renaud Allard <renaud@allard.it> 0.9.5-1
+- Performance: cache ev_now and add hysteresis to idle timers and buffer growth
+- Reliability: resolver crash handler avoids spurious write warnings
+- CI: fuzz workflow auto-selects clang/libFuzzer toolchains with better diagnostics
+
 * Fri Nov 14 2025 Renaud Allard <renaud@allard.it> 0.9.4-1
 - Security: configs with group/world permissions now abort startup
 - Resource: per-connection buffer limits added

@@ -1,3 +1,10 @@
+sniproxy 0.9.5 (2025-11-15)
+==============================
+
+* Performance: cached ev_now() readings and idle hysteresis reduce needless wakeups and buffer thrash.
+* Reliability: resolver crash logging avoids noisy write/writev warnings on Linux builds.
+* CI: fuzz workflow auto-selects a libFuzzer-capable clang and surfaces compiler diagnostics.
+
 sniproxy 0.9.4 (2025-11-14)
 ==============================
 

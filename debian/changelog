@@ -1,3 +1,11 @@
+sniproxy (0.9.5) unstable; urgency=medium
+
+  * Performance: cache ev_now and add hysteresis to idle timers/buffer growth
+  * Reliability: resolver crash handler avoids spurious write warnings
+  * CI: fuzz workflow now bootstraps a working clang/libFuzzer toolchain automatically
+
+ -- Renaud Allard <renaud@allard.it>  Sat, 15 Nov 2025 09:00:00 +0100
+
 sniproxy (0.9.4) unstable; urgency=medium
 
   * Security: configs with group/world permissions now abort startup.

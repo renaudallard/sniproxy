@@ -1,3 +1,10 @@
+2025-11-15  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.5
+	- Performance: cache ev_now and add hysteresis to idle timers and buffer growth.
+	- Reliability: resolver crash handler avoids spurious write/writev warnings.
+	- CI: fuzz workflow auto-selects clang/libFuzzer toolchains and surfaces compiler output.
+
 2025-11-14  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.4
