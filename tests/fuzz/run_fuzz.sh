@@ -16,17 +16,27 @@ if ! command -v "$FUZZ_CC" >/dev/null 2>&1; then
 fi
 
 check_fuzzer_support() {
-    local tmp_src tmp_bin
+    local tmp_src tmp_bin tmp_log
     tmp_src=$(mktemp ${TMPDIR:-/tmp}/sniproxy-fuzz-XXXXXX.c)
     tmp_bin="${tmp_src%.c}"
+    tmp_log=$(mktemp ${TMPDIR:-/tmp}/sniproxy-fuzz-XXXXXX.log)
     cat <<'SRC' > "$tmp_src"
-int main(void) { return 0; }
+#include <stddef.h>
+#include <stdint.h>
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+    (void)data;
+    (void)size;
+    return 0;
+}
 SRC
-    if "$FUZZ_CC" -fsanitize=fuzzer "$tmp_src" -o "$tmp_bin" >/dev/null 2>&1; then
-        rm -f "$tmp_src" "$tmp_bin"
+    if "$FUZZ_CC" -fsanitize=fuzzer "$tmp_src" -o "$tmp_bin" >/dev/null 2>"$tmp_log"; then
+        rm -f "$tmp_src" "$tmp_bin" "$tmp_log"
         return 0
     fi
-    rm -f "$tmp_src" "$tmp_bin"
+    echo "compiler output from $FUZZ_CC -fsanitize=fuzzer:" >&2
+    cat "$tmp_log" >&2 || true
+    rm -f "$tmp_src" "$tmp_bin" "$tmp_log"
     return 1
 }
 

@@ -15,11 +15,29 @@ jobs:
 
       - name: Install dependencies
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             autoconf automake libtool pkg-config \
             libev-dev libpcre2-dev libc-ares-dev \
             libssl-dev clang
+          for version in 19 18 17 16 15 14; do
+            if sudo apt-get install -y \
+              "clang-${version}" \
+              "libclang-rt-${version}-dev" \
+              "libfuzzer-${version}-dev"; then
+              echo "Using clang-${version} for fuzzing"
+              echo "FUZZ_CC=clang-${version}" >> "$GITHUB_ENV"
+              FOUND=1
+              break
+            else
+              echo "clang-${version} toolchain unavailable, trying next version"
+            fi
+          done
+          if [[ ${FOUND:-0} -eq 0 ]]; then
+            echo "error: unable to install clang with libFuzzer support" >&2
+            exit 1
+          fi
 
       - name: Generate build system
         run: |
@@ -33,6 +51,6 @@ jobs:
 
       - name: Run fuzzers
         env:
-          FUZZ_CC: clang
+          FUZZ_OPTIONAL: 0
           FUZZ_RUNTIME: 60
         run: tests/fuzz/run_fuzz.sh
