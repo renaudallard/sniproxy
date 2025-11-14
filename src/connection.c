@@ -694,7 +694,6 @@ reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstam
     }
 
     ev_timer_set(&con->idle_timer, CONNECTION_IDLE_TIMEOUT, 0.0);
-    con->idle_timer.at = now + CONNECTION_IDLE_TIMEOUT;
     ev_timer_start(loop, &con->idle_timer);
 }
 
