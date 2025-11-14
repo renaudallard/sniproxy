@@ -378,6 +378,16 @@ init_config(const char *filename, struct ev_loop *loop) {
         return NULL;
     }
 
+    /* Check permissions on opened file to prevent TOCTOU */
+    struct stat config_st;
+    if (fstat(fileno(file), &config_st) == 0 && (config_st.st_mode & 0077)) {
+        err("%s: Config file %s must not be group/world accessible (mode %04o)",
+            __func__, config->filename, config_st.st_mode & 0777);
+        fclose(file);
+        free_config(config, loop);
+        return NULL;
+    }
+
     if (parse_config(config, file, global_grammar, "global") <= 0) {
         off_t whence = ftello(file);
         char line[256];
