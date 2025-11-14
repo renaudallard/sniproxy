@@ -99,12 +99,12 @@ static void reactivate_watchers(struct Connection *, struct ev_loop *);
 static void reactivate_watchers_with_state(struct Connection *, struct ev_loop *, int, int);
 static void insert_proxy_v1_header(struct Connection *);
 static int ensure_proxy_header(struct Connection *);
-static void parse_client_request(struct Connection *);
+static void parse_client_request(struct Connection *, struct ev_loop *);
 static void resolve_server_address(struct Connection *, struct ev_loop *);
 static void initiate_server_connect(struct Connection *, struct ev_loop *);
 static void close_connection(struct Connection *, struct ev_loop *);
 static void close_client_socket(struct Connection *, struct ev_loop *);
-static void abort_connection(struct Connection *);
+static void abort_connection(struct Connection *, struct ev_loop *);
 static void close_server_socket(struct Connection *, struct ev_loop *);
 static struct Connection *new_connection(struct ev_loop *);
 static void log_connection(struct Connection *);
@@ -521,6 +521,8 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         if (read_activity)
             reset_idle_timer_with_now(con, loop, now);
+        if (read_activity)
+            stop_header_timer(con, loop);
 
         if (bytes_received < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("recv(%s): %s, closing connection",
@@ -584,7 +586,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     /* Handle any state specific logic, note we may transition through several
      * states during a single call */
     if (is_client && con->state == ACCEPTED)
-        parse_client_request(con);
+        parse_client_request(con, loop);
     if (is_client && con->state == PARSED)
         resolve_server_address(con, loop);
     if (is_client && con->state == RESOLVED) {
@@ -1357,7 +1359,7 @@ ensure_proxy_header(struct Connection *con) {
 }
 
 static void
-parse_client_request(struct Connection *con) {
+parse_client_request(struct Connection *con, struct ev_loop *loop) {
     const char *payload;
     size_t payload_len = buffer_coalesce(con->client.buffer, (const void **)&payload);
     char *hostname = NULL;
@@ -1420,7 +1422,7 @@ parse_client_request(struct Connection *con) {
         }
 
         if (fatal_parse_error || con->listener->fallback_address == NULL) {
-            abort_connection(con);
+            abort_connection(con, loop);
             return;
         }
 
@@ -1436,9 +1438,10 @@ parse_client_request(struct Connection *con) {
 }
 
 static void
-abort_connection(struct Connection *con) {
+abort_connection(struct Connection *con, struct ev_loop *loop) {
     assert(client_socket_open(con));
 
+    stop_header_timer(con, loop);
     buffer_push(con->server.buffer,
             con->listener->protocol->abort_message,
             con->listener->protocol->abort_message_len);
@@ -1454,7 +1457,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         listener_lookup_server_address(con->listener, con->hostname, con->hostname_len);
 
     if (result.address == NULL) {
-        abort_connection(con);
+        abort_connection(con, loop);
         return;
     } else if (address_is_hostname(result.address)) {
         struct resolv_cb_data *cb_data = malloc(sizeof(struct resolv_cb_data));
@@ -1464,7 +1467,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             if (result.caller_free_address)
                 free((void *)result.address);
 
-            abort_connection(con);
+            abort_connection(con, loop);
             return;
         }
         cb_data->connection = con;
@@ -1477,7 +1480,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             if (result.caller_free_address)
                 free((void *)result.address);
             free(cb_data);
-            abort_connection(con);
+            abort_connection(con, loop);
             reactivate_watchers(con, loop);
             return;
         }
@@ -1491,7 +1494,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
             free(cb_data);
 
-            abort_connection(con);
+            abort_connection(con, loop);
             reactivate_watchers(con, loop);
 
             return;
@@ -1534,7 +1537,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                 free((void *)result.address);
             free(cb_data);
 
-            abort_connection(con);
+            abort_connection(con, loop);
             reactivate_watchers(con, loop);
 
             return;
@@ -1554,7 +1557,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             if (con->state == RESOLVING) {
                 notice("unable to resolve %s, closing connection", hostname_buf);
 
-                abort_connection(con);
+                abort_connection(con, loop);
                 reactivate_watchers(con, loop);
             }
 
@@ -1573,7 +1576,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         if (!ensure_proxy_header(con)) {
             if (result.caller_free_address)
                 free((void *)result.address);
-            abort_connection(con);
+            abort_connection(con, loop);
             reactivate_watchers(con, loop);
             return;
         }
@@ -1607,7 +1610,7 @@ resolv_cb(struct Address *result, void *data) {
     if (result == NULL) {
         notice("unable to resolve %s, closing connection",
                 address_hostname(cb_data->address));
-        abort_connection(con);
+        abort_connection(con, loop);
     } else {
         assert(address_is_sockaddr(result));
 
@@ -1652,7 +1655,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
                 display_sockaddr(&con->client.addr,
                     con->client.addr_len,
                     client, sizeof(client)));
-        abort_connection(con);
+        abort_connection(con, loop);
         return;
     }
 
@@ -1664,7 +1667,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
                     con->client.addr_len,
                     client, sizeof(client)));
         close(sockfd);
-        abort_connection(con);
+        abort_connection(con, loop);
         return;
     }
 
@@ -1686,7 +1689,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         if (result < 0) {
             err("setsockopt IP_TRANSPARENT failed: %s", strerror(errno));
             close(sockfd);
-            abort_connection(con);
+            abort_connection(con, loop);
             return;
         }
 
@@ -1695,7 +1698,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         if (result < 0) {
             err("bind failed: %s", strerror(errno));
             close(sockfd);
-            abort_connection(con);
+            abort_connection(con, loop);
             return;
         }
     } else if (con->listener->source_address) {
@@ -1704,7 +1707,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         if (result < 0) {
             err("setsockopt SO_REUSEADDR failed: %s", strerror(errno));
             close(sockfd);
-            abort_connection(con);
+            abort_connection(con, loop);
             return;
         }
 
@@ -1720,7 +1723,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         if (result < 0) {
             err("bind failed: %s", strerror(errno));
             close(sockfd);
-            abort_connection(con);
+            abort_connection(con, loop);
             return;
         }
     }
@@ -1751,7 +1754,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
                     con->server.addr_len,
                     server, sizeof(server)),
                 strerror(errno));
-        abort_connection(con);
+        abort_connection(con, loop);
         return;
     }
 
@@ -1760,7 +1763,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         close(sockfd);
         warn("getsockname failed: %s", strerror(errno));
 
-        abort_connection(con);
+        abort_connection(con, loop);
         return;
     }
 
