@@ -382,8 +382,13 @@ address_set_port_str(struct Address *addr, const char* str) {
 
 const char *
 display_address(const struct Address *addr, char *buffer, size_t buffer_len) {
-    if (addr == NULL || buffer == NULL)
-        return NULL;
+    if (buffer == NULL || buffer_len == 0)
+        return "(invalid)";
+
+    if (addr == NULL) {
+        snprintf(buffer, buffer_len, "(null)");
+        return buffer;
+    }
 
     switch (addr->type) {
         case HOSTNAME:
@@ -408,7 +413,8 @@ display_address(const struct Address *addr, char *buffer, size_t buffer_len) {
             return buffer;
         default:
             assert(0);
-            return NULL;
+            snprintf(buffer, buffer_len, "(invalid)");
+            return buffer;
     }
 }
 
@@ -418,12 +424,14 @@ display_sockaddr(const void *sa_ptr, socklen_t sa_len, char *buffer, size_t buff
     char ip[INET6_ADDRSTRLEN];
 
     if (buffer == NULL || buffer_len == 0)
-        return NULL;
+        return "(invalid)";
 
     buffer[0] = '\0';
 
-    if (sa == NULL || sa_len < (socklen_t)sizeof(sa->sa_family))
+    if (sa == NULL || sa_len < (socklen_t)sizeof(sa->sa_family)) {
+        snprintf(buffer, buffer_len, "(null)");
         return buffer;
+    }
 
     switch (sa->sa_family) {
         case AF_INET:

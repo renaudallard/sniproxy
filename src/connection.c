@@ -910,6 +910,9 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
 
 static const char *
 format_sockaddr_ip(const struct sockaddr_storage *addr, char *buffer, size_t len) {
+    if (buffer == NULL || len == 0)
+        return "(unknown)";
+
     if (addr->ss_family == AF_INET) {
         const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
         if (inet_ntop(AF_INET, &in->sin_addr, buffer, len) != NULL)
@@ -920,7 +923,8 @@ format_sockaddr_ip(const struct sockaddr_storage *addr, char *buffer, size_t len
             return buffer;
     }
 
-    return NULL;
+    snprintf(buffer, len, "(unknown)");
+    return buffer;
 }
 
 static void
@@ -1500,7 +1504,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                     warn("attempt to use transparent proxy with hostname %s "
                             "on non-IP listener %s, falling back to "
                             "non-transparent mode",
-                            address_hostname(result.address),
+                            hostname_buf,
                             display_address(con->listener->address,
                                     listener_address, sizeof(listener_address))
                             );
@@ -1591,8 +1595,9 @@ resolv_cb(struct Address *result, void *data) {
     }
 
     if (result == NULL) {
+        const char *hostname = address_hostname(cb_data->address);
         notice("unable to resolve %s, closing connection",
-                address_hostname(cb_data->address));
+                hostname != NULL ? hostname : "(unknown)");
         abort_connection(con, loop);
     } else {
         assert(address_is_sockaddr(result));

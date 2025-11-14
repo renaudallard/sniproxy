@@ -204,22 +204,33 @@ static const char *
 listener_acl_rule_to_string(const struct ListenerACLRule *rule, char *buffer, size_t len) {
     const void *addr = NULL;
 
-    if (rule == NULL || buffer == NULL || len == 0)
-        return NULL;
+    if (buffer == NULL || len == 0)
+        return "(invalid)";
+
+    if (rule == NULL) {
+        snprintf(buffer, len, "(invalid)");
+        return buffer;
+    }
 
     if (rule->family == AF_INET)
         addr = &rule->network.in;
     else if (rule->family == AF_INET6)
         addr = &rule->network.in6;
-    else
-        return NULL;
+    else {
+        snprintf(buffer, len, "(invalid)");
+        return buffer;
+    }
 
-    if (inet_ntop(rule->family, addr, buffer, len) == NULL)
-        return NULL;
+    if (inet_ntop(rule->family, addr, buffer, len) == NULL) {
+        snprintf(buffer, len, "(invalid)");
+        return buffer;
+    }
 
     size_t used = strlen(buffer);
-    if (used + 5 >= len)
-        return NULL;
+    if (used + 5 >= len) {
+        snprintf(buffer, len, "(invalid)");
+        return buffer;
+    }
 
     snprintf(buffer + used, len - used, "/%u", rule->prefix_len);
 
