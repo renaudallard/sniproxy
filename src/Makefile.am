@@ -1,4 +1,4 @@
-AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings
+AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings -fstack-protector-strong
 
 sbin_PROGRAMS = sniproxy sniproxy-cfg
 
