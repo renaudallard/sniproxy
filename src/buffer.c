@@ -274,7 +274,10 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
     if (buf->len >= buf->max_size || min_room > buf->max_size - buf->len)
         return -1;
 
+    /* Defensive assertion: The overflow check above guarantees this addition
+     * is safe, but we assert the invariant for defense-in-depth. */
     size_t required = buf->len + min_room;
+    assert(required >= buf->len && required >= min_room);
     size_t current_size = buffer_size(buf);
     size_t new_size = next_power_of_two(required);
 

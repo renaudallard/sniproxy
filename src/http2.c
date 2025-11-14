@@ -29,6 +29,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <limits.h>
+#include <assert.h>
 #include "http2.h"
 #include "hostname_sanitize.h"
 #include "http2_huffman.h"
@@ -789,11 +790,13 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
         return 0;
 
     size_t combined_len = name_len + value_len;
+    assert(combined_len >= name_len && combined_len >= value_len);
 
     if (combined_len > SIZE_MAX - 32)
         return 0;
 
     size_t entry_size = combined_len + 32;
+    assert(entry_size >= combined_len && entry_size >= 32);
     int reserved = 0;
 
     if (entry_size > decoder->max_dynamic_size) {
