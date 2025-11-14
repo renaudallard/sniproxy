@@ -44,7 +44,7 @@
 
 
 #define BUFFER_COALESCE_STACK_COPY 4096
-static const size_t BUFFER_MAX_SIZE = 1024 * 1024 * 1024;
+static const size_t BUFFER_MAX_SIZE = 10 * 1024 * 1024;
 
 struct BufferPoolClass {
     size_t size;
