@@ -587,6 +587,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
     if (con->state == CLOSED) {
         stop_idle_timer(con, loop);
+        stop_header_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
         connection_account_remove();
 
