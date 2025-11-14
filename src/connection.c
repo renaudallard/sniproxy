@@ -458,7 +458,13 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (revents & EV_READ && buffer_room(input_buffer) == 0) {
         if (!is_client) {
             size_t current = buffer_size(input_buffer);
-            size_t desired = current << 1;
+            size_t desired;
+            /* Prevent integer overflow when doubling buffer size */
+            if (current > SIZE_MAX / 2) {
+                desired = current;  /* Cannot safely double */
+            } else {
+                desired = current << 1;
+            }
             size_t load = buffer_len(input_buffer);
             if (load < current * 3 / 4 && current > 0)
                 desired = current;
