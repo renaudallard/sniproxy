@@ -250,7 +250,22 @@ main(int argc, char **argv) {
                 background_flag = 0;
                 break;
             case 'n':
-                max_nofiles = strtoul(optarg, NULL, 10);
+                {
+                    errno = 0;
+                    char *endptr = NULL;
+                    unsigned long value = strtoul(optarg, &endptr, 10);
+                    if (errno != 0 || endptr == optarg || (endptr != NULL && *endptr != '\0')) {
+                        fprintf(stderr, "Invalid file descriptor limit '%s'\n", optarg);
+                        return EXIT_FAILURE;
+                    }
+                    if (value == 0) {
+                        fprintf(stderr, "max file descriptor limit must be > 0\n");
+                        return EXIT_FAILURE;
+                    }
+                    if (value > RLIM_INFINITY)
+                        value = RLIM_INFINITY;
+                    max_nofiles = (rlim_t)value;
+                }
                 break;
             case 'V':
                 printf("sniproxy %s\n", sniproxy_version);
