@@ -53,6 +53,10 @@
 #define ARES_GETSOCK_MAXNUM 16
 #endif
 
+#if !defined(HAVE_ARC4RANDOM) && !defined(__OpenBSD__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__)
+#include <openssl/rand.h>
+#endif
+
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -114,7 +118,6 @@ struct ResolverPending {
 static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
 static struct ipc_crypto_state resolver_ipc_crypto;
-static uint32_t resolver_next_query_seed = 0x12345678;
 static uint32_t resolver_next_query_prng(void);
 #define RESOLVER_QUERY_BUCKETS 1024u
 #define RESOLVER_HOST_BUCKETS 2048u
@@ -157,18 +160,26 @@ resolver_find_pending_host(const char *hostname, size_t len, int mode, uint32_t 
 }
 static uint32_t
 resolver_next_query_prng(void) {
-    uint32_t x = resolver_next_query_seed;
-    if (x == 0) {
-        struct timeval tv;
-        if (gettimeofday(&tv, NULL) == 0)
-            x = (uint32_t)(tv.tv_sec ^ tv.tv_usec);
-        x ^= (uint32_t)getpid();
+    /* Use arc4random() for cryptographically secure random numbers.
+     * This prevents DNS query ID prediction attacks. */
+#if defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
+    return arc4random();
+#else
+    /* Fallback for systems without arc4random().
+     * Use OpenSSL's RAND_bytes for cryptographically secure randomness. */
+    uint32_t value;
+    if (RAND_bytes((unsigned char *)&value, sizeof(value)) == 1) {
+        return value;
     }
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    resolver_next_query_seed = x ? x : 0xA5A5A5A5;
-    return resolver_next_query_seed;
+    /* If RAND_bytes fails, fall back to time-based entropy (not ideal) */
+    struct timeval tv;
+    uint32_t result = (uint32_t)getpid();
+    if (gettimeofday(&tv, NULL) == 0) {
+        result ^= (uint32_t)tv.tv_sec;
+        result ^= (uint32_t)tv.tv_usec;
+    }
+    return result;
+#endif
 }
 
 static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
