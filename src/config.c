@@ -351,6 +351,7 @@ init_config(const char *filename, struct ev_loop *loop) {
     }
 
     config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+    config->per_ip_connection_rate = DEFAULT_PER_IP_CONNECTION_RATE;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
     config->max_connections = DEFAULT_MAX_CONNECTIONS;
