@@ -223,7 +223,9 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     if (sockfd < 0) {
         int saved_errno = errno;
 
-        warn("accept failed: %s", strerror(errno));
+        if (!IS_TEMPORARY_SOCKERR(saved_errno))
+            warn("accept failed: %s", strerror(saved_errno));
+
         free_connection(con);
 
         errno = saved_errno;

@@ -50,6 +50,8 @@
 #include "http.h"
 #include "fd_util.h"
 
+#define LISTENER_ACCEPT_MAX_BATCH 64
+
 static void close_listener(struct ev_loop *, struct Listener *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
 static void backoff_timer_cb(struct ev_loop *, struct ev_timer *, int);
@@ -1008,21 +1010,42 @@ static void
 accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Listener *listener = (struct Listener *)w->data;
 
-    if (revents & EV_READ) {
+    if (!(revents & EV_READ))
+        return;
+
+    int last_errno = 0;
+
+    for (int i = 0; i < LISTENER_ACCEPT_MAX_BATCH; i++) {
         int result = listener->accept_cb(listener, loop);
-        if (result == 0 && (errno == EMFILE || errno == ENFILE)) {
-            char address_buf[ADDRESS_BUFFER_SIZE];
-            int backoff_time = 2;
-
-            err("File descriptor limit reached! "
-                "Suspending accepting new connections on %s for %d seconds",
-                display_address(listener->address, address_buf, sizeof(address_buf)),
-                backoff_time);
-            ev_io_stop(loop, w);
-
-            ev_timer_set(&listener->backoff_timer, backoff_time, 0.0);
-            ev_timer_start(loop, &listener->backoff_timer);
+        if (result > 0) {
+            last_errno = 0;
+            continue;
         }
+
+        last_errno = errno;
+
+        if (last_errno == EINTR)
+            continue;
+
+        if (last_errno == EAGAIN || last_errno == EWOULDBLOCK ||
+                last_errno == 0)
+            break;
+
+        break;
+    }
+
+    if (last_errno == EMFILE || last_errno == ENFILE) {
+        char address_buf[ADDRESS_BUFFER_SIZE];
+        int backoff_time = 2;
+
+        err("File descriptor limit reached! "
+            "Suspending accepting new connections on %s for %d seconds",
+            display_address(listener->address, address_buf, sizeof(address_buf)),
+            backoff_time);
+        ev_io_stop(loop, w);
+
+        ev_timer_set(&listener->backoff_timer, backoff_time, 0.0);
+        ev_timer_start(loop, &listener->backoff_timer);
     }
 }
 
