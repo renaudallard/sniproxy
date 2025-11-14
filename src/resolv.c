@@ -80,6 +80,7 @@
 #define RESOLVER_IPC_MAX_FRAME        (sizeof(struct resolver_ipc_header) + \
         RESOLVER_IPC_MAX_PAYLOAD + IPC_CRYPTO_OVERHEAD)
 #define RESOLVER_MAX_ADDR_LEN        ((size_t)sizeof(struct sockaddr_storage))
+#define RESOLVER_MAX_DNS_RESPONSES   64
 
 struct resolver_ipc_header {
     uint32_t type;
@@ -2001,9 +2002,10 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
                 continue;
             }
 
-            /* Check for overflow before realloc */
-            if (query->response_count >= SIZE_MAX / sizeof(struct Address *)) {
-                err("resolver child: too many DNS responses, cannot expand list");
+            /* Limit DNS responses to prevent memory exhaustion from malicious servers */
+            if (query->response_count >= RESOLVER_MAX_DNS_RESPONSES) {
+                err("resolver child: DNS response limit (%zu) reached, ignoring additional addresses",
+                    (size_t)RESOLVER_MAX_DNS_RESPONSES);
                 free(response);
                 break;
             }
