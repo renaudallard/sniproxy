@@ -50,11 +50,11 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
         unsigned char tail = (unsigned char)*(end - 1);
         if (!(tail == ' ' || (tail >= '\t' && tail <= '\r')))
             break;
+        *(end - 1) = '\0';
         end--;
     }
 
     len = (size_t)(end - hostname);
-    *end = '\0';
 
     if (len == 0 || len > max_len)
         return 0;
