@@ -449,7 +449,6 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
 
     config->max_connections = new_config->max_connections;
-    connections_set_global_limit(config->max_connections);
 
     config->io_collect_interval = new_config->io_collect_interval;
     config->timeout_collect_interval = new_config->timeout_collect_interval;

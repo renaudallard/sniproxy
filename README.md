@@ -193,7 +193,8 @@ per_ip_connection_rate 50   # allow 50 new connections per second per source IP
 Set the value to `0` to disable the limiter (default).
 
 To guard against descriptor exhaustion during floods, cap the number of
-concurrent connections (set `0` to disable, which is the default):
+concurrent connections (set `0` to auto-derive ~80% of the file descriptor
+limit, which is the default):
 
 ```
 max_connections 20000

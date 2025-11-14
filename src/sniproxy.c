@@ -72,6 +72,7 @@ static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
 static void mainloop_prepare_cb(struct ev_loop *, struct ev_prepare *, int);
+static size_t effective_max_connections(const struct Config *);
 
 #ifdef __OpenBSD__
 struct openbsd_unveil_data {
@@ -92,6 +93,7 @@ static const char *sniproxy_version = PACKAGE_VERSION;
 static const char *default_username = "daemon";
 static struct Config *config;
 static struct ev_loop *mainloop_loop;
+static rlim_t configured_fd_limit;
 static struct ev_prepare mainloop_prepare_watcher;
 static struct ev_signal sighup_watcher;
 static struct ev_signal sigusr1_watcher;
@@ -398,9 +400,10 @@ main(int argc, char **argv) {
     start_binder();
 
     set_limits(max_nofiles);
+    configured_fd_limit = max_nofiles;
 
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
-    connections_set_global_limit(config->max_connections);
+    connections_set_global_limit(effective_max_connections(config));
 
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
     connections_set_buffer_limits(config->client_buffer_limit,
@@ -599,6 +602,27 @@ mainloop_prepare_cb(struct ev_loop *loop, struct ev_prepare *w __attribute__((un
         loop_time_update(loop);
 }
 
+static size_t
+effective_max_connections(const struct Config *cfg) {
+    if (cfg == NULL)
+        return 0;
+
+    if (cfg->max_connections > 0)
+        return cfg->max_connections;
+
+    if (configured_fd_limit <= 0)
+        return 0;
+
+    size_t fd_budget = (size_t)configured_fd_limit;
+    size_t headroom = fd_budget / 5; /* keep 20% for listeners, resolver, etc. */
+    if (headroom < 256)
+        headroom = 256;
+    if (headroom >= fd_budget)
+        return fd_budget > 1 ? fd_budget - 1 : 1;
+
+    return fd_budget - headroom;
+}
+
 static void
 write_pidfile(const char *path, pid_t pid) {
     int open_flags = O_WRONLY | O_CREAT | O_TRUNC;
@@ -665,6 +689,7 @@ signal_cb(struct ev_loop *loop, struct ev_signal *w, int revents) {
                 reopen_loggers();
                 reload_config(config, loop);
                 apply_mainloop_settings(loop, config);
+                connections_set_global_limit(effective_max_connections(config));
                 break;
             case SIGUSR1:
                 print_connections();
