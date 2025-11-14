@@ -97,6 +97,7 @@ static void resolv_cb(struct Address *, void *);
 static void reactivate_watchers(struct Connection *, struct ev_loop *);
 static void reactivate_watchers_with_state(struct Connection *, struct ev_loop *, int, int);
 static void insert_proxy_v1_header(struct Connection *);
+static int ensure_proxy_header(struct Connection *);
 static void parse_client_request(struct Connection *);
 static void resolve_server_address(struct Connection *, struct ev_loop *);
 static void initiate_server_connect(struct Connection *, struct ev_loop *);
@@ -298,20 +299,6 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         return 1;
     }
 
-    int needs_proxy_header = listener->table->use_proxy_header ||
-            listener->fallback_use_proxy_header;
-    if (needs_proxy_header &&
-            cache_client_local_addr(con, sockfd) != 0) {
-        int saved_errno = errno;
-
-        warn("getsockname failed: %s", strerror(errno));
-        close(sockfd);
-        free_connection(con);
-
-        errno = saved_errno;
-        return 0;
-    }
-
     /* Avoiding type-punned pointer warning */
     struct ev_io *client_watcher = &con->client.watcher;
     ev_io_init(client_watcher, connection_cb, sockfd, EV_READ);
@@ -325,9 +312,6 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     ev_io_start(loop, client_watcher);
     reset_idle_timer_with_now(con, loop, now);
-
-    if (needs_proxy_header)
-        insert_proxy_v1_header(con);
 
     shrink_candidate_update(con, loop, 0.0);
     return 1;
@@ -1289,6 +1273,24 @@ unknown:
             "PROXY UNKNOWN\r\n", sizeof("PROXY UNKNOWN\r\n") - 1);
 }
 
+static int
+ensure_proxy_header(struct Connection *con) {
+    if (con == NULL || !con->use_proxy_header)
+        return 1;
+
+    if (con->header_len != 0)
+        return 1;
+
+    if (con->client.local_addr.ss_family == AF_UNSPEC &&
+            cache_client_local_addr(con, con->client.watcher.fd) != 0) {
+        warn("getsockname failed: %s", strerror(errno));
+        return 0;
+    }
+
+    insert_proxy_v1_header(con);
+    return 1;
+}
+
 static void
 parse_client_request(struct Connection *con) {
     const char *payload;
@@ -1404,6 +1406,15 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         cb_data->loop = loop;
         con->use_proxy_header = result.use_proxy_header;
 
+        if (!ensure_proxy_header(con)) {
+            if (result.caller_free_address)
+                free((void *)result.address);
+            free(cb_data);
+            abort_connection(con);
+            reactivate_watchers(con, loop);
+            return;
+        }
+
         const char *hostname = address_hostname(result.address);
         if (hostname == NULL || hostname[0] == '\0') {
             err("%s: hostname lookup returned empty result", __func__);
@@ -1491,6 +1502,14 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                 address_sa(result.address),
                 (socklen_t)con->server.addr_len);
         con->use_proxy_header = result.use_proxy_header;
+
+        if (!ensure_proxy_header(con)) {
+            if (result.caller_free_address)
+                free((void *)result.address);
+            abort_connection(con);
+            reactivate_watchers(con, loop);
+            return;
+        }
 
         if (result.caller_free_address)
             free((void *)result.address);
