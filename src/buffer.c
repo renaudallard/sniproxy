@@ -37,8 +37,7 @@
 #include <stdint.h>
 #include <ev.h>
 #include "buffer.h"
-
-extern ev_tstamp loop_now(struct ev_loop *);
+#include "loop_time.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define NOT_POWER_OF_2(x) (x == 0 || (x & (x - 1)))

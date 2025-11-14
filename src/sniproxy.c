@@ -59,6 +59,7 @@
 #include "logger.h"
 #include "ipc_crypto.h"
 #include "tls.h"
+#include "loop_time.h"
 
 
 static void usage(void);
@@ -71,7 +72,6 @@ static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
 static void mainloop_prepare_cb(struct ev_loop *, struct ev_prepare *, int);
-ev_tstamp loop_now(struct ev_loop *);
 
 #ifdef __OpenBSD__
 struct openbsd_unveil_data {
@@ -92,7 +92,6 @@ static const char *sniproxy_version = PACKAGE_VERSION;
 static const char *default_username = "daemon";
 static struct Config *config;
 static struct ev_loop *mainloop_loop;
-static ev_tstamp mainloop_cached_now;
 static struct ev_prepare mainloop_prepare_watcher;
 static struct ev_signal sighup_watcher;
 static struct ev_signal sigusr1_watcher;
@@ -302,7 +301,7 @@ main(int argc, char **argv) {
     }
 
     mainloop_loop = loop;
-    mainloop_cached_now = ev_now(loop);
+    loop_time_set_loop(loop);
 
     config = init_config(config_file, loop);
     if (config == NULL) {
@@ -581,14 +580,7 @@ apply_mainloop_settings(struct ev_loop *loop, const struct Config *cfg) {
 static void
 mainloop_prepare_cb(struct ev_loop *loop, struct ev_prepare *w __attribute__((unused)), int revents __attribute__((unused))) {
     if (loop == mainloop_loop)
-        mainloop_cached_now = ev_now(loop);
-}
-
-ev_tstamp
-loop_now(struct ev_loop *loop) {
-    if (loop == mainloop_loop)
-        return mainloop_cached_now;
-    return ev_now(loop);
+        loop_time_update(loop);
 }
 
 static void

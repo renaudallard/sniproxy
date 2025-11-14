@@ -989,6 +989,8 @@ timestamp(char *dst, size_t dst_len) {
         return 0;
 
     size_t copy_len = timestamp_cache.len;
+    if (copy_len > sizeof(timestamp_cache.string) - 1)
+        copy_len = sizeof(timestamp_cache.string) - 1;
 
     if (copy_len >= dst_len)
         copy_len = dst_len - 1;
