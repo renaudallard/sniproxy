@@ -70,6 +70,8 @@ static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
+static void mainloop_prepare_cb(struct ev_loop *, struct ev_prepare *, int);
+ev_tstamp loop_now(struct ev_loop *);
 
 #ifdef __OpenBSD__
 struct openbsd_unveil_data {
@@ -89,6 +91,9 @@ static void openbsd_unveil_address(const struct Address *address,
 static const char *sniproxy_version = PACKAGE_VERSION;
 static const char *default_username = "daemon";
 static struct Config *config;
+static struct ev_loop *mainloop_loop;
+static ev_tstamp mainloop_cached_now;
+static struct ev_prepare mainloop_prepare_watcher;
 static struct ev_signal sighup_watcher;
 static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
@@ -296,6 +301,9 @@ main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    mainloop_loop = loop;
+    mainloop_cached_now = ev_now(loop);
+
     config = init_config(config_file, loop);
     if (config == NULL) {
         fprintf(stderr, "Unable to load %s\n", config_file);
@@ -397,6 +405,8 @@ main(int argc, char **argv) {
     }
 #endif
 
+    ev_prepare_init(&mainloop_prepare_watcher, mainloop_prepare_cb);
+    ev_prepare_start(loop, &mainloop_prepare_watcher);
     ev_signal_init(&sighup_watcher, signal_cb, SIGHUP);
     ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
     ev_signal_init(&sigint_watcher, signal_cb, SIGINT);
@@ -566,6 +576,19 @@ apply_mainloop_settings(struct ev_loop *loop, const struct Config *cfg) {
 
     ev_set_io_collect_interval(loop, cfg->io_collect_interval);
     ev_set_timeout_collect_interval(loop, cfg->timeout_collect_interval);
+}
+
+static void
+mainloop_prepare_cb(struct ev_loop *loop, struct ev_prepare *w __attribute__((unused)), int revents __attribute__((unused))) {
+    if (loop == mainloop_loop)
+        mainloop_cached_now = ev_now(loop);
+}
+
+ev_tstamp
+loop_now(struct ev_loop *loop) {
+    if (loop == mainloop_loop)
+        return mainloop_cached_now;
+    return ev_now(loop);
 }
 
 static void

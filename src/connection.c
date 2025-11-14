@@ -50,6 +50,8 @@
 #include "tls.h"
 #include "fd_util.h"
 
+extern ev_tstamp loop_now(struct ev_loop *);
+
 
 #define IS_TEMPORARY_SOCKERR(_errno) (_errno == EAGAIN || \
                                       _errno == EWOULDBLOCK || \
@@ -259,7 +261,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         return 1;
     }
 
-    ev_tstamp now = ev_now(loop);
+    ev_tstamp now = loop_now(loop);
 
     if (!rate_limit_allow_connection(&con->client.addr, now)) {
         char addrbuf[INET6_ADDRSTRLEN];
@@ -424,7 +426,7 @@ server_socket_open(const struct Connection *con) {
 static void
 connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Connection *con = (struct Connection *)w->data;
-    const ev_tstamp now = ev_now(loop);
+    const ev_tstamp now = loop_now(loop);
     int is_client = &con->client.watcher == w;
     const char *socket_name =
         is_client ? "client" : "server";
@@ -663,7 +665,7 @@ reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstam
 #if defined(DEBUG)
 static void
 reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
-    reset_idle_timer_with_now(con, loop, ev_now(loop));
+    reset_idle_timer_with_now(con, loop, loop_now(loop));
 }
 #endif
 
@@ -1045,7 +1047,7 @@ buffer_shrink_timer_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((u
     if (TAILQ_EMPTY(&connections))
         return;
 
-    shrink_idle_buffers(ev_now(loop), 0);
+    shrink_idle_buffers(loop_now(loop), 0);
 }
 
 static void
@@ -1144,9 +1146,9 @@ shrink_candidate_update(struct Connection *con, struct ev_loop *loop, ev_tstamp 
     ev_tstamp now = now_hint;
     if (now == 0.0) {
         if (loop != NULL)
-            now = ev_now(loop);
+            now = loop_now(loop);
         else if (buffer_shrink_loop != NULL)
-            now = ev_now(buffer_shrink_loop);
+            now = loop_now(buffer_shrink_loop);
         else
             now = ev_time();
     }
@@ -1191,7 +1193,7 @@ connection_memory_apply_pressure(void) {
     if (buffer_shrink_loop == NULL)
         return;
 
-    ev_tstamp now = ev_now(buffer_shrink_loop);
+    ev_tstamp now = loop_now(buffer_shrink_loop);
     if (now == 0.0)
         now = ev_time();
 
