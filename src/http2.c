@@ -535,6 +535,7 @@ decode_header_block(struct hpack_decoder *decoder,
         const unsigned char *data, size_t len,
         struct host_accumulator *hosts) {
     size_t pos = 0;
+    size_t decoded_budget = HTTP2_MAX_HEADER_BLOCK_SIZE;
 
     while (pos < len) {
         unsigned char byte = data[pos];
@@ -582,6 +583,11 @@ decode_header_block(struct hpack_decoder *decoder,
             size_t str_consumed;
             if (hpack_decode_string(data + pos, len - pos, &str_consumed, &name, &name_len) < 0)
                 return -4;
+            if (name_len > decoded_budget) {
+                free(name);
+                return -4;
+            }
+            decoded_budget -= name_len;
             pos += str_consumed;
         } else {
             const char *existing_name;
@@ -590,6 +596,8 @@ decode_header_block(struct hpack_decoder *decoder,
                 return -4;
             if (existing_len > SIZE_MAX - 1)
                 return -4;
+            if (existing_len > decoded_budget)
+                return -4;
 
             name = malloc(existing_len + 1);
             if (name == NULL)
@@ -597,6 +605,7 @@ decode_header_block(struct hpack_decoder *decoder,
             memcpy(name, existing_name, existing_len);
             name[existing_len] = '\0';
             name_len = existing_len;
+            decoded_budget -= name_len;
         }
 
         char *value = NULL;
@@ -606,7 +615,13 @@ decode_header_block(struct hpack_decoder *decoder,
             free(name);
             return -4;
         }
+        if (value_len > decoded_budget) {
+            free(name);
+            free(value);
+            return -4;
+        }
         pos += str_consumed;
+        decoded_budget -= value_len;
 
         if (append_hostname_if_needed(hosts, name, name_len, value, value_len) < 0) {
             free(name);
@@ -1019,4 +1034,3 @@ header_block_free(struct header_block *block) {
     block->len = 0;
     block->stream_id = 0;
 }
-
