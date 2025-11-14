@@ -197,6 +197,7 @@ struct logger_ipc_header;
 static void free_logger(struct Logger *);
 static void init_default_logger(void);
 static void vlog_msg(struct Logger *, int, const char *, va_list);
+static int logger_requires_payload(const struct Logger *);
 static size_t format_log_payload(char *, size_t, const char *, va_list);
 static void free_at_exit(void);
 static int lookup_syslog_facility(const char *);
@@ -515,16 +516,19 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
 
     char buffer[1024];
     size_t payload_len = 0;
-    int have_formatted = 0;
+    int have_payload = 0;
+    const int need_payload = logger_requires_payload(logger);
 
-    va_list args_copy;
-    va_copy(args_copy, args);
-    payload_len = format_log_payload(buffer, sizeof(buffer), format, args_copy);
-    va_end(args_copy);
-    if (payload_len > 0)
-        have_formatted = 1;
+    if (need_payload) {
+        va_list args_copy;
+        va_copy(args_copy, args);
+        payload_len = format_log_payload(buffer, sizeof(buffer), format, args_copy);
+        va_end(args_copy);
+        if (payload_len > 0)
+            have_payload = 1;
+    }
 
-    if (logger_process_enabled && logger->sink != NULL && have_formatted) {
+    if (logger_process_enabled && logger->sink != NULL && have_payload) {
         if (send_logger_log(logger, priority, buffer, payload_len) == 0)
             return;
 
@@ -533,7 +537,7 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
 
     if (logger->sink->type == LOG_SINK_SYSLOG) {
         vsyslog(logger->facility | priority, format, args);
-    } else if (logger->sink->fd != NULL && have_formatted) {
+    } else if (logger->sink->fd != NULL && have_payload) {
         (void)fwrite(buffer, 1, payload_len, logger->sink->fd);
     }
 }
@@ -919,6 +923,16 @@ free_sink(struct LogSink *sink) {
     }
 
     free(sink);
+}
+
+static int
+logger_requires_payload(const struct Logger *logger) {
+    if (logger_process_enabled)
+        return 1;
+    if (logger == NULL || logger->sink == NULL)
+        return 0;
+
+    return logger->sink->type != LOG_SINK_SYSLOG;
 }
 
 static size_t
