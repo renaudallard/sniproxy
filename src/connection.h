@@ -53,6 +53,7 @@ struct Connection {
         struct Buffer *buffer;
     } client, server;
     struct ev_timer idle_timer;
+    struct ev_timer header_timer;
     struct Listener *listener;
     const char *hostname; /* Requested hostname */
     size_t hostname_len;

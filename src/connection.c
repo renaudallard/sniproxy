@@ -64,6 +64,7 @@
 #define SERVER_BUFFER_MAX_SIZE (1U << 20)
 #define BUFFER_SHRINK_IDLE_SECONDS 1.0
 #define CONNECTION_IDLE_TIMEOUT 60.0
+#define CONNECTION_HEADER_TIMEOUT 5.0
 #define CONNECTION_MEMORY_PRESSURE_LIMIT (64U * 1024 * 1024)
 #define CONNECTION_MEMORY_PRESSURE_COOLDOWN 0.25
 
@@ -113,12 +114,15 @@ static int cache_client_local_addr(struct Connection *, int);
 static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(struct resolv_cb_data *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
+static void connection_header_timeout_cb(struct ev_loop *, struct ev_timer *, int);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer_with_now(struct Connection *, struct ev_loop *, ev_tstamp);
 #if defined(DEBUG)
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 #endif
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
+static void start_header_timer(struct Connection *, struct ev_loop *);
+static void stop_header_timer(struct Connection *, struct ev_loop *);
 
 static void buffer_shrink_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static void start_buffer_shrink_timer(struct ev_loop *);
@@ -329,6 +333,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     ev_io_start(loop, client_watcher);
     reset_idle_timer_with_now(con, loop, now);
+    start_header_timer(con, loop);
 
     shrink_candidate_update(con, loop, 0.0);
     return 1;
@@ -703,6 +708,24 @@ stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
         ev_clear_pending(loop, (struct ev_watcher *)&con->idle_timer);
 }
 
+static void
+start_header_timer(struct Connection *con, struct ev_loop *loop) {
+    if (CONNECTION_HEADER_TIMEOUT <= 0.0)
+        return;
+
+    ev_timer_set(&con->header_timer, CONNECTION_HEADER_TIMEOUT, 0.0);
+    if (!ev_is_active(&con->header_timer))
+        ev_timer_start(loop, &con->header_timer);
+}
+
+static void
+stop_header_timer(struct Connection *con, struct ev_loop *loop) {
+    if (ev_is_active(&con->header_timer))
+        ev_timer_stop(loop, &con->header_timer);
+    else if (ev_is_pending((struct ev_watcher *)&con->header_timer))
+        ev_clear_pending(loop, (struct ev_watcher *)&con->header_timer);
+}
+
 static inline double
 rate_limit_bucket_capacity(void) {
     return per_ip_connection_rate_limit <= 1.0 ? 1.0 : per_ip_connection_rate_limit;
@@ -1073,6 +1096,23 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
 }
 
 static void
+connection_header_timeout_cb(struct ev_loop *loop, struct ev_timer *w,
+        int revents __attribute__((unused))) {
+    struct Connection *con = w->data;
+    char client[INET6_ADDRSTRLEN + 8];
+
+    warn("Closing connection from %s after %.0f seconds without initial request data",
+            display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
+            CONNECTION_HEADER_TIMEOUT);
+
+    close_connection(con, loop);
+    TAILQ_REMOVE(&connections, con, entries);
+    connection_account_remove();
+    free_connection(con);
+    maybe_stop_buffer_shrink_timer(loop);
+}
+
+static void
 buffer_shrink_timer_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((unused)),
         int revents __attribute__((unused))) {
     if (TAILQ_EMPTY(&connections))
@@ -1405,6 +1445,8 @@ abort_connection(struct Connection *con) {
 
 static void
 resolve_server_address(struct Connection *con, struct ev_loop *loop) {
+    stop_header_timer(con, loop);
+
     struct LookupResult result =
         listener_lookup_server_address(con->listener, con->hostname, con->hostname_len);
 
@@ -1798,6 +1840,7 @@ close_connection(struct Connection *con, struct ev_loop *loop) {
 
     shrink_candidate_remove(con);
     stop_idle_timer(con, loop);
+    stop_header_timer(con, loop);
 
     if (server_socket_open(con))
         close_server_socket(con, loop);
@@ -1840,6 +1883,8 @@ new_connection(struct ev_loop *loop) {
     con->use_proxy_header = 0;
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
     con->idle_timer.data = con;
+    ev_timer_init(&con->header_timer, connection_header_timeout_cb, 0.0, 0.0);
+    con->header_timer.data = con;
 
     con->client.buffer = new_buffer(CLIENT_BUFFER_INITIAL_SIZE, loop);
     if (con->client.buffer == NULL) {
