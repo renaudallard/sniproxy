@@ -608,7 +608,8 @@ effective_max_connections(const struct Config *cfg) {
 
 static void
 write_pidfile(const char *path, pid_t pid) {
-    int open_flags = O_WRONLY | O_CREAT | O_TRUNC;
+    /* Use O_EXCL to prevent opening existing files (hardlink attack protection) */
+    int open_flags = O_WRONLY | O_CREAT | O_EXCL;
 #ifdef O_CLOEXEC
     open_flags |= O_CLOEXEC;
 #endif
@@ -621,7 +622,11 @@ write_pidfile(const char *path, pid_t pid) {
 
     fd = open(path, open_flags, 0600);
     if (fd < 0) {
-        perror("open");
+        if (errno == EEXIST) {
+            fprintf(stderr, "PID file %s already exists (possible race or stale file)\n", path);
+        } else {
+            perror("open");
+        }
         return;
     }
 
