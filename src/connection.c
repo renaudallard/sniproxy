@@ -1948,9 +1948,16 @@ new_connection(struct ev_loop *loop) {
 
 static void
 log_connection(struct Connection *con) {
-    ev_tstamp duration = MAX(con->client.buffer->last_recv,
-                             con->server.buffer->last_recv) -
-                         con->established_timestamp;
+    ev_tstamp last_activity = MAX(con->client.buffer->last_recv,
+                                   con->server.buffer->last_recv);
+    ev_tstamp duration = last_activity - con->established_timestamp;
+
+    /* Guard against negative duration due to system time adjustments
+     * (NTP sync, manual time change, or clock drift). Clamp to 0.0. */
+    if (duration < 0.0) {
+        duration = 0.0;
+    }
+
     char client_address[ADDRESS_BUFFER_SIZE];
     char listener_address[ADDRESS_BUFFER_SIZE];
     char server_address[ADDRESS_BUFFER_SIZE];
