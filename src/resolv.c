@@ -552,25 +552,38 @@ resolv_cancel(struct ResolvQuery *handle) {
 
     int send_cancel = 0;
     uint32_t cancel_id = 0;
+    int found = 0;
 
     pthread_mutex_lock(&resolver_queries_lock);
-    struct ResolvQuery **iter = &pending->clients;
-    while (*iter != NULL && *iter != handle)
-        iter = &(*iter)->next_client;
 
-    if (*iter == handle) {
-        *iter = handle->next_client;
-        if (pending->clients == NULL) {
-            resolver_remove_pending(pending);
-            send_cancel = 1;
-            cancel_id = pending->id;
+    /* Check if the clients list has already been detached by
+     * resolver_take_query(). If so, the result is being processed
+     * and our handle will be freed by resolver_handle_result(). */
+    if (pending->clients != NULL) {
+        struct ResolvQuery **iter = &pending->clients;
+        while (*iter != NULL && *iter != handle)
+            iter = &(*iter)->next_client;
+
+        if (*iter == handle) {
+            found = 1;
+            *iter = handle->next_client;
+            if (pending->clients == NULL) {
+                resolver_remove_pending(pending);
+                send_cancel = 1;
+                cancel_id = pending->id;
+            }
         }
     }
     pthread_mutex_unlock(&resolver_queries_lock);
 
-    if (handle->client_free_cb != NULL)
-        handle->client_free_cb(handle->client_cb_data);
-    free(handle);
+    /* Only free our handle if we successfully removed it from the list.
+     * If pending->clients was NULL, the handle is owned by
+     * resolver_handle_result() and will be freed there. */
+    if (found) {
+        if (handle->client_free_cb != NULL)
+            handle->client_free_cb(handle->client_cb_data);
+        free(handle);
+    }
 
     if (send_cancel) {
         resolver_send_message(RESOLVER_CMD_CANCEL, cancel_id, NULL, 0);
@@ -743,6 +756,12 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
     if (pending == NULL)
         return;
 
+    /* Extract the detached clients list from temporary storage.
+     * resolver_take_query() stored it in next_id to safely transfer
+     * ownership of the list to us without holding the mutex. */
+    struct ResolvQuery *clients = (struct ResolvQuery *)pending->next_id;
+    pending->next_id = NULL;
+
     int32_t status = -1;
     struct Address *address = NULL;
 
@@ -776,7 +795,14 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
         address = NULL;
     }
 
-    struct ResolvQuery *client = pending->clients;
+    /* Process the detached clients list. This is now safe from concurrent
+     * modification by resolv_cancel() because:
+     * 1. The pending is no longer in the hash tables (removed by resolver_take_query)
+     * 2. pending->clients was set to NULL atomically while holding the mutex
+     * 3. We're iterating our private copy of the list
+     * Any concurrent resolv_cancel() will find pending->clients == NULL and
+     * will not attempt to modify this list. */
+    struct ResolvQuery *client = clients;
     while (client != NULL) {
         struct ResolvQuery *next_client = client->next_client;
         if (client->client_cb != NULL)
@@ -847,9 +873,16 @@ resolver_take_query(uint32_t id) {
                 host_iter = &(*host_iter)->next_host;
             }
 
-            pthread_mutex_unlock(&resolver_queries_lock);
-            found->next_id = NULL;
+            /* Atomically detach the clients list to prevent concurrent
+             * modification by resolv_cancel(). We temporarily store the
+             * clients list in next_id field (which we're clearing anyway)
+             * so the caller can retrieve it safely. This prevents use-after-free
+             * if a client calls resolv_cancel() while we process callbacks. */
+            found->next_id = (struct ResolverPending *)found->clients;
             found->next_host = NULL;
+            found->clients = NULL;
+
+            pthread_mutex_unlock(&resolver_queries_lock);
             return found;
         }
         iter = &(*iter)->next_id;
