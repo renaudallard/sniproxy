@@ -238,7 +238,9 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     if (sockfd < 0) {
         int saved_errno = errno;
 
-        if (!IS_TEMPORARY_SOCKERR(saved_errno))
+        if (saved_errno == EMFILE || saved_errno == ENFILE)
+            warn("accept failed (%s); hitting fd limit", strerror(saved_errno));
+        else if (!IS_TEMPORARY_SOCKERR(saved_errno))
             warn("accept failed: %s", strerror(saved_errno));
 
         free_connection(con);
