@@ -1824,12 +1824,22 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         warn("close failed: %s", strerror(errno));
 
     if (con->state == RESOLVING) {
+        /* Invariant: query_handle and dns_query_acquired should be consistent.
+         * If dns_query_acquired is set, query_handle should be non-NULL. */
+        assert(con->query_handle != NULL || !con->dns_query_acquired);
+
         if (con->query_handle != NULL) {
             resolv_cancel(con->query_handle);
+            con->query_handle = NULL;
+        }
+
+        /* Release DNS query slot if acquired, regardless of query_handle state
+         * for defense-in-depth (handles any inconsistent state gracefully) */
+        if (con->dns_query_acquired) {
             dns_query_release();
             con->dns_query_acquired = 0;
         }
-        con->query_handle = NULL;
+
         con->state = PARSED;
     }
 
