@@ -320,6 +320,9 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         return 1;
     }
 
+    if (cache_client_local_addr(con, sockfd) != 0)
+        warn("getsockname failed on accepted socket: %s", strerror(errno));
+
     /* Avoiding type-punned pointer warning */
     struct ev_io *client_watcher = &con->client.watcher;
     ev_io_init(client_watcher, connection_cb, sockfd, EV_READ);
