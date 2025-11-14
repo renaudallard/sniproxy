@@ -72,6 +72,7 @@ static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
 static int accept_pidfile(struct Config *, const char *);
 static int accept_per_ip_connection_rate(struct Config *, const char *);
+static int accept_max_connections(struct Config *, const char *);
 static int accept_io_collect_interval(struct Config *, const char *);
 static int accept_timeout_collect_interval(struct Config *, const char *);
 static int accept_connection_buffer_limit(struct Config *, const char *);
@@ -259,6 +260,10 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_per_ip_connection_rate,
     },
     {
+        .keyword="max_connections",
+        .parse_arg=(int(*)(void *, const char *))accept_max_connections,
+    },
+    {
         .keyword="io_collect_interval",
         .parse_arg=(int(*)(void *, const char *))accept_io_collect_interval,
     },
@@ -348,6 +353,7 @@ init_config(const char *filename, struct ev_loop *loop) {
     config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
+    config->max_connections = DEFAULT_MAX_CONNECTIONS;
 
     SLIST_INIT(&config->listeners);
     SLIST_INIT(&config->tables);
@@ -441,6 +447,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->per_ip_connection_rate = new_config->per_ip_connection_rate;
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
 
+    config->max_connections = new_config->max_connections;
+    connections_set_global_limit(config->max_connections);
+
     config->io_collect_interval = new_config->io_collect_interval;
     config->timeout_collect_interval = new_config->timeout_collect_interval;
 
@@ -470,6 +479,9 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->per_ip_connection_rate > 0.0)
         fprintf(file, "per_ip_connection_rate %.3f\n\n", config->per_ip_connection_rate);
+
+    if (config->max_connections > 0)
+        fprintf(file, "max_connections %zu\n\n", config->max_connections);
 
     if (config->io_collect_interval > 0.0)
         fprintf(file, "io_collect_interval %.6f\n\n", config->io_collect_interval);
@@ -856,6 +868,29 @@ accept_per_ip_connection_rate(struct Config *config, const char *value) {
 
     config->per_ip_connection_rate = rate;
 
+    return 1;
+}
+
+static int
+accept_max_connections(struct Config *config, const char *value) {
+    if (value == NULL)
+        return 0;
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long long limit = strtoull(value, &end, 10);
+    if (errno != 0 || end == value || (end != NULL && *end != '\0')) {
+        err("Unable to parse max_connections '%s'", value);
+        return 0;
+    }
+
+    if (limit > SIZE_MAX) {
+        warn("max_connections %llu exceeds platform limit, clamping to %zu",
+                limit, SIZE_MAX);
+        limit = SIZE_MAX;
+    }
+
+    config->max_connections = (size_t)limit;
     return 1;
 }
 

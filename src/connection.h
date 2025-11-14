@@ -82,5 +82,6 @@ size_t connections_peak_count(void);
 void connections_set_per_ip_connection_rate(double rate);
 void connections_set_dns_query_limit(size_t limit);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
+void connections_set_global_limit(size_t limit);
 
 #endif

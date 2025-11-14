@@ -385,6 +385,7 @@ main(int argc, char **argv) {
     set_limits(max_nofiles);
 
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
+    connections_set_global_limit(config->max_connections);
 
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
     connections_set_buffer_limits(config->client_buffer_limit,

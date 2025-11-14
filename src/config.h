@@ -29,6 +29,7 @@
 #include <stddef.h>
 #define DEFAULT_CLIENT_BUFFER_LIMIT (1U << 20)
 #define DEFAULT_SERVER_BUFFER_LIMIT (1U << 20)
+#define DEFAULT_MAX_CONNECTIONS 10000
 #define MIN_CONNECTION_BUFFER_LIMIT (8U * 1024)
 #define MAX_CONNECTION_BUFFER_LIMIT (1024U * 1024 * 1024U)
 
@@ -54,6 +55,7 @@ struct Config {
     } resolver;
     struct Logger *access_log;
     double per_ip_connection_rate;
+    size_t max_connections;
     double io_collect_interval;
     double timeout_collect_interval;
     size_t client_buffer_limit;

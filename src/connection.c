@@ -158,6 +158,8 @@ static size_t connection_memory_in_use;
 static size_t connection_memory_peak;
 static size_t connection_active_count;
 static size_t connection_peak_count;
+static size_t max_global_connections;
+static ev_tstamp max_connections_log_throttle;
 
 static void connection_memory_adjust(ssize_t delta);
 static void buffer_memory_observer(ssize_t delta);
@@ -294,6 +296,21 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
 
         info("Per-IP connection rate exceeded for %s", ip != NULL ? ip : "(unknown)");
+        close(sockfd);
+        free_connection(con);
+        return 1;
+    }
+
+    if (max_global_connections > 0 &&
+            connection_active_count >= max_global_connections) {
+        if (now - max_connections_log_throttle >= 1.0) {
+            char addrbuf[INET6_ADDRSTRLEN];
+            const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
+            notice("Maximum global connections (%zu) reached; dropping %s",
+                    max_global_connections,
+                    ip != NULL ? ip : "(unknown)");
+            max_connections_log_throttle = now;
+        }
         close(sockfd);
         free_connection(con);
         return 1;
@@ -972,6 +989,11 @@ connections_set_buffer_limits(size_t client_limit, size_t server_limit) {
             buffer_set_max_size(con->server.buffer, server_buffer_max_size);
         }
     }
+}
+
+void
+connections_set_global_limit(size_t limit) {
+    max_global_connections = limit;
 }
 
 static void
