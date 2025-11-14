@@ -39,6 +39,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <sys/time.h>
 #include <ev.h>
 #include <assert.h>
 #include <sys/stat.h>
@@ -156,6 +157,7 @@ static size_t rate_limit_free_count;
 #define RATE_LIMIT_MAX_FREE 8192
 static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
+static uint32_t rate_limit_hash_seed;
 
 static size_t connection_memory_in_use;
 static size_t connection_memory_peak;
@@ -807,16 +809,26 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
             uint32_t value = ntohl(in->sin_addr.s_addr);
             if (out_v4 != NULL)
                 *out_v4 = value;
+            /* Mix with random seed to prevent hash prediction attacks */
+            value ^= rate_limit_hash_seed;
             value ^= value >> 16;
+            value *= 0x85ebca6b;
+            value ^= value >> 13;
             return value;
         }
         case AF_INET6: {
             const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
             uint32_t words[4];
             memcpy(words, &in6->sin6_addr, sizeof(words));
-            uint32_t value = words[0] ^ words[1] ^ words[2] ^ words[3];
-            value ^= in6->sin6_scope_id;
-            return value;
+            /* Use FNV-1a hash with random seed to prevent collision attacks */
+            uint32_t hash = 2166136261u ^ rate_limit_hash_seed;
+            for (int i = 0; i < 4; i++) {
+                hash ^= words[i];
+                hash *= 16777619u;
+            }
+            hash ^= in6->sin6_scope_id;
+            hash *= 16777619u;
+            return hash;
         }
         default:
             return 0;
@@ -964,6 +976,24 @@ connections_set_per_ip_connection_rate(double rate) {
         rate = 0.0;
 
     per_ip_connection_rate_limit = rate;
+
+    /* Initialize hash seed once with cryptographically secure random value */
+    if (rate_limit_hash_seed == 0) {
+#if defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
+        rate_limit_hash_seed = arc4random();
+#else
+        /* Fallback to time-based seed (less secure but better than nothing) */
+        struct timeval tv;
+        if (gettimeofday(&tv, NULL) == 0) {
+            rate_limit_hash_seed = (uint32_t)(tv.tv_sec ^ tv.tv_usec ^ getpid());
+        } else {
+            rate_limit_hash_seed = (uint32_t)getpid();
+        }
+#endif
+        if (rate_limit_hash_seed == 0)
+            rate_limit_hash_seed = 0xdeadbeef;
+    }
+
     rate_limit_reset();
 }
 
