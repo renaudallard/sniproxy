@@ -418,7 +418,12 @@ resolv_shutdown(struct ev_loop *loop) {
         resolver_pid = -1;
     }
 
-    if (resolver_restart_in_progress) {
+    /* Protect restart flag check with mutex to prevent race conditions */
+    pthread_mutex_lock(&resolver_restart_lock);
+    int restarting = resolver_restart_in_progress;
+    pthread_mutex_unlock(&resolver_restart_lock);
+
+    if (restarting) {
         if (resolver_pending_restart_list != NULL)
             resolver_free_pending_list(resolver_pending_restart_list, 1);
         resolver_pending_restart_list = resolver_detach_pending_queries();
