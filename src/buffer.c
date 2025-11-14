@@ -37,6 +37,7 @@
 #include <stdint.h>
 #include <ev.h>
 #include "buffer.h"
+#include "logger.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define NOT_POWER_OF_2(x) (x == 0 || (x & (x - 1)))
@@ -71,6 +72,15 @@ static void buffer_release_storage(int from_pool, size_t size, char *ptr);
 
 static void (*buffer_memory_observer)(ssize_t delta);
 
+/* Magic number for validating buffer pool free list integrity */
+#define BUFFER_POOL_MAGIC 0xBEEF5AFE
+
+/* Structure stored at the head of freed buffer pool blocks */
+struct BufferPoolNode {
+    uint32_t magic;
+    void *next;
+};
+
 static void *
 buffer_pool_acquire(size_t size, int *pooled) {
     if (pooled != NULL)
@@ -81,8 +91,19 @@ buffer_pool_acquire(size_t size, int *pooled) {
         if (cls->size != size || cls->head == NULL)
             continue;
 
+        /* Validate magic number before dereferencing to prevent type confusion */
+        struct BufferPoolNode *node = (struct BufferPoolNode *)cls->head;
+        if (node->magic != BUFFER_POOL_MAGIC) {
+            err("Buffer pool corruption detected: invalid magic 0x%x (expected 0x%x)",
+                node->magic, BUFFER_POOL_MAGIC);
+            /* Skip this corrupted entry and try to continue */
+            cls->head = NULL;
+            cls->cached = 0;
+            continue;
+        }
+
         void *mem = cls->head;
-        void *next = *(void **)mem;
+        void *next = node->next;
         cls->head = next;
         if (cls->cached > 0)
             cls->cached--;
@@ -107,8 +128,18 @@ buffer_pool_release(size_t size, void *ptr) {
         if (cls->cached >= cls->max_cached)
             return 0;
 
+        /* Ensure buffer is large enough to hold BufferPoolNode structure */
+        if (size < sizeof(struct BufferPoolNode)) {
+            err("Buffer size %zu too small for pool node (need %zu)",
+                size, sizeof(struct BufferPoolNode));
+            return 0;
+        }
+
         memset(ptr, 0, size);
-        *(void **)ptr = cls->head;
+        /* Store magic number and next pointer for validation */
+        struct BufferPoolNode *node = (struct BufferPoolNode *)ptr;
+        node->magic = BUFFER_POOL_MAGIC;
+        node->next = cls->head;
         cls->head = ptr;
         cls->cached++;
         return 1;
