@@ -49,7 +49,6 @@
 #include "logger.h"
 #include "tls.h"
 #include "fd_util.h"
-#include "loop_time.h"
 
 
 #define IS_TEMPORARY_SOCKERR(_errno) (_errno == EAGAIN || \
@@ -182,26 +181,8 @@ static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, s
 static int dns_query_acquire(void);
 static void dns_query_release(void);
 
-static struct ev_loop *loop_time_mainloop;
-static ev_tstamp loop_time_cached_now;
-
-void
-loop_time_set_loop(struct ev_loop *loop) {
-    loop_time_mainloop = loop;
-    loop_time_cached_now = loop != NULL ? ev_now(loop) : 0.0;
-}
-
-void
-loop_time_update(struct ev_loop *loop) {
-    if (loop == loop_time_mainloop)
-        loop_time_cached_now = ev_now(loop);
-}
-
-ev_tstamp
+static ev_tstamp
 loop_now(struct ev_loop *loop) {
-    if (loop == loop_time_mainloop)
-        return loop_time_cached_now;
-
     if (loop != NULL)
         return ev_now(loop);
 

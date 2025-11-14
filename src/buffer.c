@@ -37,7 +37,6 @@
 #include <stdint.h>
 #include <ev.h>
 #include "buffer.h"
-#include "loop_time.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define NOT_POWER_OF_2(x) (x == 0 || (x & (x - 1)))
@@ -165,7 +164,7 @@ new_buffer(size_t size, struct ev_loop *loop) {
     buf->max_size = BUFFER_MAX_SIZE;
     buf->tx_bytes = 0;
     buf->rx_bytes = 0;
-    const ev_tstamp now = loop_now(loop);
+    const ev_tstamp now = ev_now(loop);
     buf->last_recv = now;
     buf->last_send = now;
     int from_pool = 0;
@@ -378,7 +377,7 @@ buffer_recv(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) 
 
     ssize_t bytes = recvmsg(sockfd, &msg, flags);
 
-    buffer->last_recv = loop_now(loop);
+    buffer->last_recv = ev_now(loop);
 
     if (bytes > 0)
         advance_write_position(buffer, (size_t)bytes);
@@ -396,7 +395,7 @@ buffer_send(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) 
 
     ssize_t bytes = sendmsg(sockfd, &msg, flags);
 
-    buffer->last_send = loop_now(loop);
+    buffer->last_send = ev_now(loop);
 
     if (bytes > 0)
         advance_read_position(buffer, (size_t)bytes);

@@ -59,7 +59,6 @@
 #include "logger.h"
 #include "ipc_crypto.h"
 #include "tls.h"
-#include "loop_time.h"
 
 
 static void usage(void);
@@ -71,7 +70,6 @@ static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
-static void mainloop_prepare_cb(struct ev_loop *, struct ev_prepare *, int);
 static size_t effective_max_connections(const struct Config *);
 
 #ifdef __OpenBSD__
@@ -92,9 +90,7 @@ static void openbsd_unveil_address(const struct Address *address,
 static const char *sniproxy_version = PACKAGE_VERSION;
 static const char *default_username = "daemon";
 static struct Config *config;
-static struct ev_loop *mainloop_loop;
 static rlim_t configured_fd_limit;
-static struct ev_prepare mainloop_prepare_watcher;
 static struct ev_signal sighup_watcher;
 static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
@@ -317,9 +313,6 @@ main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    mainloop_loop = loop;
-    loop_time_set_loop(loop);
-
     config = init_config(config_file, loop);
     if (config == NULL) {
         fprintf(stderr, "Unable to load %s\n", config_file);
@@ -423,8 +416,6 @@ main(int argc, char **argv) {
     }
 #endif
 
-    ev_prepare_init(&mainloop_prepare_watcher, mainloop_prepare_cb);
-    ev_prepare_start(loop, &mainloop_prepare_watcher);
     ev_signal_init(&sighup_watcher, signal_cb, SIGHUP);
     ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
     ev_signal_init(&sigint_watcher, signal_cb, SIGINT);
@@ -594,12 +585,6 @@ apply_mainloop_settings(struct ev_loop *loop, const struct Config *cfg) {
 
     ev_set_io_collect_interval(loop, cfg->io_collect_interval);
     ev_set_timeout_collect_interval(loop, cfg->timeout_collect_interval);
-}
-
-static void
-mainloop_prepare_cb(struct ev_loop *loop, struct ev_prepare *w __attribute__((unused)), int revents __attribute__((unused))) {
-    if (loop == mainloop_loop)
-        loop_time_update(loop);
 }
 
 static size_t

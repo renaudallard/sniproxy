@@ -38,8 +38,7 @@ sniproxy_common_sources = address.c \
                           table.c \
                           table.h \
                           tls.c \
-                          tls.h \
-                          loop_time.h
+                          tls.h
 
 sniproxy_SOURCES = sniproxy.c \
                    $(sniproxy_common_sources)
