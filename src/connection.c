@@ -896,16 +896,16 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         chain_length++;
 
         /* Protect against hash collision DoS: limit chain depth.
-         * If chain is too long, allow the connection but log a warning. */
+         * If chain is too long, reject the connection to prevent bypass of rate limiting. */
         if (chain_length > RATE_LIMIT_MAX_CHAIN_LENGTH) {
             static ev_tstamp last_warning = 0.0;
             /* Throttle warnings to once per minute */
             if (now - last_warning > 60.0) {
-                warn("Rate limit hash collision detected: chain length %zu exceeds maximum %d (bucket %zu)",
+                warn("Rate limit hash collision detected: chain length %zu exceeds maximum %d (bucket %zu) - rejecting connection",
                      chain_length, RATE_LIMIT_MAX_CHAIN_LENGTH, bucket_index);
                 last_warning = now;
             }
-            return 1;  /* Allow connection, skip rate limiting for this IP */
+            return 0;  /* Reject connection to prevent rate limit bypass */
         }
 
         if (bucket->addr_hash == hash) {
