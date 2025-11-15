@@ -703,7 +703,8 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         uint8_t *plain = NULL;
         size_t plain_len = 0;
-        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len, &plain, &plain_len) < 0)
+        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len,
+                    RESOLVER_IPC_MAX_PAYLOAD, &plain, &plain_len) < 0)
             continue;
 
         resolver_process_datagram(plain, (ssize_t)plain_len);
@@ -1345,7 +1346,8 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         uint8_t *plain = NULL;
         size_t plain_len = 0;
-        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len, &plain, &plain_len) < 0)
+        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len,
+                    RESOLVER_IPC_MAX_PAYLOAD, &plain, &plain_len) < 0)
             continue;
 
         if (plain_len < sizeof(struct resolver_ipc_header)) {

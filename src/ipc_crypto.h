@@ -63,7 +63,8 @@ int ipc_crypto_channel_set_role(struct ipc_crypto_state *state,
 int ipc_crypto_seal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         size_t plaintext_len, uint8_t **frame, size_t *frame_len);
 int ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
-        size_t frame_len, uint8_t **plaintext, size_t *plaintext_len);
+        size_t frame_len, size_t max_payload_len, uint8_t **plaintext,
+        size_t *plaintext_len);
 int ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
         const void *payload, size_t payload_len, int fd_to_send);
 int ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,

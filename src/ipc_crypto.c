@@ -425,7 +425,8 @@ ipc_crypto_seal(struct ipc_crypto_state *state, const uint8_t *plaintext,
 
 int
 ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
-        size_t frame_len, uint8_t **plaintext, size_t *plaintext_len) {
+        size_t frame_len, size_t max_payload_len, uint8_t **plaintext,
+        size_t *plaintext_len) {
     if (state == NULL || frame == NULL || plaintext == NULL || plaintext_len == NULL)
         return -1;
 
@@ -445,7 +446,8 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     uint32_t payload_len = ntohl(header.length);
 
-    if (payload_len > UINT32_MAX)
+    /* Validate payload_len against maximum before allocation (defense-in-depth) */
+    if (payload_len > max_payload_len)
         return -1;
 
     size_t expected = IPC_CRYPTO_HEADER_LEN + payload_len + IPC_CRYPTO_TAG_LEN;
@@ -637,7 +639,8 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
     else if (fd_received >= 0)
         close(fd_received);
 
-    if (ipc_crypto_open(state, cipher, frame_len, plaintext, plaintext_len) < 0) {
+    if (ipc_crypto_open(state, cipher, frame_len, max_payload_len,
+                plaintext, plaintext_len) < 0) {
         free(cipher);
         if (received_fd != NULL && fd_received >= 0) {
             close(fd_received);
