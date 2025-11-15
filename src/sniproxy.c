@@ -639,9 +639,35 @@ write_pidfile(const char *path, pid_t pid) {
         return;
     }
 
+    /* Validate file type and attributes for security */
     if (!S_ISREG(st.st_mode)) {
+        fprintf(stderr, "PID file is not a regular file\n");
         errno = EINVAL;
-        perror("write_pidfile");
+        close(fd);
+        return;
+    }
+
+    /* Defense-in-depth: verify file was just created and we own it */
+    if (st.st_nlink != 1) {
+        fprintf(stderr, "PID file has unexpected link count: %lu\n",
+                (unsigned long)st.st_nlink);
+        errno = EINVAL;
+        close(fd);
+        return;
+    }
+
+    if (st.st_uid != getuid()) {
+        fprintf(stderr, "PID file owned by unexpected UID: %u (expected %u)\n",
+                (unsigned int)st.st_uid, (unsigned int)getuid());
+        errno = EPERM;
+        close(fd);
+        return;
+    }
+
+    if (st.st_size != 0) {
+        fprintf(stderr, "PID file has unexpected size: %lld\n",
+                (long long)st.st_size);
+        errno = EINVAL;
         close(fd);
         return;
     }
