@@ -39,7 +39,7 @@
 #include <unistd.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-#include <openssl/sha.h>
+#include <openssl/kdf.h>
 #include "ipc_crypto.h"
 
 static uint64_t host_to_be64(uint64_t host) {
@@ -60,45 +60,79 @@ static uint64_t host_to_be64(uint64_t host) {
  * exhaustion and nonce reuse. */
 #define IPC_CRYPTO_REKEY_THRESHOLD ((uint64_t)1 << 63)
 
+/* HKDF-SHA256 key derivation function.
+ * This replaces raw SHA256 hashing with proper HKDF as per RFC 5869.
+ * salt: optional salt value (can be NULL)
+ * salt_len: length of salt (0 if salt is NULL)
+ * ikm: input key material
+ * ikm_len: length of input key material
+ * info: optional context/application specific info (can be NULL)
+ * info_len: length of info (0 if info is NULL)
+ * out: output buffer (must be 32 bytes for SHA256)
+ */
 static int
-sha256_digest(const unsigned char *parts[], const size_t lens[], size_t count, uint8_t out[32]) {
-    if (parts == NULL || lens == NULL || count == 0 || out == NULL)
-        return -1;
-
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (ctx == NULL)
+hkdf_sha256(const uint8_t *salt, size_t salt_len,
+        const uint8_t *ikm, size_t ikm_len,
+        const uint8_t *info, size_t info_len,
+        uint8_t out[32]) {
+    if (ikm == NULL || ikm_len == 0 || out == NULL)
         return -1;
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    EVP_MD *md = EVP_MD_fetch(NULL, "SHA256", NULL);
-    const EVP_MD *sha256 = md != NULL ? md : EVP_sha256();
+    /* OpenSSL 3.0+ uses EVP_KDF */
+    EVP_KDF *kdf = EVP_KDF_fetch(NULL, "HKDF", NULL);
+    if (kdf == NULL)
+        return -1;
+
+    EVP_KDF_CTX *kctx = EVP_KDF_CTX_new(kdf);
+    EVP_KDF_free(kdf);
+    if (kctx == NULL)
+        return -1;
+
+    OSSL_PARAM params[5];
+    int p = 0;
+    params[p++] = OSSL_PARAM_construct_utf8_string("digest", "SHA256", 0);
+    params[p++] = OSSL_PARAM_construct_octet_string("key", (void *)ikm, ikm_len);
+    if (salt != NULL && salt_len > 0)
+        params[p++] = OSSL_PARAM_construct_octet_string("salt", (void *)salt, salt_len);
+    if (info != NULL && info_len > 0)
+        params[p++] = OSSL_PARAM_construct_octet_string("info", (void *)info, info_len);
+    params[p] = OSSL_PARAM_construct_end();
+
+    int ok = EVP_KDF_derive(kctx, out, 32, params) == 1 ? 0 : -1;
+    EVP_KDF_CTX_free(kctx);
+    return ok;
 #else
-    const EVP_MD *sha256 = EVP_sha256();
-#endif
+    /* OpenSSL 1.1.0+ uses EVP_PKEY_derive with HKDF */
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, NULL);
+    if (pctx == NULL)
+        return -1;
+
     int ok = 0;
+    do {
+        if (EVP_PKEY_derive_init(pctx) != 1)
+            break;
+        if (EVP_PKEY_CTX_set_hkdf_md(pctx, EVP_sha256()) != 1)
+            break;
+        if (EVP_PKEY_CTX_set1_hkdf_key(pctx, ikm, (int)ikm_len) != 1)
+            break;
+        if (salt != NULL && salt_len > 0) {
+            if (EVP_PKEY_CTX_set1_hkdf_salt(pctx, salt, (int)salt_len) != 1)
+                break;
+        }
+        if (info != NULL && info_len > 0) {
+            if (EVP_PKEY_CTX_add1_hkdf_info(pctx, info, (int)info_len) != 1)
+                break;
+        }
+        size_t outlen = 32;
+        if (EVP_PKEY_derive(pctx, out, &outlen) != 1 || outlen != 32)
+            break;
+        ok = 1;
+    } while (0);
 
-    if (EVP_DigestInit_ex(ctx, sha256, NULL) != 1)
-        goto done;
-
-    for (size_t i = 0; i < count; i++) {
-        if (parts[i] == NULL || lens[i] == 0)
-            continue;
-        if (EVP_DigestUpdate(ctx, parts[i], lens[i]) != 1)
-            goto done;
-    }
-
-    if (EVP_DigestFinal_ex(ctx, out, NULL) != 1)
-        goto done;
-
-    ok = 1;
-
- done:
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    if (md != NULL)
-        EVP_MD_free(md);
-#endif
-    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_CTX_free(pctx);
     return ok ? 0 : -1;
+#endif
 }
 
 static uint8_t ipc_crypto_master_key[32];
@@ -133,9 +167,9 @@ ipc_crypto_master_cleanup(void) {
 static int
 derive_key(const uint8_t *base, size_t base_len,
         const char *label, uint8_t out[32]) {
-    const unsigned char *parts[] = { base, (const unsigned char *)label };
-    size_t lens[] = { base_len, label != NULL ? strlen(label) : 0 };
-    return sha256_digest(parts, lens, sizeof(parts) / sizeof(parts[0]), out);
+    /* Use HKDF with base key as IKM and label as info for domain separation */
+    return hkdf_sha256(NULL, 0, base, base_len,
+            (const uint8_t *)label, label != NULL ? strlen(label) : 0, out);
 }
 
 int
@@ -169,19 +203,32 @@ derive_base_key(uint32_t channel_id, uint8_t out[32]) {
     uint32_t value = htonl(channel_id);
     memcpy(channel_be, &value, sizeof(channel_be));
 
-    const unsigned char *parts[] = { ipc_crypto_master_key, channel_be };
-    size_t lens[] = { sizeof(ipc_crypto_master_key), sizeof(channel_be) };
-    return sha256_digest(parts, lens, sizeof(parts) / sizeof(parts[0]), out);
+    /* Use HKDF with master key as IKM and channel ID as salt for domain separation */
+    return hkdf_sha256(channel_be, sizeof(channel_be),
+            ipc_crypto_master_key, sizeof(ipc_crypto_master_key),
+            NULL, 0, out);
 }
 
 static int
 derive_rekey_key(const uint8_t *base_key, uint32_t generation,
         const char *label, uint8_t out[32]) {
+    /* Construct info parameter: "REKEY" || generation || label */
     uint32_t gen_be = htonl(generation);
-    const unsigned char *parts[] = { base_key, (const unsigned char *)"REKEY",
-            (const unsigned char *)&gen_be, (const unsigned char *)label };
-    size_t lens[] = { 32, 5, sizeof(gen_be), label != NULL ? strlen(label) : 0 };
-    return sha256_digest(parts, lens, sizeof(parts) / sizeof(parts[0]), out);
+    size_t label_len = label != NULL ? strlen(label) : 0;
+    size_t info_len = 5 + sizeof(gen_be) + label_len;
+    uint8_t *info = malloc(info_len);
+    if (info == NULL)
+        return -1;
+
+    memcpy(info, "REKEY", 5);
+    memcpy(info + 5, &gen_be, sizeof(gen_be));
+    if (label_len > 0)
+        memcpy(info + 5 + sizeof(gen_be), label, label_len);
+
+    /* Use HKDF with base key as IKM and combined info for domain separation */
+    int ret = hkdf_sha256(NULL, 0, base_key, 32, info, info_len, out);
+    free(info);
+    return ret;
 }
 
 static int

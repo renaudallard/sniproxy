@@ -48,7 +48,7 @@ static void test_rekey_at_threshold(void) {
     uint8_t *plaintext = NULL;
     size_t plaintext_len = 0;
 
-    assert(ipc_crypto_open(&child_state, frame, frame_len, &plaintext, &plaintext_len) == 0);
+    assert(ipc_crypto_open(&child_state, frame, frame_len, 1024, &plaintext, &plaintext_len) == 0);
     assert(plaintext_len == sizeof(test_msg));
     assert(memcmp(plaintext, test_msg, sizeof(test_msg)) == 0);
     assert(child_state.recv_generation == 1); /* Recv side rekeyed */
@@ -110,7 +110,7 @@ static void test_normal_operation(void) {
         uint8_t *plaintext = NULL;
         size_t plaintext_len = 0;
 
-        assert(ipc_crypto_open(&child_state, frame, frame_len, &plaintext, &plaintext_len) == 0);
+        assert(ipc_crypto_open(&child_state, frame, frame_len, 1024, &plaintext, &plaintext_len) == 0);
         assert(plaintext_len == sizeof(test_msg));
         assert(memcmp(plaintext, test_msg, sizeof(test_msg)) == 0);
 

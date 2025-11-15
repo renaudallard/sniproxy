@@ -56,7 +56,7 @@ int main(void) {
     size_t plaintext_len = 0;
 
     printf("Opening message (should trigger recv rekey)...\n");
-    int result = ipc_crypto_open(&child_state, frame, frame_len, &plaintext, &plaintext_len);
+    int result = ipc_crypto_open(&child_state, frame, frame_len, 1024, &plaintext, &plaintext_len);
 
     printf("After child open (result=%d):\n", result);
     print_key("Child recv_key ", child_state.recv_key, 32);
