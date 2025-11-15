@@ -29,6 +29,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 enum ipc_crypto_role {
     IPC_CRYPTO_ROLE_PARENT = 0,
@@ -52,6 +53,8 @@ struct ipc_crypto_state {
     uint64_t recv_counter;
     uint32_t send_generation;
     uint32_t recv_generation;
+    time_t send_key_timestamp;   /* Time when send_key was last derived */
+    time_t recv_key_timestamp;   /* Time when recv_key was last derived */
     enum ipc_crypto_role role;
 };
 

@@ -60,6 +60,11 @@ static uint64_t host_to_be64(uint64_t host) {
  * exhaustion and nonce reuse. */
 #define IPC_CRYPTO_REKEY_THRESHOLD ((uint64_t)1 << 63)
 
+/* Time-based rekey interval: rotate keys every week (7 days).
+ * This provides defense-in-depth by limiting key lifetime even if
+ * the counter threshold is never reached. */
+#define IPC_CRYPTO_REKEY_INTERVAL (7 * 24 * 60 * 60)  /* 7 days in seconds */
+
 /* HKDF-SHA256 key derivation function.
  * This replaces raw SHA256 hashing with proper HKDF as per RFC 5869.
  * salt: optional salt value (can be NULL)
@@ -259,6 +264,8 @@ ipc_crypto_set_directional_keys(struct ipc_crypto_state *state,
     state->recv_counter = 0;
     state->send_generation = 0;
     state->recv_generation = 0;
+    state->send_key_timestamp = time(NULL);
+    state->recv_key_timestamp = time(NULL);
 
     return 0;
 }
@@ -287,8 +294,9 @@ ipc_crypto_rekey_send(struct ipc_crypto_state *state) {
                 send_label, state->send_key) < 0)
         return -1;
 
-    /* Reset send counter for new key generation */
+    /* Reset send counter and update timestamp for new key generation */
     state->send_counter = 0;
+    state->send_key_timestamp = time(NULL);
 
     return 0;
 }
@@ -317,8 +325,9 @@ ipc_crypto_rekey_recv(struct ipc_crypto_state *state) {
                 recv_label, state->recv_key) < 0)
         return -1;
 
-    /* Reset recv counter for new key generation */
+    /* Reset recv counter and update timestamp for new key generation */
     state->recv_counter = 0;
+    state->recv_key_timestamp = time(NULL);
 
     return 0;
 }
@@ -392,8 +401,12 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         size_t plaintext_len, uint8_t *frame, size_t frame_len) {
     (void)frame_len;
 
-    /* Check if we need to rekey send direction before using the next counter value */
-    if (state->send_counter >= IPC_CRYPTO_REKEY_THRESHOLD) {
+    /* Check if we need to rekey send direction based on counter threshold or time */
+    time_t now = time(NULL);
+    time_t key_age = now - state->send_key_timestamp;
+
+    if (state->send_counter >= IPC_CRYPTO_REKEY_THRESHOLD ||
+        key_age >= IPC_CRYPTO_REKEY_INTERVAL) {
         if (ipc_crypto_rekey_send(state) < 0)
             return -1;
     }
@@ -507,10 +520,10 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     uint64_t msg_counter = extract_counter_from_nonce(header.nonce);
 
     /* Detect if remote side has rekeyed (counter wrapped around).
-     * If the received counter is significantly less than our recv_counter,
-     * it indicates the remote side has rekeyed and reset its counter. */
-    if (state->recv_counter >= IPC_CRYPTO_REKEY_THRESHOLD &&
-            msg_counter < state->recv_counter) {
+     * This can happen due to either counter threshold or time-based rotation.
+     * If the received counter is less than our recv_counter, it indicates
+     * the remote side has rekeyed and reset its counter. */
+    if (msg_counter < state->recv_counter) {
         /* Remote side has rekeyed, we need to rekey our recv_key */
         if (ipc_crypto_rekey_recv(state) < 0)
             return -1;
