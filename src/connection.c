@@ -468,10 +468,20 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             size_t desired;
             /* Prevent integer overflow when doubling buffer size */
             if (current > SIZE_MAX / 2) {
-                desired = current;  /* Cannot safely double */
-            } else {
-                desired = current << 1;
+                /* Cannot safely double - buffer has reached maximum size */
+                char server[INET6_ADDRSTRLEN + 8];
+
+                warn("Response from %s exceeded maximum buffer size (%zu bytes)",
+                        display_sockaddr(&con->server.addr,
+                            con->server.addr_len,
+                            server, sizeof(server)),
+                        current);
+
+                close_server_socket(con, loop);
+                return;
             }
+            desired = current << 1;
+
             size_t load = buffer_len(input_buffer);
             if (load < current * 3 / 4 && current > 0)
                 desired = current;
