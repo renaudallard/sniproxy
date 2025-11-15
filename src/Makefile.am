@@ -1,4 +1,6 @@
-AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings -fstack-protector-strong
+AM_CPPFLAGS = $(HARDEN_CPPFLAGS)
+AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings $(HARDEN_CFLAGS)
+AM_LDFLAGS = $(HARDEN_LDFLAGS)
 
 sbin_PROGRAMS = sniproxy sniproxy-cfg
 

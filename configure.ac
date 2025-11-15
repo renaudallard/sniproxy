@@ -7,10 +7,89 @@ AM_INIT_AUTOMAKE([subdir-objects])
 AM_SILENT_RULES([yes])
 AC_USE_SYSTEM_EXTENSIONS
 
+AC_DEFUN([SNIPROXY_APPEND_CFLAG], [
+  AS_VAR_PUSHDEF([cachevar], [sniproxy_cv_cflag_$2])
+  AC_CACHE_CHECK([whether $CC supports $1], cachevar, [
+    sniproxy_save_CFLAGS="$CFLAGS"
+    CFLAGS="$CFLAGS $1"
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [[return 0;]])],
+      [AS_VAR_SET(cachevar, [yes])],
+      [AS_VAR_SET(cachevar, [no])])
+    CFLAGS="$sniproxy_save_CFLAGS"
+  ])
+  AS_IF([test "x"AS_VAR_GET(cachevar) = xyes], [
+    HARDEN_CFLAGS="$HARDEN_CFLAGS $1"
+  ])
+  AS_VAR_POPDEF([cachevar])
+])
+
+AC_DEFUN([SNIPROXY_APPEND_CPPFLAG], [
+  AS_VAR_PUSHDEF([cachevar], [sniproxy_cv_cppflag_$2])
+  AC_CACHE_CHECK([whether the compiler accepts $1], cachevar, [
+    sniproxy_save_CPPFLAGS="$CPPFLAGS"
+    CPPFLAGS="$CPPFLAGS $1"
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [[return 0;]])],
+      [AS_VAR_SET(cachevar, [yes])],
+      [AS_VAR_SET(cachevar, [no])])
+    CPPFLAGS="$sniproxy_save_CPPFLAGS"
+  ])
+  AS_IF([test "x"AS_VAR_GET(cachevar) = xyes], [
+    HARDEN_CPPFLAGS="$HARDEN_CPPFLAGS $1"
+  ])
+  AS_VAR_POPDEF([cachevar])
+])
+
+AC_DEFUN([SNIPROXY_APPEND_LDFLAG], [
+  AS_VAR_PUSHDEF([cachevar], [sniproxy_cv_ldflag_$2])
+  AC_CACHE_CHECK([whether the linker accepts $1], cachevar, [
+    sniproxy_save_LDFLAGS="$LDFLAGS"
+    LDFLAGS="$LDFLAGS $1"
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([], [[return 0;]])],
+      [AS_VAR_SET(cachevar, [yes])],
+      [AS_VAR_SET(cachevar, [no])])
+    LDFLAGS="$sniproxy_save_LDFLAGS"
+  ])
+  AS_IF([test "x"AS_VAR_GET(cachevar) = xyes], [
+    HARDEN_LDFLAGS="$HARDEN_LDFLAGS $1"
+  ])
+  AS_VAR_POPDEF([cachevar])
+])
+
 # Checks for programs.
 AC_PROG_CC
 AM_PROG_CC_C_O
 
+AC_ARG_ENABLE([hardening],
+  [AS_HELP_STRING([--disable-hardening], [Disable compiler and linker hardening flags])],
+  [enable_hardening=$enableval],
+  [enable_hardening=yes])
+
+HARDEN_CFLAGS=""
+HARDEN_CPPFLAGS=""
+HARDEN_LDFLAGS=""
+
+AS_IF([test "x$enable_hardening" != "xno"], [
+  SNIPROXY_APPEND_CPPFLAG([-U_FORTIFY_SOURCE], [u_fortify_source])
+  SNIPROXY_APPEND_CPPFLAG([-D_FORTIFY_SOURCE=2], [fortify_source])
+  SNIPROXY_APPEND_CFLAG([-fstack-protector-strong], [fstack_protector_strong])
+  SNIPROXY_APPEND_CFLAG([-fstack-clash-protection], [fstack_clash_protection])
+  SNIPROXY_APPEND_CFLAG([-fcf-protection=full], [fcf_protection])
+  SNIPROXY_APPEND_CFLAG([-Wformat], [wformat])
+  SNIPROXY_APPEND_CFLAG([-Wformat-security], [wformat_security])
+  SNIPROXY_APPEND_CFLAG([-Werror=format-security], [werror_format_security])
+  SNIPROXY_APPEND_CFLAG([-fPIE], [fpie])
+  SNIPROXY_APPEND_LDFLAG([-Wl,-z,relro], [ld_relro])
+  SNIPROXY_APPEND_LDFLAG([-Wl,-z,now], [ld_now])
+  SNIPROXY_APPEND_LDFLAG([-Wl,-z,noexecstack], [ld_noexecstack])
+  SNIPROXY_APPEND_LDFLAG([-Wl,-z,separate-code], [ld_separate_code])
+  SNIPROXY_APPEND_LDFLAG([-pie], [ld_pie])
+], [
+  AC_MSG_WARN([Compiler/linker hardening disabled])
+])
+
+AC_SUBST([HARDEN_CFLAGS])
+AC_SUBST([HARDEN_CPPFLAGS])
+AC_SUBST([HARDEN_LDFLAGS])
 
 # Checks for libraries.
 AC_CHECK_LIB([ev], [ev_run], [],
