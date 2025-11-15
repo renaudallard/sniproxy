@@ -87,6 +87,10 @@ static ev_tstamp buffer_pressure_last_run;
 static size_t client_buffer_max_size = CLIENT_BUFFER_MAX_SIZE;
 static size_t server_buffer_max_size = SERVER_BUFFER_MAX_SIZE;
 
+/* Limit shrink candidate queue to prevent unbounded memory growth */
+#define SHRINK_CANDIDATES_MAX_SIZE 4096
+static size_t shrink_candidates_count = 0;
+
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
 
@@ -1226,14 +1230,30 @@ static void
 shrink_candidate_insert(struct Connection *con) {
     struct Connection *iter;
 
+    /* Enforce maximum queue size to prevent unbounded memory growth */
+    if (shrink_candidates_count >= SHRINK_CANDIDATES_MAX_SIZE) {
+        static ev_tstamp last_warning = 0.0;
+        ev_tstamp now = ev_time();
+        /* Throttle warnings to once per minute */
+        if (now - last_warning > 60.0) {
+            warn("Shrink candidates queue full (%zu entries), skipping new candidates",
+                 (size_t)SHRINK_CANDIDATES_MAX_SIZE);
+            last_warning = now;
+        }
+        con->shrink_candidate = 0;
+        return;
+    }
+
     TAILQ_FOREACH(iter, &shrink_candidates, shrink_entries) {
         if (con->shrink_deadline < iter->shrink_deadline) {
             TAILQ_INSERT_BEFORE(iter, con, shrink_entries);
+            shrink_candidates_count++;
             return;
         }
     }
 
     TAILQ_INSERT_TAIL(&shrink_candidates, con, shrink_entries);
+    shrink_candidates_count++;
 }
 
 static void
@@ -1243,6 +1263,8 @@ shrink_candidate_remove(struct Connection *con) {
 
     TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
     con->shrink_candidate = 0;
+    if (shrink_candidates_count > 0)
+        shrink_candidates_count--;
 }
 
 static void
@@ -1278,10 +1300,13 @@ shrink_candidate_update(struct Connection *con, struct ev_loop *loop, ev_tstamp 
         deadline = now + BUFFER_SHRINK_IDLE_SECONDS;
     con->shrink_deadline = deadline;
 
-    if (con->shrink_candidate)
+    if (con->shrink_candidate) {
         TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
-    else
+        if (shrink_candidates_count > 0)
+            shrink_candidates_count--;
+    } else {
         con->shrink_candidate = 1;
+    }
 
     shrink_candidate_insert(con);
 }
@@ -1296,6 +1321,8 @@ shrink_idle_buffers(ev_tstamp now, int force) {
 
         TAILQ_REMOVE(&shrink_candidates, con, shrink_entries);
         con->shrink_candidate = 0;
+        if (shrink_candidates_count > 0)
+            shrink_candidates_count--;
 
         buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
         buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
