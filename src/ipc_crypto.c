@@ -157,10 +157,12 @@ secure_memzero(void *ptr, size_t len) {
 static void
 ipc_crypto_master_cleanup(void) {
     secure_memzero(ipc_crypto_master_key, sizeof(ipc_crypto_master_key));
-    if (ipc_crypto_master_locked) {
-        munlock(ipc_crypto_master_key, sizeof(ipc_crypto_master_key));
-        ipc_crypto_master_locked = 0;
-    }
+    /* Note: We intentionally do NOT call munlock() here.
+     * This cleanup runs at exit via atexit(), potentially after pledge("")
+     * on OpenBSD. munlock() would violate pledge and kill the process.
+     * Since we're exiting, the OS will reclaim all memory anyway,
+     * and we've already zeroed the sensitive data above. */
+    ipc_crypto_master_locked = 0;
     ipc_crypto_master_initialized = 0;
 }
 
