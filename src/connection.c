@@ -138,6 +138,7 @@ static ev_tstamp connection_last_activity(const struct Connection *);
 #define RATE_LIMIT_TABLE_SIZE 1024
 #define RATE_LIMIT_IDLE_TTL 300.0
 #define RATE_LIMIT_CLEANUP_INTERVAL 60.0
+#define RATE_LIMIT_MAX_CHAIN_LENGTH 32
 
 struct RateLimitBucket {
     struct sockaddr_storage addr;
@@ -875,8 +876,24 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
     struct RateLimitBucket *bucket = rate_limit_table[bucket_index];
     struct RateLimitBucket *prev = NULL;
     double capacity = rate_limit_bucket_capacity();
+    size_t chain_length = 0;
 
     while (bucket != NULL) {
+        chain_length++;
+
+        /* Protect against hash collision DoS: limit chain depth.
+         * If chain is too long, allow the connection but log a warning. */
+        if (chain_length > RATE_LIMIT_MAX_CHAIN_LENGTH) {
+            static ev_tstamp last_warning = 0.0;
+            /* Throttle warnings to once per minute */
+            if (now - last_warning > 60.0) {
+                warn("Rate limit hash collision detected: chain length %zu exceeds maximum %d (bucket %zu)",
+                     chain_length, RATE_LIMIT_MAX_CHAIN_LENGTH, bucket_index);
+                last_warning = now;
+            }
+            return 1;  /* Allow connection, skip rate limiting for this IP */
+        }
+
         if (bucket->addr_hash == hash) {
             if (addr->ss_family == AF_INET && bucket->addr_v4 == addr_v4)
                 break;
