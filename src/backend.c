@@ -321,6 +321,8 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
 
 void
 print_backend_config(FILE *file, const struct Backend *backend) {
+    assert(backend != NULL);
+
     char address[ADDRESS_BUFFER_SIZE];
 
     fprintf(file, "\t%s %s%s\n",
@@ -331,6 +333,8 @@ print_backend_config(FILE *file, const struct Backend *backend) {
 
 static const char *
 backend_config_options(const struct Backend *backend) {
+    assert(backend != NULL);
+
     if (backend->use_proxy_header)
         return " proxy_protocol";
     else

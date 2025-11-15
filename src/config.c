@@ -1025,6 +1025,8 @@ new_logger_builder(void) {
 
 static int
 accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
+    assert(lb != NULL);
+
     lb->filename = strdup(filename);
     if (lb->filename == NULL) {
         err("%s: strdup", __func__);
@@ -1036,6 +1038,8 @@ accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
 
 static int
 accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
+    assert(lb != NULL);
+
     lb->syslog_facility = strdup(facility);
     if (lb->syslog_facility == NULL) {
         err("%s: strdup", __func__);
@@ -1047,6 +1051,8 @@ accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
 
 static int
 accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
+    assert(lb != NULL);
+
     const struct {
         const char *name;
         int priority;

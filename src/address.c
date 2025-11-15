@@ -216,6 +216,8 @@ copy_address(const struct Address *addr) {
 
 size_t
 address_len(const struct Address *addr) {
+    assert(addr != NULL);
+
     switch (addr->type) {
         case HOSTNAME:
             /* include trailing null byte */
@@ -280,6 +282,8 @@ address_is_wildcard(const struct Address *addr) {
 
 const char *
 address_hostname(const struct Address *addr) {
+    assert(addr != NULL);
+
     if (addr->type != HOSTNAME)
         return NULL;
 
@@ -288,6 +292,8 @@ address_hostname(const struct Address *addr) {
 
 const struct sockaddr *
 address_sa(const struct Address *addr) {
+    assert(addr != NULL);
+
     if (addr->type != SOCKADDR)
         return NULL;
 
@@ -296,6 +302,8 @@ address_sa(const struct Address *addr) {
 
 socklen_t
 address_sa_len(const struct Address *addr) {
+    assert(addr != NULL);
+
     if (addr->type != SOCKADDR)
         return 0;
 
@@ -304,6 +312,8 @@ address_sa_len(const struct Address *addr) {
 
 uint16_t
 address_port(const struct Address *addr) {
+    assert(addr != NULL);
+
     switch (addr->type) {
         case HOSTNAME:
             return addr->port;
@@ -333,6 +343,8 @@ address_port(const struct Address *addr) {
 
 void
 address_set_port(struct Address *addr, uint16_t port) {
+    assert(addr != NULL);
+
     switch (addr->type) {
         case SOCKADDR:
             switch (address_sa(addr)->sa_family) {

@@ -901,6 +901,8 @@ listener_acl_allows(const struct Listener *listener,
 
 void
 print_listener_config(FILE *file, const struct Listener *listener) {
+    assert(listener != NULL);
+
     char address[ADDRESS_BUFFER_SIZE];
     const struct ListenerACLRule *rule;
 
@@ -1013,6 +1015,8 @@ listener_ref_put(struct Listener *listener) {
 
 struct Listener *
 listener_ref_get(struct Listener *listener) {
+    assert(listener != NULL);
+
     listener->reference_count++;
     return listener;
 }

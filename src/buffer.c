@@ -217,6 +217,8 @@ new_buffer(size_t size, struct ev_loop *loop) {
 
 ssize_t
 buffer_resize(struct Buffer *buf, size_t new_size) {
+    assert(buf != NULL);
+
     if (NOT_POWER_OF_2(new_size))
         return -4;
 
@@ -399,6 +401,8 @@ free_buffer(struct Buffer *buf) {
 
 ssize_t
 buffer_recv(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) {
+    assert(buffer != NULL);
+
     /* coalesce when reading into an empty buffer */
     if (buffer->len == 0)
         buffer->head = 0;
@@ -421,6 +425,8 @@ buffer_recv(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) 
 
 ssize_t
 buffer_send(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) {
+    assert(buffer != NULL);
+
     struct iovec iov[2];
     struct msghdr msg = {
         .msg_iov = iov,
@@ -442,6 +448,8 @@ buffer_send(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) 
  */
 ssize_t
 buffer_read(struct Buffer *buffer, int fd) {
+    assert(buffer != NULL);
+
     /* coalesce when reading into an empty buffer */
     if (buffer->len == 0)
         buffer->head = 0;
@@ -461,6 +469,8 @@ buffer_read(struct Buffer *buffer, int fd) {
  */
 ssize_t
 buffer_write(struct Buffer *buffer, int fd) {
+    assert(buffer != NULL);
+
     struct iovec iov[2];
     size_t iov_len = setup_read_iov(buffer, iov, 0);
     ssize_t bytes = writev(fd, iov, iov_len);
@@ -479,6 +489,8 @@ buffer_write(struct Buffer *buffer, int fd) {
  */
 size_t
 buffer_coalesce(struct Buffer *buffer, const void **dst) {
+    assert(buffer != NULL);
+
     size_t len = buffer->len;
     size_t head = buffer->head;
     size_t size = buffer_size(buffer);

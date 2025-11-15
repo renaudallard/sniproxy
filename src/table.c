@@ -310,6 +310,8 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
 
 void
 print_table_config(FILE *file, struct Table *table) {
+    assert(table != NULL);
+
     struct Backend *backend = STAILQ_FIRST(&table->backends);
 
     if (table->name == NULL)
@@ -353,6 +355,8 @@ table_ref_put(struct Table *table) {
 
 struct Table *
 table_ref_get(struct Table *table) {
+    assert(table != NULL);
+
     table->reference_count++;
     return table;
 }
