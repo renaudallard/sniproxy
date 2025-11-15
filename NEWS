@@ -1,3 +1,18 @@
+sniproxy 0.9.6 (2025-11-18)
+==============================
+
+* Security: Harden per-IP rate limiting and parser guardrails with FNV-1a hashes,
+  collision cutoffs, HTTP header caps, TLS extension limits, and IPC payload clamps
+  to block CPU or memory exhaustion attempts.
+* DNS: arc4random()-seeded query IDs, leak-resistant handle tracking, and
+  mutex-protected restarts prevent counter drift, leaks, or use-after-free in
+  resolver lifecycle transitions.
+* Reliability: shrink candidate queues now cap at 4096 entries with active
+  trimming, buffer growth failures close connections explicitly, and log
+  duration math clamps wraparound to 0.0.
+* Hardening: secure memory wiping, PID file sanity checks, and buffer pool magic
+  numbers detect corruption and ensure sensitive state never lingers in RAM.
+
 sniproxy 0.9.5 (2025-11-15)
 ==============================
 
@@ -30,4 +45,3 @@ sniproxy 0.9.2 (2025-11-10)
   length-prefixed framing to handle partial reads safely.
 * Networking: outbound connects retry transient EADDRNOTAVAIL
   errors to smooth bursts of transparent proxy traffic.
-

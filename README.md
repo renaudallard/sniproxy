@@ -33,16 +33,27 @@ Features
 + **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
 + **Per-connection buffer caps**: configurable `connection_buffer_limit` (or per-side overrides) prevent slow clients from pinning unbounded RAM
 + **Zero-copy operations** where supported (splice on Linux)
++ **Bounded shrink queues**: 4096-entry shrink candidate lists with automatic
+  trimming prevent idle buffer bookkeeping from exhausting memory under churn.
 
 ### Security & Hardening
 + **TLS 1.2+ required by default** - optionally allow TLS 1.0 with `-T` flag
-+ **Cryptographic DNS query IDs**: xorshift32 PRNG prevents timing-based prediction attacks
++ **Cryptographic DNS query IDs**: arc4random()-seeded IDs with lifecycle
+  tracking prevent prediction or reuse
 + **Regex DoS prevention**: Match limits scale with hostname length
 + **Buffer overflow protection**: Strict bounds checking in all protocol parsers
 + **NULL byte rejection**: Prevents hostname validation bypasses
 + **Listener ACLs**: CIDR-based allow/deny policies per listener to block or permit client ranges
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
-+ **DNS resolver hardening**: Async-signal-safe handlers, integer overflow protection
++ **Request guardrails**: Caps of 100 HTTP headers and 64 TLS extensions stop
+  CPU exhaustion attempts before parsers process attacker-controlled blobs.
++ **Rate limiter collision defense**: arc4random()-seeded buckets use FNV-1a
+  hashing and short-chain cutoffs so hash spraying cannot bypass per-IP token
+  buckets.
++ **DNS resolver hardening**: Async-signal-safe handlers, integer overflow
+  protection, arc4random()-seeded query IDs, mutex-guarded restart state, and
+  leak-resistant handle accounting prevent prediction, leaks, or use-after-free
+  bugs.
 + **DNS query concurrency limits**: Prevents resolver exhaustion
 + **Connection idle timeouts**: Automatic cleanup of stalled connections
 + **Per-IP connection rate limiting**: Token-bucket guardrail on new client connections across all listeners
@@ -64,8 +75,10 @@ Features
 + **Access logs** with connection duration and byte transfer statistics
 + **Process renaming**: Processes show as `sniproxy-mainloop` (Linux only),
   `sniproxy-binder`, `sniproxy-logger`, and `sniproxy-resolver` in process listings
-+ **IPC hardening**: binder/logger/resolver channels encrypt control messages, validate framing, and emit clear restart guidance
-+ **PID file support** for process management
++ **IPC hardening**: binder/logger/resolver channels encrypt control messages,
+  validate framing, enforce `max_payload_len`, and emit clear restart guidance
++ **PID file support** for process management with strict validation that
+  rejects stale sockets, FIFOs, or symlinks before writing
 + **Privilege dropping** to non-root user/group after binding privileged ports
 + **Privilege verification**: startup fails fast if real or effective UID remains root after dropping privileges
 + **Config permission guard**: sniproxy and sniproxy-cfg warn when the configuration file is accessible to group/other users

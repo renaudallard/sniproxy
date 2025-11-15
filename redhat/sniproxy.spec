@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.5
+Version: 0.9.6
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,17 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Tue Nov 18 2025 Renaud Allard <renaud@allard.it> 0.9.6-1
+- Security: strengthen per-IP rate limiting with FNV-1a hashing, collision
+  cutoffs, and strict HTTP header/TLS extension caps plus IPC payload limits.
+- DNS: arc4random() query IDs, mutex-guarded restarts, and query handle
+  assertions prevent leaks and use-after-free bugs.
+- Reliability: shrink candidate queues cap at 4096 entries with active trimming,
+  buffer growth failures now close connections, and log duration math clamps
+  negatives from time jumps.
+- Hardening: secure_memzero, PID file sanity checks, and buffer pool magic
+  numbers detect corruption before dereferencing nodes.
+
 * Sat Nov 15 2025 Renaud Allard <renaud@allard.it> 0.9.5-1
 - Performance: cache ev_now and add hysteresis to idle timers and buffer growth
 - Reliability: resolver crash handler avoids spurious write warnings

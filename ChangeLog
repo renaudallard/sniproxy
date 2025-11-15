@@ -1,3 +1,18 @@
+2025-11-18  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.6
+	- Security: per-IP rate limiting now uses FNV-1a hashes with collision
+	rejection and short-chain cutoffs, plus hard caps on HTTP headers, TLS
+	extensions, and IPC payload lengths to stop CPU/memory exhaustion attacks.
+	- DNS: arc4random()-seeded query IDs, mutex-protected restart flags, and query
+	handle state assertions prevent leaks, counter drift, and use-after-free bugs.
+	- Reliability: shrink candidate queues cap at 4096 entries with active
+	trimming, buffer growth failures explicitly close connections, and log duration
+	math clamps negative values caused by time jumps.
+	- Hardening: buffer pool magic numbers detect corruption, secure_memzero wipes
+	sensitive memory, and PID file validation prevents stale sockets or symlink
+	abuse before daemon startup.
+
 2025-11-15  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.5

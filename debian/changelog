@@ -1,3 +1,18 @@
+sniproxy (0.9.6) unstable; urgency=medium
+
+  * Security: reinforce per-IP rate limiting with FNV-1a hashes, collision
+    rejection, and strict limits on HTTP headers, TLS extensions, and IPC
+    payloads to block CPU/memory exhaustion.
+  * DNS: arc4random() query IDs, mutex-guarded restart state, and query handle
+    validation prevent leaks, counter drift, and use-after-free bugs.
+  * Reliability: shrink candidate queues cap at 4096 entries with active
+    trimming, buffer growth failures now close connections, and log durations
+    clamp under time jumps.
+  * Hardening: secure_memzero wipes secrets, PID files get stricter sanity
+    checks, and buffer pool magic numbers detect corruption before dereference.
+
+ -- Renaud Allard <renaud@allard.it>  Tue, 18 Nov 2025 09:00:00 +0100
+
 sniproxy (0.9.5) unstable; urgency=medium
 
   * Performance: cache ev_now and add hysteresis to idle timers/buffer growth

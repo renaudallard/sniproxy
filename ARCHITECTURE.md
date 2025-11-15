@@ -221,6 +221,14 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
   timestamp operations, eliminating unnecessary buffer size checks on every I/O event
 - **Memory tracking (0.9.0)**: Global memory observer tracks total buffer memory
   usage across all connections, providing visibility into peak memory consumption
+- **Reliability (0.9.6)**: Buffer growth refuses to exceed SIZE_MAX/2 and now
+  closes the offending connection instead of silently leaving buffers in an
+  inconsistent state.
+- **Bounded shrink queues (0.9.6)**: Shrink candidate lists stay capped at 4096
+  entries and force-shrink the oldest 10% once full, preventing internal
+  bookkeeping from consuming unbounded RAM.
+- **Corruption detection (0.9.6)**: Buffer pool freelist nodes embed magic
+  numbers so corrupt pointers are detected before dereferencing cached links.
 
 ### Protocol
 
@@ -238,6 +246,8 @@ Protocol handlers parse application-layer headers to extract hostnames.
 1. **TLS**: Extracts SNI from ClientHello
    - Supports TLS 1.0 through 1.3
    - Validates extension format
+   - Limits ClientHello extension lists to 64 entries (0.9.6) to stop CPU
+     exhaustion from thousands of tiny extensions
    - Rejects embedded NUL bytes in server names
    - Minimum client version can be configured
    - Detects and rejects client renegotiation attempts
@@ -246,6 +256,8 @@ Protocol handlers parse application-layer headers to extract hostnames.
    - Parses GET/POST/HEAD and other methods
    - Case-insensitive header matching
    - Handles absolute URIs and Host headers
+   - Enforces `HTTP_MAX_HEADERS` (100) (0.9.6) to prevent CPU exhaustion from
+     adversarial header floods
 
 3. **HTTP/2**: Extracts :authority pseudo-header from HTTP/2 requests
    - Parses client preface and SETTINGS frames
@@ -271,11 +283,14 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
 - Concurrent query limiting to prevent resource exhaustion
 - Integration with libev event loop
 - Thread-safe query list with mutex protection
-- **Security enhancement (0.9.0)**: DNS query IDs generated using xorshift32 PRNG
-  (seeded from time and PID) instead of linear counter, preventing timing-based
-  query ID prediction attacks
-- **Robustness (0.9.0)**: Async-signal-safe signal handlers, integer overflow
-  protection in memory operations, and proper cleanup to prevent memory leaks
+- **Security enhancements (0.9.0 -> 0.9.6)**: DNS query IDs moved from linear
+  counters to xorshift32 and now to arc4random() with OS entropy, while query
+  handles store explicit acquisition state so leaked or double-freed entries are
+  caught immediately.
+- **Robustness (0.9.0 -> 0.9.6)**: Async-signal-safe signal handlers and
+  overflow guards remain, and resolver restart/shutdown now uses
+  mutex-protected flags plus dedicated release helpers to prevent counter drift
+  or use-after-free bugs during teardown.
 
 **Modes:**
 - `RESOLV_MODE_DEFAULT`: System default behavior
@@ -402,15 +417,28 @@ Once CONNECTED, the connection enters steady-state proxying:
   - Per-request limits injected into PCRE/PCRE2 contexts
   - Prevents catastrophic backtracking
 
+- **Request guardrails (0.9.6)**:
+  - HTTP parsers enforce `HTTP_MAX_HEADERS` (100) so attacker-controlled header
+    floods cannot pin CPU in linear scans
+  - TLS ClientHello parsers cap extension lists at 64 entries to avoid walking
+    unbounded extension tables
+
 - **Memory limits**:
   - Buffer max_size prevents unbounded growth
   - HTTP/2 dynamic table size caps (per-connection and global)
   - DNS query concurrency limits
+  - Shrink candidate queues capped at 4096 entries with forced trimming when
+    full (0.9.6)
+  - Buffer growth refuses to exceed SIZE_MAX/2 and closes the offending
+    connection (0.9.6)
 
 - **Rate limiting**:
   - Per-IP connection rate limiting with token bucket algorithm
   - **Performance optimization (0.9.0)**: IPv4 fast path with cached 32-bit address
     comparison and LRU eviction moves recently-used entries to front of hash chains
+  - **Collision defense (0.9.6)**: arc4random()-seeded buckets use FNV-1a hashes
+    with 32-entry chain cutoffs, immediately rejecting duplicate hashes so
+    collision spraying cannot bypass the limiter
   - Accept backoff timer on repeated errors
   - Idle connection timeouts
 
