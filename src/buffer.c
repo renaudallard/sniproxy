@@ -69,6 +69,20 @@ static inline void advance_read_position(struct Buffer *, size_t);
 static size_t next_power_of_two(size_t);
 static void buffer_release_storage(int from_pool, size_t size, char *ptr);
 
+/* Secure memory zeroing that cannot be optimized away by compilers */
+static void
+secure_memzero(void *ptr, size_t len) {
+#if defined(HAVE_EXPLICIT_BZERO)
+    explicit_bzero(ptr, len);
+#elif defined(HAVE_MEMSET_S)
+    (void)memset_s(ptr, len, 0, len);
+#else
+    /* Use volatile to prevent compiler optimization */
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+#endif
+}
 
 static void (*buffer_memory_observer)(ssize_t delta);
 
@@ -107,7 +121,8 @@ buffer_pool_acquire(size_t size, int *pooled) {
         cls->head = next;
         if (cls->cached > 0)
             cls->cached--;
-        memset(mem, 0, cls->size);
+        /* Use secure zeroing to prevent information disclosure */
+        secure_memzero(mem, cls->size);
         if (pooled != NULL)
             *pooled = 1;
         return mem;
@@ -135,7 +150,8 @@ buffer_pool_release(size_t size, void *ptr) {
             return 0;
         }
 
-        memset(ptr, 0, size);
+        /* Use secure zeroing to prevent information disclosure */
+        secure_memzero(ptr, size);
         /* Store magic number and next pointer for validation */
         struct BufferPoolNode *node = (struct BufferPoolNode *)ptr;
         node->magic = BUFFER_POOL_MAGIC;
@@ -157,13 +173,15 @@ buffer_release_storage(int from_pool, size_t size, char *ptr) {
 
     if (from_pool) {
         if (!buffer_pool_release(size, ptr)) {
-            memset(ptr, 0, size);
+            /* Use secure zeroing to prevent information disclosure */
+            secure_memzero(ptr, size);
             free(ptr);
         }
         return;
     }
 
-    memset(ptr, 0, size);
+    /* Use secure zeroing to prevent information disclosure */
+    secure_memzero(ptr, size);
     free(ptr);
 }
 
