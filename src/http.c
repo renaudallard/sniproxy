@@ -34,6 +34,7 @@
 #include "http2.h"
 
 #define SERVER_NAME_LEN 256
+#define HTTP_MAX_HEADERS 100
 
 
 static int parse_http_header(const char *, size_t, char **);
@@ -154,9 +155,17 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
     char *found_value = NULL;
     size_t found_len = 0;
     int found = 0;
+    size_t header_count = 0;
 
     /* loop through headers stopping at first blank line */
     while ((len = next_header(&data, &data_len)) != 0) {
+        /* Limit number of headers to prevent CPU exhaustion attacks */
+        if (header_count >= HTTP_MAX_HEADERS) {
+            free(found_value);
+            return -5;
+        }
+        header_count++;
+
         if (len > header_len && strncasecmp(header, data, header_len) == 0) {
             size_t value_start = header_len;
 
