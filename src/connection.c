@@ -1240,18 +1240,36 @@ static void
 shrink_candidate_insert(struct Connection *con) {
     struct Connection *iter;
 
-    /* Enforce maximum queue size to prevent unbounded memory growth */
+    /* Enforce maximum queue size to prevent unbounded memory growth
+     * Apply backpressure: when queue is full, force-shrink oldest entries */
     if (shrink_candidates_count >= SHRINK_CANDIDATES_MAX_SIZE) {
         static ev_tstamp last_warning = 0.0;
         ev_tstamp now = ev_time();
+
         /* Throttle warnings to once per minute */
         if (now - last_warning > 60.0) {
-            warn("Shrink candidates queue full (%zu entries), skipping new candidates",
+            warn("Shrink candidates queue full (%zu entries), applying backpressure",
                  (size_t)SHRINK_CANDIDATES_MAX_SIZE);
             last_warning = now;
         }
-        con->shrink_candidate = 0;
-        return;
+
+        /* Force-shrink the oldest 10% of entries to make room
+         * This provides backpressure while maintaining queue functionality */
+        size_t to_shrink = SHRINK_CANDIDATES_MAX_SIZE / 10;
+        if (to_shrink < 1)
+            to_shrink = 1;
+
+        struct Connection *oldest;
+        for (size_t i = 0; i < to_shrink && (oldest = TAILQ_FIRST(&shrink_candidates)) != NULL; i++) {
+            TAILQ_REMOVE(&shrink_candidates, oldest, shrink_entries);
+            oldest->shrink_candidate = 0;
+            if (shrink_candidates_count > 0)
+                shrink_candidates_count--;
+
+            /* Force shrink the buffers immediately */
+            buffer_maybe_shrink_idle(oldest->server.buffer, now, 0.0);
+            buffer_maybe_shrink_idle(oldest->client.buffer, now, 0.0);
+        }
     }
 
     TAILQ_FOREACH(iter, &shrink_candidates, shrink_entries) {
