@@ -1896,21 +1896,30 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         warn("close failed: %s", strerror(errno));
 
     if (con->state == RESOLVING) {
-        /* Invariant: query_handle and dns_query_acquired should be consistent.
-         * If dns_query_acquired is set, query_handle should be non-NULL. */
+        /* State machine validation: verify DNS query state consistency */
         assert(con->query_handle != NULL || !con->dns_query_acquired);
 
-        if (con->query_handle != NULL) {
+        /* Additional validation: detect double-free or use-after-free conditions */
+        if (con->query_handle != NULL && con->dns_query_acquired) {
+            /* Valid state: active query with acquired slot */
             resolv_cancel(con->query_handle);
             con->query_handle = NULL;
-        }
-
-        /* Release DNS query slot if acquired, regardless of query_handle state
-         * for defense-in-depth (handles any inconsistent state gracefully) */
-        if (con->dns_query_acquired) {
+            dns_query_release();
+            con->dns_query_acquired = 0;
+        } else if (con->query_handle != NULL && !con->dns_query_acquired) {
+            /* Inconsistent state: query exists but slot not marked acquired
+             * This should never happen due to assertion, but handle defensively */
+            warn("Inconsistent DNS state: query_handle set but dns_query_acquired=0");
+            resolv_cancel(con->query_handle);
+            con->query_handle = NULL;
+        } else if (con->dns_query_acquired) {
+            /* Inconsistent state: slot marked acquired but no query handle
+             * Assertion above prevents this, but handle defensively */
+            warn("Inconsistent DNS state: dns_query_acquired=1 but query_handle=NULL");
             dns_query_release();
             con->dns_query_acquired = 0;
         }
+        /* Else: both NULL/0 - no cleanup needed */
 
         con->state = PARSED;
     }
