@@ -44,6 +44,7 @@
 #define TLS_HANDSHAKE_CONTENT_TYPE 0x16
 #define TLS_HANDSHAKE_TYPE_CLIENT_HELLO 0x01
 #define CLIENT_HELLO_VERSION_RANDOM_LEN 34
+#define TLS_MAX_EXTENSIONS 64
 
 #ifndef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -238,12 +239,21 @@ static int
 parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
     size_t pos = 0;
     size_t len;
+    size_t extension_count = 0;
 
     /* Parse each 4 bytes for the extension header */
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 4)
             break;
+
+        /* Limit number of extensions to prevent CPU exhaustion attacks */
+        if (extension_count >= TLS_MAX_EXTENSIONS) {
+            debug("TLS ClientHello exceeded maximum extension count (%d)", TLS_MAX_EXTENSIONS);
+            return -5;
+        }
+        extension_count++;
+
         /* Extension Length */
         len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
