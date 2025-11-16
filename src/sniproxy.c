@@ -540,10 +540,6 @@ set_limits(rlim_t max_nofiles) {
 
 static void
 drop_perms(const char *username, const char *groupname) {
-    /* check if we are already an unprivileged user */
-    if (getuid() != 0)
-        return;
-
     errno = 0;
     struct passwd *user = getpwnam(username);
     if (errno)
@@ -562,6 +558,15 @@ drop_perms(const char *username, const char *groupname) {
         fatal("getgrnam(): group %s does not exist", groupname);
 
       gid = group->gr_gid;
+    }
+
+    /* check if we are already running as the requested user */
+    if (getuid() != 0 || geteuid() != 0) {
+        if (getuid() != user->pw_uid || geteuid() != user->pw_uid)
+            fatal("Process UID does not match configured user %s", username);
+        if (getgid() != gid || getegid() != gid)
+            fatal("Process GID does not match configured gid %lu", (unsigned long)gid);
+        return;
     }
 
     /* SECURITY: Drop main process privileges FIRST before communicating
