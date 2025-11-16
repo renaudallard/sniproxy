@@ -52,10 +52,10 @@
 
 
 static int parse_tls_header(const uint8_t*, size_t, char **);
-static int parse_extensions(const uint8_t*, size_t, char **,
-        uint8_t required_major, uint8_t required_minor,
-        int require_supported_versions, int *version_ok);
+static int parse_extensions(const uint8_t*, size_t, char **);
 static int parse_server_name_extension(const uint8_t*, size_t, char **);
+static int extensions_have_required_version(const uint8_t *, size_t,
+        uint8_t required_major, uint8_t required_minor);
 static int parse_supported_versions_extension(const uint8_t *, size_t,
         uint8_t required_major, uint8_t required_minor,
         int require_supported_versions, int *version_ok);
@@ -197,8 +197,6 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
 
     int require_supported_versions = (min_client_hello_version_major > 3) ||
         (min_client_hello_version_major == 3 && min_client_hello_version_minor >= 4);
-    int supported_version_ok = require_supported_versions ? 0 : 1;
-
     body += CLIENT_HELLO_VERSION_RANDOM_LEN;
 
     /* Session ID */
@@ -208,7 +206,6 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     body += 1;
     if ((size_t)(body_end - body) < len)
         return -5;
-    body += len;
 
     /* Cipher Suites */
     if ((size_t)(body_end - body) < 2)
@@ -241,64 +238,46 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
 
     if ((size_t)(body_end - body) < len)
         return -5;
-    int ext_result = parse_extensions(body, len, hostname,
-            min_client_hello_version_major, min_client_hello_version_minor,
-            require_supported_versions, &supported_version_ok);
-    if (ext_result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
-        return ext_result;
-    if (ext_result < -1)
-        return ext_result;
-    if (require_supported_versions && !supported_version_ok)
-        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
-    return ext_result;
+
+    if (require_supported_versions) {
+        int sv = extensions_have_required_version(body, len,
+                min_client_hello_version_major, min_client_hello_version_minor);
+        if (sv == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
+            return sv;
+        if (sv < 0)
+            return sv;
+        if (sv == 0)
+            return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+    }
+
+    return parse_extensions(body, len, hostname);
 }
 
 static int
-parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
-        uint8_t required_major, uint8_t required_minor,
-        int require_supported_versions, int *version_ok) {
+parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
     size_t pos = 0;
     size_t len;
     size_t extension_count = 0;
-    int server_name_result = -2;
 
-    /* Parse each 4 bytes for the extension header */
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 4)
             break;
 
-        /* Limit number of extensions to prevent CPU exhaustion attacks */
         if (extension_count >= TLS_MAX_EXTENSIONS) {
             debug("TLS ClientHello exceeded maximum extension count (%d)", TLS_MAX_EXTENSIONS);
             return -5;
         }
         extension_count++;
 
-        /* Extension Length */
         len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
 
         if (len > remaining - 4)
             return -5;
 
-        /* Check if it's a server name extension */
-        if (data[pos] == 0x00 && data[pos + 1] == 0x00) {
-            int sni_result = parse_server_name_extension(data + pos + 4, len, hostname);
-            if (sni_result < -1)
-                return sni_result;
-            server_name_result = sni_result;
-        }
-
-        if (data[pos] == 0x00 && data[pos + 1] == 0x2b) {
-            int sv = parse_supported_versions_extension(data + pos + 4, len,
-                    required_major, required_minor,
-                    require_supported_versions, version_ok);
-            if (sv == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
-                return sv;
-            if (sv < 0)
-                return -5;
-        }
+        if (data[pos] == 0x00 && data[pos + 1] == 0x00)
+            return parse_server_name_extension(data + pos + 4, len, hostname);
 
         if (data[pos] == 0xff && data[pos + 1] == 0x01) {
             if (len < 1)
@@ -315,16 +294,47 @@ parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
             }
         }
 
-        pos += 4 + len; /* Advance to the next extension header */
+        pos += 4 + len;
     }
-    /* Check we ended where we expected to */
+
     if (pos != data_len)
         return -5;
 
-    if (require_supported_versions && version_ok != NULL && !*version_ok)
-        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+    return -2;
+}
 
-    return server_name_result;
+static int
+extensions_have_required_version(const uint8_t *data, size_t data_len,
+        uint8_t required_major, uint8_t required_minor) {
+    size_t pos = 0;
+    size_t len;
+
+    while (pos <= data_len) {
+        size_t remaining = data_len - pos;
+        if (remaining < 4)
+            break;
+
+        len = ((size_t)data[pos + 2] << 8) +
+            (size_t)data[pos + 3];
+
+        if (len > remaining - 4)
+            return -5;
+
+        if (data[pos] == 0x00 && data[pos + 1] == 0x2b) {
+            int version_ok = 0;
+            int rc = parse_supported_versions_extension(data + pos + 4, len,
+                    required_major, required_minor, 1, &version_ok);
+            if (rc == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
+                return rc;
+            if (rc < 0)
+                return rc;
+            return version_ok ? 1 : TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+        }
+
+        pos += 4 + len;
+    }
+
+    return 0;
 }
 
 static int

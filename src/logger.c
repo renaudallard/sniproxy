@@ -808,7 +808,7 @@ obtain_file_sink(const char *filepath) {
             free((char *)sink->filepath);
             free(sink);
             errno = saved_errno;
-            err("Failed to open new log file: %s", filepath);
+            err("Failed to open new log file %s: %s", filepath, strerror(saved_errno));
             return NULL;
         }
 
@@ -912,7 +912,7 @@ obtain_file_sink(const char *filepath) {
             free((char *)sink->filepath);
             free(sink);
             errno = saved_errno;
-            err("Failed to open new log file: %s", filepath);
+            err("Failed to open new log file %s: %s", filepath, strerror(saved_errno));
             return NULL;
         }
 

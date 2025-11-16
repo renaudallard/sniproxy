@@ -136,7 +136,9 @@ int main(void) {
             return 1;
         }
 
-        assert(display_address(addr, NULL, 0) == NULL);
+        const char *invalid_display = display_address(addr, NULL, 0);
+        assert(invalid_display != NULL);
+        assert(strcmp(invalid_display, "(invalid)") == 0);
 
         port = address_port(addr);
 
@@ -197,4 +199,3 @@ int main(void) {
 
     return 0;
 }
-

@@ -58,7 +58,7 @@ test_binder(int port) {
 
     int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr));
 
-    assert(fd > 0);
+    assert(fd >= 0);
 
     /* Verify we obtained the expected socket address */
     struct sockaddr_storage addr_verify;

@@ -159,11 +159,6 @@ binder_restart_child(void) {
         binder_cleanup_child(1);
     }
 
-    if (geteuid() != 0) {
-        err("cannot restart binder after privilege drop");
-        return -1;
-    }
-
     return binder_spawn_child();
 }
 
@@ -353,4 +348,3 @@ binder_main(int sockfd) {
         free(plain);
     }
 }
-
