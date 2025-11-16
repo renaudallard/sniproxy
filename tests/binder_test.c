@@ -32,12 +32,18 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include "binder.h"
 
 static int test_binder(int);
 
 int main(void) {
     int i;
+
+    if (geteuid() != 0) {
+        fprintf(stderr, "binder_test requires root privileges; skipping\n");
+        return 77;
+    }
 
     start_binder();
     for (i = 8080; i <= 8084; i++)
