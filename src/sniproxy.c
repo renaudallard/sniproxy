@@ -331,6 +331,10 @@ main(int argc, char **argv) {
 
     apply_mainloop_settings(loop, config);
 
+#ifdef DEBUG
+    warn("SECURITY WARNING: sniproxy built with DEBUG; stack traces and memory addresses may be logged. Not for production use.");
+#endif
+
 #ifdef __OpenBSD__
     {
         struct openbsd_unveil_data data = {
