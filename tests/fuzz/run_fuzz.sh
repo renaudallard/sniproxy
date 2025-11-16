@@ -76,7 +76,9 @@ build_fuzzer http2_fuzz \
 
 build_fuzzer http_fuzz \
     "$ROOT_DIR/tests/fuzz/http_fuzz.c" \
-    "$ROOT_DIR/src/http.c"
+    "$ROOT_DIR/src/http.c" \
+    "$ROOT_DIR/src/http2.c" \
+    "$ROOT_DIR/src/http2_huffman.c"
 
 build_fuzzer hostname_fuzz \
     "$ROOT_DIR/tests/fuzz/hostname_fuzz.c"
