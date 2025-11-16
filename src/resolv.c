@@ -171,14 +171,22 @@ resolver_next_query_prng(void) {
     if (RAND_bytes((unsigned char *)&value, sizeof(value)) == 1) {
         return value;
     }
-    /* If RAND_bytes fails, fall back to time-based entropy (not ideal) */
-    struct timeval tv;
-    uint32_t result = (uint32_t)getpid();
-    if (gettimeofday(&tv, NULL) == 0) {
-        result ^= (uint32_t)tv.tv_sec;
-        result ^= (uint32_t)tv.tv_usec;
+
+    /* RAND_bytes failed, fall back to /dev/urandom */
+#ifdef O_CLOEXEC
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+#else
+    int fd = open("/dev/urandom", O_RDONLY);
+#endif
+    if (fd >= 0) {
+        ssize_t bytes = read(fd, &value, sizeof(value));
+        close(fd);
+        if (bytes == (ssize_t)sizeof(value))
+            return value;
     }
-    return result;
+
+    fatal("resolver RNG failure: unable to read secure random data (%s)",
+            strerror(errno));
 #endif
 }
 
