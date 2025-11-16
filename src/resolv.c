@@ -1053,7 +1053,14 @@ resolver_restart(void) {
 
 static void
 resolver_child_crash_handler(int signum) {
-    /* Only async-signal-safe operations below. */
+    /* SECURITY: Only async-signal-safe operations allowed in signal handlers.
+     * Per POSIX signal-safety(7), we can only use: write(), _exit(), and
+     * a few other specific functions. We MUST NOT use:
+     * - htonl() or other functions that might use locks
+     * - writev() over IPC (removed - could deadlock or corrupt state)
+     * - malloc/free or any function that manipulates shared state
+     * The signal handler will be reset by SA_RESETHAND, so after this
+     * returns, the signal will terminate the process. */
     const char msg_prefix[] = "resolver child crashed with signal ";
     const size_t msg_prefix_len = sizeof(msg_prefix) - 1;
     const char *signame = "UNKNOWN";
@@ -1084,34 +1091,16 @@ resolver_child_crash_handler(int signum) {
             break;
     }
 
-    size_t total_len = msg_prefix_len + signame_len;
-    if (child_sock >= 0 && total_len <= RESOLVER_IPC_MAX_PAYLOAD) {
-        struct resolver_ipc_header header;
-        header.type = htonl(RESOLVER_CMD_CRASH);
-        header.id = htonl(0);
-        header.payload_len = htonl((uint32_t)total_len);
+    /* Write to stderr - write() is async-signal-safe */
+    (void)write(STDERR_FILENO, msg_prefix, msg_prefix_len);
+    (void)write(STDERR_FILENO, signame, signame_len);
+    (void)write(STDERR_FILENO, "\n", 1);
 
-        struct iovec iov[3];
-        iov[0].iov_base = &header;
-        iov[0].iov_len = sizeof(header);
-        iov[1].iov_base = (void *)msg_prefix;
-        iov[1].iov_len = msg_prefix_len;
-        iov[2].iov_base = (void *)signame;
-        iov[2].iov_len = signame_len;
-        /* Ignore errors - we're crashing anyway, nothing safe to do */
-        ssize_t ignored = writev(child_sock, iov, 3);
-        (void)ignored;
-    }
-
-    /* Write to stderr - ignore errors (async-signal-safe) */
-    ssize_t stderr_written = write(STDERR_FILENO, msg_prefix, msg_prefix_len);
-    (void)stderr_written;
-    stderr_written = write(STDERR_FILENO, signame, signame_len);
-    (void)stderr_written;
-    stderr_written = write(STDERR_FILENO, "\n", 1);
-    (void)stderr_written;
-
-    /* Signal handler will be reset by SA_RESETHAND, so signal will terminate process */
+    /* Do NOT attempt IPC communication from signal handler:
+     * - Removed htonl() call (not guaranteed async-signal-safe)
+     * - Removed writev() to child_sock (could deadlock or corrupt IPC state)
+     * - Parent will detect child crash via SIGCHLD/waitpid()
+     * This is safer and follows signal safety best practices. */
 }
 
 static void __attribute__((noreturn))

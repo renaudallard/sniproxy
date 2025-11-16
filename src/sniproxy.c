@@ -556,8 +556,15 @@ drop_perms(const char *username, const char *groupname) {
       gid = group->gr_gid;
     }
 
-    if (logger_drop_privileges(user->pw_uid, gid) < 0)
-        fatal("logger_drop_privileges(): %s", strerror(errno));
+    /* SECURITY: Drop main process privileges FIRST before communicating
+     * with child processes over IPC. This prevents a window where the
+     * main process has root and could be exploited if IPC is compromised.
+     * Correct privilege dropping order per security best practices:
+     * 1. setgroups() - clear supplementary groups
+     * 2. setgid()    - drop group privileges
+     * 3. setuid()    - drop user privileges (irreversible)
+     * 4. Verify drop succeeded
+     * 5. Then communicate with child processes */
 
     /* drop any supplementary groups */
     if (setgroups(1, &gid) < 0)
@@ -567,11 +574,17 @@ drop_perms(const char *username, const char *groupname) {
     if (setgid(gid) < 0)
         fatal("setgid(): %s", strerror(errno));
 
+    /* set the main uid - this is irreversible */
     if (setuid(user->pw_uid) < 0)
         fatal("setuid(): %s", strerror(errno));
 
-    if (getuid() == 0 || geteuid() == 0)
+    /* verify privileges were actually dropped */
+    if (getuid() == 0 || geteuid() == 0 || getgid() == 0 || getegid() == 0)
         fatal("Failed to drop privileges");
+
+    /* Now that main process is unprivileged, tell logger child to drop too */
+    if (logger_drop_privileges(user->pw_uid, gid) < 0)
+        fatal("logger_drop_privileges(): %s", strerror(errno));
 }
 
 static void

@@ -2011,25 +2011,34 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         /* State machine validation: verify DNS query state consistency */
         assert(con->query_handle != NULL || !con->dns_query_acquired);
 
-        /* Additional validation: detect double-free or use-after-free conditions */
-        if (con->query_handle != NULL && con->dns_query_acquired) {
+        /* SECURITY: Prevent race condition with resolver callback.
+         * Save query_handle locally and clear it atomically BEFORE calling
+         * resolv_cancel(). This prevents the callback from firing and
+         * accessing a handle that we're in the process of canceling.
+         * Without this, there's a TOCTOU window where:
+         * 1. We check con->query_handle != NULL
+         * 2. Callback fires and sets con->query_handle = NULL
+         * 3. We call resolv_cancel() with stale pointer -> use-after-free */
+        void *local_query_handle = con->query_handle;
+        int local_dns_query_acquired = con->dns_query_acquired;
+
+        /* Clear state atomically before any cancellation */
+        con->query_handle = NULL;
+        con->dns_query_acquired = 0;
+
+        /* Now safely clean up using local copies */
+        if (local_query_handle != NULL && local_dns_query_acquired) {
             /* Valid state: active query with acquired slot */
-            resolv_cancel(con->query_handle);
-            con->query_handle = NULL;
+            resolv_cancel(local_query_handle);
             dns_query_release();
-            con->dns_query_acquired = 0;
-        } else if (con->query_handle != NULL && !con->dns_query_acquired) {
-            /* Inconsistent state: query exists but slot not marked acquired
-             * This should never happen due to assertion, but handle defensively */
+        } else if (local_query_handle != NULL && !local_dns_query_acquired) {
+            /* Inconsistent state: query exists but slot not marked acquired */
             warn("Inconsistent DNS state: query_handle set but dns_query_acquired=0");
-            resolv_cancel(con->query_handle);
-            con->query_handle = NULL;
-        } else if (con->dns_query_acquired) {
-            /* Inconsistent state: slot marked acquired but no query handle
-             * Assertion above prevents this, but handle defensively */
+            resolv_cancel(local_query_handle);
+        } else if (local_dns_query_acquired) {
+            /* Inconsistent state: slot marked acquired but no query handle */
             warn("Inconsistent DNS state: dns_query_acquired=1 but query_handle=NULL");
             dns_query_release();
-            con->dns_query_acquired = 0;
         }
         /* Else: both NULL/0 - no cleanup needed */
 
