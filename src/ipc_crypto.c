@@ -96,7 +96,8 @@ hkdf_sha256(const uint8_t *salt, size_t salt_len,
 
     OSSL_PARAM params[5];
     int p = 0;
-    params[p++] = OSSL_PARAM_construct_utf8_string("digest", "SHA256", 0);
+    char digest_name[] = "SHA256";
+    params[p++] = OSSL_PARAM_construct_utf8_string("digest", digest_name, 0);
     params[p++] = OSSL_PARAM_construct_octet_string("key", (void *)ikm, ikm_len);
     if (salt != NULL && salt_len > 0)
         params[p++] = OSSL_PARAM_construct_octet_string("salt", (void *)salt, salt_len);

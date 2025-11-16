@@ -1070,9 +1070,13 @@ resolver_child_crash_handler(int signum) {
     }
 
     /* Write to stderr - write() is async-signal-safe */
-    (void)write(STDERR_FILENO, msg_prefix, msg_prefix_len);
-    (void)write(STDERR_FILENO, signame, signame_len);
-    (void)write(STDERR_FILENO, "\n", 1);
+    ssize_t unused_write;
+    unused_write = write(STDERR_FILENO, msg_prefix, msg_prefix_len);
+    (void)unused_write;
+    unused_write = write(STDERR_FILENO, signame, signame_len);
+    (void)unused_write;
+    unused_write = write(STDERR_FILENO, "\n", 1);
+    (void)unused_write;
 
     /* Do NOT attempt IPC communication from signal handler:
      * - Removed htonl() call (not guaranteed async-signal-safe)
