@@ -364,7 +364,11 @@ get_secure_temp_dir(void) {
     const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
     if (xdg_runtime != NULL && xdg_runtime[0] == '/') {
         struct stat st;
-        if (stat(xdg_runtime, &st) == 0 && S_ISDIR(st.st_mode)) {
+        /* SECURITY: Use lstat() instead of stat() to reject symlinks.
+         * An attacker could set XDG_RUNTIME_DIR to a symlink pointing to
+         * a privileged location, causing us to create files there.
+         * lstat() does not follow symlinks, protecting against this attack. */
+        if (lstat(xdg_runtime, &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
             /* Verify it's owned by us and has secure permissions */
             if (st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
                 if (snprintf(temp_dir, sizeof(temp_dir), "%s/sniproxy",
@@ -379,8 +383,8 @@ get_secure_temp_dir(void) {
                     goto fallback;
                 }
 
-                /* Verify ownership and permissions */
-                if (stat(temp_dir, &st) == 0 && S_ISDIR(st.st_mode) &&
+                /* Verify ownership and permissions (use lstat to reject symlinks) */
+                if (lstat(temp_dir, &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode) &&
                     st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
                     initialized = 1;
                     return temp_dir;

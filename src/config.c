@@ -393,9 +393,24 @@ init_config(const char *filename, struct ev_loop *loop) {
         char line[256];
 
         err("error parsing %s at %jd near:", filename, (intmax_t)whence);
-        fseeko(file, (off_t)-20, SEEK_CUR);
-        for (int i = 0; i < 5; i++)
-            err(" %jd\t%s", (intmax_t)ftello(file), fgets(line, sizeof(line), file));
+
+        /* SECURITY: Validate seek position to prevent reading before file start.
+         * Only seek back if we're at least 20 bytes into the file to avoid
+         * negative positions which could expose unintended data. */
+        if (whence >= 20) {
+            fseeko(file, (off_t)-20, SEEK_CUR);
+        } else if (whence > 0) {
+            /* Seek to start of file if we're less than 20 bytes in */
+            fseeko(file, 0, SEEK_SET);
+        }
+        /* Else: already at start, no seek needed */
+
+        for (int i = 0; i < 5; i++) {
+            off_t line_pos = ftello(file);
+            if (line_pos < 0) break;  /* ftello error */
+            if (fgets(line, sizeof(line), file) != NULL)
+                err(" %jd\t%s", (intmax_t)line_pos, line);
+        }
 
         free_config(config, loop);
         config = NULL;

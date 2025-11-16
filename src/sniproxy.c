@@ -357,11 +357,19 @@ main(int argc, char **argv) {
          * temporary connection dump files. */
         const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
         if (xdg_runtime != NULL && xdg_runtime[0] == '/') {
-            /* XDG_RUNTIME_DIR/sniproxy for user-specific temp files */
-            char xdg_path[PATH_MAX];
-            if (snprintf(xdg_path, sizeof(xdg_path), "%s/sniproxy",
-                        xdg_runtime) < (int)sizeof(xdg_path)) {
-                openbsd_unveil_path(xdg_path, "rwc", 1);
+            /* SECURITY: Validate XDG_RUNTIME_DIR is not a symlink before unveiling.
+             * An attacker could set this to a symlink pointing to a privileged
+             * location. Using lstat() rejects symlinks, preventing this attack. */
+            struct stat xdg_st;
+            if (lstat(xdg_runtime, &xdg_st) == 0 &&
+                S_ISDIR(xdg_st.st_mode) && !S_ISLNK(xdg_st.st_mode) &&
+                xdg_st.st_uid == getuid()) {
+                /* XDG_RUNTIME_DIR/sniproxy for user-specific temp files */
+                char xdg_path[PATH_MAX];
+                if (snprintf(xdg_path, sizeof(xdg_path), "%s/sniproxy",
+                            xdg_runtime) < (int)sizeof(xdg_path)) {
+                    openbsd_unveil_path(xdg_path, "rwc", 1);
+                }
             }
         }
         /* System-wide temp directory */
