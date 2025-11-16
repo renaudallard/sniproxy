@@ -100,6 +100,7 @@ static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
 static void free_string_vector(char **);
 static void print_resolver_config(FILE *, struct ResolverConfig *);
+static int validate_config_path(const char *setting, const char *path);
 
 
 static void *new_listener_acl_builder(void);
@@ -833,6 +834,34 @@ end_listener_acl_stanza(struct Listener *listener, struct ListenerACLBuilder *bu
 }
 
 static int
+validate_config_path(const char *setting, const char *path) {
+    if (path == NULL || setting == NULL) {
+        err("Invalid %s path", setting != NULL ? setting : "(unknown)");
+        return 0;
+    }
+
+    const char *p = path;
+    while (*p != '\0') {
+        while (*p == '/')
+            p++;
+        if (*p == '\0')
+            break;
+
+        const char *component = p;
+        while (*p != '/' && *p != '\0')
+            p++;
+        size_t len = (size_t)(p - component);
+
+        if (len == 2 && component[0] == '.' && component[1] == '.') {
+            err("%s path must not include '..' components: %s", setting, path);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int
 accept_username(struct Config *config, const char *username) {
     if (config->user != NULL) {
         err("Duplicate username: %s", username);
@@ -868,6 +897,8 @@ accept_pidfile(struct Config *config, const char *pidfile) {
         err("Duplicate pidfile: %s", pidfile);
         return 0;
     }
+    if (!validate_config_path("pidfile", pidfile))
+        return 0;
     config->pidfile = strdup(pidfile);
     if (config->pidfile == NULL) {
         err("%s: strdup", __func__);
@@ -1041,6 +1072,9 @@ new_logger_builder(void) {
 static int
 accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
     assert(lb != NULL);
+
+    if (!validate_config_path("logger filename", filename))
+        return 0;
 
     lb->filename = strdup(filename);
     if (lb->filename == NULL) {
