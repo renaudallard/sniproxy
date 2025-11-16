@@ -51,8 +51,8 @@
 #include "tls.h"
 #include "fd_util.h"
 
-#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__))
-#error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, and macOS)."
+#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
+#error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, macOS, and modern Linux)."
 #endif
 
 
