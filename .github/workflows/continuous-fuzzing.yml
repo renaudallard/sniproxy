@@ -1,14 +1,20 @@
-name: Build and Fuzz
+name: Continuous Fuzzing
 
 on:
-  push:
-    branches: ["*"]
-  pull_request:
+  schedule:
+    # Run every day at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzz_runtime:
+        description: 'Fuzzing runtime per target (seconds)'
+        required: false
+        default: '3600'
 
 jobs:
-  build-and-fuzz:
+  continuous-fuzz:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 480
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,17 +55,24 @@ jobs:
       - name: Build
         run: make -j$(nproc)
 
-      - name: Run fuzzers
+      - name: Download previous corpus
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: fuzzer-corpus-continuous
+          path: tests/fuzz/corpus/
+
+      - name: Run extended fuzzing
         env:
           FUZZ_OPTIONAL: 0
-          FUZZ_RUNTIME: 120
+          FUZZ_RUNTIME: ${{ github.event.inputs.fuzz_runtime || '3600' }}
         run: tests/fuzz/run_fuzz.sh
 
       - name: Upload crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: fuzzer-crashes
+          name: fuzzer-crashes-continuous-${{ github.run_number }}
           path: |
             tests/fuzz/crash-*
             tests/fuzz/leak-*
@@ -70,6 +83,24 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fuzzer-corpus
+          name: fuzzer-corpus-continuous
           path: tests/fuzz/corpus/
-          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Create issue on crash
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Fuzzer crash detected in continuous fuzzing (run #${context.runNumber})`,
+              body: `The continuous fuzzing workflow detected a crash.
+
+              **Run**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+              **Artifacts**: Crash artifacts are available in the workflow run.
+
+              Please investigate the crash files to identify and fix the issue.`,
+              labels: ['bug', 'fuzzing', 'security']
+            })

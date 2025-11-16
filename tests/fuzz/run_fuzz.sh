@@ -49,13 +49,21 @@ if ! check_fuzzer_support; then
     exit 1
 fi
 
-mkdir -p "$OUT_DIR" "$CORPUS_ROOT/tls" "$CORPUS_ROOT/http2"
+mkdir -p "$OUT_DIR" \
+    "$CORPUS_ROOT/tls" \
+    "$CORPUS_ROOT/http2" \
+    "$CORPUS_ROOT/http" \
+    "$CORPUS_ROOT/hostname" \
+    "$CORPUS_ROOT/cfg_tokenizer" \
+    "$CORPUS_ROOT/ipc_crypto"
 
 build_fuzzer() {
     local target=$1
     shift
     "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" -o "$OUT_DIR/$target"
 }
+
+echo "Building fuzzers..."
 
 build_fuzzer tls_fuzz \
     "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
@@ -66,9 +74,35 @@ build_fuzzer http2_fuzz \
     "$ROOT_DIR/src/http2.c" \
     "$ROOT_DIR/src/http2_huffman.c"
 
+build_fuzzer http_fuzz \
+    "$ROOT_DIR/tests/fuzz/http_fuzz.c" \
+    "$ROOT_DIR/src/http.c"
+
+build_fuzzer hostname_fuzz \
+    "$ROOT_DIR/tests/fuzz/hostname_fuzz.c"
+
+build_fuzzer cfg_tokenizer_fuzz \
+    "$ROOT_DIR/tests/fuzz/cfg_tokenizer_fuzz.c" \
+    "$ROOT_DIR/src/cfg_tokenizer.c"
+
+build_fuzzer ipc_crypto_fuzz \
+    "$ROOT_DIR/tests/fuzz/ipc_crypto_fuzz.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    -lcrypto
+
+echo "Fuzzers built successfully."
+
 if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
     exit 0
 fi
 
+echo "Running fuzzers for ${FUZZ_RUNTIME}s each..."
+
 "$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
 "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
+"$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
+"$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
+"$OUT_DIR/cfg_tokenizer_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/cfg_tokenizer"
+"$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
+
+echo "Fuzzing complete. No crashes detected."
