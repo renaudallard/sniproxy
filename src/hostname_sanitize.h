@@ -39,6 +39,10 @@
 static inline int
 sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
     size_t len;
+    /* SECURITY: Use constant-time validation to prevent timing side-channels.
+     * Track validity in a variable that accumulates errors rather than returning early.
+     * This prevents attackers from using timing information to deduce hostname contents. */
+    int valid = 1;
 
     if (hostname == NULL || hostname_len == NULL)
         return 0;
@@ -56,27 +60,25 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
 
     len = (size_t)(end - hostname);
 
+    /* Validate length but don't return early - continue validation */
     if (len == 0 || len > max_len)
-        return 0;
+        valid = 0;
 
     /* Host headers may legally contain only hostnames, IPv4 literals, a
      * wildcard "*", or bracketed IPv6 literals. Reject anything else so we do
      * not match routing rules using unexpected characters such as '/', '@',
      * or '%'. */
 
-    if (len == 1 && hostname[0] == '*') {
-        *hostname_len = len;
-        return 1;
-    }
+    int is_wildcard = (len == 1 && hostname[0] == '*');
 
     int bracketed_ipv6 = 0;
     if (hostname[0] == '[') {
         if (len <= 2 || hostname[len - 1] != ']')
-            return 0;
+            valid = 0;  /* Invalid bracketed format */
         bracketed_ipv6 = 1;
     } else if (hostname[len - 1] == ']') {
         /* Trailing bracket without a leading one is invalid. */
-        return 0;
+        valid = 0;
     }
 
     if (bracketed_ipv6) {
@@ -87,9 +89,10 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
         for (; p < end; p++) {
             unsigned char c = (unsigned char)*p;
 
+            /* Check for invalid characters but don't return early */
             if (c <= 0x1F || c == 0x7F || c >= 0x80 || c == ' ' ||
                 (c >= '\t' && c <= '\r'))
-                return 0;
+                valid = 0;
 
             if (c == ':') {
                 colon_count++;
@@ -99,14 +102,14 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
                 } else if ((unsigned)(c - 'A') <= ('F' - 'A')) {
                     c = (unsigned char)(c | 0x20);
                 } else if (!((unsigned)(c - 'a') <= ('f' - 'a')))
-                    return 0;
+                    valid = 0;  /* Invalid hex character */
             }
 
             *p = (char)c;
         }
 
         if (colon_count < 2)
-            return 0;
+            valid = 0;
     } else {
         char *p = hostname;
         const char *end = hostname + len;
@@ -117,13 +120,14 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
         for (; p < end; p++) {
             unsigned char c = (unsigned char)*p;
 
+            /* Check for invalid characters but don't return early */
             if (c <= 0x1F || c == 0x7F || c >= 0x80 || c == ' ' ||
                 (c >= '\t' && c <= '\r'))
-                return 0;
+                valid = 0;
 
             if (c == '.') {
                 if (label_len == 0 || last_was_dash)
-                    return 0;
+                    valid = 0;  /* Invalid label format */
 
                 label_len = 0;
                 last_was_dash = 0;
@@ -140,29 +144,29 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
                     last_was_dash = 0;
                 } else if (c == '-' || c == '_') {
                     if (label_len == 0)
-                        return 0;
+                        valid = 0;  /* Label can't start with dash */
                     last_was_dash = 1;
                 } else {
-                    return 0;
+                    valid = 0;  /* Invalid character */
                 }
             }
 
             saw_label = 1;
             label_len++;
             if (label_len > 63)
-                return 0;
+                valid = 0;  /* Label too long */
 
             *p = (char)c;
         }
 
         if (!saw_label)
-            return 0;
+            valid = 0;
 
         if (label_len == 0 && hostname[len - 1] != '.')
-            return 0;
+            valid = 0;
 
         if (last_was_dash && hostname[len - 1] != '.')
-            return 0;
+            valid = 0;
 
         while (len > 0 && hostname[len - 1] == '.')
             len--;
@@ -172,7 +176,11 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
 
     *hostname_len = len;
 
-    return 1;
+    /* Return early only for wildcard (special case with minimal leakage) */
+    if (is_wildcard && valid)
+        return 1;
+
+    return valid;
 }
 
 #endif /* HOSTNAME_SANITIZE_H */

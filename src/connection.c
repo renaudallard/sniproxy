@@ -383,12 +383,32 @@ get_secure_temp_dir(void) {
                     goto fallback;
                 }
 
-                /* Verify ownership and permissions (use lstat to reject symlinks) */
-                if (lstat(temp_dir, &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode) &&
+                /* SECURITY: Open directory with O_DIRECTORY to atomically verify it's
+                 * a directory and not a symlink (TOCTOU-safe validation).
+                 * O_DIRECTORY fails if path is a symlink, and O_NOFOLLOW provides
+                 * additional protection. fstat() on the fd ensures we're checking
+                 * the actual directory we opened, not a replacement. */
+                int dir_fd = open(temp_dir, O_RDONLY | O_DIRECTORY
+#ifdef O_NOFOLLOW
+                    | O_NOFOLLOW
+#endif
+#ifdef O_CLOEXEC
+                    | O_CLOEXEC
+#endif
+                    , 0);
+                if (dir_fd < 0) {
+                    warn("Failed to open directory %s: %s", temp_dir, strerror(errno));
+                    goto fallback;
+                }
+
+                /* Verify ownership and permissions using fstat on the fd */
+                if (fstat(dir_fd, &st) == 0 && S_ISDIR(st.st_mode) &&
                     st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
+                    close(dir_fd);
                     initialized = 1;
                     return temp_dir;
                 }
+                close(dir_fd);
                 warn("Security check failed for %s", temp_dir);
             }
         }
@@ -425,28 +445,47 @@ fallback:
         return NULL;
     }
 
-    /* Verify ownership and permissions to prevent symlink attacks */
-    if (lstat(temp_dir, &st) != 0) {
-        warn("lstat failed for %s: %s", temp_dir, strerror(errno));
+    /* SECURITY: Atomically verify directory with fstat on fd (TOCTOU-safe) */
+    int dir_fd = open(temp_dir, O_RDONLY | O_DIRECTORY
+#ifdef O_NOFOLLOW
+        | O_NOFOLLOW
+#endif
+#ifdef O_CLOEXEC
+        | O_CLOEXEC
+#endif
+        , 0);
+    if (dir_fd < 0) {
+        warn("Failed to open directory %s: %s", temp_dir, strerror(errno));
+        return NULL;
+    }
+
+    if (fstat(dir_fd, &st) != 0) {
+        int saved_errno = errno;
+        close(dir_fd);
+        warn("fstat failed for %s: %s", temp_dir, strerror(saved_errno));
         return NULL;
     }
 
     if (!S_ISDIR(st.st_mode)) {
+        close(dir_fd);
         warn("%s exists but is not a directory", temp_dir);
         return NULL;
     }
 
     if (st.st_uid != getuid()) {
+        close(dir_fd);
         warn("%s is not owned by current user (uid %u != %u)",
              temp_dir, st.st_uid, getuid());
         return NULL;
     }
 
     if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+        close(dir_fd);
         warn("%s has insecure permissions (mode 0%o)", temp_dir, st.st_mode & 0777);
         return NULL;
     }
 
+    close(dir_fd);
     initialized = 1;
     return temp_dir;
     }
@@ -966,6 +1005,21 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
     }
 }
 
+/* Constant-time memory comparison to prevent timing side-channel attacks.
+ * Returns 1 if equal, 0 if not equal.
+ * Execution time is independent of where differences occur. */
+static inline int
+constant_time_memcmp(const void *a, const void *b, size_t len) {
+    const unsigned char *pa = (const unsigned char *)a;
+    const unsigned char *pb = (const unsigned char *)b;
+    unsigned char diff = 0;
+
+    for (size_t i = 0; i < len; i++)
+        diff |= pa[i] ^ pb[i];
+
+    return diff == 0;
+}
+
 static int
 sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storage *b) {
     if (a == b)
@@ -976,7 +1030,9 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
     if (a->ss_family == AF_INET) {
         const struct sockaddr_in *in_a = (const struct sockaddr_in *)a;
         const struct sockaddr_in *in_b = (const struct sockaddr_in *)b;
-        return memcmp(&in_a->sin_addr, &in_b->sin_addr, sizeof(struct in_addr)) == 0;
+        /* SECURITY: Use constant-time comparison to prevent timing attacks
+         * that could leak information about rate-limited IP addresses */
+        return constant_time_memcmp(&in_a->sin_addr, &in_b->sin_addr, sizeof(struct in_addr));
     } else if (a->ss_family == AF_INET6) {
         const struct sockaddr_in6 *in_a = (const struct sockaddr_in6 *)a;
         const struct sockaddr_in6 *in_b = (const struct sockaddr_in6 *)b;
@@ -984,7 +1040,8 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
         if (in_a->sin6_scope_id != in_b->sin6_scope_id)
             return 0;
 
-        return memcmp(&in_a->sin6_addr, &in_b->sin6_addr, sizeof(struct in6_addr)) == 0;
+        /* SECURITY: Use constant-time comparison to prevent timing attacks */
+        return constant_time_memcmp(&in_a->sin6_addr, &in_b->sin6_addr, sizeof(struct in6_addr));
     }
 
     return 0;
