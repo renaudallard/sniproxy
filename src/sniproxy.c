@@ -352,6 +352,27 @@ main(int argc, char **argv) {
             table = SLIST_NEXT(table, entries);
         }
 
+        /* Unveil temp directories for print_connections() debug output.
+         * This is triggered by SIGUSR1 and needs write access to create
+         * temporary connection dump files. */
+        const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
+        if (xdg_runtime != NULL && xdg_runtime[0] == '/') {
+            /* XDG_RUNTIME_DIR/sniproxy for user-specific temp files */
+            char xdg_path[PATH_MAX];
+            if (snprintf(xdg_path, sizeof(xdg_path), "%s/sniproxy",
+                        xdg_runtime) < (int)sizeof(xdg_path)) {
+                openbsd_unveil_path(xdg_path, "rwc", 1);
+            }
+        }
+        /* System-wide temp directory */
+        openbsd_unveil_path("/var/run/sniproxy", "rwc", 1);
+        /* User-specific fallback temp directory */
+        char tmp_path[PATH_MAX];
+        if (snprintf(tmp_path, sizeof(tmp_path), "/tmp/sniproxy-%u",
+                    getuid()) < (int)sizeof(tmp_path)) {
+            openbsd_unveil_path(tmp_path, "rwc", 1);
+        }
+
         if (unveil(NULL, NULL) == -1) {
             perror("unveil");
             exit(EXIT_FAILURE);

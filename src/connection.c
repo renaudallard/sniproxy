@@ -347,10 +347,122 @@ free_connections(struct ev_loop *loop) {
     stop_buffer_shrink_timer(loop);
 }
 
+/*
+ * Get or create a secure directory for temporary files.
+ * Returns a static buffer containing the path, or NULL on error.
+ * The directory is created with mode 0700 (owner-only access).
+ */
+static const char *
+get_secure_temp_dir(void) {
+    static char temp_dir[PATH_MAX];
+    static int initialized = 0;
+
+    if (initialized)
+        return temp_dir;
+
+    /* Try XDG_RUNTIME_DIR first (user-specific, auto-cleaned) */
+    const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
+    if (xdg_runtime != NULL && xdg_runtime[0] == '/') {
+        struct stat st;
+        if (stat(xdg_runtime, &st) == 0 && S_ISDIR(st.st_mode)) {
+            /* Verify it's owned by us and has secure permissions */
+            if (st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
+                if (snprintf(temp_dir, sizeof(temp_dir), "%s/sniproxy",
+                            xdg_runtime) >= (int)sizeof(temp_dir)) {
+                    warn("XDG_RUNTIME_DIR path too long");
+                    goto fallback;
+                }
+
+                /* Create sniproxy subdirectory if needed */
+                if (mkdir(temp_dir, 0700) < 0 && errno != EEXIST) {
+                    warn("Failed to create %s: %s", temp_dir, strerror(errno));
+                    goto fallback;
+                }
+
+                /* Verify ownership and permissions */
+                if (stat(temp_dir, &st) == 0 && S_ISDIR(st.st_mode) &&
+                    st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
+                    initialized = 1;
+                    return temp_dir;
+                }
+                warn("Security check failed for %s", temp_dir);
+            }
+        }
+    }
+
+fallback:
+    /* Fallback: Use /var/run/sniproxy or /tmp/sniproxy-<uid> */
+    {
+        /* First try /var/run/sniproxy (system-wide location) */
+        const char *fallback_dir = "/var/run/sniproxy";
+        struct stat st;
+
+    if (mkdir(fallback_dir, 0700) == 0 || errno == EEXIST) {
+        if (stat(fallback_dir, &st) == 0 && S_ISDIR(st.st_mode) &&
+            st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
+            if (snprintf(temp_dir, sizeof(temp_dir), "%s", fallback_dir)
+                < (int)sizeof(temp_dir)) {
+                initialized = 1;
+                return temp_dir;
+            }
+        }
+    }
+
+    /* Last resort: Use /tmp/sniproxy-<uid> for backwards compatibility,
+     * but with uid in the path to avoid conflicts */
+    if (snprintf(temp_dir, sizeof(temp_dir), "/tmp/sniproxy-%u", getuid())
+        >= (int)sizeof(temp_dir)) {
+        warn("Failed to construct temp directory path");
+        return NULL;
+    }
+
+    if (mkdir(temp_dir, 0700) < 0 && errno != EEXIST) {
+        warn("Failed to create %s: %s", temp_dir, strerror(errno));
+        return NULL;
+    }
+
+    /* Verify ownership and permissions to prevent symlink attacks */
+    if (lstat(temp_dir, &st) != 0) {
+        warn("lstat failed for %s: %s", temp_dir, strerror(errno));
+        return NULL;
+    }
+
+    if (!S_ISDIR(st.st_mode)) {
+        warn("%s exists but is not a directory", temp_dir);
+        return NULL;
+    }
+
+    if (st.st_uid != getuid()) {
+        warn("%s is not owned by current user (uid %u != %u)",
+             temp_dir, st.st_uid, getuid());
+        return NULL;
+    }
+
+    if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+        warn("%s has insecure permissions (mode 0%o)", temp_dir, st.st_mode & 0777);
+        return NULL;
+    }
+
+    initialized = 1;
+    return temp_dir;
+    }
+}
+
 /* dumps a list of all connections for debugging */
 void
 print_connections(void) {
-    char filename[] = "/tmp/sniproxy-connections-XXXXXX";
+    const char *temp_dir = get_secure_temp_dir();
+    if (temp_dir == NULL) {
+        warn("Failed to get secure temp directory");
+        return;
+    }
+
+    char filename[PATH_MAX];
+    if (snprintf(filename, sizeof(filename), "%s/connections-XXXXXX", temp_dir)
+        >= (int)sizeof(filename)) {
+        warn("Temp filename path too long");
+        return;
+    }
 
     mode_t old_umask = umask(077);
     int fd = mkstemp(filename);
