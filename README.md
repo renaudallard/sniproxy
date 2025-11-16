@@ -508,6 +508,11 @@ Current author: Renaud Allard <renaud@allard.it>
 
 Contributors: Manuel Kasper and others
 
+### Nota Bene
+
+All real life tests are only done on OpenBSD. If you see issues on other OSes
+feel free to submit PRs or bug reports.
+
 SNIProxy builds on several excellent libraries:
 - [libev](http://software.schmorp.de/pkg/libev.html) - event loop
 - [PCRE2](https://www.pcre.org/) / [PCRE](https://www.pcre.org/) - regex
