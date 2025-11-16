@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -71,6 +72,7 @@ static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
 static size_t effective_max_connections(const struct Config *);
+static int parse_min_tls_version(const char *value, uint8_t *major, uint8_t *minor);
 
 #ifdef __OpenBSD__
 struct openbsd_unveil_data {
@@ -229,7 +231,8 @@ main(int argc, char **argv) {
     int background_flag = 1;
     rlim_t max_nofiles = 65536;
     int opt;
-    int allow_tls10 = 0;
+    uint8_t min_tls_major = 3;
+    uint8_t min_tls_minor = 3;
     struct ev_loop *loop = NULL;
 
     logger_prepare_process_title(argc, argv);
@@ -239,7 +242,7 @@ main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "fc:n:VTd")) != -1) {
+    while ((opt = getopt(argc, argv, "fc:n:T:Vd")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -269,7 +272,16 @@ main(int argc, char **argv) {
                 printf("sniproxy %s\n", sniproxy_version);
                 return EXIT_SUCCESS;
             case 'T':
-                allow_tls10 = 1;
+                {
+                    uint8_t parsed_major;
+                    uint8_t parsed_minor;
+                    if (!parse_min_tls_version(optarg, &parsed_major, &parsed_minor)) {
+                        fprintf(stderr, "Invalid TLS version '%s'. Supported values: 1.0, 1.1, 1.2, 1.3\n", optarg);
+                        return EXIT_FAILURE;
+                    }
+                    min_tls_major = parsed_major;
+                    min_tls_minor = parsed_minor;
+                }
                 break;
             case 'd': /* debug */
                 set_resolver_debug(1);
@@ -287,8 +299,7 @@ main(int argc, char **argv) {
 
     /* Config file permissions are checked in init_config() using fstat() */
 
-    if (allow_tls10)
-        tls_set_min_client_hello_version(3, 1);
+    tls_set_min_client_hello_version(min_tls_major, min_tls_minor);
 
     unsigned int loop_flags = 0;
 #ifdef EVFLAG_FORKCHECK
@@ -618,9 +629,9 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T] [-d]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
+    fprintf(stderr, "       -T <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)\n");
     fprintf(stderr, "       -d enable resolver debug logging\n");
-    fprintf(stderr, "       -T allow TLS 1.0 client hellos\n");
 }
 
 static void
@@ -651,6 +662,41 @@ effective_max_connections(const struct Config *cfg) {
         return fd_budget > 1 ? fd_budget - 1 : 1;
 
     return fd_budget - headroom;
+}
+
+static int
+parse_min_tls_version(const char *value, uint8_t *major, uint8_t *minor) {
+    char *endptr = NULL;
+    long parsed_major;
+    long parsed_minor;
+
+    if (value == NULL || major == NULL || minor == NULL)
+        return 0;
+
+    errno = 0;
+    parsed_major = strtol(value, &endptr, 10);
+    if (errno != 0 || endptr == value || *endptr != '.')
+        return 0;
+
+    if (parsed_major != 1)
+        return 0;
+
+    const char *minor_str = endptr + 1;
+    if (*minor_str == '\0')
+        return 0;
+
+    errno = 0;
+    parsed_minor = strtol(minor_str, &endptr, 10);
+    if (errno != 0 || *endptr != '\0')
+        return 0;
+
+    if (parsed_minor < 0 || parsed_minor > 3)
+        return 0;
+
+    *major = 3;
+    *minor = (uint8_t)(parsed_minor + 1);
+
+    return 1;
 }
 
 static void

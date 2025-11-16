@@ -37,7 +37,7 @@ Features
   trimming prevent idle buffer bookkeeping from exhausting memory under churn.
 
 ### Security & Hardening
-+ **TLS 1.2+ required by default** - optionally allow TLS 1.0 with `-T` flag
++ **TLS 1.2+ required by default** - use `-T <version>` to allow older TLS 1.1/1.0 clients or enforce TLS 1.3 for stricter deployments
 + **Cryptographic DNS query IDs**: arc4random()-seeded IDs with lifecycle
   tracking prevent prediction or reuse
 + **Regex DoS prevention**: Match limits scale with hostname length
@@ -110,12 +110,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
 Usage
 -----
 
-    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T] [-d]
+    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
         -c  configuration file, defaults to /etc/sniproxy.conf
         -f  run in foreground, do not drop privileges
         -n  specify file descriptor limit
         -V  print the version of SNIProxy and exit
-        -T  allow TLS 1.0 client hellos (default requires TLS 1.2+)
+        -T  <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)
         -d  enable resolver debug logging (verbose DNS tracing to stderr/error log)
 
 
