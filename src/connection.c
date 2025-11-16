@@ -51,6 +51,10 @@
 #include "tls.h"
 #include "fd_util.h"
 
+#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__))
+#error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, and macOS)."
+#endif
+
 
 #define IS_TEMPORARY_SOCKERR(_errno) (_errno == EAGAIN || \
                                       _errno == EWOULDBLOCK || \
@@ -1183,17 +1187,7 @@ connections_set_per_ip_connection_rate(double rate) {
 
     /* Initialize hash seed once with cryptographically secure random value */
     if (rate_limit_hash_seed == 0) {
-#if defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
         rate_limit_hash_seed = arc4random();
-#else
-        /* Fallback to time-based seed (less secure but better than nothing) */
-        struct timeval tv;
-        if (gettimeofday(&tv, NULL) == 0) {
-            rate_limit_hash_seed = (uint32_t)(tv.tv_sec ^ tv.tv_usec ^ getpid());
-        } else {
-            rate_limit_hash_seed = (uint32_t)getpid();
-        }
-#endif
         if (rate_limit_hash_seed == 0)
             rate_limit_hash_seed = 0xdeadbeef;
     }

@@ -53,8 +53,8 @@
 #define ARES_GETSOCK_MAXNUM 16
 #endif
 
-#if !defined(HAVE_ARC4RANDOM) && !defined(__OpenBSD__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__)
-#include <openssl/rand.h>
+#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__))
+#error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, and macOS)."
 #endif
 
 #ifdef __linux__
@@ -160,34 +160,8 @@ resolver_find_pending_host(const char *hostname, size_t len, int mode, uint32_t 
 }
 static uint32_t
 resolver_next_query_prng(void) {
-    /* Use arc4random() for cryptographically secure random numbers.
-     * This prevents DNS query ID prediction attacks. */
-#if defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
+    /* arc4random() delivers cryptographically secure random numbers. */
     return arc4random();
-#else
-    /* Fallback for systems without arc4random().
-     * Use OpenSSL's RAND_bytes for cryptographically secure randomness. */
-    uint32_t value;
-    if (RAND_bytes((unsigned char *)&value, sizeof(value)) == 1) {
-        return value;
-    }
-
-    /* RAND_bytes failed, fall back to /dev/urandom */
-#ifdef O_CLOEXEC
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-#else
-    int fd = open("/dev/urandom", O_RDONLY);
-#endif
-    if (fd >= 0) {
-        ssize_t bytes = read(fd, &value, sizeof(value));
-        close(fd);
-        if (bytes == (ssize_t)sizeof(value))
-            return value;
-    }
-
-    fatal("resolver RNG failure: unable to read secure random data (%s)",
-            strerror(errno));
-#endif
 }
 
 static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -322,11 +296,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     resolver_saved_dnssec_mode = dnssec_mode;
 
     if (resolver_bucket_salt == 0) {
-#ifdef HAVE_ARC4RANDOM
         resolver_bucket_salt = arc4random();
-#else
-        resolver_bucket_salt = (uint32_t)(getpid() ^ (uint32_t)time(NULL) ^ resolver_next_query_prng());
-#endif
         if (resolver_bucket_salt == 0)
             resolver_bucket_salt = 0x6d2535a1;
     }
