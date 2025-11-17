@@ -52,6 +52,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
+#ifdef HAVE_RESOLV_H
+#include <resolv.h>
+#endif
 #ifndef ARES_GETSOCK_MAXNUM
 #define ARES_GETSOCK_MAXNUM 16
 #endif
@@ -2019,6 +2022,11 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         memset(&hints, 0, sizeof(hints));
         hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
+
+#ifdef HAVE_RESOLV_H
+        (void)res_init();
+#endif
+
         struct addrinfo *results = NULL;
         int rc = getaddrinfo(hostname, port_str, &hints, &results);
         if (rc != 0) {
