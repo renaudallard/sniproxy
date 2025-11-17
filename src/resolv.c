@@ -262,6 +262,8 @@ static void resolver_child_free_processed_nameservers(char **list);
 static void resolver_child_free_dot_servers(void);
 static int resolver_child_handle_dot_server(const char *target, char **converted);
 static struct ResolverDotServer *resolver_child_find_dot_server_sa(const struct sockaddr *addr, ares_socklen_t addrlen);
+static int resolver_child_sockaddr_equal(const struct sockaddr *a, ares_socklen_t alen,
+        const struct sockaddr *b, ares_socklen_t blen);
 static int resolver_child_init_dot_ssl_ctx(void);
 static void resolver_child_free_dot_ssl_ctx(void);
 static struct ResolverChildDotSocket *resolver_child_dot_socket_get(ares_socket_t fd);
@@ -1979,6 +1981,8 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
     if (addr == NULL)
         return -1;
 
+    *converted = NULL;
+
     uint16_t port = address_port(addr);
     if (port == 0)
         port = 853;
@@ -2017,9 +2021,10 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         struct addrinfo *results = NULL;
         int rc = getaddrinfo(hostname, port_str, &hints, &results);
         if (rc != 0) {
-            err("resolver child: failed to resolve DoT nameserver '%s': %s", hostname, gai_strerror(rc));
+            warn("resolver child: unable to resolve DoT nameserver '%s': %s; skipping this entry",
+                    hostname, gai_strerror(rc));
             free(addr);
-            return -1;
+            return 0;
         }
 
         struct addrinfo *selected = results;
@@ -2097,12 +2102,47 @@ resolver_child_find_dot_server_sa(const struct sockaddr *addr, ares_socklen_t ad
         return NULL;
 
     for (size_t i = 0; i < child_dot_server_count; i++) {
-        if (child_dot_servers[i].addr_len == addrlen &&
-                memcmp(&child_dot_servers[i].addr, addr, addrlen) == 0)
+        if (resolver_child_sockaddr_equal((const struct sockaddr *)&child_dot_servers[i].addr,
+                    child_dot_servers[i].addr_len, addr, addrlen))
             return &child_dot_servers[i];
     }
 
     return NULL;
+}
+
+static int
+resolver_child_sockaddr_equal(const struct sockaddr *a, ares_socklen_t alen,
+        const struct sockaddr *b, ares_socklen_t blen) {
+    if (a == NULL || b == NULL)
+        return 0;
+
+    if (a->sa_family != b->sa_family)
+        return 0;
+
+    switch (a->sa_family) {
+        case AF_INET: {
+            if (alen < (ares_socklen_t)sizeof(struct sockaddr_in) ||
+                    blen < (ares_socklen_t)sizeof(struct sockaddr_in))
+                return 0;
+            const struct sockaddr_in *a4 = (const struct sockaddr_in *)a;
+            const struct sockaddr_in *b4 = (const struct sockaddr_in *)b;
+            return a4->sin_port == b4->sin_port &&
+                    memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
+        }
+        case AF_INET6: {
+            if (alen < (ares_socklen_t)sizeof(struct sockaddr_in6) ||
+                    blen < (ares_socklen_t)sizeof(struct sockaddr_in6))
+                return 0;
+            const struct sockaddr_in6 *a6 = (const struct sockaddr_in6 *)a;
+            const struct sockaddr_in6 *b6 = (const struct sockaddr_in6 *)b;
+            return a6->sin6_port == b6->sin6_port &&
+                    memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0;
+        }
+        default:
+            if (alen != blen)
+                return 0;
+            return memcmp(a, b, alen) == 0;
+    }
 }
 
 static int
