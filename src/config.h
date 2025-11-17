@@ -65,7 +65,7 @@ struct Config {
     struct Table_head tables;
 };
 
-struct Config *init_config(const char *, struct ev_loop *);
+struct Config *init_config(const char *, struct ev_loop *, int);
 void reload_config(struct Config *, struct ev_loop *);
 void free_config(struct Config *, struct ev_loop *);
 void print_config(FILE *, struct Config *);

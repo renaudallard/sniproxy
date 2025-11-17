@@ -83,7 +83,7 @@ main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    struct Config *config = init_config(config_file, loop);
+    struct Config *config = init_config(config_file, loop, 1);
     if (config == NULL) {
         ev_loop_destroy(loop);
         return EXIT_FAILURE;

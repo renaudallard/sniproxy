@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    config = init_config(config_file, EV_DEFAULT);
+    config = init_config(config_file, EV_DEFAULT, 1);
     if (config == NULL) {
         fprintf(stderr, "Failed to parse config\n");
         if (generated != NULL) {

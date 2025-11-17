@@ -322,7 +322,7 @@ main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    config = init_config(config_file, loop);
+    config = init_config(config_file, loop, 1);
     if (config == NULL) {
         fprintf(stderr, "Unable to load %s\n", config_file);
         usage();

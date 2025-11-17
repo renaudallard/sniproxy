@@ -81,7 +81,7 @@ Features
   rejects stale sockets, FIFOs, or symlinks before writing
 + **Privilege dropping** to non-root user/group after binding privileged ports
 + **Privilege verification**: startup fails fast if real or effective UID remains root after dropping privileges
-+ **Config permission guard**: sniproxy and sniproxy-cfg warn when the configuration file is accessible to group/other users
++ **Config permission guard**: sniproxy and sniproxy-cfg refuse to run when the configuration file is accessible to group/other users
 + **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
   keywords
 + **Resolver debug tracing**: Enable verbose DNS resolver logs on demand with the
