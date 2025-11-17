@@ -84,7 +84,7 @@ config_test_SOURCES = config_test.c \
                       ../src/http2.c \
                       ../src/http2_huffman.c
 
-config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS)
+config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS) -lssl $(LIBCRYPTO_LIBS)
 
 resolv_test_SOURCES = resolv_test.c \
                       ../src/resolv.c \
@@ -92,7 +92,7 @@ resolv_test_SOURCES = resolv_test.c \
                       ../src/logger.c \
                       ../src/ipc_crypto.c
 
-resolv_test_LDADD = $(LIBEV_LIBS) $(LIBCRYPTO_LIBS)
+resolv_test_LDADD = $(LIBEV_LIBS) -lssl $(LIBCRYPTO_LIBS)
 
 table_test_SOURCES = table_test.c \
                       ../src/backend.c \
