@@ -1,3 +1,16 @@
+sniproxy 0.9.7 (2025-11-19)
+==============================
+
+* DNS: resolver blocks now default to `dnssec_validation relaxed`, enabling AD
+  bit enforcement whenever upstream supports DNSSEC without requiring manual
+  configuration tweaks.
+* Security: sniproxy and sniproxy-cfg refuse to load configuration files that
+  are group/world accessible by validating permissions on the opened descriptor,
+  ensuring both initial startup and reloads uphold the guardrail.
+* Documentation: README, architecture notes, and man pages were refreshed to
+  describe the DNSSEC default, resolver requirements, and stricter configuration
+  permission enforcement.
+
 sniproxy 0.9.6 (2025-11-18)
 ==============================
 

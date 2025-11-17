@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.6
+Version: 0.9.7
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,15 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Wed Nov 19 2025 Renaud Allard <renaud@allard.it> 0.9.7-1
+- DNS: enable DNSSEC validation in relaxed mode by default so wildcard tables
+  and fallback targets benefit from authenticated data without manual config.
+- Security: sniproxy and sniproxy-cfg now refuse to load config files that are
+  group/world accessible by checking permissions on the opened descriptor,
+  covering both startup and reload paths.
+- Documentation: README and man pages now describe the new DNSSEC default and
+  stricter configuration-permission requirements.
+
 * Tue Nov 18 2025 Renaud Allard <renaud@allard.it> 0.9.6-1
 - Security: strengthen per-IP rate limiting with FNV-1a hashing, collision
   cutoffs, and strict HTTP header/TLS extension caps plus IPC payload limits.

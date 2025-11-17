@@ -1,3 +1,15 @@
+2025-11-19  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.7
+	- DNS: enable relaxed DNSSEC validation by default so wildcard tables and
+	fallback targets benefit from authenticated data without manual resolver
+	blocks.
+	- Security: enforce fatal configuration-permission checks in both sniproxy
+	and sniproxy-cfg using fstat() on the open descriptor, covering startup and
+	reload flows.
+	- Documentation: refresh README, architecture references, and man pages to
+	reflect the new DNSSEC default and strict configuration requirements.
+
 2025-11-18  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.6

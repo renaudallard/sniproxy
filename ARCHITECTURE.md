@@ -291,6 +291,9 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
   overflow guards remain, and resolver restart/shutdown now uses
   mutex-protected flags plus dedicated release helpers to prevent counter drift
   or use-after-free bugs during teardown.
+- **DNSSEC default (0.9.7)**: Resolver blocks now default to `dnssec_validation
+  relaxed`, requesting authenticated data whenever upstream resolvers support
+  it without requiring explicit configuration.
 
 **Modes:**
 - `RESOLV_MODE_DEFAULT`: System default behavior
@@ -441,6 +444,10 @@ Once CONNECTED, the connection enters steady-state proxying:
     collision spraying cannot bypass the limiter
   - Accept backoff timer on repeated errors
   - Idle connection timeouts
+- **Configuration hardening (0.9.7)**: sniproxy and sniproxy-cfg refuse to load
+  configuration files that are readable or writable by group/other users,
+  ensuring accidental chmod mistakes do not leak secrets when starting or
+  reloading the daemon.
 
 ### PROXY Protocol Support
 
