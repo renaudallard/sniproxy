@@ -206,6 +206,7 @@ parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
     body += 1;
     if ((size_t)(body_end - body) < len)
         return -5;
+    body += len;
 
     /* Cipher Suites */
     if ((size_t)(body_end - body) < 2)
