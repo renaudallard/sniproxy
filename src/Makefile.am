@@ -2,6 +2,7 @@ AM_CPPFLAGS = $(HARDEN_CPPFLAGS) \
               -DDEFAULT_DNSSEC_VALIDATION_MODE=DNSSEC_VALIDATION_RELAXED
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings $(HARDEN_CFLAGS)
 AM_LDFLAGS = $(HARDEN_LDFLAGS)
+LDADD = -lssl $(LIBCRYPTO_LIBS)
 
 sbin_PROGRAMS = sniproxy sniproxy-cfg
 

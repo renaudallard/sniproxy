@@ -1278,13 +1278,29 @@ free_string_vector(char **vector) {
 
 static int
 accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserver) {
-    /* Validate address is a valid IP */
-    struct Address *ns_address = new_address(nameserver);
-    if (!address_is_sockaddr(ns_address)) {
-        free(ns_address);
-        return -1;
+    const char *value = nameserver;
+    int is_dot = 0;
+
+    if (strncasecmp(nameserver, "dot://", 6) == 0) {
+        value = nameserver + 6;
+        is_dot = 1;
     }
+
+    struct Address *ns_address = new_address(value);
+    if (ns_address == NULL)
+        return -1;
+
+    int valid = 0;
+    if (is_dot) {
+        if (address_is_sockaddr(ns_address) || address_is_hostname(ns_address))
+            valid = 1;
+    } else if (address_is_sockaddr(ns_address)) {
+        valid = 1;
+    }
+
     free(ns_address);
+    if (!valid)
+        return -1;
 
     return append_to_string_vector(&resolver->nameservers, nameserver);
 }

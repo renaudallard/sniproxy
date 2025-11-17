@@ -49,6 +49,9 @@
 #include <sys/uio.h>
 #include <ares.h>
 #include <ares_dns.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509v3.h>
 #ifndef ARES_GETSOCK_MAXNUM
 #define ARES_GETSOCK_MAXNUM 16
 #endif
@@ -111,6 +114,24 @@ struct ResolverPending {
     struct ResolvQuery *clients;
     struct ResolverPending *next_id;
     struct ResolverPending *next_host;
+};
+
+struct ResolverDotServer {
+    struct sockaddr_storage addr;
+    socklen_t addr_len;
+    char *sni_hostname;
+    int verify_certificate;
+};
+
+struct ResolverChildDotSocket {
+    ares_socket_t fd;
+    struct ResolverDotServer *server;
+    SSL *ssl;
+    int handshake_complete;
+    int forcing_events;
+    int base_events;
+    int failed;
+    struct ResolverChildDotSocket *next;
 };
 
 #define RESOLVER_IPC_CHANNEL_ID 0x52535652u
@@ -176,6 +197,11 @@ static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 static int resolver_restart_in_progress = 0;
 static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
+static struct ResolverDotServer *child_dot_servers = NULL;
+static size_t child_dot_server_count = 0;
+static size_t child_dot_server_capacity = 0;
+static SSL_CTX *child_dot_ssl_ctx = NULL;
+static struct ResolverChildDotSocket *child_dot_socket_list = NULL;
 
 
 /* Parent-side helpers */
@@ -231,6 +257,24 @@ static void resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts, 
 static void resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, struct ares_addrinfo *result, int family);
 static void resolver_child_maybe_free_query(struct ResolverChildQuery *query);
 static char *resolver_child_nameservers_csv(char **nameservers);
+static int resolver_child_process_nameservers(char **nameservers, char ***processed_out);
+static void resolver_child_free_processed_nameservers(char **list);
+static void resolver_child_free_dot_servers(void);
+static int resolver_child_handle_dot_server(const char *target, char **converted);
+static struct ResolverDotServer *resolver_child_find_dot_server_sa(const struct sockaddr *addr, ares_socklen_t addrlen);
+static int resolver_child_init_dot_ssl_ctx(void);
+static void resolver_child_free_dot_ssl_ctx(void);
+static struct ResolverChildDotSocket *resolver_child_dot_socket_get(ares_socket_t fd);
+static void resolver_child_dot_socket_detach(ares_socket_t fd);
+static int resolver_child_dot_socket_attach(ares_socket_t fd, struct ResolverDotServer *server);
+static int resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock);
+static ares_socket_t resolver_child_dot_asocket(int domain, int type, int protocol, void *user_data);
+static int resolver_child_dot_aclose(ares_socket_t fd, void *user_data);
+static int resolver_child_dot_aconnect(ares_socket_t fd, const struct sockaddr *address, ares_socklen_t addrlen, void *user_data);
+static ares_ssize_t resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int flags,
+        struct sockaddr *addr, ares_socklen_t *addrlen, void *user_data);
+static ares_ssize_t resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt, void *user_data);
+static const struct ares_socket_functions resolver_child_dot_socket_functions;
 
 static int child_default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
 static int child_sock = -1;
@@ -1205,9 +1249,6 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
     }
 #endif
 
-    if (options.flags != 0)
-        optmask |= ARES_OPT_FLAGS;
-
     if (search_domains != NULL && search_domains[0] != NULL) {
         int ndomains = 0;
         while (search_domains[ndomains] != NULL)
@@ -1217,25 +1258,45 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         optmask |= ARES_OPT_DOMAINS;
     }
 
+    resolver_child_free_dot_servers();
+    char **processed_nameservers = NULL;
+    if (resolver_child_process_nameservers(nameservers, &processed_nameservers) < 0) {
+        err("resolver child: failed to process nameserver list");
+        resolver_child_exit(EXIT_FAILURE);
+    }
+
+    if (child_dot_server_count > 0)
+        options.flags |= ARES_FLAG_USEVC;
+
+    if (options.flags != 0)
+        optmask |= ARES_OPT_FLAGS;
+
     int status = ares_init_options(&child_channel, options_ptr, optmask);
     if (status != ARES_SUCCESS) {
         err("resolver child: ares_init failed: %s", ares_strerror(status));
         resolver_child_exit(EXIT_FAILURE);
     }
 
-    if (nameservers != NULL && nameservers[0] != NULL) {
-        char *csv = resolver_child_nameservers_csv(nameservers);
+    if (processed_nameservers != NULL && processed_nameservers[0] != NULL) {
+        char *csv = resolver_child_nameservers_csv(processed_nameservers);
         if (csv == NULL) {
+            resolver_child_free_processed_nameservers(processed_nameservers);
             err("resolver child: failed to allocate nameserver list");
             resolver_child_exit(EXIT_FAILURE);
         }
         status = ares_set_servers_csv(child_channel, csv);
         free(csv);
+        resolver_child_free_processed_nameservers(processed_nameservers);
         if (status != ARES_SUCCESS) {
             err("resolver child: ares_set_servers_csv failed: %s", ares_strerror(status));
             resolver_child_exit(EXIT_FAILURE);
         }
+    } else {
+        resolver_child_free_processed_nameservers(processed_nameservers);
     }
+
+    if (child_dot_server_count > 0)
+        ares_set_socket_functions(child_channel, &resolver_child_dot_socket_functions, NULL);
 
     child_default_resolv_mode = default_mode;
 
@@ -1268,6 +1329,12 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
         ares_destroy(child_channel);
         child_channel = NULL;
     }
+
+    while (child_dot_socket_list != NULL)
+        resolver_child_dot_socket_detach(child_dot_socket_list->fd);
+
+    resolver_child_free_dot_ssl_ctx();
+    resolver_child_free_dot_servers();
 
     /* Free any remaining queries that weren't freed by callbacks.
      * This can happen if callbacks failed to allocate memory or
@@ -1687,6 +1754,17 @@ resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, 
     if (writable)
         events |= EV_WRITE;
 
+    struct ResolverChildDotSocket *sock = resolver_child_dot_socket_get(socket_fd);
+    if (sock != NULL && sock->server != NULL) {
+        sock->base_events = events;
+        if (!sock->handshake_complete && events != 0) {
+            events = EV_READ | EV_WRITE;
+            sock->forcing_events = 1;
+        } else if (sock->handshake_complete) {
+            sock->forcing_events = 0;
+        }
+    }
+
     resolver_child_watch_fd(loop, socket_fd, events);
     resolver_child_schedule_timeout(loop);
 }
@@ -1809,6 +1887,493 @@ resolver_child_nameservers_csv(char **nameservers) {
 
     return csv;
 }
+
+static void
+resolver_child_free_processed_nameservers(char **list) {
+    if (list == NULL)
+        return;
+
+    for (size_t i = 0; list[i] != NULL; i++) {
+        free(list[i]);
+        list[i] = NULL;
+    }
+
+    free(list);
+}
+
+static int
+resolver_child_append_processed_nameserver(char ***list_ptr, size_t *count_ptr, const char *entry) {
+    if (entry == NULL)
+        return 0;
+
+    char **list = *list_ptr;
+    size_t count = *count_ptr;
+    char **tmp = realloc(list, (count + 2) * sizeof(char *));
+    if (tmp == NULL)
+        return -1;
+
+    list = tmp;
+    list[count] = strdup(entry);
+    if (list[count] == NULL)
+        return -1;
+    list[count + 1] = NULL;
+
+    *list_ptr = list;
+    *count_ptr = count + 1;
+    return 0;
+}
+
+static int
+resolver_child_process_nameservers(char **nameservers, char ***processed_out) {
+    *processed_out = NULL;
+
+    if (nameservers == NULL)
+        return 0;
+
+    size_t count = 0;
+    char **processed = NULL;
+
+    for (size_t i = 0; nameservers[i] != NULL; i++) {
+        const char *entry = nameservers[i];
+        if (strncasecmp(entry, "dot://", 6) == 0) {
+            const char *target = entry + 6;
+            char *converted = NULL;
+            if (resolver_child_handle_dot_server(target, &converted) < 0) {
+                resolver_child_free_processed_nameservers(processed);
+                return -1;
+            }
+            if (converted == NULL)
+                continue;
+            if (resolver_child_append_processed_nameserver(&processed, &count, converted) < 0) {
+                free(converted);
+                resolver_child_free_processed_nameservers(processed);
+                return -1;
+            }
+            free(converted);
+        } else {
+            if (resolver_child_append_processed_nameserver(&processed, &count, entry) < 0) {
+                resolver_child_free_processed_nameservers(processed);
+                return -1;
+            }
+        }
+    }
+
+    *processed_out = processed;
+    return 0;
+}
+
+static int
+resolver_child_handle_dot_server(const char *target, char **converted) {
+    if (target == NULL || converted == NULL)
+        return -1;
+
+    struct Address *addr = new_address(target);
+    if (addr == NULL)
+        return -1;
+
+    uint16_t port = address_port(addr);
+    if (port == 0)
+        port = 853;
+    address_set_port(addr, port);
+
+    struct ResolverDotServer server;
+    memset(&server, 0, sizeof(server));
+
+    if (address_is_sockaddr(addr)) {
+        const struct sockaddr *sa = address_sa(addr);
+        socklen_t len = address_sa_len(addr);
+        if (sa == NULL || len == 0) {
+            free(addr);
+            return -1;
+        }
+        if (len > (socklen_t)sizeof(server.addr)) {
+            free(addr);
+            return -1;
+        }
+        memcpy(&server.addr, sa, len);
+        server.addr_len = len;
+        server.sni_hostname = NULL;
+        server.verify_certificate = 0;
+    } else if (address_is_hostname(addr)) {
+        const char *hostname = address_hostname(addr);
+        if (hostname == NULL) {
+            free(addr);
+            return -1;
+        }
+        char port_str[6];
+        snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
+        struct addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        struct addrinfo *results = NULL;
+        int rc = getaddrinfo(hostname, port_str, &hints, &results);
+        if (rc != 0) {
+            err("resolver child: failed to resolve DoT nameserver '%s': %s", hostname, gai_strerror(rc));
+            free(addr);
+            return -1;
+        }
+
+        struct addrinfo *selected = results;
+        while (selected != NULL && selected->ai_addrlen > (socklen_t)sizeof(server.addr))
+            selected = selected->ai_next;
+        if (selected == NULL) {
+            freeaddrinfo(results);
+            free(addr);
+            return -1;
+        }
+
+        memcpy(&server.addr, selected->ai_addr, selected->ai_addrlen);
+        server.addr_len = (socklen_t)selected->ai_addrlen;
+        server.sni_hostname = strdup(hostname);
+        server.verify_certificate = 1;
+        freeaddrinfo(results);
+        if (server.sni_hostname == NULL) {
+            free(addr);
+            return -1;
+        }
+    } else {
+        free(addr);
+        return -1;
+    }
+
+    free(addr);
+
+    if (child_dot_server_count == child_dot_server_capacity) {
+        size_t new_cap = child_dot_server_capacity == 0 ? 4 : child_dot_server_capacity * 2;
+        struct ResolverDotServer *tmp = realloc(child_dot_servers, new_cap * sizeof(*tmp));
+        if (tmp == NULL) {
+            free(server.sni_hostname);
+            return -1;
+        }
+        child_dot_servers = tmp;
+        child_dot_server_capacity = new_cap;
+    }
+
+    child_dot_servers[child_dot_server_count] = server;
+    struct ResolverDotServer *slot = &child_dot_servers[child_dot_server_count];
+    child_dot_server_count++;
+
+    char buffer[ADDRESS_BUFFER_SIZE];
+    display_sockaddr(&slot->addr, slot->addr_len, buffer, sizeof(buffer));
+    *converted = strdup(buffer);
+    if (*converted == NULL)
+        return -1;
+
+    return 0;
+}
+
+static void
+resolver_child_free_dot_servers(void) {
+    if (child_dot_servers == NULL) {
+        child_dot_server_count = 0;
+        child_dot_server_capacity = 0;
+        return;
+    }
+
+    for (size_t i = 0; i < child_dot_server_count; i++) {
+        free(child_dot_servers[i].sni_hostname);
+        child_dot_servers[i].sni_hostname = NULL;
+        child_dot_servers[i].addr_len = 0;
+    }
+
+    free(child_dot_servers);
+    child_dot_servers = NULL;
+    child_dot_server_count = 0;
+    child_dot_server_capacity = 0;
+}
+
+static struct ResolverDotServer *
+resolver_child_find_dot_server_sa(const struct sockaddr *addr, ares_socklen_t addrlen) {
+    if (addr == NULL || addrlen == 0)
+        return NULL;
+
+    for (size_t i = 0; i < child_dot_server_count; i++) {
+        if (child_dot_servers[i].addr_len == addrlen &&
+                memcmp(&child_dot_servers[i].addr, addr, addrlen) == 0)
+            return &child_dot_servers[i];
+    }
+
+    return NULL;
+}
+
+static int
+resolver_child_init_dot_ssl_ctx(void) {
+    if (child_dot_ssl_ctx != NULL)
+        return 0;
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    SSL_library_init();
+    SSL_load_error_strings();
+#else
+    if (OPENSSL_init_ssl(0, NULL) != 1)
+        return -1;
+#endif
+
+    child_dot_ssl_ctx = SSL_CTX_new(TLS_client_method());
+    if (child_dot_ssl_ctx == NULL)
+        return -1;
+
+    if (SSL_CTX_set_default_verify_paths(child_dot_ssl_ctx) != 1) {
+        SSL_CTX_free(child_dot_ssl_ctx);
+        child_dot_ssl_ctx = NULL;
+        return -1;
+    }
+
+    SSL_CTX_set_verify(child_dot_ssl_ctx, SSL_VERIFY_PEER, NULL);
+    return 0;
+}
+
+static void
+resolver_child_free_dot_ssl_ctx(void) {
+    if (child_dot_ssl_ctx != NULL) {
+        SSL_CTX_free(child_dot_ssl_ctx);
+        child_dot_ssl_ctx = NULL;
+    }
+}
+
+static struct ResolverChildDotSocket *
+resolver_child_dot_socket_get(ares_socket_t fd) {
+    struct ResolverChildDotSocket *iter = child_dot_socket_list;
+    while (iter != NULL) {
+        if (iter->fd == fd)
+            return iter;
+        iter = iter->next;
+    }
+    return NULL;
+}
+
+static void
+resolver_child_dot_socket_detach(ares_socket_t fd) {
+    struct ResolverChildDotSocket **iter = &child_dot_socket_list;
+    while (*iter != NULL) {
+        if ((*iter)->fd == fd) {
+            struct ResolverChildDotSocket *cur = *iter;
+            *iter = cur->next;
+            if (cur->ssl != NULL)
+                SSL_free(cur->ssl);
+            free(cur);
+            break;
+        }
+        iter = &(*iter)->next;
+    }
+}
+
+static int
+resolver_child_dot_socket_attach(ares_socket_t fd, struct ResolverDotServer *server) {
+    if (server == NULL)
+        return 0;
+
+    if (resolver_child_init_dot_ssl_ctx() < 0)
+        return -1;
+
+    struct ResolverChildDotSocket *sock = resolver_child_dot_socket_get(fd);
+    if (sock == NULL) {
+        sock = calloc(1, sizeof(*sock));
+        if (sock == NULL)
+            return -1;
+        sock->fd = fd;
+        sock->next = child_dot_socket_list;
+        child_dot_socket_list = sock;
+    } else if (sock->ssl != NULL) {
+        SSL_free(sock->ssl);
+        sock->ssl = NULL;
+    }
+
+    sock->server = server;
+    sock->handshake_complete = 0;
+    sock->forcing_events = 0;
+    sock->base_events = 0;
+    sock->failed = 0;
+
+    sock->ssl = SSL_new(child_dot_ssl_ctx);
+    if (sock->ssl == NULL)
+        return -1;
+
+    SSL_set_connect_state(sock->ssl);
+    if (SSL_set_fd(sock->ssl, fd) != 1)
+        goto error;
+
+    if (server->sni_hostname != NULL && server->verify_certificate) {
+        if (SSL_set_tlsext_host_name(sock->ssl, server->sni_hostname) != 1)
+            goto error;
+        X509_VERIFY_PARAM *param = SSL_get0_param(sock->ssl);
+        if (param != NULL) {
+            X509_VERIFY_PARAM_set_hostflags(param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+            if (X509_VERIFY_PARAM_set1_host(param, server->sni_hostname, 0) != 1)
+                goto error;
+        }
+        SSL_set_verify(sock->ssl, SSL_VERIFY_PEER, NULL);
+    } else {
+        SSL_set_verify(sock->ssl, SSL_VERIFY_NONE, NULL);
+    }
+
+    return 0;
+
+error:
+    sock->failed = 1;
+    if (sock->ssl != NULL) {
+        SSL_free(sock->ssl);
+        sock->ssl = NULL;
+    }
+    resolver_child_dot_socket_detach(fd);
+    return -1;
+}
+
+static int
+resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
+    if (sock == NULL || sock->ssl == NULL)
+        return -1;
+
+    if (sock->failed) {
+        errno = ECONNABORTED;
+        return -1;
+    }
+
+    if (sock->handshake_complete)
+        return 0;
+
+    int ret = SSL_do_handshake(sock->ssl);
+    if (ret == 1) {
+        sock->handshake_complete = 1;
+        if (sock->forcing_events) {
+            resolver_child_watch_fd(child_loop, sock->fd, sock->base_events);
+            sock->forcing_events = 0;
+        }
+        return 0;
+    }
+
+    int errcode = SSL_get_error(sock->ssl, ret);
+    if (errcode == SSL_ERROR_WANT_READ || errcode == SSL_ERROR_WANT_WRITE) {
+        errno = EWOULDBLOCK;
+        return -1;
+    }
+
+    unsigned long ssl_err = ERR_get_error();
+    char buf[256];
+    ERR_error_string_n(ssl_err, buf, sizeof(buf));
+    err("resolver child: DoT handshake failed: %s", buf);
+    sock->failed = 1;
+    errno = ECONNABORTED;
+    return -1;
+}
+
+static ares_socket_t
+resolver_child_dot_asocket(int domain, int type, int protocol, void *user_data __attribute__((unused))) {
+    return socket(domain, type, protocol);
+}
+
+static int
+resolver_child_dot_aclose(ares_socket_t fd, void *user_data __attribute__((unused))) {
+    resolver_child_dot_socket_detach(fd);
+    return close(fd);
+}
+
+static int
+resolver_child_dot_aconnect(ares_socket_t fd, const struct sockaddr *address, ares_socklen_t addrlen, void *user_data __attribute__((unused))) {
+    struct ResolverDotServer *server = resolver_child_find_dot_server_sa(address, addrlen);
+    if (server != NULL) {
+        if (resolver_child_dot_socket_attach(fd, server) < 0)
+            return -1;
+    }
+
+    return connect(fd, address, addrlen);
+}
+
+static ares_ssize_t
+resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int flags,
+        struct sockaddr *addr, ares_socklen_t *addrlen, void *user_data __attribute__((unused))) {
+    struct ResolverChildDotSocket *sock = resolver_child_dot_socket_get(fd);
+    if (sock == NULL || sock->server == NULL)
+        return recvfrom(fd, buffer, len, flags, addr, addrlen);
+
+    if (!sock->handshake_complete) {
+        if (resolver_child_dot_ensure_handshake(sock) < 0)
+            return -1;
+    }
+
+    int ret = SSL_read(sock->ssl, buffer, (int)len);
+    if (ret > 0)
+        return ret;
+
+    int errcode = SSL_get_error(sock->ssl, ret);
+    if (errcode == SSL_ERROR_WANT_READ || errcode == SSL_ERROR_WANT_WRITE) {
+        errno = EWOULDBLOCK;
+        return -1;
+    }
+
+    unsigned long ssl_err = ERR_get_error();
+    char buf[256];
+    ERR_error_string_n(ssl_err, buf, sizeof(buf));
+    err("resolver child: DoT read failed: %s", buf);
+    sock->failed = 1;
+    errno = ECONNABORTED;
+    return -1;
+}
+
+static ares_ssize_t
+resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt, void *user_data __attribute__((unused))) {
+    struct ResolverChildDotSocket *sock = resolver_child_dot_socket_get(fd);
+    if (sock == NULL || sock->server == NULL)
+        return writev(fd, iov, iovcnt);
+
+    if (!sock->handshake_complete) {
+        if (resolver_child_dot_ensure_handshake(sock) < 0)
+            return -1;
+    }
+
+    size_t total = 0;
+    for (int i = 0; i < iovcnt; i++)
+        total += iov[i].iov_len;
+
+    if (total == 0)
+        return 0;
+
+    uint8_t stack_buf[512];
+    uint8_t *buf = stack_buf;
+    int use_heap = 0;
+    if (total > sizeof(stack_buf)) {
+        buf = malloc(total);
+        if (buf == NULL)
+            return -1;
+        use_heap = 1;
+    }
+
+    size_t offset = 0;
+    for (int i = 0; i < iovcnt; i++) {
+        memcpy(buf + offset, iov[i].iov_base, iov[i].iov_len);
+        offset += iov[i].iov_len;
+    }
+
+    int ret = SSL_write(sock->ssl, buf, (int)total);
+    if (use_heap)
+        free(buf);
+
+    if (ret > 0)
+        return ret;
+
+    int errcode = SSL_get_error(sock->ssl, ret);
+    if (errcode == SSL_ERROR_WANT_READ || errcode == SSL_ERROR_WANT_WRITE) {
+        errno = EWOULDBLOCK;
+        return -1;
+    }
+
+    unsigned long ssl_err = ERR_get_error();
+    char errbuf[256];
+    ERR_error_string_n(ssl_err, errbuf, sizeof(errbuf));
+    err("resolver child: DoT write failed: %s", errbuf);
+    sock->failed = 1;
+    errno = ECONNABORTED;
+    return -1;
+}
+
+static const struct ares_socket_functions resolver_child_dot_socket_functions = {
+    .asocket = resolver_child_dot_asocket,
+    .aclose = resolver_child_dot_aclose,
+    .aconnect = resolver_child_dot_aconnect,
+    .arecvfrom = resolver_child_dot_arecvfrom,
+    .asendv = resolver_child_dot_asendv,
+};
 
 static void
 resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
