@@ -52,6 +52,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 #ifdef HAVE_RESOLV_H
 #include <resolv.h>
 #endif
@@ -2177,6 +2179,13 @@ resolver_child_init_dot_ssl_ctx(void) {
         return -1;
     }
 
+    const char *default_cafile = X509_get_default_cert_file();
+    if (default_cafile != NULL) {
+        if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, default_cafile, NULL) != 1) {
+            debug_log("resolver child: failed to load default CA file %s", default_cafile);
+        }
+    }
+
     SSL_CTX_set_verify(child_dot_ssl_ctx, SSL_VERIFY_PEER, NULL);
     return 0;
 }
@@ -2304,6 +2313,16 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
     if (errcode == SSL_ERROR_WANT_READ || errcode == SSL_ERROR_WANT_WRITE) {
         errno = EWOULDBLOCK;
         return -1;
+    }
+
+    if (errcode == SSL_ERROR_SSL) {
+        long verify_err = SSL_get_verify_result(sock->ssl);
+        if (verify_err != X509_V_OK) {
+            const char *hostname = (sock->server != NULL && sock->server->sni_hostname != NULL) ?
+                    sock->server->sni_hostname : "(ip)";
+            warn("resolver child: DoT certificate verification failed for %s: %s",
+                    hostname, X509_verify_cert_error_string(verify_err));
+        }
     }
 
     unsigned long ssl_err = ERR_get_error();
