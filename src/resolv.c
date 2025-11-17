@@ -1295,8 +1295,16 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         resolver_child_free_processed_nameservers(processed_nameservers);
     }
 
-    if (child_dot_server_count > 0)
+    if (child_dot_server_count > 0) {
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         ares_set_socket_functions(child_channel, &resolver_child_dot_socket_functions, NULL);
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+    }
 
     child_default_resolv_mode = default_mode;
 
