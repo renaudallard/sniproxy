@@ -208,6 +208,19 @@ static size_t child_dot_server_capacity = 0;
 static SSL_CTX *child_dot_ssl_ctx = NULL;
 static struct ResolverChildDotSocket *child_dot_socket_list = NULL;
 
+static const char *resolver_cafile_fallbacks[] = {
+    "/etc/ssl/cert.pem",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/ssl/certs/ca-certificates.crt",
+    NULL
+};
+
+static const char *resolver_cadir_fallbacks[] = {
+    "/etc/ssl/certs",
+    "/etc/pki/tls/certs",
+    NULL
+};
+
 
 /* Parent-side helpers */
 static int resolver_send_message(uint32_t type, uint32_t id,
@@ -2189,6 +2202,16 @@ resolver_child_init_dot_ssl_ctx(void) {
     if (default_cadir != NULL) {
         if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, NULL, default_cadir) != 1)
             debug_log("resolver child: failed to load default CA dir %s", default_cadir);
+    }
+
+    for (size_t i = 0; resolver_cafile_fallbacks[i] != NULL; i++) {
+        if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, resolver_cafile_fallbacks[i], NULL) == 1)
+            break;
+    }
+
+    for (size_t i = 0; resolver_cadir_fallbacks[i] != NULL; i++) {
+        if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, NULL, resolver_cadir_fallbacks[i]) == 1)
+            break;
     }
 
     SSL_CTX_set_verify(child_dot_ssl_ctx, SSL_VERIFY_PEER, NULL);
