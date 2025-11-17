@@ -1281,9 +1281,21 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
     const char *value = nameserver;
     int is_dot = 0;
 
-    if (strncasecmp(nameserver, "dot://", 6) == 0) {
-        value = nameserver + 6;
-        is_dot = 1;
+    const char *scheme_sep = strstr(nameserver, "://");
+    if (scheme_sep != NULL) {
+        size_t scheme_len = (size_t)(scheme_sep - nameserver);
+        if (scheme_len == 3 && strncasecmp(nameserver, "dot", 3) == 0) {
+            value = scheme_sep + 3; /* skip :// */
+            is_dot = 1;
+            if (*value == '\0') {
+                err("resolver nameserver 'dot://' entry is missing a host or IP");
+                return -1;
+            }
+        } else {
+            err("resolver nameserver protocol '%.*s://' is not supported (use dot:// or omit the scheme)",
+                    (int)scheme_len, nameserver);
+            return -1;
+        }
     }
 
     struct Address *ns_address = new_address(value);
