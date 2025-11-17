@@ -2,12 +2,12 @@ package TestUtils;
 
 use warnings;
 use strict;
-use POSIX ":sys_wait_h";
+use POSIX qw(:sys_wait_h getpwuid getgrgid);
 use IO::Socket::INET;
 require File::Temp;
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(start_child reap_children wait_for_type wait_for_port make_config);
+our @EXPORT = qw(start_child reap_children wait_for_type wait_for_port make_config find_free_port test_user test_group);
 our $VERSION = '0.01';
 
 $SIG{CHLD} = \&REAPER;
@@ -114,15 +114,40 @@ sub wait_for_port {
     return undef;
 }
 
+my %allocated_ports;
+
+sub find_free_port {
+    while (1) {
+        my $socket = IO::Socket::INET->new(
+            LocalAddr => '127.0.0.1',
+            LocalPort => 0,
+            Listen    => 1,
+            Proto     => 'tcp',
+            ReuseAddr => 1,
+        ) or die "failed to allocate port: $!";
+
+        my $port = $socket->sockport;
+        close $socket;
+        next if $allocated_ports{$port};
+        $allocated_ports{$port} = 1;
+        return $port;
+    }
+}
+
 sub make_config($$) {
     my $proxy_port = shift;
     my $httpd_port = shift;
 
     my ($fh, $filename) = File::Temp::tempfile();
+    my $user = test_user();
+    my $group = test_group();
 
     # Write out a test config file
     print $fh <<END;
 # Minimal test configuration
+
+user $user
+group $group
 
 listen 127.0.0.1 $proxy_port {
     proto http
@@ -139,3 +164,17 @@ END
 }
 
 1;
+my $TEST_USER = $ENV{SNI_PROXY_USER};
+$TEST_USER = getpwuid($>) unless defined $TEST_USER && $TEST_USER ne '';
+my $gid_list_env = $ENV{SNI_PROXY_GROUP};
+my $TEST_GROUP;
+if (defined $gid_list_env && $gid_list_env ne '') {
+    $TEST_GROUP = $gid_list_env;
+} else {
+    my $gid_list = $);
+    my ($primary_gid) = split(/\s+/, $gid_list);
+    $TEST_GROUP = getgrgid($primary_gid) || $primary_gid;
+}
+
+sub test_user { $TEST_USER }
+sub test_group { $TEST_GROUP }

@@ -86,8 +86,8 @@ sub bad_client($) {
 }
 
 sub main {
-    my $proxy_port = $ENV{SNI_PROXY_PORT} || 8080;
-    my $httpd_port = $ENV{TEST_HTTPD_PORT} || 8081;
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
 
     my $config = make_config($proxy_port, $httpd_port);
     my $proxy_pid = start_child('sniproxy', \&proxy, $config, @ARGV);

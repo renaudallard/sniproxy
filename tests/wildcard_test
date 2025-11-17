@@ -22,6 +22,9 @@ sub make_wildcard_config($) {
     print $fh <<END;
 # Minimal test configuration
 
+user @{[test_user()]}
+group @{[test_group()]}
+
 listen 127.0.0.1 $proxy_port {
     proto http
 }

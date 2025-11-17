@@ -8,6 +8,13 @@ use TestUtils;
 use TestHTTPD;
 use File::Temp;
 
+BEGIN {
+    if ($> != 0) {
+        print "reload_test requires root privileges; skipping\n";
+        exit 77;
+    }
+}
+
 sub proxy {
     my $config = shift;
 
@@ -51,6 +58,9 @@ sub make_config($$$) {
     print $fh <<END;
 # Minimal test configuration
 
+user @{[test_user()]}
+group @{[test_group()]}
+
 listen 127.0.0.1 $proxy_port1 {
     proto http
     table table_a
@@ -91,6 +101,9 @@ sub alter_config($$$$) {
     print $fh <<END;
 # Minimal test configuration
 
+user @{[test_user()]}
+group @{[test_group()]}
+
 listen 127.0.0.1 $proxy_port1 {
     proto http
     table table_c
@@ -115,11 +128,11 @@ END
 
 
 sub main {
-    my $proxy_port1 = $ENV{SNI_PROXY_PORT} || 8080;
-    my $proxy_port2 = $ENV{SNI_PROXY_PORT2} || 8081;
-    my $proxy_port3 = $ENV{SNI_PROXY_PORT3} || 8082;
-    my $httpd_port1 = $ENV{TEST_HTTPD_PORT} || 8083;
-    my $httpd_port2 = $ENV{TEST_HTTPD_PORT2} || 8084;
+    my $proxy_port1 = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $proxy_port2 = $ENV{SNI_PROXY_PORT2} || find_free_port();
+    my $proxy_port3 = $ENV{SNI_PROXY_PORT3} || find_free_port();
+    my $httpd_port1 = $ENV{TEST_HTTPD_PORT} || find_free_port();
+    my $httpd_port2 = $ENV{TEST_HTTPD_PORT2} || find_free_port();
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 10;
 

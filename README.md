@@ -467,8 +467,8 @@ standards compliance. The codebase has undergone extensive security hardening
 in recent releases, including protection against regex DoS, buffer overflows,
 and memory exhaustion attacks.
 
-**Primary platforms**: Linux and OpenBSD
-**Best-effort support**: Other BSDs, macOS
+**Primary platform**: OpenBSD
+**Best-effort support**: Linux, Other BSDs, macOS
 
 ### Use Cases
 
@@ -503,8 +503,9 @@ Contributions are welcome! Areas of particular interest:
 
 ### Credits
 
-Thanks to the original author: Dustin Lundquist <dustin@null-ptr.net>
 Current author: Renaud Allard <renaud@allard.it>
+
+Thanks to the original author: Dustin Lundquist <dustin@null-ptr.net>
 
 Contributors: Manuel Kasper and others
 

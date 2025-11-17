@@ -8,6 +8,13 @@ use TestUtils;
 use TestHTTPD;
 use File::Temp;
 
+BEGIN {
+    if ($> != 0) {
+        print "functional_test requires root privileges; skipping\n";
+        exit 77;
+    }
+}
+
 sub proxy {
     my $config = shift;
 
@@ -70,8 +77,8 @@ sub dump_connections_worker($) {
 }
 
 sub main {
-    my $proxy_port = $ENV{SNI_PROXY_PORT} || 8080;
-    my $httpd_port = $ENV{TEST_HTTPD_PORT} || 8081;
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 10;
     my $local_httpd = $ENV{LOCAL_HTTPD_PORT};

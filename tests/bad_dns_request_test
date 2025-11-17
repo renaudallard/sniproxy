@@ -114,6 +114,9 @@ sub make_wildcard_config($) {
     print $fh <<END;
 # Minimal test configuration
 
+user @{[test_user()]}
+group @{[test_group()]}
+
 resolver {
     # Use an RFC1166 documentation prefix IP address as the nameserver
     # this should be not respond to DNS queries in any environment
@@ -135,7 +138,7 @@ END
 }
 
 sub main {
-    my $proxy_port = $ENV{SNI_PROXY_PORT} || 8080;
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
     my $workers = $ENV{WORKERS} || 3;
     my $iterations = $ENV{ITERATIONS} || int(@$bad_requests);
 

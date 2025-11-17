@@ -39,8 +39,8 @@ sub worker($$$$) {
 
 
 sub main {
-    my $proxy_port = $ENV{SNI_PROXY_PORT} || 8080;
-    my $httpd_port = $ENV{TEST_HTTPD_PORT} || 8081;
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 3;
     my $local_httpd = $ENV{LOCAL_HTTPD_PORT};

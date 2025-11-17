@@ -36,7 +36,8 @@ sub make_config($$) {
     print $fh <<END;
 # Minimal test configuration
 
-user root
+user @{[test_user()]}
+group @{[test_group()]}
 
 listen 192.0.2.5 $proxy_port {
     proto http
@@ -89,8 +90,8 @@ sub worker($$$$$) {
 }
 
 sub main {
-    my $proxy_port = $ENV{SNI_PROXY_PORT} || 8080;
-    my $httpd_port = $ENV{TEST_HTTPD_PORT} || 8081;
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 10;
     my $proxy_namespace = $PROXY_NAMESPACE;
