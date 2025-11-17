@@ -203,7 +203,8 @@ you can keep abusive clients in check with a global per-IP rate limiter:
 per_ip_connection_rate 50   # allow 50 new connections per second per source IP
 ```
 
-Set the value to `0` to disable the limiter (default).
+The default is 30 connections per second. Set the value to `0` to disable the
+limiter entirely.
 
 To guard against descriptor exhaustion during floods, cap the number of
 concurrent connections (set `0` to auto-derive ~80% of the file descriptor
@@ -294,7 +295,7 @@ connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
         reuseport yes
 
         # Enable IP_TRANSPARENT to preserve client source IPs
-        transparent_proxy yes
+        source client
 
         # Log malformed/rejected requests
         bad_requests log
@@ -308,7 +309,7 @@ connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
 
         # Fallback with PROXY protocol header
         fallback 192.0.2.50:443
-        fallback_use_proxy_header yes
+        fallback proxy
     }
 
     table SecureHosts {

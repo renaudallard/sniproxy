@@ -53,6 +53,21 @@ pidfile /var/run/sniproxy.pid
 Specify the path to the pid file, the directory must be writeable by the
 user sniproxy runs as.
 
+.SS MAX_CONNECTIONS
+
+.PP
+.nf
+max_connections 20000
+.fi
+.PP
+
+Limit the maximum number of simultaneously active connections accepted
+across all listeners. Once this threshold is reached new connections are
+closed immediately until existing ones complete. The default value of 0
+lets sniproxy derive a ceiling from the configured RLIMIT_NOFILE value
+while holding roughly 20% of available descriptors in reserve for
+listeners, DNS sockets, and internal bookkeeping.
+
 .SS PER_IP_CONNECTION_RATE
 
 .PP
@@ -64,8 +79,49 @@ per_ip_connection_rate 20
 Limit how many new client connections a single source IP address may open
 per second. The value is interpreted as connections per second and is
 applied globally across all listeners using a token-bucket policy that
-allows short bursts up to the configured rate. Set the value to 0 (the
-default) to disable per-IP rate limiting.
+allows short bursts up to the configured rate. The default is 30
+connections per second. Set the value to 0 to disable per-IP rate
+limiting entirely.
+
+.SS CONNECTION_BUFFER_LIMIT
+
+.PP
+.nf
+connection_buffer_limit 4M
+.fi
+.PP
+
+Cap the amount of buffered data a single connection may hold on either
+side. The value applies to both the client and server buffers, accepts
+optional K, M, or G suffixes (powers of 1024), and must fall between
+8 KiB and 1 GiB. The default is 1 MiB per side. Tighter caps protect the
+proxy from slow clients pinning unbounded RAM.
+
+.SS CLIENT_BUFFER_LIMIT
+
+.PP
+.nf
+client_buffer_limit 8M
+.fi
+.PP
+
+Override the client-side buffer cap independently using the same syntax
+and range as \fBconnection_buffer_limit\fR. The most recent directive for
+each side wins, so a configuration may set a shared limit and then
+override only one direction.
+
+.SS SERVER_BUFFER_LIMIT
+
+.PP
+.nf
+server_buffer_limit 8M
+.fi
+.PP
+
+Override the server-side buffer cap independently. This is useful for
+backends that return large responses relative to request size. Limits are
+applied to new connections immediately and propagated to existing
+connections during a configuration reload.
 
 .SS MAINLOOP
 
@@ -151,7 +207,8 @@ record.
 
 The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
 may be in flight at once (default 256). Lower values cap resolver resource
-usage.
+usage, while higher values increase throughput for configurations that rely on
+wildcard or hostname targets.
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
 relaxed mode requests DNSSEC data but falls back to unsigned answers when
@@ -222,7 +279,13 @@ default, unnamed, table will be used.
 The fallback directive specifies a server to be used if the client
 request cannot be parsed, a server cannot be found in the table for the
 hostname, or the hostname cannot be resolved. This should be an IP
-address and port or a unix socket path.
+address and port or a unix socket path. When using TLS listeners the
+fallback still terminates the client TLS handshake and forwards the
+traffic unmodified to the configured destination. Issuing a second
+\fBfallback\fR directive with the literal argument \fBproxy\fR after the
+address instructs sniproxy to prepend an HAProxy PROXY protocol v1 header
+whenever the fallback path is taken, allowing the backend to recover the
+original client IP and port.
 
 The bad_requests directive allows logging the contents of the client
 request if it is not parsable. This is useful for debugging.
@@ -232,7 +295,11 @@ connecting to the backend server. In most cases it is better to omit
 this option and allow the operating system to select the outgoing
 address automatically. Do not include a port number in this address,
 because doing so will limit the proxy to one simultaneous connection to
-each server at a time.
+each server at a time. The special argument \fBclient\fR enables
+transparent proxy mode (IP_TRANSPARENT) where supported, preserving the
+original source address when connecting to the backend. This mode
+requires root privileges and an operating system that implements
+transparent sockets (such as Linux).
 
 An optional acl block restricts which clients may connect to a listener
 based on CIDR ranges. The directive takes a default policy of either
@@ -248,7 +315,10 @@ deny_except (deny every client except the listed ranges):
 
 When an acl block is omitted every client is accepted. Multiple
 statements may be provided in a block. IPv4 and IPv6 ranges may be mixed
-freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges. Mixing allow_except and deny_except blocks anywhere in the configuration causes sniproxy to exit with a configuration error.
+freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges.
+The policy choice is global: mixing allow_except and deny_except blocks
+anywhere in the configuration causes sniproxy to exit with a configuration
+error.
 
 The access log configuration may be overridden on each listener.
 

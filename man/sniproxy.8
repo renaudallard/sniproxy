@@ -7,7 +7,7 @@ SNIProxy \- transparent session based TLS and HTTP proxy
 .SH SYNOPSIS
 
 \fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ]
-[ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR ] [ -\fBd\fR ]
+[ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR \fImin-tls-version\fR ] [ -\fBd\fR ]
 
 .SH DESCRIPTION
 
@@ -17,6 +17,10 @@ session. This enables HTTPS name-based virtual hosting to separate
 backend servers without installing the private key on the proxy
 machine\&. By default TLS 1.2 (and newer) client hellos are
 accepted\&.
+
+For security reasons the configuration file must not be readable or
+executable by group/other users. sniproxy verifies the permissions after
+opening the file and aborts startup if it detects broader access.
 
 .SH OPTIONS
 
@@ -40,8 +44,11 @@ specified\&.
 Print the version of SNIProxy and exit\&.
 
 .TP
--T
-Allow TLS 1.0 client hellos in addition to newer TLS versions\&.
+-T \fImin-tls-version\fR
+Set the minimum TLS ClientHello version that will be accepted. The
+value must be one of 1.0, 1.1, 1.2, or 1.3, and controls both the
+legacy version field and the supported_versions extension. The default
+is 1.2.
 
 .TP
 -d

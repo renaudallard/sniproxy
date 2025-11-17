@@ -14,7 +14,9 @@ sniproxy-cfg \- validate and inspect sniproxy configuration files
 table, and backend definition, and optionally prints the normalized
 configuration to standard output. It uses the same parser and validators as
 BsniproxyR, making it safe to run as part of automated deployment or CI
-pipelines before reloading a live proxy instance.
+pipelines before reloading a live proxy instance. It enforces the same
+permission guard as \fBsniproxy\fR and refuses to process configuration files
+that are readable or executable by group or other users.
 
 .SH OPTIONS
 
