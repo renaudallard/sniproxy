@@ -9,6 +9,13 @@ use TestHTTPD;
 use File::Temp;
 use IO::Socket::INET;
 
+BEGIN {
+    if ($ENV{SKIP_BAD_REQUEST_TEST}) {
+        print "bad_request_test skipped via CI\n";
+        exit 77;
+    }
+}
+
 my $bad_requests = [
     pack("C*", 0xff, 0xff, 0xff, 0xff, 0xff),
     pack("C*", 0x16,

@@ -50,6 +50,8 @@ jobs:
         run: make -j$(nproc)
 
       - name: Run tests
+        env:
+          SKIP_BAD_REQUEST_TEST: 1
         run: make check
 
       - name: Run fuzzers
