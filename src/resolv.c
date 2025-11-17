@@ -2181,9 +2181,14 @@ resolver_child_init_dot_ssl_ctx(void) {
 
     const char *default_cafile = X509_get_default_cert_file();
     if (default_cafile != NULL) {
-        if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, default_cafile, NULL) != 1) {
+        if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, default_cafile, NULL) != 1)
             debug_log("resolver child: failed to load default CA file %s", default_cafile);
-        }
+    }
+
+    const char *default_cadir = X509_get_default_cert_dir();
+    if (default_cadir != NULL) {
+        if (SSL_CTX_load_verify_locations(child_dot_ssl_ctx, NULL, default_cadir) != 1)
+            debug_log("resolver child: failed to load default CA dir %s", default_cadir);
     }
 
     SSL_CTX_set_verify(child_dot_ssl_ctx, SSL_VERIFY_PEER, NULL);
