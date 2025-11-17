@@ -170,7 +170,7 @@ static int default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
 static struct ev_loop *resolver_loop_ref = NULL;
 static char **resolver_saved_nameservers = NULL;
 static char **resolver_saved_search = NULL;
-static int resolver_saved_dnssec_mode = DNSSEC_VALIDATION_OFF;
+static int resolver_saved_dnssec_mode = DEFAULT_DNSSEC_VALIDATION_MODE;
 static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 
 static int resolver_restart_in_progress = 0;

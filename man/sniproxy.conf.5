@@ -211,10 +211,11 @@ usage, while higher values increase throughput for configurations that rely on
 wildcard or hostname targets.
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
-relaxed mode requests DNSSEC data but falls back to unsigned answers when
-your resolver cannot authenticate the response. The strict mode requires
-the AD flag, so unsigned zones fail to resolve and a c-ares build with
-DNSSEC/Trust AD support is mandatory.
+default is relaxed, which requests DNSSEC data but falls back to unsigned
+answers when your resolver cannot authenticate the response. The strict mode
+requires the AD flag, so unsigned zones fail to resolve and a c-ares build
+with DNSSEC/Trust AD support is mandatory. Use 'off' to disable DNSSEC
+entirely if your upstream resolvers do not support it.
 
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is

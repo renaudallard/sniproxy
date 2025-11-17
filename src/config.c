@@ -1222,7 +1222,7 @@ new_resolver_config(void) {
         resolver->search = NULL;
         resolver->mode = 0;
         resolver->max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
-        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_OFF;
+        resolver->dnssec_validation_mode = DEFAULT_DNSSEC_VALIDATION_MODE;
     }
 
     return resolver;

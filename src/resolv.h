@@ -50,4 +50,8 @@ enum dnssec_validation_mode {
     DNSSEC_VALIDATION_STRICT = 2,
 };
 
+#ifndef DEFAULT_DNSSEC_VALIDATION_MODE
+#define DEFAULT_DNSSEC_VALIDATION_MODE DNSSEC_VALIDATION_RELAXED
+#endif
+
 #endif
