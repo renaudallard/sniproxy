@@ -1279,6 +1279,7 @@ free_string_vector(char **vector) {
 static int
 accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserver) {
     const char *value = nameserver;
+    char *dot_target_copy = NULL;
     int is_dot = 0;
 
     const char *scheme_sep = strstr(nameserver, "://");
@@ -1298,9 +1299,53 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
         }
     }
 
+    if (is_dot) {
+        const char *slash = strchr(value, '/');
+        if (slash != NULL) {
+            if (slash == value) {
+                err("resolver nameserver '%s' is missing an address before '/'", nameserver);
+                return -1;
+            }
+
+            size_t addr_len = (size_t)(slash - value);
+            dot_target_copy = malloc(addr_len + 1);
+            if (dot_target_copy == NULL) {
+                err("%s: malloc", __func__);
+                return -errno;
+            }
+            memcpy(dot_target_copy, value, addr_len);
+            dot_target_copy[addr_len] = '\0';
+            value = dot_target_copy;
+
+            const char *sni_hostname = slash + 1;
+            if (*sni_hostname == '\0') {
+                err("resolver nameserver '%s' is missing a TLS hostname after '/'", nameserver);
+                free(dot_target_copy);
+                return -1;
+            }
+            if (strchr(sni_hostname, '/') != NULL) {
+                err("resolver nameserver '%s' contains multiple '/' characters", nameserver);
+                free(dot_target_copy);
+                return -1;
+            }
+
+            struct Address *sni_address = new_address(sni_hostname);
+            if (sni_address == NULL || !address_is_hostname(sni_address)) {
+                free(dot_target_copy);
+                if (sni_address != NULL)
+                    free(sni_address);
+                err("resolver nameserver '%s' has an invalid TLS hostname '%s'", nameserver, sni_hostname);
+                return -1;
+            }
+            free(sni_address);
+        }
+    }
+
     struct Address *ns_address = new_address(value);
-    if (ns_address == NULL)
+    if (ns_address == NULL) {
+        free(dot_target_copy);
         return -1;
+    }
 
     int valid = 0;
     if (is_dot) {
@@ -1311,6 +1356,7 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
     }
 
     free(ns_address);
+    free(dot_target_copy);
     if (!valid)
         return -1;
 

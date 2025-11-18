@@ -1996,9 +1996,65 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
     if (target == NULL || converted == NULL)
         return -1;
 
-    struct Address *addr = new_address(target);
-    if (addr == NULL)
+    const char *address_part = target;
+    char *address_copy = NULL;
+    char *sni_override = NULL;
+
+    const char *slash = strchr(target, '/');
+    if (slash != NULL) {
+        if (slash == target) {
+            warn("resolver child: DoT nameserver '%s' is missing an address before '/'", target);
+            return -1;
+        }
+
+        size_t addr_len = (size_t)(slash - target);
+        address_copy = malloc(addr_len + 1);
+        if (address_copy == NULL)
+            return -1;
+        memcpy(address_copy, target, addr_len);
+        address_copy[addr_len] = '\0';
+        address_part = address_copy;
+
+        const char *sni_part = slash + 1;
+        if (*sni_part == '\0') {
+            warn("resolver child: DoT nameserver '%s' is missing a TLS hostname after '/'", target);
+            free(address_copy);
+            return -1;
+        }
+        if (strchr(sni_part, '/') != NULL) {
+            warn("resolver child: DoT nameserver '%s' contains multiple '/' characters", target);
+            free(address_copy);
+            return -1;
+        }
+
+        struct Address *sni_addr = new_address(sni_part);
+        if (sni_addr == NULL || !address_is_hostname(sni_addr)) {
+            if (sni_addr != NULL)
+                free(sni_addr);
+            free(address_copy);
+            warn("resolver child: DoT nameserver '%s' has invalid TLS hostname '%s'", target, sni_part);
+            return -1;
+        }
+        const char *canon = address_hostname(sni_addr);
+        if (canon == NULL) {
+            free(sni_addr);
+            free(address_copy);
+            return -1;
+        }
+        sni_override = strdup(canon);
+        free(sni_addr);
+        if (sni_override == NULL) {
+            free(address_copy);
+            return -1;
+        }
+    }
+
+    struct Address *addr = new_address(address_part);
+    if (addr == NULL) {
+        free(address_copy);
+        free(sni_override);
         return -1;
+    }
 
     *converted = NULL;
 
@@ -2015,20 +2071,27 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         socklen_t len = address_sa_len(addr);
         if (sa == NULL || len == 0) {
             free(addr);
+            free(address_copy);
+            free(sni_override);
             return -1;
         }
         if (len > (socklen_t)sizeof(server.addr)) {
             free(addr);
+            free(address_copy);
+            free(sni_override);
             return -1;
         }
         memcpy(&server.addr, sa, len);
         server.addr_len = len;
-        server.sni_hostname = NULL;
-        server.verify_certificate = 0;
+        server.sni_hostname = sni_override;
+        server.verify_certificate = (sni_override != NULL);
+        sni_override = NULL;
     } else if (address_is_hostname(addr)) {
         const char *hostname = address_hostname(addr);
         if (hostname == NULL) {
             free(addr);
+            free(address_copy);
+            free(sni_override);
             return -1;
         }
         char port_str[6];
@@ -2048,6 +2111,8 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             warn("resolver child: unable to resolve DoT nameserver '%s': %s; skipping this entry",
                     hostname, gai_strerror(rc));
             free(addr);
+            free(address_copy);
+            free(sni_override);
             return 0;
         }
 
@@ -2057,24 +2122,38 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         if (selected == NULL) {
             freeaddrinfo(results);
             free(addr);
+            free(address_copy);
+            free(sni_override);
             return -1;
         }
 
         memcpy(&server.addr, selected->ai_addr, selected->ai_addrlen);
         server.addr_len = (socklen_t)selected->ai_addrlen;
-        server.sni_hostname = strdup(hostname);
+        if (sni_override != NULL) {
+            server.sni_hostname = sni_override;
+            sni_override = NULL;
+        } else {
+            server.sni_hostname = strdup(hostname);
+            if (server.sni_hostname == NULL) {
+                free(addr);
+                free(address_copy);
+                free(sni_override);
+                freeaddrinfo(results);
+                return -1;
+            }
+        }
         server.verify_certificate = 1;
         freeaddrinfo(results);
-        if (server.sni_hostname == NULL) {
-            free(addr);
-            return -1;
-        }
     } else {
         free(addr);
+        free(address_copy);
+        free(sni_override);
         return -1;
     }
 
     free(addr);
+    free(address_copy);
+    free(sni_override);
 
     if (child_dot_server_count == child_dot_server_capacity) {
         size_t new_cap = child_dot_server_capacity == 0 ? 4 : child_dot_server_capacity * 2;

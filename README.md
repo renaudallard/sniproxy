@@ -279,6 +279,8 @@ connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
         # Custom nameservers (handled by c-ares)
         nameserver 8.8.8.8
         nameserver 2001:4860:4860::8888
+        # DNS-over-TLS upstream with explicit TLS verification hostname
+        #nameserver dot://9.9.9.9/dns.quad9.net
 
         # Limit concurrent DNS queries to prevent resource exhaustion
         max_concurrent_queries 256
