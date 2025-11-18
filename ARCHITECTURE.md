@@ -123,7 +123,7 @@ Tables contain routing rules that map hostnames to backend addresses.
 **Lookup behavior:**
 - Backends are evaluated in order
 - First matching pattern wins
-- Supports exact string matching and PCRE/PCRE2 regular expressions
+- Supports exact string matching and PCRE2 regular expressions
 - Regex match limits scale with hostname length to prevent ReDoS
 
 ### Backend
@@ -136,16 +136,16 @@ Backends represent destination servers with pattern-based routing rules.
 - `use_proxy_header`: Override table's PROXY header setting
 
 **Runtime fields:**
-- `pattern_re`: Compiled PCRE/PCRE2 regex (if pattern contains wildcards)
+- `pattern_re`: Compiled PCRE2 regex (if pattern contains wildcards)
 - `pattern_match_data`: PCRE2 match data structure
 
 **Pattern matching:**
 - Literal strings: Exact hostname match
-- Regular expressions: PCRE/PCRE2 patterns with wildcards (*, ., etc.)
+- Regular expressions: PCRE2 patterns with wildcards (*, ., etc.)
 - Security: Regex match limits prevent algorithmic complexity attacks
 - NUL bytes in patterns are rejected
 - **Performance optimization (0.9.0)**: Per-backend cache stores the most recent
-  hostname lookup result, allowing repeated lookups to skip expensive PCRE regex
+  hostname lookup result, allowing repeated lookups to skip expensive PCRE2 regex
   evaluation entirely
 
 ### Connection
@@ -417,7 +417,7 @@ Once CONNECTED, the connection enters steady-state proxying:
 
 - **Regex DoS prevention**:
   - Match limits scale with hostname length
-  - Per-request limits injected into PCRE/PCRE2 contexts
+  - Per-request limits injected into PCRE2 contexts
   - Prevents catastrophic backtracking
 
 - **Request guardrails (0.9.6)**:
@@ -506,7 +506,7 @@ buffer assembly, reducing the number of buffer operations required
 ### Performance Optimizations in 0.9.0
 
 - **Pattern match caching**: Backends cache the most recent hostname lookup result,
-  eliminating repeated PCRE regex evaluations for the same hostname
+  eliminating repeated PCRE2 regex evaluations for the same hostname
 - **HTTP/2 HPACK**: Precomputed static table entry lengths and binary search for
   header names eliminate strlen calls and linear table scans
 - **Buffer management**: Periodic shrink timer reduces per-event operations,

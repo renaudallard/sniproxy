@@ -69,7 +69,7 @@ sniproxy (0.9.0) unstable; urgency=medium
   * Security: DNS query IDs use PRNG (xorshift32) instead of linear counter
   * Security: c-ares resolver hardening (async-signal-safe, integer overflow)
   * Security: TLS parser improvements (reject invalid ClientHello variants)
-  * Performance: Per-backend pattern match caching (skip repeated PCRE)
+  * Performance: Per-backend pattern match caching (skip repeated PCRE2)
   * Performance: HTTP/2 HPACK optimization (precomputed lengths, binary search)
   * Performance: Optimized buffer shrink decisions (periodic timer)
   * Performance: Connection memory tracking and accounting

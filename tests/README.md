@@ -7,7 +7,7 @@ To build the standalone test binaries without running the full project build, fi
 ./configure
 ```
 
-The configure step will check for and report any missing development dependencies (such as `libev-dev` and `libpcre3-dev`). After configuration succeeds, individual tests can be built from the `tests` directory. For example, to rebuild the buffer unit tests:
+The configure step will check for and report any missing development dependencies (such as `libev-dev` and `libpcre2-dev`). After configuration succeeds, individual tests can be built from the `tests` directory. For example, to rebuild the buffer unit tests:
 
 ```sh
 make -C tests buffer_test

@@ -95,8 +95,7 @@ AC_SUBST([HARDEN_LDFLAGS])
 AC_CHECK_LIB([ev], [ev_run], [],
 	     [AC_MSG_ERROR([libev is required])])
 AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [],
-	     [AC_CHECK_LIB([pcre], [pcre_exec], [],
-			   [AC_MSG_ERROR([libpcre is required])])])
+	     [AC_MSG_ERROR([libpcre2 is required])])
 
 AC_CHECK_HEADERS([ares.h], [],
   [AC_MSG_ERROR([c-ares headers are required])])

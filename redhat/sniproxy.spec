@@ -9,7 +9,7 @@ URL: https://github.com/dlundquist/sniproxy
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires: autoconf, automake, curl, libev-devel, pcre-devel, perl, gettext-devel, c-ares-devel
+BuildRequires: autoconf, automake, curl, libev-devel, pcre2-devel, perl, gettext-devel, c-ares-devel
 
 %description
 Proxies incoming HTTP and TLS connections based on the hostname contained in
@@ -93,7 +93,7 @@ rm -rf $RPM_BUILD_ROOT
 - Security: DNS query IDs use PRNG (xorshift32) instead of linear counter
 - Security: c-ares resolver hardening (async-signal-safe, integer overflow protection)
 - Security: TLS parser improvements (reject invalid ClientHello variants)
-- Performance: Per-backend pattern match caching (skip repeated PCRE evaluations)
+- Performance: Per-backend pattern match caching (skip repeated PCRE2 evaluations)
 - Performance: HTTP/2 HPACK optimization (precomputed lengths, binary search)
 - Performance: Optimized buffer shrink decisions (periodic timer)
 - Performance: Connection memory tracking and accounting

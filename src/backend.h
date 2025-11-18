@@ -29,12 +29,12 @@
 
 #include <sys/queue.h>
 
-#if defined(HAVE_LIBPCRE2_8)
+#if !defined(HAVE_LIBPCRE2_8)
+#error "sniproxy requires libpcre2-8"
+#endif
+
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
-#elif defined(HAVE_LIBPCRE)
-#include <pcre.h>
-#endif
 
 #include "address.h"
 
@@ -46,12 +46,8 @@ struct Backend {
     int use_proxy_header;
 
     /* Runtime fields */
-#if defined(HAVE_LIBPCRE2_8)
     pcre2_code *pattern_re;
     pcre2_match_data *pattern_match_data;
-#elif defined(HAVE_LIBPCRE)
-    pcre *pattern_re;
-#endif
     char *last_lookup_name;
     size_t last_lookup_len;
     size_t last_lookup_capacity;

@@ -34,11 +34,7 @@
 #include "address.h"
 #include "logger.h"
 
-#if defined(HAVE_LIBPCRE2_8)
 #define BACKEND_REGEX_DEPTH_LIMIT 1000
-#elif defined(HAVE_LIBPCRE)
-#define BACKEND_REGEX_RECURSION_LIMIT 500
-#endif
 
 #define BACKEND_REGEX_MATCH_LIMIT 10000
 #define BACKEND_REGEX_MATCH_BASE 256
@@ -119,17 +115,10 @@ backend_store_match_cache(struct Backend *backend, const char *name, size_t len,
 }
 
 
-#if defined(HAVE_LIBPCRE2_8)
 static pcre2_match_context *backend_match_ctx;
 static int backend_match_ctx_registered;
 static void backend_regex_runtime_init(void);
 static void backend_regex_cleanup(void);
-#elif defined(HAVE_LIBPCRE)
-static pcre_extra backend_match_extra_storage;
-static pcre_extra *backend_match_extra;
-static int backend_match_extra_initialized;
-static void backend_regex_runtime_init(void);
-#endif
 
 
 struct Backend *
@@ -145,12 +134,8 @@ new_backend(void) {
     backend->pattern = NULL;
     backend->address = NULL;
     backend->use_proxy_header = 0;
-#if defined(HAVE_LIBPCRE2_8)
     backend->pattern_re = NULL;
     backend->pattern_match_data = NULL;
-#elif defined(HAVE_LIBPCRE)
-    backend->pattern_re = NULL;
-#endif
     backend->last_lookup_name = NULL;
     backend->last_lookup_len = 0;
     backend->last_lookup_capacity = 0;
@@ -205,7 +190,6 @@ init_backend(struct Backend *backend) {
 
     if (backend->pattern_re == NULL) {
 
-#if defined(HAVE_LIBPCRE2_8)
         int reerr;
         size_t reerroffset;
 
@@ -226,18 +210,6 @@ init_backend(struct Backend *backend) {
             backend->pattern_re = NULL;
             return 0;
         }
-#elif defined(HAVE_LIBPCRE)
-        const char *reerr;
-        int reerroffset;
-
-        backend->pattern_re =
-            pcre_compile(backend->pattern, 0, &reerr, &reerroffset, NULL);
-        if (backend->pattern_re == NULL) {
-            err("Regex compilation of \"%s\" failed: %s, offset %d",
-                    backend->pattern, reerr, reerroffset);
-            return 0;
-        }
-#endif
 
         char address[ADDRESS_BUFFER_SIZE];
         debug("Parsed %s %s",
@@ -273,18 +245,14 @@ struct Backend *
 lookup_backend(const struct Backend_head *head, const char *name, size_t name_len) {
     struct Backend *iter;
 
-#if defined(HAVE_LIBPCRE2_8) || defined(HAVE_LIBPCRE)
     backend_regex_runtime_init();
-#endif
 
     if (name == NULL) {
         name = "";
         name_len = 0;
     }
 
-#if defined(HAVE_LIBPCRE2_8) || defined(HAVE_LIBPCRE)
     uint32_t match_limit = backend_regex_match_limit_for_len(name_len);
-#endif
 
     for (iter = STAILQ_FIRST(head); iter != NULL; iter = STAILQ_NEXT(iter, entries)) {
         if (iter->pattern_re == NULL)
@@ -296,7 +264,6 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
                 return iter;
             continue;
         }
-#if defined(HAVE_LIBPCRE2_8)
         pcre2_match_data *md = iter->pattern_match_data;
         if (md == NULL)
             continue;
@@ -306,14 +273,6 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
         backend_store_match_cache(iter, name, name_len, ret >= 0);
         if (ret >= 0)
             return iter;
-#elif defined(HAVE_LIBPCRE)
-        backend_match_extra_storage.match_limit = match_limit;
-        int ret = pcre_exec(iter->pattern_re, backend_match_extra,
-                    name, name_len, 0, 0, NULL, 0);
-        backend_store_match_cache(iter, name, name_len, ret >= 0);
-        if (ret >= 0)
-            return iter;
-#endif
     }
 
     return NULL;
@@ -355,19 +314,13 @@ free_backend(struct Backend *backend) {
     free(backend->pattern);
     free(backend->address);
     free(backend->last_lookup_name);
-#if defined(HAVE_LIBPCRE2_8)
     if (backend->pattern_match_data != NULL)
         pcre2_match_data_free(backend->pattern_match_data);
     if (backend->pattern_re != NULL)
         pcre2_code_free(backend->pattern_re);
-#elif defined(HAVE_LIBPCRE)
-    if (backend->pattern_re != NULL)
-        pcre_free(backend->pattern_re);
-#endif
     free(backend);
 }
 
-#if defined(HAVE_LIBPCRE2_8)
 static void
 backend_regex_cleanup(void) {
     if (backend_match_ctx != NULL) {
@@ -396,20 +349,3 @@ backend_regex_runtime_init(void) {
         backend_match_ctx_registered = 1;
     }
 }
-#elif defined(HAVE_LIBPCRE)
-static void
-backend_regex_runtime_init(void) {
-    if (backend_match_extra_initialized)
-        return;
-
-    memset(&backend_match_extra_storage, 0, sizeof(backend_match_extra_storage));
-    backend_match_extra_storage.flags = PCRE_EXTRA_MATCH_LIMIT;
-    backend_match_extra_storage.match_limit = BACKEND_REGEX_MATCH_LIMIT;
-#ifdef PCRE_EXTRA_MATCH_LIMIT_RECURSION
-    backend_match_extra_storage.flags |= PCRE_EXTRA_MATCH_LIMIT_RECURSION;
-    backend_match_extra_storage.match_limit_recursion = BACKEND_REGEX_RECURSION_LIMIT;
-#endif
-    backend_match_extra = &backend_match_extra_storage;
-    backend_match_extra_initialized = 1;
-}
-#endif

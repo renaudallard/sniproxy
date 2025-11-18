@@ -17,7 +17,7 @@ Features
   certificates required on the proxy
 + **Protocol support**: TLS (SNI extraction), HTTP/1.x (Host header), and
   HTTP/2 (HPACK :authority pseudo-header)
-+ **Pattern matching**: Exact hostname matching and PCRE/PCRE2 regular expressions
++ **Pattern matching**: Exact hostname matching and PCRE2 regular expressions
 + **Wildcard backends**: Route to dynamically resolved hostnames
 + **Fallback routing**: Default backend for requests without valid hostnames
 + **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1/v2)
@@ -127,7 +127,7 @@ For Debian or Fedora based Linux distributions see building packages below.
 **Prerequisites**
 
 + Autotools (autoconf, automake, gettext and libtool)
-+ libev4, libpcre2 (or libpcre) and c-ares development headers
++ libev4, libpcre2 and c-ares development headers
 + Perl and cURL for test suite
 
 **Install**
@@ -156,7 +156,7 @@ This is the preferred installation method for modern Fedora based distributions.
 
 1. Install required packages
 
-        sudo yum install autoconf automake curl gettext-devel libev-devel pcre-devel perl pkgconfig rpm-build c-ares-devel
+        sudo yum install autoconf automake curl gettext-devel libev-devel pcre2-devel perl pkgconfig rpm-build c-ares-devel
 
 2. Build a distribution tarball:
 
@@ -179,7 +179,7 @@ may not even work.
 
 1. install dependencies.
 
-        brew install libev pcre c-ares autoconf automake gettext libtool
+        brew install libev pcre2 c-ares autoconf automake gettext libtool
 
 2. Read the warning about gettext and force link it so autogen.sh works. We need the GNU gettext for the macro `AC_LIB_HAVE_LINKFLAGS` which isn't present in the default OS X package.
 
@@ -519,5 +519,5 @@ feel free to submit PRs or bug reports.
 
 SNIProxy builds on several excellent libraries:
 - [libev](http://software.schmorp.de/pkg/libev.html) - event loop
-- [PCRE2](https://www.pcre.org/) / [PCRE](https://www.pcre.org/) - regex
+- [PCRE2](https://www.pcre.org/) - regex
 - [c-ares](https://c-ares.org) - async DNS resolution
