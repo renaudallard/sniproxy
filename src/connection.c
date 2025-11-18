@@ -43,6 +43,7 @@
 #include <ev.h>
 #include <assert.h>
 #include <sys/stat.h>
+#include <stdatomic.h>
 #include "connection.h"
 #include "resolv.h"
 #include "address.h"
@@ -2097,6 +2098,7 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         /* Clear state atomically before any cancellation */
         con->query_handle = NULL;
         con->dns_query_acquired = 0;
+        atomic_thread_fence(memory_order_seq_cst);
 
         /* Now safely clean up using local copies */
         if (local_query_handle != NULL && local_dns_query_acquired) {
