@@ -462,7 +462,7 @@ void
 reload_config(struct Config *config, struct ev_loop *loop) {
     notice("reloading configuration from %s", config->filename);
 
-    struct Config *new_config = init_config(config->filename, loop, 0);
+    struct Config *new_config = init_config(config->filename, loop, 1);
     if (new_config == NULL) {
         err("failed to reload %s", config->filename);
         return;

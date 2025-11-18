@@ -119,7 +119,7 @@ AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],
   [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])
 
-AC_CHECK_FUNCS([accept4 daemon setproctitle])
+AC_CHECK_FUNCS([accept4 daemon setproctitle mkostemp])
 
 # Enable large file support (so we can log more than 2GB)
 AC_SYS_LARGEFILE

@@ -512,14 +512,31 @@ print_connections(void) {
     }
 
     mode_t old_umask = umask(077);
-    int fd = mkstemp(filename);
+    int fd;
+    int need_set_cloexec = 1;
+#ifdef HAVE_MKOSTEMP
+    int mkostemp_flags = 0;
+#ifdef O_CLOEXEC
+    mkostemp_flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    mkostemp_flags |= O_NOFOLLOW;
+#endif
+    fd = mkostemp(filename, mkostemp_flags);
+#ifdef O_CLOEXEC
+    if (mkostemp_flags & O_CLOEXEC)
+        need_set_cloexec = 0;
+#endif
+#else
+    fd = mkstemp(filename);
+#endif
     umask(old_umask);
     if (fd < 0) {
         warn("mkstemp failed: %s", strerror(errno));
         return;
     }
 
-    if (set_cloexec(fd) < 0) {
+    if (need_set_cloexec && set_cloexec(fd) < 0) {
         warn("set_cloexec failed for %s: %s", filename, strerror(errno));
         close(fd);
         unlink(filename);
