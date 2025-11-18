@@ -846,6 +846,11 @@ validate_config_path(const char *setting, const char *path) {
         return 0;
     }
 
+    if (*path != '/') {
+        err("%s path must be absolute: %s", setting, path);
+        return 0;
+    }
+
     const char *p = path;
     while (*p != '\0') {
         while (*p == '/')
