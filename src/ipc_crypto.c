@@ -223,6 +223,8 @@ derive_rekey_key(const uint8_t *base_key, uint32_t generation,
     /* Construct info parameter: "REKEY" || generation || label */
     uint32_t gen_be = htonl(generation);
     size_t label_len = label != NULL ? strlen(label) : 0;
+    if (label_len > 1024)
+        return -1;
     size_t info_len = 5 + sizeof(gen_be) + label_len;
     uint8_t *info = malloc(info_len);
     if (info == NULL)
