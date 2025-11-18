@@ -61,6 +61,12 @@ Features
 + **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
 + **Input sanitization**: Hostname validation, control character removal
 + **Comprehensive fuzzing**: TLS and HTTP/2 protocol fuzzers included
++ **Configuration integrity**: Config files are re-checked for strict permissions
+  on reload, all path directives must be absolute, and resolver search domains are
+  treated as literal suffixes instead of being DNS-parsed.
++ **DNS-over-TLS upstreams**: Resolver blocks can send queries over TLS via
+  `dot://IP-or-hostname/<SNI>` entries, verifying certificates with the system
+  trust store.
 
 ### DNS Resolution
 + **Asynchronous DNS** via dedicated resolver process (powered by c-ares from 0.8.7)
@@ -288,6 +294,12 @@ connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
         # DNSSEC policy (default relaxed): off | relaxed | strict
         dnssec_validation strict
     }
+
+`dot://` entries accept either an IP literal or hostname before the slash and
+the TLS verification hostname after the slash. If only an IP is provided,
+the resolver uses the OS resolver to determine the TLS SNI/verification name.
+Certificates are validated against the system trust store, so keep `/etc/ssl`
+up-to-date.
 
     listener [::]:443 {
         protocol tls

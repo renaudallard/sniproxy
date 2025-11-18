@@ -1,3 +1,21 @@
+sniproxy 0.9.8 (2025-11-20)
+==============================
+
+* Security: libpcre2 is now the sole supported regex backend across runtime,
+  fuzzers, and packaging; all builds fail fast if the legacy PCRE1 headers or
+  libraries are missing.
+* Security: HKDF info buffers are wiped before free, oversized labels are
+  rejected, DNS resolver cancellation uses an explicit memory fence, and
+  temporary connection dumps rely on `mkostemp()` with CLOEXEC/NOFOLLOW.
+* Networking: Resolver blocks can now use DNS-over-TLS upstreams via
+  `dot://address/hostname` entries, verifying upstream certificates with the
+  system trust store.
+* Hardening: configuration reloads re-check file permissions, path directives
+  require absolute paths, and resolver search domains are treated as literal
+  suffixes instead of being parsed as hostnames.
+* Tooling/Docs: README, ARCHITECTURE.md, Debian/RPM metadata, and tests now
+  describe the libpcre2 dependency and other behavioral refinements for 0.9.8.
+
 sniproxy 0.9.7 (2025-11-19)
 ==============================
 

@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.7
+Version: 0.9.8
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,19 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Thu Nov 20 2025 Renaud Allard <renaud@allard.it> 0.9.8-1
+- Security: remove legacy PCRE1 fallback, require libpcre2 everywhere, and
+  harden fuzz/test builds with explicit PCRE2 detection.
+- Security: configuration reloads now re-validate file permissions, temporary
+  connection dumps use `mkostemp` with CLOEXEC/NOFOLLOW, HKDF buffers zeroize
+  and reject oversized labels, and resolver cancellation adds a memory fence.
+- Hardening: enforce absolute config paths and treat resolver search domains as
+  literal suffixes without hostname validation.
+- Build/docs: README, architecture notes, Debian/RPM metadata, and tools all
+  reflect the libpcre2 requirement.
+- Networking: resolver blocks can now specify DNS-over-TLS upstreams via
+  `dot://address/hostname` entries with certificate validation.
+
 * Wed Nov 19 2025 Renaud Allard <renaud@allard.it> 0.9.7-1
 - DNS: enable DNSSEC validation in relaxed mode by default so wildcard tables
   and fallback targets benefit from authenticated data without manual config.

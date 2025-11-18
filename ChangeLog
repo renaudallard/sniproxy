@@ -1,3 +1,17 @@
+2025-11-20  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.8
+	- Security: require libpcre2 everywhere (runtime, tests, fuzzers, packaging)
+	  and drop the legacy PCRE1 fallback; HKDF buffers now zeroize and reject
+	  oversized labels.
+	- Hardening: configuration reloads re-check file permissions, all config
+	  paths must be absolute, resolver search domains are treated as literal
+	  suffixes, and temporary connection dumps use mkostemp() with CLOEXEC.
+	- Networking: resolver blocks now support DNS-over-TLS `dot://` upstreams
+	  with full certificate validation using the system trust store.
+	- Reliability: resolver cancellation gains an atomic memory fence to prevent
+	  race windows, and documentation/metadata reflect the updated behavior.
+
 2025-11-19  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.7

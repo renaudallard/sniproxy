@@ -1,3 +1,18 @@
+sniproxy (0.9.8) unstable; urgency=medium
+
+  * Security: require libpcre2 across runtime/tests/fuzzers and drop PCRE1
+    fallback; HKDF info buffers are wiped and reject oversized labels.
+  * Hardening: configuration reloads recheck file permissions, config paths
+    must be absolute, resolver search domains are treated as literal suffixes,
+    and resolver cancellation uses a memory fence to close race windows.
+  * Networking: resolver blocks can now point to DNS-over-TLS upstreams via
+    `dot://address/hostname` entries with certificate validation.
+  * Tooling: connection dumps prefer mkostemp(), README/architecture/docs now
+    describe the tightened requirements, and packaging metadata reflects the
+    libpcre2 dependency.
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 20 Nov 2025 09:00:00 +0100
+
 sniproxy (0.9.7) unstable; urgency=medium
 
   * DNS: enable DNSSEC validation in relaxed mode by default so wildcard and

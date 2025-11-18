@@ -283,6 +283,8 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
 - Concurrent query limiting to prevent resource exhaustion
 - Integration with libev event loop
 - Thread-safe query list with mutex protection
+- DNS-over-TLS upstreams via `dot://address/hostname` entries with certificate
+  verification against the system trust store
 - **Security enhancements (0.9.0 -> 0.9.6)**: DNS query IDs moved from linear
   counters to xorshift32 and now to arc4random() with OS entropy, while query
   handles store explicit acquisition state so leaked or double-freed entries are
@@ -294,6 +296,9 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
 - **DNSSEC default (0.9.7)**: Resolver blocks now default to `dnssec_validation
   relaxed`, requesting authenticated data whenever upstream resolvers support
   it without requiring explicit configuration.
+- **Search domains (0.9.8)**: Entries are treated as literal suffixes appended
+  during lookups; they are no longer parsed as hostnames, avoiding surprise
+  validation failures for split-horizon environments.
 
 **Modes:**
 - `RESOLV_MODE_DEFAULT`: System default behavior
@@ -448,6 +453,10 @@ Once CONNECTED, the connection enters steady-state proxying:
   configuration files that are readable or writable by group/other users,
   ensuring accidental chmod mistakes do not leak secrets when starting or
   reloading the daemon.
+- **Configuration hardening (0.9.8)**: Reloads repeat the permission checks,
+  all configured paths must be absolute, resolver cancellation includes a
+  memory fence, and temporary connection dumps rely on `mkostemp()` with
+  CLOEXEC/NOFOLLOW semantics.
 
 ### PROXY Protocol Support
 
