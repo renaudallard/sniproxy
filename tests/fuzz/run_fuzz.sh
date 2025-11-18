@@ -10,6 +10,18 @@ FUZZ_RUNTIME=${FUZZ_RUNTIME:-30}
 EXTRA_FLAGS=${FUZZ_CFLAGS:-"-O1 -g"}
 COMMON_FLAGS=("-fsanitize=fuzzer,address,undefined" "-fno-omit-frame-pointer" "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" "-DHAVE_CONFIG_H" "-I$ROOT_DIR" "-I$ROOT_DIR/src")
 
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libpcre2-8; then
+    : "${PCRE2_CFLAGS:=$(pkg-config --cflags libpcre2-8)}"
+    : "${PCRE2_LIBS:=$(pkg-config --libs libpcre2-8)}"
+else
+    : "${PCRE2_CFLAGS:=}"
+    : "${PCRE2_LIBS:=-lpcre2-8}"
+fi
+
+if [[ -n "$PCRE2_CFLAGS" ]]; then
+    COMMON_FLAGS+=("$PCRE2_CFLAGS")
+fi
+
 if ! command -v "$FUZZ_CC" >/dev/null 2>&1; then
     echo "error: $FUZZ_CC is required for libFuzzer builds" >&2
     exit 1
@@ -60,7 +72,7 @@ mkdir -p "$OUT_DIR" \
 build_fuzzer() {
     local target=$1
     shift
-    "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" -o "$OUT_DIR/$target"
+    "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target"
 }
 
 echo "Building fuzzers..."
