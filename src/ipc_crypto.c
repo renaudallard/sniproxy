@@ -235,6 +235,7 @@ derive_rekey_key(const uint8_t *base_key, uint32_t generation,
 
     /* Use HKDF with base key as IKM and combined info for domain separation */
     int ret = hkdf_sha256(NULL, 0, base_key, 32, info, info_len, out);
+    secure_memzero(info, info_len);
     free(info);
     return ret;
 }
