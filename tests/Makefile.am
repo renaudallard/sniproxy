@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/src -g $(LIBEV_CFLAGS) $(LIBPCRE_CFLAGS) $(HARDEN_CPPFLAGS)
+AM_CPPFLAGS = -I$(top_srcdir)/src -g $(LIBEV_CFLAGS) $(PCRE2_CFLAGS) $(HARDEN_CPPFLAGS)
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings $(HARDEN_CFLAGS)
 AM_LDFLAGS = $(HARDEN_LDFLAGS)
 
@@ -84,7 +84,7 @@ config_test_SOURCES = config_test.c \
                       ../src/http2.c \
                       ../src/http2_huffman.c
 
-config_test_LDADD = $(LIBEV_LIBS) $(LIBPCRE_LIBS) -lssl $(LIBCRYPTO_LIBS)
+config_test_LDADD = $(LIBEV_LIBS) $(PCRE2_LIBS) -lssl $(LIBCRYPTO_LIBS)
 
 resolv_test_SOURCES = resolv_test.c \
                       ../src/resolv.c \
@@ -101,4 +101,4 @@ table_test_SOURCES = table_test.c \
                       ../src/logger.c \
                       ../src/ipc_crypto.c
 
-table_test_LDADD = $(LIBPCRE_LIBS)
+table_test_LDADD = $(PCRE2_LIBS)

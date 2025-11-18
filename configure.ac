@@ -96,6 +96,10 @@ AC_CHECK_LIB([ev], [ev_run], [],
 	     [AC_MSG_ERROR([libev is required])])
 AC_CHECK_LIB([pcre2-8], [pcre2_compile_8], [],
 	     [AC_MSG_ERROR([libpcre2 is required])])
+PCRE2_LIBS='-lpcre2-8'
+PCRE2_CFLAGS=''
+AC_SUBST([PCRE2_LIBS])
+AC_SUBST([PCRE2_CFLAGS])
 
 AC_CHECK_HEADERS([ares.h], [],
   [AC_MSG_ERROR([c-ares headers are required])])
