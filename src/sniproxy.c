@@ -396,6 +396,9 @@ main(int argc, char **argv) {
             openbsd_unveil_path(tmp_path, "rwc", 1);
         }
 
+        /* Allow resolver child to read the default CA bundle */
+        openbsd_unveil_path("/etc/ssl/cert.pem", "r", 0);
+
         if (unveil(NULL, NULL) == -1) {
             perror("unveil");
             exit(EXIT_FAILURE);
