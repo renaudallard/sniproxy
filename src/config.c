@@ -1370,13 +1370,8 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
 
 static int
 accept_resolver_search(struct ResolverConfig *resolver, const char *search) {
-    struct Address *search_address = new_address(search);
-    if (!address_is_hostname(search_address)) {
-        free(search_address);
+    if (search == NULL || *search == '\0')
         return -1;
-    }
-    free(search_address);
-
     return append_to_string_vector(&resolver->search, search);
 }
 
