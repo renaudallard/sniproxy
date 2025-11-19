@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.8
+Version: 0.9.9
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,21 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Fri Nov 21 2025 Renaud Allard <renaud@allard.it> 0.9.9-1
+- Security: PROXY header generation now enforces buffer space, logs clients
+  when the header cannot be appended, and refuses to forward; sockaddr parsing
+  clamps copy_sockaddr_to_storage, validates sa_len, and backend caches reject
+  lengths that would overflow allocations.
+- Networking: Per-client DNS concurrency limits complement the global cap,
+  defaults now sit at 16 per client and 512 overall, both caps can be tuned via
+  resolver max_concurrent_queries(_per_client), and the address parser handles
+  trailing ports via centralized logic with bounded recursion.
+- Crypto: ipc_crypto_seal validates header/tag overhead, blocks SIZE_MAX-length
+  frames, and halts when the send counter reaches UINT64_MAX, while derive_key
+  rejects HKDF labels over 1024 bytes.
+- Reliability: Buffer helpers assert read/write offsets never exceed capacity
+  and setup_write_iov stops when a buffer reports an impossible length.
+
 * Thu Nov 20 2025 Renaud Allard <renaud@allard.it> 0.9.8-1
 - Security: remove legacy PCRE1 fallback, require libpcre2 everywhere, and
   harden fuzz/test builds with explicit PCRE2 detection.

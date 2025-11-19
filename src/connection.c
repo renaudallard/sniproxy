@@ -74,7 +74,6 @@
 #define CONNECTION_MEMORY_PRESSURE_COOLDOWN 0.25
 #define DNS_CLIENT_BUCKET_BITS 10
 #define DNS_CLIENT_BUCKETS (1u << DNS_CLIENT_BUCKET_BITS)
-#define MAX_DNS_QUERIES_PER_CLIENT 4
 
 
 struct resolv_cb_data {
@@ -180,7 +179,7 @@ struct DnsClientUsageEntry {
 };
 
 static struct DnsClientUsageEntry *dns_client_table[DNS_CLIENT_BUCKETS];
-static size_t max_dns_queries_per_client = MAX_DNS_QUERIES_PER_CLIENT;
+static size_t max_dns_queries_per_client = DEFAULT_DNS_QUERIES_PER_CLIENT;
 
 static size_t connection_memory_in_use;
 static size_t connection_memory_peak;
@@ -1360,6 +1359,11 @@ connections_set_dns_query_limit(size_t limit) {
         limit = 1;
 
     max_concurrent_dns_queries = limit;
+}
+
+void
+connections_set_dns_query_per_client_limit(size_t limit) {
+    max_dns_queries_per_client = limit;
 }
 
 void

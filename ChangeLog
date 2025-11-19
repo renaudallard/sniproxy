@@ -1,3 +1,23 @@
+2025-11-21  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.9
+	- Security: Harden PROXY header emission by checking buffer space, logging the
+	  client when the header cannot be appended, and aborting routing instead of
+	  silently continuing; address parsing now validates sockaddr lengths/sa_len,
+	  casts bytes to unsigned char before tolower(), bounds the recursion depth,
+	  and clamps copy_sockaddr_to_storage/back-end caches from overruns.
+	- Networking: Per-client DNS concurrency limits complement the global cap so
+	  abusive clients cannot starve other users, the defaults jump to 16 per client
+	  and 512 overall with resolver max_concurrent_queries(_per_client) settings,
+	  and the address parser handles trailing ports iteratively with centralized
+	  apply_port_if_needed logic.
+	- Crypto: ipc_crypto_seal validates header/tag overhead, refuses SIZE_MAX
+	  overflows, and stops once the send counter reaches UINT64_MAX; derive_key
+	  enforces a 1024-byte label limit before allocating HKDF info buffers.
+	- Reliability: Buffer helpers now assert read/write offsets never exceed their
+	  capacity and setup_write_iov aborts when a buffer claims more bytes than it
+	  allocated, preventing silent corruption.
+
 2025-11-20  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.8

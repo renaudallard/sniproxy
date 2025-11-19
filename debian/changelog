@@ -1,3 +1,22 @@
+sniproxy (0.9.9) unstable; urgency=medium
+
+  * Security: PROXY header writes now require sufficient buffer space, log the
+    offending client, and abort when the header cannot be appended; sockaddr
+    parsing clamps copy_sockaddr_to_storage, validates sa_len, and backend
+    caching rejects lengths that would overflow allocations.
+  * Networking: Add per-client DNS concurrency limits alongside the global cap,
+    raise the defaults to 16 per client and 512 overall, and rework address
+    parsing so trailing ports are applied via centralized logic with bounded
+    recursion depth while exposing both caps as resolver
+    max_concurrent_queries(_per_client) settings.
+  * Crypto: ipc_crypto_seal verifies header/tag overhead, prevents SIZE_MAX
+    frames, halts when the send counter hits UINT64_MAX, and derive_key now
+    rejects HKDF labels longer than 1024 bytes.
+  * Reliability: Buffer helpers assert read/write offsets never exceed capacity
+    and setup_write_iov bails when a buffer reports an impossible length.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 21 Nov 2025 00:00:00 +0000
+
 sniproxy (0.9.8) unstable; urgency=medium
 
   * Security: require libpcre2 across runtime/tests/fuzzers and drop PCRE1

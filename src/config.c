@@ -94,6 +94,7 @@ static int accept_resolver_nameserver(struct ResolverConfig *, const char *);
 static int accept_resolver_search(struct ResolverConfig *, const char *);
 static int accept_resolver_mode(struct ResolverConfig *, const char *);
 static int accept_resolver_max_queries(struct ResolverConfig *, const char *);
+static int accept_resolver_max_queries_per_client(struct ResolverConfig *, const char *);
 static int accept_resolver_dnssec_validation(struct ResolverConfig *, const char *);
 static int end_resolver_stanza(struct Config *, struct ResolverConfig *);
 static inline size_t string_vector_len(char **);
@@ -147,6 +148,10 @@ static const struct Keyword resolver_stanza_grammar[] = {
     {
         .keyword="max_concurrent_queries",
         .parse_arg=(int(*)(void *, const char *))accept_resolver_max_queries,
+    },
+    {
+        .keyword="max_concurrent_queries_per_client",
+        .parse_arg=(int(*)(void *, const char *))accept_resolver_max_queries_per_client,
     },
     {
         .keyword="dnssec_validation",
@@ -352,6 +357,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     }
 
     config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+    config->resolver.max_queries_per_client = DEFAULT_DNS_QUERIES_PER_CLIENT;
     config->per_ip_connection_rate = DEFAULT_PER_IP_CONNECTION_RATE;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
@@ -485,6 +491,8 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->io_collect_interval = new_config->io_collect_interval;
     config->timeout_collect_interval = new_config->timeout_collect_interval;
 
+    config->resolver.max_queries_per_client = new_config->resolver.max_queries_per_client;
+    connections_set_dns_query_per_client_limit(config->resolver.max_queries_per_client);
     config->resolver.max_concurrent_queries = new_config->resolver.max_concurrent_queries;
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
     config->client_buffer_limit = new_config->client_buffer_limit;
@@ -1233,6 +1241,7 @@ new_resolver_config(void) {
         resolver->search = NULL;
         resolver->mode = 0;
         resolver->max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
+        resolver->max_queries_per_client = DEFAULT_DNS_QUERIES_PER_CLIENT;
         resolver->dnssec_validation_mode = DEFAULT_DNSSEC_VALIDATION_MODE;
     }
 
@@ -1444,6 +1453,25 @@ accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) 
 }
 
 static int
+accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const char *value) {
+    if (value == NULL || *value == '\0')
+        return -1;
+
+    char *endptr = NULL;
+    errno = 0;
+    unsigned long parsed = strtoul(value, &endptr, 10);
+
+    if (errno != 0 || endptr == value || *endptr != '\0')
+        return -1;
+
+    if (parsed > SIZE_MAX)
+        return -1;
+
+    resolver->max_queries_per_client = (size_t)parsed;
+    return 1;
+}
+
+static int
 end_resolver_stanza(struct Config *config, struct ResolverConfig *resolver) {
     config->resolver = *resolver;
     free(resolver);
@@ -1463,6 +1491,8 @@ print_resolver_config(FILE *file, struct ResolverConfig *resolver) {
 
     fprintf(file, "\tmode %s\n", resolver_mode_names[resolver->mode]);
     fprintf(file, "\tmax_concurrent_queries %zu\n", resolver->max_concurrent_queries);
+    fprintf(file, "\tmax_concurrent_queries_per_client %zu\n",
+            resolver->max_queries_per_client);
     fprintf(file, "\tdnssec_validation %s\n",
             dnssec_validation_mode_names[resolver->dnssec_validation_mode]);
 

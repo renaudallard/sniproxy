@@ -81,10 +81,12 @@ size_t connections_memory_peak_bytes(void);
 size_t connections_active_count(void);
 size_t connections_peak_count(void);
 
-#define DEFAULT_DNS_QUERY_CONCURRENCY 256
+#define DEFAULT_DNS_QUERY_CONCURRENCY 512
+#define DEFAULT_DNS_QUERIES_PER_CLIENT 16
 
 void connections_set_per_ip_connection_rate(double rate);
 void connections_set_dns_query_limit(size_t limit);
+void connections_set_dns_query_per_client_limit(size_t limit);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
 void connections_set_global_limit(size_t limit);
 

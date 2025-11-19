@@ -1,3 +1,24 @@
+sniproxy 0.9.9 (2025-11-21)
+==============================
+
+* Security: PROXY header emission now checks buffer capacity, logs the client
+  when the header cannot be appended, and aborts routing instead of silently
+  continuing; sockaddr parsing validates sa_len bounds, copy_sockaddr_to_storage
+  clamps copies to the destination size, and backend match caching rejects
+  lengths that would overflow allocations.
+* Networking: Per-client DNS concurrency limits stack on the existing global cap
+  so abusive clients cannot starve other lookups, the defaults rise to 16 per
+  client and 512 overall with resolver max_concurrent_queries(_per_client)
+  options, and address parsing handles optional trailing ports iteratively with
+  centralized apply_port_if_needed logic while enforcing a maximum parser
+  recursion depth.
+* Crypto: ipc_crypto_seal verifies header/tag overhead, halts once the send
+  counter reaches UINT64_MAX, and refuses SIZE_MAX-topping frames; derive_key now
+  rejects HKDF labels longer than 1024 bytes before allocating.
+* Reliability: Buffer helpers assert read/write offsets never exceed capacity and
+  setup_write_iov bails out when a buffer reports a larger length than it
+  allocated, preventing corruption before data hits the socket.
+
 sniproxy 0.9.8 (2025-11-20)
 ==============================
 

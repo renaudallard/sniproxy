@@ -52,6 +52,7 @@ struct Config {
         char **search;
         int mode;
         size_t max_concurrent_queries;
+        size_t max_queries_per_client;
         int dnssec_validation_mode;
     } resolver;
     struct Logger *access_log;

@@ -443,6 +443,7 @@ main(int argc, char **argv) {
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
     connections_set_global_limit(effective_max_connections(config));
 
+    connections_set_dns_query_per_client_limit(config->resolver.max_queries_per_client);
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
     connections_set_buffer_limits(config->client_buffer_limit,
             config->server_buffer_limit);
