@@ -1176,23 +1176,31 @@ copy_sockaddr_to_storage(struct sockaddr_storage *dst, const void *src, socklen_
     if (dst == NULL)
         return;
 
-    if (src == NULL || len == 0) {
+    if (src == NULL || len <= 0) {
         memset(dst, 0, sizeof(*dst));
         return;
     }
 
-    if (len == sizeof(struct sockaddr_in)) {
+    size_t written = 0;
+
+    if (len == (socklen_t)sizeof(struct sockaddr_in)) {
         const struct sockaddr_in *in = (const struct sockaddr_in *)src;
         *(struct sockaddr_in *)dst = *in;
-    } else if (len == sizeof(struct sockaddr_in6)) {
+        written = sizeof(struct sockaddr_in);
+    } else if (len == (socklen_t)sizeof(struct sockaddr_in6)) {
         const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)src;
         *(struct sockaddr_in6 *)dst = *in6;
+        written = sizeof(struct sockaddr_in6);
     } else {
-        memcpy(dst, src, len);
+        size_t copy_len = (size_t)len;
+        if (copy_len > sizeof(*dst))
+            copy_len = sizeof(*dst);
+        memcpy(dst, src, copy_len);
+        written = copy_len;
     }
 
-    if (len < (socklen_t)sizeof(*dst)) {
-        memset((char *)dst + len, 0, sizeof(*dst) - (size_t)len);
+    if (written < sizeof(*dst)) {
+        memset((char *)dst + written, 0, sizeof(*dst) - written);
     }
 }
 
