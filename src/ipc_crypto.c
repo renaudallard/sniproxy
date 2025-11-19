@@ -175,9 +175,15 @@ ipc_crypto_master_cleanup(void) {
 static int
 derive_key(const uint8_t *base, size_t base_len,
         const char *label, uint8_t out[32]) {
+    size_t label_len = 0;
+    if (label != NULL) {
+        label_len = strlen(label);
+        if (label_len > 1024)
+            return -1;
+    }
     /* Use HKDF with base key as IKM and label as info for domain separation */
     return hkdf_sha256(NULL, 0, base, base_len,
-            (const uint8_t *)label, label != NULL ? strlen(label) : 0, out);
+            (const uint8_t *)label, label_len, out);
 }
 
 int
