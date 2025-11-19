@@ -33,6 +33,8 @@
 #include "listener.h"
 #include "buffer.h"
 
+struct DnsClientUsageEntry;
+
 struct Connection {
     enum State {
         NEW,            /* Before successful accept */
@@ -60,6 +62,7 @@ struct Connection {
     size_t header_len;
     struct ResolvQuery *query_handle;
     int dns_query_acquired;
+    struct DnsClientUsageEntry *dns_client_usage;
     ev_tstamp established_timestamp;
     int use_proxy_header;
 

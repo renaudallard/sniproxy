@@ -72,6 +72,9 @@
 #define CONNECTION_HEADER_TIMEOUT 5.0
 #define CONNECTION_MEMORY_PRESSURE_LIMIT (64U * 1024 * 1024)
 #define CONNECTION_MEMORY_PRESSURE_COOLDOWN 0.25
+#define DNS_CLIENT_BUCKET_BITS 10
+#define DNS_CLIENT_BUCKETS (1u << DNS_CLIENT_BUCKET_BITS)
+#define MAX_DNS_QUERIES_PER_CLIENT 4
 
 
 struct resolv_cb_data {
@@ -106,7 +109,7 @@ static void connection_cb(struct ev_loop *, struct ev_io *, int);
 static void resolv_cb(struct Address *, void *);
 static void reactivate_watchers(struct Connection *, struct ev_loop *);
 static void reactivate_watchers_with_state(struct Connection *, struct ev_loop *, int, int);
-static void insert_proxy_v1_header(struct Connection *);
+static int insert_proxy_v1_header(struct Connection *);
 static int ensure_proxy_header(struct Connection *);
 static void parse_client_request(struct Connection *, struct ev_loop *);
 static void resolve_server_address(struct Connection *, struct ev_loop *);
@@ -169,6 +172,16 @@ static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 static uint32_t rate_limit_hash_seed;
 
+struct DnsClientUsageEntry {
+    struct sockaddr_storage addr;
+    uint32_t addr_hash;
+    size_t outstanding;
+    struct DnsClientUsageEntry *next;
+};
+
+static struct DnsClientUsageEntry *dns_client_table[DNS_CLIENT_BUCKETS];
+static size_t max_dns_queries_per_client = MAX_DNS_QUERIES_PER_CLIENT;
+
 static size_t connection_memory_in_use;
 static size_t connection_memory_peak;
 static size_t connection_active_count;
@@ -190,8 +203,17 @@ static int sockaddr_equal_ip(const struct sockaddr_storage *,
 static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
 static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
 
-static int dns_query_acquire(void);
-static void dns_query_release(void);
+enum dns_acquire_status {
+    DNS_ACQUIRE_OK = 0,
+    DNS_ACQUIRE_GLOBAL_LIMIT,
+    DNS_ACQUIRE_PER_CLIENT_LIMIT,
+};
+
+static int push_proxy_header(struct Connection *, const char *, size_t);
+static int dns_client_increment(struct Connection *);
+static void dns_client_decrement(struct Connection *);
+static enum dns_acquire_status dns_query_acquire(struct Connection *);
+static void dns_query_release(struct Connection *);
 
 static ev_tstamp
 loop_now(struct ev_loop *loop) {
@@ -209,6 +231,8 @@ init_connections(void) {
     buffer_pressure_last_run = 0.0;
     rate_limit_reset();
     buffer_set_memory_observer(buffer_memory_observer);
+    for (size_t i = 0; i < DNS_CLIENT_BUCKETS; i++)
+        dns_client_table[i] = NULL;
 
     if (BUFFER_SHRINK_IDLE_SECONDS > 0.0) {
         ev_timer_init(&buffer_shrink_timer, buffer_shrink_timer_cb,
@@ -1171,6 +1195,89 @@ format_sockaddr_ip(const struct sockaddr_storage *addr, char *buffer, size_t len
     return buffer;
 }
 
+static inline size_t
+dns_client_bucket_index(uint32_t hash) {
+    return hash & (DNS_CLIENT_BUCKETS - 1u);
+}
+
+static struct DnsClientUsageEntry *
+dns_client_lookup_entry(const struct sockaddr_storage *addr, uint32_t hash) {
+    size_t bucket = dns_client_bucket_index(hash);
+    struct DnsClientUsageEntry *entry = dns_client_table[bucket];
+
+    while (entry != NULL) {
+        if (entry->addr_hash == hash && sockaddr_equal_ip(&entry->addr, addr))
+            return entry;
+        entry = entry->next;
+    }
+
+    return NULL;
+}
+
+static int
+dns_client_increment(struct Connection *con) {
+    if (con == NULL)
+        return 0;
+
+    if (max_dns_queries_per_client == 0) {
+        con->dns_client_usage = NULL;
+        return 1;
+    }
+
+    uint32_t hash = hash_sockaddr_ip(&con->client.addr, NULL);
+    struct DnsClientUsageEntry *entry = dns_client_lookup_entry(&con->client.addr, hash);
+
+    if (entry == NULL) {
+        entry = calloc(1, sizeof(*entry));
+        if (entry == NULL) {
+            warn("Failed to allocate DNS client usage entry: %s", strerror(errno));
+            return 0;
+        }
+        entry->addr = con->client.addr;
+        entry->addr_hash = hash;
+        size_t bucket = dns_client_bucket_index(hash);
+        entry->next = dns_client_table[bucket];
+        dns_client_table[bucket] = entry;
+    }
+
+    if (entry->outstanding >= max_dns_queries_per_client)
+        return 0;
+
+    entry->outstanding++;
+    con->dns_client_usage = entry;
+    return 1;
+}
+
+static void
+dns_client_decrement(struct Connection *con) {
+    if (con == NULL)
+        return;
+
+    struct DnsClientUsageEntry *entry = con->dns_client_usage;
+    if (entry == NULL)
+        return;
+
+    if (entry->outstanding > 0)
+        entry->outstanding--;
+
+    if (entry->outstanding == 0) {
+        size_t bucket = dns_client_bucket_index(entry->addr_hash);
+        struct DnsClientUsageEntry **iter = &dns_client_table[bucket];
+        while (*iter != NULL) {
+            if (*iter == entry) {
+                *iter = entry->next;
+                free(entry);
+                break;
+            }
+            iter = &(*iter)->next;
+        }
+    }
+
+    con->dns_client_usage = NULL;
+}
+
+
+
 static void
 copy_sockaddr_to_storage(struct sockaddr_storage *dst, const void *src, socklen_t len) {
     if (dst == NULL)
@@ -1224,19 +1331,27 @@ connections_set_per_ip_connection_rate(double rate) {
 static size_t max_concurrent_dns_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
 static size_t active_dns_queries;
 
-static int
-dns_query_acquire(void) {
+static enum dns_acquire_status
+dns_query_acquire(struct Connection *con) {
     if (active_dns_queries >= max_concurrent_dns_queries)
-        return 0;
+        return DNS_ACQUIRE_GLOBAL_LIMIT;
+
+    if (!dns_client_increment(con))
+        return DNS_ACQUIRE_PER_CLIENT_LIMIT;
 
     active_dns_queries++;
-    return 1;
+    return DNS_ACQUIRE_OK;
 }
 
 static void
-dns_query_release(void) {
-    assert(active_dns_queries > 0);
-    active_dns_queries--;
+dns_query_release(struct Connection *con) {
+    if (con == NULL)
+        return;
+
+    if (active_dns_queries > 0)
+        active_dns_queries--;
+
+    dns_client_decrement(con);
 }
 
 void
@@ -1569,7 +1684,25 @@ connection_memory_apply_pressure(void) {
     buffer_pressure_last_run = now;
 }
 
-static void
+static int
+push_proxy_header(struct Connection *con, const char *header, size_t len) {
+    if (con == NULL || header == NULL || len == 0)
+        return 0;
+
+    size_t pushed = buffer_push(con->client.buffer, header, len);
+    if (pushed != len) {
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("Failed to append PROXY header for %s: client buffer exhausted",
+                display_sockaddr(&con->client.addr, con->client.addr_len,
+                        client, sizeof(client)));
+        return 0;
+    }
+
+    con->header_len += len;
+    return 1;
+}
+
+static int
 insert_proxy_v1_header(struct Connection *con) {
     char header[256];
     size_t len;
@@ -1585,17 +1718,16 @@ insert_proxy_v1_header(struct Connection *con) {
 
             if (inet_ntop(AF_INET, &src->sin_addr, src_ip, sizeof(src_ip)) == NULL ||
                     inet_ntop(AF_INET, &dst->sin_addr, dst_ip, sizeof(dst_ip)) == NULL)
-                goto unknown;
+                break;
 
             int n = snprintf(header, sizeof(header),
                     "PROXY TCP4 %s %s %u %u\r\n",
                     src_ip, dst_ip, ntohs(src->sin_port), ntohs(dst->sin_port));
             if (n <= 0 || (size_t)n >= sizeof(header))
-                goto unknown;
+                break;
 
             len = (size_t)n;
-            con->header_len += buffer_push(con->client.buffer, header, len);
-            return;
+            return push_proxy_header(con, header, len);
         }
         case AF_INET6: {
             char src_ip[INET6_ADDRSTRLEN];
@@ -1607,25 +1739,23 @@ insert_proxy_v1_header(struct Connection *con) {
 
             if (inet_ntop(AF_INET6, &src->sin6_addr, src_ip, sizeof(src_ip)) == NULL ||
                     inet_ntop(AF_INET6, &dst->sin6_addr, dst_ip, sizeof(dst_ip)) == NULL)
-                goto unknown;
+                break;
 
             int n = snprintf(header, sizeof(header),
                     "PROXY TCP6 %s %s %u %u\r\n",
                     src_ip, dst_ip, ntohs(src->sin6_port), ntohs(dst->sin6_port));
             if (n <= 0 || (size_t)n >= sizeof(header))
-                goto unknown;
+                break;
 
             len = (size_t)n;
-            con->header_len += buffer_push(con->client.buffer, header, len);
-            return;
+            return push_proxy_header(con, header, len);
         }
         default:
             break;
     }
 
-unknown:
-    con->header_len += buffer_push(con->client.buffer,
-            "PROXY UNKNOWN\r\n", sizeof("PROXY UNKNOWN\r\n") - 1);
+    static const char proxy_unknown[] = "PROXY UNKNOWN\r\n";
+    return push_proxy_header(con, proxy_unknown, sizeof(proxy_unknown) - 1);
 }
 
 static int
@@ -1642,8 +1772,7 @@ ensure_proxy_header(struct Connection *con) {
         return 0;
     }
 
-    insert_proxy_v1_header(con);
-    return 1;
+    return insert_proxy_v1_header(con);
 }
 
 static void
@@ -1812,14 +1941,19 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             }
         }
 
-        if (!dns_query_acquire()) {
+        enum dns_acquire_status dns_status = dns_query_acquire(con);
+        if (dns_status != DNS_ACQUIRE_OK) {
             char client[INET6_ADDRSTRLEN + 8];
+            const char *client_ip = display_sockaddr(&con->client.addr,
+                    con->client.addr_len, client, sizeof(client));
 
-            notice("Maximum concurrent DNS queries (%zu) reached for %s, closing connection",
-                    max_concurrent_dns_queries,
-                    display_sockaddr(&con->client.addr,
-                        con->client.addr_len,
-                        client, sizeof(client)));
+            if (dns_status == DNS_ACQUIRE_GLOBAL_LIMIT) {
+                notice("Maximum concurrent DNS queries (%zu) reached for %s, closing connection",
+                        max_concurrent_dns_queries, client_ip);
+            } else {
+                notice("Per-client DNS query limit (%zu) reached for %s, closing connection",
+                        max_dns_queries_per_client, client_ip);
+            }
 
             if (result.caller_free_address)
                 free((void *)result.address);
@@ -1839,7 +1973,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
         if (con->query_handle == NULL) {
             if (con->dns_query_acquired) {
-                dns_query_release();
+                dns_query_release(con);
                 con->dns_query_acquired = 0;
             }
             if (con->state == RESOLVING) {
@@ -1886,7 +2020,7 @@ resolv_cb(struct Address *result, void *data) {
     struct ev_loop *loop = cb_data->loop;
 
     if (con->dns_query_acquired) {
-        dns_query_release();
+        dns_query_release(con);
         con->dns_query_acquired = 0;
     }
 
@@ -2112,7 +2246,7 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         if (local_query_handle != NULL && local_dns_query_acquired) {
             /* Valid state: active query with acquired slot */
             resolv_cancel(local_query_handle);
-            dns_query_release();
+            dns_query_release(con);
         } else if (local_query_handle != NULL && !local_dns_query_acquired) {
             /* Inconsistent state: query exists but slot not marked acquired */
             warn("Inconsistent DNS state: query_handle set but dns_query_acquired=0");
@@ -2120,7 +2254,7 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         } else if (local_dns_query_acquired) {
             /* Inconsistent state: slot marked acquired but no query handle */
             warn("Inconsistent DNS state: dns_query_acquired=1 but query_handle=NULL");
-            dns_query_release();
+            dns_query_release(con);
         }
         /* Else: both NULL/0 - no cleanup needed */
 
