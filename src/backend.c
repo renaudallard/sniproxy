@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 #include <sys/queue.h>
 #include <assert.h>
 #include "backend.h"
@@ -91,6 +92,10 @@ backend_store_match_cache(struct Backend *backend, const char *name, size_t len,
         return;
 
     if (len > 0) {
+        if (len >= SIZE_MAX) {
+            backend->last_lookup_valid = 0;
+            return;
+        }
         size_t needed = len + 1;
         if (needed > backend->last_lookup_capacity) {
             char *tmp = realloc(backend->last_lookup_name, needed);
