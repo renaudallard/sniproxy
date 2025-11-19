@@ -450,7 +450,7 @@ fallback:
         struct stat st;
 
     if (mkdir(fallback_dir, 0700) == 0 || errno == EEXIST) {
-        if (stat(fallback_dir, &st) == 0 && S_ISDIR(st.st_mode) &&
+        if (lstat(fallback_dir, &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode) &&
             st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
             if (snprintf(temp_dir, sizeof(temp_dir), "%s", fallback_dir)
                 < (int)sizeof(temp_dir)) {
@@ -470,6 +470,17 @@ fallback:
 
     if (mkdir(temp_dir, 0700) < 0 && errno != EEXIST) {
         warn("Failed to create %s: %s", temp_dir, strerror(errno));
+        return NULL;
+    }
+
+    /* SECURITY: Reject symlinks via lstat before opening */
+    if (lstat(temp_dir, &st) != 0) {
+        warn("lstat failed for %s: %s", temp_dir, strerror(errno));
+        return NULL;
+    }
+
+    if (!S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)) {
+        warn("%s exists but is not a secure directory", temp_dir);
         return NULL;
     }
 
