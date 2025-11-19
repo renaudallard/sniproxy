@@ -29,18 +29,32 @@
 #include "cfg_tokenizer.h"
 #include "logger.h"
 
+#define MAX_PARSE_DEPTH 32
+
+static int parse_config_depth(void *, FILE *, const struct Keyword *, const char *, int);
 static const struct Keyword *find_keyword(const struct Keyword *, const char *);
 
 
 int
 parse_config(void *context, FILE *cfg, const struct Keyword *grammar,
         const char *context_name) {
+    return parse_config_depth(context, cfg, grammar, context_name, 0);
+}
+
+static int
+parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
+        const char *context_name, int depth) {
     char buffer[256];
     const struct Keyword *keyword = NULL;
     void *sub_context = NULL;
     int result;
     const char *active_context = (context_name && *context_name) ?
             context_name : "global";
+
+    if (depth > MAX_PARSE_DEPTH) {
+        err("Configuration nesting too deep");
+        return -1;
+    }
 
     for (;;) {
         switch (next_token(cfg, buffer, sizeof(buffer))) {
@@ -81,9 +95,10 @@ parse_config(void *context, FILE *cfg, const struct Keyword *grammar,
                     const char *child_context =
                             (keyword->keyword && *keyword->keyword) ?
                             keyword->keyword : active_context;
-                    result = parse_config(sub_context, cfg,
+                    result = parse_config_depth(sub_context, cfg,
                                           keyword->block_grammar,
-                                          child_context);
+                                          child_context,
+                                          depth + 1);
                     if (result > 0 && keyword->finalize)
                         result = keyword->finalize(context, sub_context);
 

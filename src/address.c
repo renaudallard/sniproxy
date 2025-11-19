@@ -192,6 +192,10 @@ new_address(const char *hostname_or_ip) {
 
 struct Address *
 new_address_sa(const struct sockaddr *sa, socklen_t sa_len) {
+    if (sa == NULL || sa_len == 0 ||
+            sa_len > sizeof(struct sockaddr_storage))
+        return NULL;
+
     struct Address *addr = malloc(offsetof(struct Address, data) + sa_len);
     if (addr != NULL) {
         addr->type = SOCKADDR;
@@ -317,12 +321,22 @@ address_port(const struct Address *addr) {
     switch (addr->type) {
         case HOSTNAME:
             return addr->port;
-        case SOCKADDR:
-            switch (address_sa(addr)->sa_family) {
+        case SOCKADDR: {
+            const struct sockaddr *sa = address_sa(addr);
+            socklen_t sa_len = address_sa_len(addr);
+
+            if (sa == NULL)
+                return 0;
+
+            switch (sa->sa_family) {
                 case AF_INET:
+                    if (sa_len < sizeof(struct sockaddr_in))
+                        return 0;
                     return ntohs(((struct sockaddr_in *)addr->data)
                             ->sin_port);
                 case AF_INET6:
+                    if (sa_len < sizeof(struct sockaddr_in6))
+                        return 0;
                     return ntohs(((struct sockaddr_in6 *)addr->data)
                             ->sin6_port);
                 case AF_UNIX:
@@ -332,6 +346,7 @@ address_port(const struct Address *addr) {
                     assert(0);
                     return 0;
             }
+        }
         case WILDCARD:
             return addr->port;
         default:
