@@ -738,6 +738,7 @@ next_power_of_two(size_t value) {
 
 static inline void
 advance_write_position(struct Buffer *buffer, size_t offset) {
+    assert(buffer->len + offset <= buffer_size(buffer));
     buffer->len += offset;
     buffer->rx_bytes += offset;
 }
