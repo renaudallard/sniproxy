@@ -60,9 +60,20 @@ static const char valid_label_bytes[] =
 
 static int valid_hostname(const char *);
 
+static struct Address *
+apply_port_if_needed(struct Address *addr, int has_port, uint16_t port) {
+    if (addr != NULL && has_port)
+        address_set_port(addr, port);
+
+    return addr;
+}
+
 
 struct Address *
 new_address(const char *hostname_or_ip) {
+    if (hostname_or_ip == NULL)
+        return NULL;
+
     union {
         struct sockaddr a;
         struct sockaddr_in in;
@@ -71,123 +82,124 @@ new_address(const char *hostname_or_ip) {
         struct sockaddr_storage s;
     } s;
     char ip_buf[ADDRESS_BUFFER_SIZE];
-    char *port;
-    size_t len;
+    const char *input = hostname_or_ip;
+    uint16_t parsed_port = 0;
+    int has_port = 0;
 
-    if (hostname_or_ip == NULL)
-        return NULL;
+    for (;;) {
+        char *port;
+        size_t len;
 
-    /* IPv6 address */
-    /* we need to test for raw IPv6 address for IPv4 port combinations since a
-     * colon would give false positives
-     */
-    memset(&s, 0, sizeof(s));
-    if (inet_pton(AF_INET6, hostname_or_ip,
-                &s.in6.sin6_addr) == 1) {
-        s.in6.sin6_family = AF_INET6;
+        /* IPv6 address */
+        /* we need to test for raw IPv6 address for IPv4 port combinations since a
+         * colon would give false positives
+         */
+        memset(&s, 0, sizeof(s));
+        if (inet_pton(AF_INET6, input, &s.in6.sin6_addr) == 1) {
+            s.in6.sin6_family = AF_INET6;
+            return apply_port_if_needed(new_address_sa(&s.a, sizeof(s.in6)),
+                    has_port, parsed_port);
+        }
 
-        return new_address_sa(&s.a, sizeof(s.in6));
-    }
+        /* Unix socket */
+        memset(&s, 0, sizeof(s));
+        if (strncmp("unix:", input, 5) == 0) {
+            if (strlen(input) >= sizeof(s.un.sun_path))
+                return NULL;
 
-    /* Unix socket */
-    memset(&s, 0, sizeof(s));
-    if (strncmp("unix:", hostname_or_ip, 5) == 0) {
-        if (strlen(hostname_or_ip) >=
-                sizeof(s.un.sun_path))
-            return NULL;
+            /* XXX: only supporting pathname unix sockets */
+            s.un.sun_family = AF_UNIX;
+            strncpy(s.un.sun_path,
+                    input + 5,
+                    sizeof(s.un.sun_path) - 1);
 
-        /* XXX: only supporting pathname unix sockets */
-        s.un.sun_family = AF_UNIX;
-        strncpy(s.un.sun_path,
-                hostname_or_ip + 5,
-                sizeof(s.un.sun_path) - 1);
+            return apply_port_if_needed(new_address_sa(&s.a,
+                        offsetof(struct sockaddr_un, sun_path) +
+                        strlen(s.un.sun_path) + 1),
+                    has_port, parsed_port);
+        }
 
-        return new_address_sa(&s.a, offsetof(struct sockaddr_un, sun_path) +
-                              strlen(s.un.sun_path) + 1);
-    }
+        /* Trailing port */
+        if ((port = strrchr(input, ':')) != NULL &&
+                is_numeric(port + 1)) {
+            len = (size_t)(port - input);
+            errno = 0;
+            unsigned long port_num = strtoul(port + 1, NULL, 10);
 
-    /* Trailing port */
-    if ((port = strrchr(hostname_or_ip, ':')) != NULL &&
-            is_numeric(port + 1)) {
-        len = (size_t)(port - hostname_or_ip);
-        errno = 0;
-        unsigned long port_num = strtoul(port + 1, NULL, 10);
+            if (len < sizeof(ip_buf) && errno == 0 && port_num <= UINT16_MAX) {
+                strncpy(ip_buf, input, len);
+                ip_buf[len] = '\0';
+                input = ip_buf;
+                parsed_port = (uint16_t)port_num;
+                has_port = 1;
+                continue;
+            }
+        }
 
-        if (len < sizeof(ip_buf) && errno == 0 && port_num <= UINT16_MAX) {
-            strncpy(ip_buf, hostname_or_ip, len);
+        /* Wildcard */
+        if (strcmp("*", input) == 0) {
+            struct Address *addr = malloc(sizeof(struct Address));
+            if (addr != NULL) {
+                addr->type = WILDCARD;
+                addr->len = 0;
+                address_set_port(addr, 0);
+            }
+            return apply_port_if_needed(addr, has_port, parsed_port);
+        }
+
+        /* IPv4 address */
+        memset(&s, 0, sizeof(s));
+        if (inet_pton(AF_INET, input, &s.in.sin_addr) == 1) {
+            s.in.sin_family = AF_INET;
+            return apply_port_if_needed(new_address_sa(&s.a, sizeof(s.in)),
+                    has_port, parsed_port);
+        }
+
+        /* [IPv6 address] */
+        memset(&s, 0, sizeof(s));
+        if (input[0] == '[' &&
+                (port = strchr(input, ']')) != NULL) {
+            len = (size_t)(port - input - 1);
+            if (len >= sizeof(ip_buf))
+                return NULL;
+
+            /* inet_pton() will not parse the IP correctly unless it is in a
+             * separate string.
+             */
+            memcpy(ip_buf, input + 1, len);
             ip_buf[len] = '\0';
 
-            struct Address *addr = new_address(ip_buf);
-            if (addr != NULL)
-                address_set_port(addr, (uint16_t) port_num);
+            if (inet_pton(AF_INET6, ip_buf,
+                          &s.in6.sin6_addr) == 1) {
+                s.in6.sin6_family = AF_INET6;
 
-            return addr;
-        }
-    }
-
-    /* Wildcard */
-    if (strcmp("*", hostname_or_ip) == 0) {
-        struct Address *addr = malloc(sizeof(struct Address));
-        if (addr != NULL) {
-            addr->type = WILDCARD;
-            addr->len = 0;
-            address_set_port(addr, 0);
-        }
-        return addr;
-    }
-
-    /* IPv4 address */
-    memset(&s, 0, sizeof(s));
-    if (inet_pton(AF_INET, hostname_or_ip,
-                  &s.in.sin_addr) == 1) {
-        s.in.sin_family = AF_INET;
-
-        return new_address_sa(&s.a, sizeof(s.in));
-    }
-
-    /* [IPv6 address] */
-    memset(&s, 0, sizeof(s));
-    if (hostname_or_ip[0] == '[' &&
-            (port = strchr(hostname_or_ip, ']')) != NULL) {
-        len = (size_t)(port - hostname_or_ip - 1);
-        if (len >= sizeof(ip_buf))
-            return NULL;
-
-        /* inet_pton() will not parse the IP correctly unless it is in a
-         * separate string.
-         */
-        memcpy(ip_buf, hostname_or_ip + 1, len);
-        ip_buf[len] = '\0';
-
-        if (inet_pton(AF_INET6, ip_buf,
-                      &s.in6.sin6_addr) == 1) {
-            s.in6.sin6_family = AF_INET6;
-
-            return new_address_sa(&s.a, sizeof(s.in6));
-        }
-    }
-
-    /* hostname */
-    if (valid_hostname(hostname_or_ip)) {
-        len = strlen(hostname_or_ip);
-        struct Address *addr = malloc(
-                offsetof(struct Address, data) + len + 1);
-        if (addr != NULL) {
-            addr->type = HOSTNAME;
-            addr->port = 0;
-            addr->len = len;
-            memcpy(addr->data, hostname_or_ip, len);
-            addr->data[addr->len] = '\0';
-
-            /* Store address in lower case */
-            for (char *c = addr->data; *c != '\0'; c++)
-                *c = tolower(*c);
+                return apply_port_if_needed(new_address_sa(&s.a, sizeof(s.in6)),
+                        has_port, parsed_port);
+            }
         }
 
-        return addr;
-    }
+        /* hostname */
+        if (valid_hostname(input)) {
+            len = strlen(input);
+            struct Address *addr = malloc(
+                    offsetof(struct Address, data) + len + 1);
+            if (addr != NULL) {
+                addr->type = HOSTNAME;
+                addr->port = 0;
+                addr->len = len;
+                memcpy(addr->data, input, len);
+                addr->data[addr->len] = '\0';
 
-    return NULL;
+                /* Store address in lower case */
+                for (char *c = addr->data; *c != '\0'; c++)
+                    *c = (char)tolower((unsigned char)*c);
+            }
+
+            return apply_port_if_needed(addr, has_port, parsed_port);
+        }
+
+        return NULL;
+    }
 }
 
 struct Address *
