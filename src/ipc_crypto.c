@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <sys/mman.h>
@@ -81,6 +82,8 @@ hkdf_sha256(const uint8_t *salt, size_t salt_len,
         const uint8_t *info, size_t info_len,
         uint8_t out[32]) {
     if (ikm == NULL || ikm_len == 0 || out == NULL)
+        return -1;
+    if (ikm_len > INT_MAX || salt_len > INT_MAX || info_len > INT_MAX)
         return -1;
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
@@ -429,6 +432,9 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
 
     header.magic = htonl(IPC_CRYPTO_MAGIC);
     header.length = htonl((uint32_t)plaintext_len);
+
+    if (state->send_counter == UINT64_MAX)
+        return -1; /* counter would wrap and re-use nonce */
 
     uint64_t counter = ++state->send_counter;
     format_nonce(state, counter, header.nonce);
