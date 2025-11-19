@@ -638,6 +638,8 @@ buffer_push(struct Buffer *dst, const void *src, size_t len) {
 static size_t
 setup_write_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
     const size_t size = buffer_size(buffer);
+    if (buffer->len > size)
+        return 0; /* corruption detected */
     size_t room = size - buffer->len;
 
     if (room == 0) /* trivial case: no room */
