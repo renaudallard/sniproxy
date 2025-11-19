@@ -29,6 +29,7 @@
 
 static void chomp_line(FILE *);
 static int next_word(FILE *, char *, int);
+static int tokenizer_fail(char *, int, int);
 
 
 /*
@@ -98,7 +99,7 @@ next_word(FILE *file, char *buffer, int buffer_len) {
         if (escaped) {
             escaped = 0;
             if (len >= buffer_len - 1)
-                return -1;
+                return tokenizer_fail(buffer, buffer_len, len);
             buffer[len] = (char)ch;
             len++;
             continue;
@@ -131,12 +132,23 @@ next_word(FILE *file, char *buffer, int buffer_len) {
                 /* fall through */
             default:
                 if (len >= buffer_len - 1)
-                    return -1;
+                    return tokenizer_fail(buffer, buffer_len, len);
                 buffer[len] = (char)ch;
                 len++;
         }
     }
     /* We reached the end of the file, or filled our buffer */
+    return tokenizer_fail(buffer, buffer_len, len);
+}
+
+static int
+tokenizer_fail(char *buffer, int buffer_len, int len) {
+    if (buffer_len > 0) {
+        int idx = len;
+        if (idx >= buffer_len)
+            idx = buffer_len - 1;
+        buffer[idx] = '\0';
+    }
     return -1;
 }
 
