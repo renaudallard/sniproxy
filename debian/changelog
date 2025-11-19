@@ -1,3 +1,16 @@
+sniproxy (0.9.10) unstable; urgency=medium
+
+  * Security: Tighten get_secure_temp_dir() so both /var/run and /tmp fallback
+    paths use lstat() before opening, blocking symlink redirects despite
+    pre-created directories.
+  * Robustness: Unix socket address parsing now always null-terminates
+    sun_path and cfg_tokenizer guarantees buffers are terminated before all
+    error returns to avoid parser overreads.
+  * DNS: Ensure the resolver per-client concurrency limit is applied on reloads
+    alongside the global cap so throttles remain synchronized.
+
+ -- Renaud Allard <renaud@allard.it>  Sat, 22 Nov 2025 00:00:00 +0000
+
 sniproxy (0.9.9) unstable; urgency=medium
 
   * Security: PROXY header writes now require sufficient buffer space, log the

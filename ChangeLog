@@ -1,3 +1,15 @@
+2025-11-22  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.10
+	- Security: Temporary directory creation now rejects symlinks for both /var/run
+	  and /tmp fallbacks by switching to lstat() before the O_NOFOLLOW open,
+	  so attackers cannot pre-create redirects.
+	- Robustness: Unix-socket addresses always terminate sun_path after strncpy()
+	  and the cfg_tokenizer guarantees buffers are null-terminated on every
+	  failure path, preventing rare parser overreads.
+	- DNS: Resolver concurrency defaults remain at 512/16 but configuration reloads
+	  now propagate the per-client limit consistently alongside the global cap.
+
 2025-11-21  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.9

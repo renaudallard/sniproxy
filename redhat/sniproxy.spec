@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.9
+Version: 0.9.10
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,15 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Sat Nov 22 2025 Renaud Allard <renaud@allard.it> 0.9.10-1
+- Security: get_secure_temp_dir() now runs lstat() checks for /var/run and
+  /tmp fallbacks before opening directories with O_NOFOLLOW, preventing
+  attacker-supplied symlinks.
+- Robustness: Unix socket address parsing forcibly null-terminates sun_path
+  and cfg_tokenizer always null-terminates buffers before returning errors.
+- DNS: Configuration reloads propagate the per-client DNS concurrency limit
+  alongside the global cap so throttles stay aligned.
+
 * Fri Nov 21 2025 Renaud Allard <renaud@allard.it> 0.9.9-1
 - Security: PROXY header generation now enforces buffer space, logs clients
   when the header cannot be appended, and refuses to forward; sockaddr parsing

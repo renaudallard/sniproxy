@@ -1,3 +1,15 @@
+sniproxy 0.9.10 (2025-11-22)
+===============================
+
+* Security: Temporary-file directories now use lstat() checks for /var/run and
+  /tmp fallbacks plus the existing O_NOFOLLOW open, closing the last symlink
+  attack window before dump generation.
+* Robustness: Unix-domain listener/target parsing forcibly null-terminates
+  sun_path after strncpy(), and cfg_tokenizer always null-terminates buffers
+  even when hitting EOF or buffer limits.
+* DNS: Configuration reloads and startup both apply the per-client DNS query
+  cap together with the global limit so resolver throttles stay in sync.
+
 sniproxy 0.9.9 (2025-11-21)
 ==============================
 
