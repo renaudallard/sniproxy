@@ -112,6 +112,7 @@ new_address(const char *hostname_or_ip) {
             strncpy(s.un.sun_path,
                     input + 5,
                     sizeof(s.un.sun_path) - 1);
+            s.un.sun_path[sizeof(s.un.sun_path) - 1] = '\0';
 
             return apply_port_if_needed(new_address_sa(&s.a,
                         offsetof(struct sockaddr_un, sun_path) +
