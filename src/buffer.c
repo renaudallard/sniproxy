@@ -745,6 +745,7 @@ advance_write_position(struct Buffer *buffer, size_t offset) {
 
 static inline void
 advance_read_position(struct Buffer *buffer, size_t offset) {
+    assert(offset <= buffer->len);
     buffer->head = (buffer->head + offset) & buffer->size_mask;
     buffer->len -= offset;
     buffer->tx_bytes += offset;
