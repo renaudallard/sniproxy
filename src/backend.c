@@ -92,7 +92,7 @@ backend_store_match_cache(struct Backend *backend, const char *name, size_t len,
         return;
 
     if (len > 0) {
-        if (len >= SIZE_MAX) {
+        if (len > SIZE_MAX - 1) {
             backend->last_lookup_valid = 0;
             return;
         }
