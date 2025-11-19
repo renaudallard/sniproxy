@@ -480,7 +480,13 @@ ipc_crypto_seal(struct ipc_crypto_state *state, const uint8_t *plaintext,
     if (plaintext_len > UINT32_MAX)
         return -1;
 
-    size_t total_len = IPC_CRYPTO_HEADER_LEN + plaintext_len + IPC_CRYPTO_TAG_LEN;
+    size_t overhead = IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN;
+    if (overhead < IPC_CRYPTO_HEADER_LEN)
+        return -1; /* overflow */
+    if (plaintext_len > SIZE_MAX - overhead)
+        return -1; /* would overflow total length */
+
+    size_t total_len = overhead + plaintext_len;
     uint8_t *buffer = malloc(total_len);
     if (buffer == NULL)
         return -1;
