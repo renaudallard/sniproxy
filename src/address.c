@@ -361,14 +361,24 @@ address_set_port(struct Address *addr, uint16_t port) {
     assert(addr != NULL);
 
     switch (addr->type) {
-        case SOCKADDR:
-            switch (address_sa(addr)->sa_family) {
+        case SOCKADDR: {
+            struct sockaddr *sa = (struct sockaddr *)address_sa(addr);
+            socklen_t sa_len = address_sa_len(addr);
+
+            if (sa == NULL)
+                break;
+
+            switch (sa->sa_family) {
                 case AF_INET:
-                    (((struct sockaddr_in *)addr->data) ->sin_port) =
+                    if (sa_len < sizeof(struct sockaddr_in))
+                        break;
+                    (((struct sockaddr_in *)sa) ->sin_port) =
                         htons(port);
                     break;
                 case AF_INET6:
-                    (((struct sockaddr_in6 *)addr->data) ->sin6_port) =
+                    if (sa_len < sizeof(struct sockaddr_in6))
+                        break;
+                    (((struct sockaddr_in6 *)sa) ->sin6_port) =
                         htons(port);
                     break;
                 case AF_UNIX:
@@ -378,6 +388,7 @@ address_set_port(struct Address *addr, uint16_t port) {
                 default:
                     assert(0);
             }
+        }
             /* fall through */
         case HOSTNAME:
         case WILDCARD:
