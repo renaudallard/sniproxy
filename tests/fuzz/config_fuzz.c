@@ -4,12 +4,12 @@
 #include <fcntl.h>
 #include <string.h>
 #include <ev.h>
-#include "config.h"
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #else
 #define PACKAGE_NAME "sniproxy"
 #endif
+#include "config.h"
 
 #define MAX_CONFIG_SIZE (256 * 1024)
 
