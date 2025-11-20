@@ -67,7 +67,9 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/http" \
     "$CORPUS_ROOT/hostname" \
     "$CORPUS_ROOT/cfg_tokenizer" \
-    "$CORPUS_ROOT/ipc_crypto"
+    "$CORPUS_ROOT/ipc_crypto" \
+    "$CORPUS_ROOT/config" \
+    "$CORPUS_ROOT/ipc_state"
 
 build_fuzzer() {
     local target=$1
@@ -104,6 +106,32 @@ build_fuzzer ipc_crypto_fuzz \
     "$ROOT_DIR/src/ipc_crypto.c" \
     -lcrypto
 
+build_fuzzer config_fuzz \
+    "$ROOT_DIR/tests/fuzz/config_fuzz.c" \
+    "$ROOT_DIR/src/binder.c" \
+    "$ROOT_DIR/src/config.c" \
+    "$ROOT_DIR/src/cfg_parser.c" \
+    "$ROOT_DIR/src/cfg_tokenizer.c" \
+    "$ROOT_DIR/src/address.c" \
+    "$ROOT_DIR/src/backend.c" \
+    "$ROOT_DIR/src/table.c" \
+    "$ROOT_DIR/src/listener.c" \
+    "$ROOT_DIR/src/connection.c" \
+    "$ROOT_DIR/src/buffer.c" \
+    "$ROOT_DIR/src/logger.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    "$ROOT_DIR/src/resolv.c" \
+    "$ROOT_DIR/src/tls.c" \
+    "$ROOT_DIR/src/http.c" \
+    "$ROOT_DIR/src/http2.c" \
+    "$ROOT_DIR/src/http2_huffman.c" \
+    -lev -lssl -lcrypto -lcares
+
+build_fuzzer ipc_state_fuzz \
+    "$ROOT_DIR/tests/fuzz/ipc_state_fuzz.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    -lcrypto
+
 echo "Fuzzers built successfully."
 
 if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
@@ -118,5 +146,7 @@ echo "Running fuzzers for ${FUZZ_RUNTIME}s each..."
 "$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
 "$OUT_DIR/cfg_tokenizer_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/cfg_tokenizer"
 "$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
+"$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
+"$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
 
 echo "Fuzzing complete. No crashes detected."
