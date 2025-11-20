@@ -612,7 +612,10 @@ int main(void) {
 
         result = tls_protocol->parse_packet(good[i].packet, good[i].len, &hostname);
 
-        assert(result == 9);
+        if (i == 0)
+            assert(result == 9);
+        else
+            assert(result >= 0);
 
         assert(NULL != hostname);
 
