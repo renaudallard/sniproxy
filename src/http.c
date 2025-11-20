@@ -29,6 +29,7 @@
 #include <strings.h> /* strncasecmp() */
 #include <ctype.h> /* isblank(), isdigit() */
 #include "http.h"
+#include "tls.h"
 #include "protocol.h"
 #include "hostname_sanitize.h"
 #include "http2.h"
@@ -137,7 +138,7 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
     if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
         free(*hostname);
         *hostname = NULL;
-        return -5;
+        return TLS_ERR_INVALID_CLIENT_HELLO;
     }
 
     if (hostname_len > 0 && (*hostname)[0] != '[' && strchr(*hostname, ':') != NULL) {
@@ -162,7 +163,7 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
         /* Limit number of headers to prevent CPU exhaustion attacks */
         if (header_count >= HTTP_MAX_HEADERS) {
             free(found_value);
-            return -5;
+            return TLS_ERR_INVALID_CLIENT_HELLO;
         }
         header_count++;
 
@@ -177,13 +178,13 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
 
             if (value_len == 0 || value_len >= SERVER_NAME_LEN) {
                 free(found_value);
-                return -5;
+            return TLS_ERR_INVALID_CLIENT_HELLO;
             }
 
             if (found) {
                 /* Multiple host headers are not permitted */
                 free(found_value);
-                return -5;
+            return TLS_ERR_INVALID_CLIENT_HELLO;
             }
 
             found_value = malloc(value_len + 1);
