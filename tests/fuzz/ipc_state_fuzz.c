@@ -4,6 +4,11 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include "ipc_crypto.h"
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#else
+#define PACKAGE_NAME "sniproxy"
+#endif
 
 struct Logger;
 
