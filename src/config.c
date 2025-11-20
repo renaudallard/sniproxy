@@ -101,7 +101,8 @@ static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
 static void free_string_vector(char **);
 static void print_resolver_config(FILE *, struct ResolverConfig *);
-static int validate_config_path(const char *setting, const char *path);
+static int validate_config_path(const char *setting, const char *path,
+        char **normalized_out);
 
 
 static void *new_listener_acl_builder(void);
@@ -847,34 +848,113 @@ end_listener_acl_stanza(struct Listener *listener, struct ListenerACLBuilder *bu
     return 1;
 }
 
-static int
-validate_config_path(const char *setting, const char *path) {
-    if (path == NULL || setting == NULL) {
-        err("Invalid %s path", setting != NULL ? setting : "(unknown)");
-        return 0;
-    }
+enum path_canon_result {
+    PATH_CANON_OK = 0,
+    PATH_CANON_NOT_ABSOLUTE,
+    PATH_CANON_PARENT_REFERENCE,
+    PATH_CANON_TOO_LONG,
+    PATH_CANON_INVALID
+};
 
-    if (*path != '/') {
-        err("%s path must be absolute: %s", setting, path);
-        return 0;
-    }
+static enum path_canon_result
+canonicalize_absolute_path(const char *path, char *normalized,
+        size_t normalized_len) {
+    if (path == NULL || normalized == NULL || normalized_len == 0)
+        return PATH_CANON_INVALID;
+
+    if (*path != '/')
+        return PATH_CANON_NOT_ABSOLUTE;
+
+    size_t out = 0;
+    normalized[out++] = '/';
 
     const char *p = path;
-    while (*p != '\0') {
-        while (*p == '/')
-            p++;
-        if (*p == '\0')
-            break;
+    while (*p == '/')
+        p++;
 
+    if (*p == '\0') {
+        if (out >= normalized_len)
+            return PATH_CANON_TOO_LONG;
+        normalized[out] = '\0';
+        return PATH_CANON_OK;
+    }
+
+    while (*p != '\0') {
         const char *component = p;
         while (*p != '/' && *p != '\0')
             p++;
         size_t len = (size_t)(p - component);
 
-        if (len == 2 && component[0] == '.' && component[1] == '.') {
+        while (*p == '/')
+            p++;
+
+        if (len == 0)
+            continue;
+
+        if (len == 1 && component[0] == '.')
+            continue;
+
+        if (len == 2 && component[0] == '.' && component[1] == '.')
+            return PATH_CANON_PARENT_REFERENCE;
+
+        if (out > 1) {
+            if (out >= normalized_len)
+                return PATH_CANON_TOO_LONG;
+            normalized[out++] = '/';
+        }
+
+        if (len >= normalized_len - out)
+            return PATH_CANON_TOO_LONG;
+
+        memcpy(normalized + out, component, len);
+        out += len;
+    }
+
+    if (out >= normalized_len)
+        return PATH_CANON_TOO_LONG;
+
+    normalized[out] = '\0';
+
+    return PATH_CANON_OK;
+}
+
+static int
+validate_config_path(const char *setting, const char *path,
+        char **normalized_out) {
+    if (path == NULL || setting == NULL) {
+        err("Invalid %s path", setting != NULL ? setting : "(unknown)");
+        return 0;
+    }
+
+    char normalized[PATH_MAX];
+    enum path_canon_result result = canonicalize_absolute_path(path, normalized,
+            sizeof(normalized));
+
+    switch (result) {
+        case PATH_CANON_OK:
+            break;
+        case PATH_CANON_NOT_ABSOLUTE:
+            err("%s path must be absolute: %s", setting, path);
+            return 0;
+        case PATH_CANON_PARENT_REFERENCE:
             err("%s path must not include '..' components: %s", setting, path);
             return 0;
+        case PATH_CANON_TOO_LONG:
+            err("%s path is too long after normalization: %s", setting, path);
+            return 0;
+        case PATH_CANON_INVALID:
+        default:
+            err("Invalid %s path", setting);
+            return 0;
+    }
+
+    if (normalized_out != NULL) {
+        char *copy = strdup(normalized);
+        if (copy == NULL) {
+            err("%s: strdup", __func__);
+            return 0;
         }
+        *normalized_out = copy;
     }
 
     return 1;
@@ -916,13 +996,10 @@ accept_pidfile(struct Config *config, const char *pidfile) {
         err("Duplicate pidfile: %s", pidfile);
         return 0;
     }
-    if (!validate_config_path("pidfile", pidfile))
+    char *normalized = NULL;
+    if (!validate_config_path("pidfile", pidfile, &normalized))
         return 0;
-    config->pidfile = strdup(pidfile);
-    if (config->pidfile == NULL) {
-        err("%s: strdup", __func__);
-        return -1;
-    }
+    config->pidfile = normalized;
 
     return 1;
 }
@@ -1092,14 +1169,11 @@ static int
 accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
     assert(lb != NULL);
 
-    if (!validate_config_path("logger filename", filename))
+    char *normalized = NULL;
+    if (!validate_config_path("logger filename", filename, &normalized))
         return 0;
 
-    lb->filename = strdup(filename);
-    if (lb->filename == NULL) {
-        err("%s: strdup", __func__);
-        return -1;
-    }
+    lb->filename = normalized;
 
     return 1;
 }
