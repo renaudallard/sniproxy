@@ -55,7 +55,7 @@ sniproxy 0.9.7 (2025-11-19)
 * DNS: resolver blocks now default to `dnssec_validation relaxed`, enabling AD
   bit enforcement whenever upstream supports DNSSEC without requiring manual
   configuration tweaks.
-* Security: sniproxy and sniproxy-cfg refuse to load configuration files that
+* Security: sniproxy refuses to load configuration files that
   are group/world accessible by validating permissions on the opened descriptor,
   ensuring both initial startup and reloads uphold the guardrail.
 * Documentation: README, architecture notes, and man pages were refreshed to
@@ -95,7 +95,7 @@ sniproxy 0.9.3 (2025-11-12)
 ==============================
 
 * Security: privilege dropping now verifies real/effective UID and aborts if root.
-* Security: sniproxy and sniproxy-cfg warn when config files are readable or executable by group/others.
+* Security: sniproxy warns when config files are readable or executable by group/others.
 * IPC: binder/logger/resolver channels now encrypt control traffic and tighten validation/error reporting.
 * Performance: idle connection buffers shrink proactively once a soft memory budget is exceeded.
 * Resource: new connection_buffer_limit/client_buffer_limit/server_buffer_limit directives cap per-connection buffering.

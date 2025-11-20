@@ -4,7 +4,7 @@ AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings $(HARD
 AM_LDFLAGS = $(HARDEN_LDFLAGS)
 LDADD = -lssl $(LIBCRYPTO_LIBS)
 
-sbin_PROGRAMS = sniproxy sniproxy-cfg
+sbin_PROGRAMS = sniproxy
 
 sniproxy_common_sources = address.c \
                           address.h \
@@ -46,6 +46,3 @@ sniproxy_common_sources = address.c \
 
 sniproxy_SOURCES = sniproxy.c \
                    $(sniproxy_common_sources)
-
-sniproxy_cfg_SOURCES = config_validator.c \
-                              $(sniproxy_common_sources)

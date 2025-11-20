@@ -51,7 +51,7 @@ sniproxy (0.9.7) unstable; urgency=medium
     fallback backends automatically request authenticated data without manual
     resolver stanzas.
   * Security: treat group/world-readable configuration files as fatal errors in
-    both sniproxy and sniproxy-cfg by checking permissions on the open file
+    sniproxy by checking permissions on the open file
     descriptor, covering startup, reload, and validation flows.
   * Documentation: README, man pages, and architecture notes now describe the
     DNSSEC default and stricter configuration-permission requirements.

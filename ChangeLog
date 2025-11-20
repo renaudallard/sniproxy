@@ -51,7 +51,7 @@
 	fallback targets benefit from authenticated data without manual resolver
 	blocks.
 	- Security: enforce fatal configuration-permission checks in both sniproxy
-	and sniproxy-cfg using fstat() on the open descriptor, covering startup and
+	using fstat() on the open descriptor, covering startup and
 	reload flows.
 	- Documentation: refresh README, architecture references, and man pages to
 	reflect the new DNSSEC default and strict configuration requirements.
@@ -89,7 +89,7 @@
 
 	* Release 0.9.3
 	- Security: fail fast if dropping privileges leaves either real or effective UID at 0.
-	- Security: warn sniproxy and sniproxy-cfg when configuration files are group or world accessible.
+	- Security: warn sniproxy when configuration files are group or world accessible.
 	- IPC: binder/logger/resolver channels encrypt control traffic and enforce stricter validation/error reporting.
 	- Performance: idle connection buffers honor a soft memory limit and shrink immediately under load.
 	- Resource: configurable per-connection buffer caps prevent slow clients from pinning unbounded RAM.

@@ -87,7 +87,7 @@ Features
   rejects stale sockets, FIFOs, or symlinks before writing
 + **Privilege dropping** to non-root user/group after binding privileged ports
 + **Privilege verification**: startup fails fast if real or effective UID remains root after dropping privileges
-+ **Config permission guard**: sniproxy and sniproxy-cfg refuse to run when the configuration file is accessible to group/other users
++ **Config permission guard**: sniproxy refuses to run when the configuration file is accessible to group/other users
 + **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
   keywords
 + **Resolver debug tracing**: Enable verbose DNS resolver logs on demand with the
@@ -464,15 +464,6 @@ This will:
 - Keep process in foreground (not daemonize)
 - Not drop privileges (runs as invoking user)
 - Show detailed resolver tracing on stderr/error log to troubleshoot DNS issues
-
-### Configuration Testing
-
-Validate configuration syntax:
-
-    sniproxy-cfg -c /path/to/config.conf
-
-Use `-p` to dump the normalized configuration when you need to inspect the
-resolved listener/table definitions.
 
 Project Status
 --------------

@@ -449,7 +449,7 @@ Once CONNECTED, the connection enters steady-state proxying:
     collision spraying cannot bypass the limiter
   - Accept backoff timer on repeated errors
   - Idle connection timeouts
-- **Configuration hardening (0.9.7)**: sniproxy and sniproxy-cfg refuse to load
+- **Configuration hardening (0.9.7)**: sniproxy refuses to load
   configuration files that are readable or writable by group/other users,
   ensuring accidental chmod mistakes do not leak secrets when starting or
   reloading the daemon.

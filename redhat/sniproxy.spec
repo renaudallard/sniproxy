@@ -86,7 +86,7 @@ rm -rf $RPM_BUILD_ROOT
 * Wed Nov 19 2025 Renaud Allard <renaud@allard.it> 0.9.7-1
 - DNS: enable DNSSEC validation in relaxed mode by default so wildcard tables
   and fallback targets benefit from authenticated data without manual config.
-- Security: sniproxy and sniproxy-cfg now refuse to load config files that are
+- Security: sniproxy now refuses to load config files that are
   group/world accessible by checking permissions on the opened descriptor,
   covering both startup and reload paths.
 - Documentation: README and man pages now describe the new DNSSEC default and

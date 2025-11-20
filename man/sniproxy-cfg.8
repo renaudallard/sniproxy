@@ -1,64 +1,0 @@
-.TH SNIPROXY-CFG 8 "31 Oct 2025" "SNIProxy manual" "sniproxy"
-
-.SH NAME
-
-sniproxy-cfg \- validate and inspect sniproxy configuration files
-
-.SH SYNOPSIS
-
-Bsniproxy-cfgR [ -BcR IconfigR ] [ -BpR ] [ -BhR ]
-
-.SH DESCRIPTION
-
-Bsniproxy-cfgR loads a SNIProxy configuration file, validates every listener,
-table, and backend definition, and optionally prints the normalized
-configuration to standard output. It uses the same parser and validators as
-BsniproxyR, making it safe to run as part of automated deployment or CI
-pipelines before reloading a live proxy instance. It enforces the same
-permission guard as \fBsniproxy\fR and refuses to process configuration files
-that are readable or executable by group or other users.
-
-.SH OPTIONS
-
-.TP
--c IconfigR
-Path to the configuration file to validate. The default is
-/etc/sniproxy.conf.
-
-.TP
--p
-Print the normalized configuration to standard output after validation. The
-output matches what sniproxy would use internally and is helpful for sanity
-checks or debugging.
-
-.TP
--h
-Display a short help message and exit.
-
-.SH EXAMPLES
-
-Validate the default configuration:
-
-.nf
-sniproxy-cfg
-.fi
-
-Validate a custom configuration and dump the normalized form:
-
-.nf
-sniproxy-cfg -c /opt/sniproxy/sniproxy.conf -p
-.fi
-
-.SH EXIT STATUS
-
-.TP
-0
-The configuration was parsed successfully and passed all validation checks.
-.TP
->0
-An error occurred while parsing or validating the configuration, or the tool
-was invoked with invalid arguments.
-
-.SH SEE ALSO
-
-sniproxy(8), sniproxy.conf(5)
