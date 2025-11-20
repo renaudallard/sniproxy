@@ -27,7 +27,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <assert.h>
 #include <stdint.h>
 #include "table.h"
 #include "backend.h"
@@ -310,7 +309,14 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
 
 void
 print_table_config(FILE *file, struct Table *table) {
-    assert(table != NULL);
+    if (file == NULL) {
+        warn("print_table_config called without a FILE handle");
+        return;
+    }
+    if (table == NULL) {
+        warn("print_table_config called with NULL table");
+        return;
+    }
 
     struct Backend *backend = STAILQ_FIRST(&table->backends);
 
@@ -347,7 +353,11 @@ table_ref_put(struct Table *table) {
     if (table == NULL)
         return;
 
-    assert(table->reference_count > 0);
+    if (table->reference_count == 0) {
+        err("table_ref_put called on table \"%s\" with zero references",
+                table->name != NULL ? table->name : "(unnamed)");
+        return;
+    }
     table->reference_count--;
     if (table->reference_count == 0)
         free_table(table);
@@ -355,7 +365,10 @@ table_ref_put(struct Table *table) {
 
 struct Table *
 table_ref_get(struct Table *table) {
-    assert(table != NULL);
+    if (table == NULL) {
+        err("table_ref_get called with NULL table");
+        return NULL;
+    }
 
     table->reference_count++;
     return table;

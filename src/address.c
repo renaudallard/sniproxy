@@ -34,7 +34,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h> /* inet_pton */
 #include <sys/un.h>
-#include <assert.h>
 #include "address.h"
 
 
@@ -233,7 +232,8 @@ copy_address(const struct Address *addr) {
 
 size_t
 address_len(const struct Address *addr) {
-    assert(addr != NULL);
+    if (addr == NULL)
+        return 0;
 
     switch (addr->type) {
         case HOSTNAME:
@@ -244,7 +244,6 @@ address_len(const struct Address *addr) {
         case WILDCARD:
             return sizeof(struct Address);
         default:
-            assert(0);
             return 0;
     }
 }
@@ -299,7 +298,8 @@ address_is_wildcard(const struct Address *addr) {
 
 const char *
 address_hostname(const struct Address *addr) {
-    assert(addr != NULL);
+    if (addr == NULL)
+        return NULL;
 
     if (addr->type != HOSTNAME)
         return NULL;
@@ -309,7 +309,8 @@ address_hostname(const struct Address *addr) {
 
 const struct sockaddr *
 address_sa(const struct Address *addr) {
-    assert(addr != NULL);
+    if (addr == NULL)
+        return NULL;
 
     if (addr->type != SOCKADDR)
         return NULL;
@@ -319,7 +320,8 @@ address_sa(const struct Address *addr) {
 
 socklen_t
 address_sa_len(const struct Address *addr) {
-    assert(addr != NULL);
+    if (addr == NULL)
+        return 0;
 
     if (addr->type != SOCKADDR)
         return 0;
@@ -329,7 +331,8 @@ address_sa_len(const struct Address *addr) {
 
 uint16_t
 address_port(const struct Address *addr) {
-    assert(addr != NULL);
+    if (addr == NULL)
+        return 0;
 
     switch (addr->type) {
         case HOSTNAME:
@@ -356,7 +359,6 @@ address_port(const struct Address *addr) {
                 case AF_UNSPEC:
                     return 0;
                 default:
-                    assert(0);
                     return 0;
             }
         }
@@ -364,14 +366,14 @@ address_port(const struct Address *addr) {
             return addr->port;
         default:
             /* invalid Address type */
-            assert(0);
             return 0;
     }
 }
 
 void
 address_set_port(struct Address *addr, uint16_t port) {
-    assert(addr != NULL);
+    if (addr == NULL)
+        return;
 
     switch (addr->type) {
         case SOCKADDR: {
@@ -399,7 +401,7 @@ address_set_port(struct Address *addr, uint16_t port) {
                     /* no op */
                     break;
                 default:
-                    assert(0);
+                    break;
             }
         }
             /* fall through */
@@ -409,7 +411,7 @@ address_set_port(struct Address *addr, uint16_t port) {
             break;
         default:
             /* invalid Address type */
-            assert(0);
+            break;
     }
 }
 
@@ -463,7 +465,6 @@ display_address(const struct Address *addr, char *buffer, size_t buffer_len) {
                 snprintf(buffer, buffer_len, "*");
             return buffer;
         default:
-            assert(0);
             snprintf(buffer, buffer_len, "(invalid)");
             return buffer;
     }
@@ -618,7 +619,8 @@ valid_hostname(const char *hostname) {
         char *next_dot = strchr(label, '.');
         if (next_dot != NULL)
             label_len = (size_t)(next_dot - label);
-        assert(label + label_len <= hostname_end);
+        if (label + label_len > hostname_end)
+            return 0;
 
         if (label_len > 63 || label_len < 1)
             return 0;
