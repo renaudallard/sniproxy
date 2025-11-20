@@ -202,6 +202,7 @@ static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 static int resolver_restart_in_progress = 0;
 static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
+static pthread_mutex_t resolver_pending_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ResolverDotServer *child_dot_servers = NULL;
 static size_t child_dot_server_count = 0;
 static size_t child_dot_server_capacity = 0;
@@ -466,9 +467,11 @@ resolv_shutdown(struct ev_loop *loop) {
     pthread_mutex_unlock(&resolver_restart_lock);
 
     if (restarting) {
+        pthread_mutex_lock(&resolver_pending_lock);
         if (resolver_pending_restart_list != NULL)
             resolver_free_pending_list(resolver_pending_restart_list, 1);
         resolver_pending_restart_list = resolver_detach_pending_queries();
+        pthread_mutex_unlock(&resolver_pending_lock);
     } else {
         resolver_cleanup_pending_queries();
     }
@@ -1028,8 +1031,10 @@ resolver_cleanup_pending_queries(void) {
 
 static void
 resolver_resubmit_pending_queries(void) {
+    pthread_mutex_lock(&resolver_pending_lock);
     struct ResolverPending *pending_list = resolver_pending_restart_list;
     resolver_pending_restart_list = NULL;
+    pthread_mutex_unlock(&resolver_pending_lock);
 
     while (pending_list != NULL) {
         struct ResolverPending *next = pending_list->next_host;
@@ -1053,11 +1058,15 @@ resolver_resubmit_pending_queries(void) {
 
 static void
 resolver_fail_pending_restart_list(void) {
-    if (resolver_pending_restart_list == NULL)
+    pthread_mutex_lock(&resolver_pending_lock);
+    if (resolver_pending_restart_list == NULL) {
+        pthread_mutex_unlock(&resolver_pending_lock);
         return;
+    }
 
     resolver_free_pending_list(resolver_pending_restart_list, 1);
     resolver_pending_restart_list = NULL;
+    pthread_mutex_unlock(&resolver_pending_lock);
 }
 
 
