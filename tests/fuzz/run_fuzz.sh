@@ -79,10 +79,6 @@ build_fuzzer() {
 
 echo "Building fuzzers..."
 
-build_fuzzer tls_fuzz \
-    "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
-    "$ROOT_DIR/src/tls.c"
-
 build_fuzzer http2_fuzz \
     "$ROOT_DIR/tests/fuzz/http2_fuzz.c" \
     "$ROOT_DIR/src/http2.c" \
@@ -132,6 +128,10 @@ build_fuzzer ipc_state_fuzz \
     "$ROOT_DIR/src/ipc_crypto.c" \
     -lcrypto
 
+build_fuzzer tls_fuzz \
+    "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
+    "$ROOT_DIR/src/tls.c"
+
 echo "Fuzzers built successfully."
 
 if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
@@ -140,7 +140,6 @@ fi
 
 echo "Running fuzzers for ${FUZZ_RUNTIME}s each..."
 
-"$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
 "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
 "$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
 "$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
@@ -148,5 +147,6 @@ echo "Running fuzzers for ${FUZZ_RUNTIME}s each..."
 "$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
 "$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
 "$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
+"$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
 
 echo "Fuzzing complete. No crashes detected."
