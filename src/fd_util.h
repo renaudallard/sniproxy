@@ -48,7 +48,6 @@ set_cloexec(int fd)
 #endif
 }
 
-#endif /* FD_UTIL_H */
 static inline int
 fd_preserve_only(int fd)
 {
@@ -81,4 +80,4 @@ fd_preserve_only(int fd)
     return fd;
 #endif
 }
-
+#endif /* FD_UTIL_H */
