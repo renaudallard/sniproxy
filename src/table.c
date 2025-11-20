@@ -373,3 +373,14 @@ table_ref_get(struct Table *table) {
     table->reference_count++;
     return table;
 }
+
+void
+cleanup_table(void *table_ptr) {
+    struct Table *table = (struct Table *)table_ptr;
+    if (table == NULL)
+        return;
+
+    /* Use reference counting to properly free table and its resources */
+    table_ref_get(table);
+    table_ref_put(table);
+}

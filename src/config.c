@@ -173,6 +173,7 @@ static const struct Keyword listener_acl_stanza_grammar[] = {
         .create=(void *(*)(void))new_listener_acl_value,
         .parse_arg=(int(*)(void *, const char *))accept_listener_acl_value,
         .finalize=(int(*)(void *, void *))end_listener_acl_value,
+        .cleanup=cleanup_listener_acl_value,
     },
     {
         .keyword = NULL,
@@ -214,6 +215,7 @@ static const struct Keyword listener_stanza_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_logger_filename,
         .block_grammar=logger_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_listener_access_logger_stanza,
+        .cleanup=cleanup_logger_builder,
     },
     {
         .keyword="acl",
@@ -221,6 +223,7 @@ static const struct Keyword listener_stanza_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_listener_acl_policy,
         .block_grammar=listener_acl_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_listener_acl_stanza,
+        .cleanup=cleanup_listener_acl_builder,
     },
     {
         .keyword="bad_requests",
@@ -236,6 +239,7 @@ static struct Keyword table_stanza_grammar[] = {
         .create=(void *(*)(void))new_backend,
         .parse_arg=(int(*)(void *, const char *))accept_backend_arg,
         .finalize=(int(*)(void *, void *))end_backend,
+        .cleanup=(void (*)(void *))free_backend,
     },
     {
         .keyword = NULL,
@@ -300,18 +304,21 @@ static struct Keyword global_grammar[] = {
         .create=(void *(*)(void))new_resolver_config,
         .block_grammar=resolver_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_resolver_stanza,
+        .cleanup=cleanup_resolver_config,
     },
     {
         .keyword="error_log",
         .create=(void *(*)(void))new_logger_builder,
         .block_grammar=logger_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_error_logger_stanza,
+        .cleanup=cleanup_logger_builder,
     },
     {
         .keyword="access_log",
         .create=(void *(*)(void))new_logger_builder,
         .block_grammar=logger_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_global_access_logger_stanza,
+        .cleanup=cleanup_logger_builder,
     },
     {
         .keyword="listener",
@@ -319,6 +326,7 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_listener_arg,
         .block_grammar=listener_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_listener_stanza,
+        .cleanup=cleanup_listener,
     },
     {
         .keyword="listen",
@@ -326,6 +334,7 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_listener_arg,
         .block_grammar=listener_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_listener_stanza,
+        .cleanup=cleanup_listener,
     },
     {
         .keyword="table",
@@ -333,6 +342,7 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_table_arg,
         .block_grammar=table_stanza_grammar,
         .finalize=(int(*)(void *, void *))end_table_stanza,
+        .cleanup=cleanup_table,
     },
     {
         .keyword = NULL,
@@ -695,6 +705,11 @@ free_listener_acl_builder(struct ListenerACLBuilder *builder) {
     free(builder);
 }
 
+static void
+cleanup_listener_acl_builder(void *builder_ptr) {
+    free_listener_acl_builder((struct ListenerACLBuilder *)builder_ptr);
+}
+
 static struct ListenerACLRule *
 new_listener_acl_rule_from_cidr(const char *value) {
     struct ListenerACLRule *rule = NULL;
@@ -776,6 +791,16 @@ new_listener_acl_value(void) {
     }
 
     return value;
+}
+
+static void
+cleanup_listener_acl_value(void *value_ptr) {
+    struct ListenerACLRuleValue *value = (struct ListenerACLRuleValue *)value_ptr;
+    if (value == NULL)
+        return;
+
+    free(value->value);
+    free(value);
 }
 
 static int
@@ -1201,6 +1226,17 @@ new_logger_builder(void) {
     return lb;
 }
 
+static void
+cleanup_logger_builder(void *lb_ptr) {
+    struct LoggerBuilder *lb = (struct LoggerBuilder *)lb_ptr;
+    if (lb == NULL)
+        return;
+
+    free((char *)lb->filename);
+    free((char *)lb->syslog_facility);
+    free(lb);
+}
+
 static int
 accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
     assert(lb != NULL);
@@ -1356,6 +1392,17 @@ new_resolver_config(void) {
     }
 
     return resolver;
+}
+
+static void
+cleanup_resolver_config(void *resolver_ptr) {
+    struct ResolverConfig *resolver = (struct ResolverConfig *)resolver_ptr;
+    if (resolver == NULL)
+        return;
+
+    free_string_vector(resolver->nameservers);
+    free_string_vector(resolver->search);
+    free(resolver);
 }
 
 static size_t

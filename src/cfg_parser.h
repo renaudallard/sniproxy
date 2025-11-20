@@ -34,6 +34,7 @@ struct Keyword {
     int (*const parse_arg)(void *, const char *);
     const struct Keyword *const block_grammar;
     int (*const finalize)(void *, void *);
+    void (*const cleanup)(void *);
 };
 
 

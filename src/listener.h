@@ -95,6 +95,7 @@ struct LookupResult listener_lookup_server_address(const struct Listener *,
 void print_listener_config(FILE *, const struct Listener *);
 void listener_ref_put(struct Listener *);
 struct Listener *listener_ref_get(struct Listener *);
+void cleanup_listener(void *);
 int listener_acl_allows(const struct Listener *, const struct sockaddr_storage *);
 
 #endif

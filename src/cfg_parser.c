@@ -62,16 +62,24 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
             case TOKEN_ERROR:
                 err("%s: tokenizer error", __func__);
                 /* Free sub_context if it was newly created */
-                if (keyword && keyword->create && sub_context && sub_context != context)
-                    free(sub_context);
+                if (keyword && keyword->create && sub_context && sub_context != context) {
+                    if (keyword->cleanup)
+                        keyword->cleanup(sub_context);
+                    else
+                        free(sub_context);
+                }
                 return -1;
             case TOKEN_WORD:
                 if (keyword && sub_context && keyword->parse_arg) {
                     result = keyword->parse_arg(sub_context, buffer);
                     if (result <= 0) {
                         /* Free sub_context if it was newly created and parse_arg failed */
-                        if (keyword->create && sub_context != context)
-                            free(sub_context);
+                        if (keyword->create && sub_context != context) {
+                            if (keyword->cleanup)
+                                keyword->cleanup(sub_context);
+                            else
+                                free(sub_context);
+                        }
                         return result;
                     }
 
@@ -91,8 +99,12 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                         result = keyword->parse_arg(sub_context, buffer);
                         if (result <= 0) {
                             /* Free sub_context if it was newly created and parse_arg failed */
-                            if (keyword->create && sub_context != context)
-                                free(sub_context);
+                            if (keyword->create && sub_context != context) {
+                                if (keyword->cleanup)
+                                    keyword->cleanup(sub_context);
+                                else
+                                    free(sub_context);
+                            }
                             return result;
                         }
                     }
@@ -116,8 +128,12 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
 
                     if (result <= 0) {
                         /* Free sub_context if it was newly created and not finalized */
-                        if (keyword->create && sub_context != context)
-                            free(sub_context);
+                        if (keyword->create && sub_context != context) {
+                            if (keyword->cleanup)
+                                keyword->cleanup(sub_context);
+                            else
+                                free(sub_context);
+                        }
                         return result;
                     }
 

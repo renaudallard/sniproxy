@@ -1021,6 +1021,17 @@ listener_ref_get(struct Listener *listener) {
     return listener;
 }
 
+void
+cleanup_listener(void *listener_ptr) {
+    struct Listener *listener = (struct Listener *)listener_ptr;
+    if (listener == NULL)
+        return;
+
+    /* Use reference counting to properly free listener and its resources */
+    listener_ref_get(listener);
+    listener_ref_put(listener);
+}
+
 static void
 accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Listener *listener = (struct Listener *)w->data;

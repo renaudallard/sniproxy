@@ -77,6 +77,7 @@ int valid_table(struct Table *);
 void init_table(struct Table *);
 void table_ref_put(struct Table *);
 struct Table *table_ref_get(struct Table *);
+void cleanup_table(void *);
 void tables_reload(struct Table_head *, struct Table_head *);
 
 void free_tables(struct Table_head *);
