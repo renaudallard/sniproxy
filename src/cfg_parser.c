@@ -77,6 +77,13 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                     const struct Keyword *next_keyword =
                             find_keyword(grammar, buffer);
                     if (next_keyword) {
+                        if (keyword && sub_context) {
+                            /* previous keyword never finalized */
+                            cleanup_keyword_context(keyword, context, sub_context);
+                            keyword = NULL;
+                            sub_context = NULL;
+                        }
+
                         keyword = next_keyword;
                         if (keyword->create) {
                             sub_context = keyword->create();
