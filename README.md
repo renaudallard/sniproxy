@@ -229,6 +229,13 @@ connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
 # server_buffer_limit 8M
 ```
 
+Limit how many HTTP headers are accepted per request (default 100) to guard
+against header-count DoS attempts:
+
+```
+http_max_headers 200
+```
+
 ### Basic Configuration
 
     user daemon
