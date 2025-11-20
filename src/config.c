@@ -87,10 +87,12 @@ static struct LoggerBuilder *new_logger_builder(void);
 static int accept_logger_filename(struct LoggerBuilder *, const char *);
 static int accept_logger_syslog_facility(struct LoggerBuilder *, const char *);
 static int accept_logger_priority(struct LoggerBuilder *, const char *);
+static void cleanup_logger_builder(void *);
 static int end_error_logger_stanza(struct Config *, struct LoggerBuilder *);
 static int end_global_access_logger_stanza(struct Config *, struct LoggerBuilder *);
 static int end_listener_access_logger_stanza(struct Listener *, struct LoggerBuilder *);
 static struct ResolverConfig *new_resolver_config(void);
+static void cleanup_resolver_config(void *);
 static int accept_resolver_nameserver(struct ResolverConfig *, const char *);
 static int accept_resolver_search(struct ResolverConfig *, const char *);
 static int accept_resolver_mode(struct ResolverConfig *, const char *);
@@ -115,6 +117,8 @@ static void *new_listener_acl_value(void);
 static int accept_listener_acl_value(struct ListenerACLRuleValue *, const char *);
 static int end_listener_acl_value(struct ListenerACLBuilder *, struct ListenerACLRuleValue *);
 static void free_listener_acl_builder(struct ListenerACLBuilder *);
+static void cleanup_listener_acl_builder(void *);
+static void cleanup_listener_acl_value(void *);
 
 static const struct Keyword logger_stanza_grammar[] = {
     {
