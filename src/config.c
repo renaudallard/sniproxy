@@ -120,18 +120,88 @@ static void free_listener_acl_builder(struct ListenerACLBuilder *);
 static void cleanup_listener_acl_builder(void *);
 static void cleanup_listener_acl_value(void *);
 
+#define DEFINE_KEYWORD_PARSE_WRAPPER(fn, type) \
+    static int kw_parse_##fn(void *ctx, const char *arg) { \
+        return fn((type *)ctx, arg); \
+    }
+
+#define DEFINE_KEYWORD_FINALIZE_WRAPPER(fn, parent_type, child_type) \
+    static int kw_finalize_##fn(void *parent, void *child) { \
+        return fn((parent_type *)parent, (child_type *)child); \
+    }
+
+#define DEFINE_KEYWORD_CREATE_WRAPPER(fn) \
+    static void *kw_create_##fn(void) { \
+        return fn(); \
+    }
+
+#define DEFINE_KEYWORD_CLEANUP_WRAPPER(fn, type) \
+    static void kw_cleanup_##fn(void *ptr) { \
+        fn((type *)ptr); \
+    }
+
+DEFINE_KEYWORD_CREATE_WRAPPER(new_logger_builder)
+DEFINE_KEYWORD_CREATE_WRAPPER(new_resolver_config)
+DEFINE_KEYWORD_CREATE_WRAPPER(new_listener)
+DEFINE_KEYWORD_CREATE_WRAPPER(new_table)
+DEFINE_KEYWORD_CREATE_WRAPPER(new_backend)
+
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_logger_filename, struct LoggerBuilder)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_logger_syslog_facility, struct LoggerBuilder)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_logger_priority, struct LoggerBuilder)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_nameserver, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_search, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_mode, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_max_queries, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_max_queries_per_client, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_dnssec_validation, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_cidr, struct ListenerACLBuilder)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_value, struct ListenerACLRuleValue)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_acl_value, struct ListenerACLBuilder, struct ListenerACLRuleValue)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_protocol, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_reuseport, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_ipv6_v6only, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_table_name, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_fallback_address, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_source_address, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_policy, struct ListenerACLBuilder)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_acl_stanza, struct Listener, struct ListenerACLBuilder)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_access_logger_stanza, struct Listener, struct LoggerBuilder)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_bad_request_action, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_arg, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_backend_arg, struct Backend)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_backend, struct Table, struct Backend)
+DEFINE_KEYWORD_CLEANUP_WRAPPER(free_backend, struct Backend)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_table_arg, struct Table)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_table_stanza, struct Config, struct Table)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_username, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_groupname, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_pidfile, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_per_ip_connection_rate, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_max_connections, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_io_collect_interval, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_timeout_collect_interval, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_connection_buffer_limit, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_client_buffer_limit, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_server_buffer_limit, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_http_max_headers, struct Config)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_resolver_stanza, struct Config, struct ResolverConfig)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_error_logger_stanza, struct Config, struct LoggerBuilder)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_global_access_logger_stanza, struct Config, struct LoggerBuilder)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_stanza, struct Config, struct Listener)
+
 static const struct Keyword logger_stanza_grammar[] = {
     {
         .keyword="filename",
-        .parse_arg=(int(*)(void *, const char *))accept_logger_filename,
+        .parse_arg=kw_parse_accept_logger_filename,
     },
     {
         .keyword="syslog",
-        .parse_arg=(int(*)(void *, const char *))accept_logger_syslog_facility,
+        .parse_arg=kw_parse_accept_logger_syslog_facility,
     },
     {
         .keyword="priority",
-        .parse_arg=(int(*)(void *, const char *))accept_logger_priority,
+        .parse_arg=kw_parse_accept_logger_priority,
     },
     {
         .keyword = NULL,
@@ -141,27 +211,27 @@ static const struct Keyword logger_stanza_grammar[] = {
 static const struct Keyword resolver_stanza_grammar[] = {
     {
         .keyword="nameserver",
-        .parse_arg=(int(*)(void *, const char *))accept_resolver_nameserver,
+        .parse_arg=kw_parse_accept_resolver_nameserver,
     },
     {
         .keyword="search",
-        .parse_arg=(int(*)(void *, const char *))accept_resolver_search,
+        .parse_arg=kw_parse_accept_resolver_search,
     },
     {
         .keyword="mode",
-        .parse_arg=(int(*)(void *, const char *))accept_resolver_mode,
+        .parse_arg=kw_parse_accept_resolver_mode,
     },
     {
         .keyword="max_concurrent_queries",
-        .parse_arg=(int(*)(void *, const char *))accept_resolver_max_queries,
+        .parse_arg=kw_parse_accept_resolver_max_queries,
     },
     {
         .keyword="max_concurrent_queries_per_client",
-        .parse_arg=(int(*)(void *, const char *))accept_resolver_max_queries_per_client,
+        .parse_arg=kw_parse_accept_resolver_max_queries_per_client,
     },
     {
         .keyword="dnssec_validation",
-        .parse_arg=(int(*)(void *, const char *))accept_resolver_dnssec_validation,
+        .parse_arg=kw_parse_accept_resolver_dnssec_validation,
     },
     {
         .keyword = NULL,
@@ -171,12 +241,12 @@ static const struct Keyword resolver_stanza_grammar[] = {
 static const struct Keyword listener_acl_stanza_grammar[] = {
     {
         .keyword="cidr",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_cidr,
+        .parse_arg=kw_parse_accept_listener_acl_cidr,
     },
     {
-        .create=(void *(*)(void))new_listener_acl_value,
-        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_value,
-        .finalize=(int(*)(void *, void *))end_listener_acl_value,
+        .create=new_listener_acl_value,
+        .parse_arg=kw_parse_accept_listener_acl_value,
+        .finalize=kw_finalize_end_listener_acl_value,
         .cleanup=cleanup_listener_acl_value,
     },
     {
@@ -187,51 +257,51 @@ static const struct Keyword listener_acl_stanza_grammar[] = {
 static const struct Keyword listener_stanza_grammar[] = {
     {
         .keyword="protocol",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_protocol,
+        .parse_arg=kw_parse_accept_listener_protocol,
     },
     {
         .keyword="proto",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_protocol,
+        .parse_arg=kw_parse_accept_listener_protocol,
     },
     {
         .keyword="reuseport",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_reuseport,
+        .parse_arg=kw_parse_accept_listener_reuseport,
     },
     {
         .keyword="ipv6_v6only",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_ipv6_v6only,
+        .parse_arg=kw_parse_accept_listener_ipv6_v6only,
     },
     {
         .keyword="table",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_table_name,
+        .parse_arg=kw_parse_accept_listener_table_name,
     },
     {
         .keyword="fallback",
-        .parse_arg=    (int(*)(void *, const char *))accept_listener_fallback_address,
+        .parse_arg=kw_parse_accept_listener_fallback_address,
     },
     {
         .keyword="source",
-        .parse_arg=(int(*)(void *, const char *))accept_listener_source_address,
+        .parse_arg=kw_parse_accept_listener_source_address,
     },
     {
         .keyword="access_log",
-        .create=(void *(*)(void))new_logger_builder,
-        .parse_arg=(int(*)(void *, const char *))accept_logger_filename,
+        .create=kw_create_new_logger_builder,
+        .parse_arg=kw_parse_accept_logger_filename,
         .block_grammar=logger_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_listener_access_logger_stanza,
+        .finalize=kw_finalize_end_listener_access_logger_stanza,
         .cleanup=cleanup_logger_builder,
     },
     {
         .keyword="acl",
-        .create=(void *(*)(void))new_listener_acl_builder,
-        .parse_arg=(int(*)(void *, const char *))accept_listener_acl_policy,
+        .create=new_listener_acl_builder,
+        .parse_arg=kw_parse_accept_listener_acl_policy,
         .block_grammar=listener_acl_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_listener_acl_stanza,
+        .finalize=kw_finalize_end_listener_acl_stanza,
         .cleanup=cleanup_listener_acl_builder,
     },
     {
         .keyword="bad_requests",
-        .parse_arg= (int(*)(void *, const char *))accept_listener_bad_request_action,
+        .parse_arg=kw_parse_accept_listener_bad_request_action,
     },
     {
         .keyword = NULL,
@@ -240,10 +310,10 @@ static const struct Keyword listener_stanza_grammar[] = {
 
 static struct Keyword table_stanza_grammar[] = {
     {
-        .create=(void *(*)(void))new_backend,
-        .parse_arg=(int(*)(void *, const char *))accept_backend_arg,
-        .finalize=(int(*)(void *, void *))end_backend,
-        .cleanup=(void (*)(void *))free_backend,
+        .create=kw_create_new_backend,
+        .parse_arg=kw_parse_accept_backend_arg,
+        .finalize=kw_finalize_end_backend,
+        .cleanup=kw_cleanup_free_backend,
     },
     {
         .keyword = NULL,
@@ -253,99 +323,99 @@ static struct Keyword table_stanza_grammar[] = {
 static struct Keyword global_grammar[] = {
     {
         .keyword="username",
-        .parse_arg=(int(*)(void *, const char *))accept_username,
+        .parse_arg=kw_parse_accept_username,
     },
     {
         .keyword="user",
-        .parse_arg=(int(*)(void *, const char *))accept_username,
+        .parse_arg=kw_parse_accept_username,
     },
     {
         .keyword="groupname",
-        .parse_arg=    (int(*)(void *, const char *))accept_groupname,
+        .parse_arg=kw_parse_accept_groupname,
     },
     {
         .keyword="group",
-        .parse_arg=    (int(*)(void *, const char *))accept_groupname,
+        .parse_arg=kw_parse_accept_groupname,
     },
     {
         .keyword="pidfile",
-        .parse_arg=(int(*)(void *, const char *))accept_pidfile,
+        .parse_arg=kw_parse_accept_pidfile,
     },
     {
         .keyword="per_ip_connection_rate",
-        .parse_arg=(int(*)(void *, const char *))accept_per_ip_connection_rate,
+        .parse_arg=kw_parse_accept_per_ip_connection_rate,
     },
     {
         .keyword="max_connections",
-        .parse_arg=(int(*)(void *, const char *))accept_max_connections,
+        .parse_arg=kw_parse_accept_max_connections,
     },
     {
         .keyword="io_collect_interval",
-        .parse_arg=(int(*)(void *, const char *))accept_io_collect_interval,
+        .parse_arg=kw_parse_accept_io_collect_interval,
     },
     {
         .keyword="timeout_collect_interval",
-        .parse_arg=(int(*)(void *, const char *))accept_timeout_collect_interval,
+        .parse_arg=kw_parse_accept_timeout_collect_interval,
     },
     {
         .keyword="connection_buffer_limit",
-        .parse_arg=(int(*)(void *, const char *))accept_connection_buffer_limit,
+        .parse_arg=kw_parse_accept_connection_buffer_limit,
     },
     {
         .keyword="client_buffer_limit",
-        .parse_arg=(int(*)(void *, const char *))accept_client_buffer_limit,
+        .parse_arg=kw_parse_accept_client_buffer_limit,
     },
     {
         .keyword="server_buffer_limit",
-        .parse_arg=(int(*)(void *, const char *))accept_server_buffer_limit,
+        .parse_arg=kw_parse_accept_server_buffer_limit,
     },
     {
         .keyword="http_max_headers",
-        .parse_arg=(int(*)(void *, const char *))accept_http_max_headers,
+        .parse_arg=kw_parse_accept_http_max_headers,
     },
     {
         .keyword="resolver",
-        .create=(void *(*)(void))new_resolver_config,
+        .create=kw_create_new_resolver_config,
         .block_grammar=resolver_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_resolver_stanza,
+        .finalize=kw_finalize_end_resolver_stanza,
         .cleanup=cleanup_resolver_config,
     },
     {
         .keyword="error_log",
-        .create=(void *(*)(void))new_logger_builder,
+        .create=kw_create_new_logger_builder,
         .block_grammar=logger_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_error_logger_stanza,
+        .finalize=kw_finalize_end_error_logger_stanza,
         .cleanup=cleanup_logger_builder,
     },
     {
         .keyword="access_log",
-        .create=(void *(*)(void))new_logger_builder,
+        .create=kw_create_new_logger_builder,
         .block_grammar=logger_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_global_access_logger_stanza,
+        .finalize=kw_finalize_end_global_access_logger_stanza,
         .cleanup=cleanup_logger_builder,
     },
     {
         .keyword="listener",
-        .create=(void *(*)(void))new_listener,
-        .parse_arg=(int(*)(void *, const char *))accept_listener_arg,
+        .create=kw_create_new_listener,
+        .parse_arg=kw_parse_accept_listener_arg,
         .block_grammar=listener_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_listener_stanza,
+        .finalize=kw_finalize_end_listener_stanza,
         .cleanup=cleanup_listener,
     },
     {
         .keyword="listen",
-        .create=(void *(*)(void))new_listener,
-        .parse_arg=(int(*)(void *, const char *))accept_listener_arg,
+        .create=kw_create_new_listener,
+        .parse_arg=kw_parse_accept_listener_arg,
         .block_grammar=listener_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_listener_stanza,
+        .finalize=kw_finalize_end_listener_stanza,
         .cleanup=cleanup_listener,
     },
     {
         .keyword="table",
-        .create=(void *(*)(void))new_table,
-        .parse_arg=(int(*)(void *, const char *))accept_table_arg,
+        .create=kw_create_new_table,
+        .parse_arg=kw_parse_accept_table_arg,
         .block_grammar=table_stanza_grammar,
-        .finalize=(int(*)(void *, void *))end_table_stanza,
+        .finalize=kw_finalize_end_table_stanza,
         .cleanup=cleanup_table,
     },
     {

@@ -46,6 +46,11 @@ struct Address {
 
     size_t len;     /* length of data */
     uint16_t port;  /* for hostname and wildcard */
+    union {
+        long double ld;
+        void *ptr;
+        uintmax_t um;
+    } align;        /* ensure data[] is suitably aligned */
     char data[];
 };
 
