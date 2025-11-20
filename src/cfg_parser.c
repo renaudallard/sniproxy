@@ -129,6 +129,7 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                     sub_context = NULL;
                 } else {
                     err("%s: block without context", __func__);
+                    cleanup_keyword_context(keyword, context, sub_context);
                     return -1;
                 }
                 break;
