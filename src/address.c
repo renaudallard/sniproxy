@@ -164,9 +164,11 @@ new_address(const char *hostname_or_ip) {
                 return NULL;
 
             /* inet_pton() will not parse the IP correctly unless it is in a
-             * separate string.
+             * separate string. Use memmove() instead of memcpy() because
+             * input may already point inside ip_buf when we've previously
+             * stripped a trailing port.
              */
-            memcpy(ip_buf, input + 1, len);
+            memmove(ip_buf, input + 1, len);
             ip_buf[len] = '\0';
 
             if (inet_pton(AF_INET6, ip_buf,
