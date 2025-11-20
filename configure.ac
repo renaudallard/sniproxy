@@ -64,6 +64,16 @@ AC_ARG_ENABLE([hardening],
   [enable_hardening=$enableval],
   [enable_hardening=yes])
 
+AC_CACHE_CHECK([whether the compiler is clang], [sniproxy_cv_cc_is_clang], [
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
+#ifndef __clang__
+#error "not clang"
+#endif
+  ])],
+    [sniproxy_cv_cc_is_clang=yes],
+    [sniproxy_cv_cc_is_clang=no])
+])
+
 HARDEN_CFLAGS=""
 HARDEN_CPPFLAGS=""
 HARDEN_LDFLAGS=""
@@ -72,7 +82,9 @@ AS_IF([test "x$enable_hardening" != "xno"], [
   SNIPROXY_APPEND_CPPFLAG([-U_FORTIFY_SOURCE], [u_fortify_source])
   SNIPROXY_APPEND_CPPFLAG([-D_FORTIFY_SOURCE=2], [fortify_source])
   SNIPROXY_APPEND_CFLAG([-fstack-protector-strong], [fstack_protector_strong])
-  SNIPROXY_APPEND_CFLAG([-fstack-clash-protection], [fstack_clash_protection])
+  AS_IF([test "x$sniproxy_cv_cc_is_clang" != "xyes"], [
+    SNIPROXY_APPEND_CFLAG([-fstack-clash-protection], [fstack_clash_protection])
+  ])
   SNIPROXY_APPEND_CFLAG([-fcf-protection=full], [fcf_protection])
   SNIPROXY_APPEND_CFLAG([-Wformat], [wformat])
   SNIPROXY_APPEND_CFLAG([-Wformat-security], [wformat_security])
