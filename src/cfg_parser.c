@@ -73,27 +73,34 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                         return result;
                     }
 
-                } else if ((keyword = find_keyword(grammar, buffer))) {
-                    if (keyword->create) {
-                        sub_context = keyword->create();
-                        if (sub_context == NULL) {
-                            err("failed to create subcontext");
-                            return -1;
+                } else {
+                    const struct Keyword *next_keyword =
+                            find_keyword(grammar, buffer);
+                    if (next_keyword) {
+                        keyword = next_keyword;
+                        if (keyword->create) {
+                            sub_context = keyword->create();
+                            if (sub_context == NULL) {
+                                err("failed to create subcontext");
+                                return -1;
+                            }
+                        } else {
+                            sub_context = context;
                         }
-                    } else {
-                        sub_context = context;
+
+                        /* Special case for wildcard grammars i.e. tables */
+                        if (keyword->keyword == NULL && keyword->parse_arg) {
+                            result = keyword->parse_arg(sub_context, buffer);
+                            if (result <= 0) {
+                                /* Free sub_context if it was newly created and parse_arg failed */
+                                cleanup_keyword_context(keyword, context, sub_context);
+                                return result;
+                            }
+                        }
+
+                        break;
                     }
 
-                    /* Special case for wildcard grammars i.e. tables */
-                    if (keyword->keyword == NULL && keyword->parse_arg) {
-                        result = keyword->parse_arg(sub_context, buffer);
-                        if (result <= 0) {
-                            /* Free sub_context if it was newly created and parse_arg failed */
-                            cleanup_keyword_context(keyword, context, sub_context);
-                            return result;
-                        }
-                    }
-                } else {
                     err("%s: unknown keyword %s in %s context", __func__,
                             buffer, active_context);
                     cleanup_keyword_context(keyword, context, sub_context);
