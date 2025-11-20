@@ -519,10 +519,10 @@ const unsigned char good_data_6[] = {
     // TLS record
     0x16, // Content Type: Handshake
     0x03, 0x03, // Version: TLS 1.2
-    0x00, 0x42, // Length
+    0x00, 0x46, // Length
         // Handshake
         0x01, // Handshake Type: Client Hello
-        0x00, 0x00, 0x3e, // Length
+        0x00, 0x00, 0x42, // Length
         0x03, 0x03, // Version: TLS 1.2
         // Random
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -534,7 +534,7 @@ const unsigned char good_data_6[] = {
             0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
         0x01, // Compression Methods
             0x00, // NULL
-        0x00, 0x13, // Extensions Length
+        0x00, 0x17, // Extensions Length
             // Extension
             0x00, 0x00, // Extension Type: Server Name
             0x00, 0x0e, // Length
@@ -553,10 +553,10 @@ const unsigned char good_data_7[] = {
     // TLS record
     0x16, // Content Type: Handshake
     0x03, 0x03, // Version: TLS 1.2
-    0x00, 0x42, // Length
+    0x00, 0x46, // Length
         // Handshake
         0x01, // Handshake Type: Client Hello
-        0x00, 0x00, 0x3e, // Length
+        0x00, 0x00, 0x42, // Length
         0x03, 0x03, // Version: TLS 1.2
         // Random
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -568,7 +568,7 @@ const unsigned char good_data_7[] = {
             0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
         0x01, // Compression Methods
             0x00, // NULL
-        0x00, 0x13, // Extensions Length
+        0x00, 0x17, // Extensions Length
             // Extension
             0x00, 0x00, // Extension Type: Server Name
             0x00, 0x0e, // Length
