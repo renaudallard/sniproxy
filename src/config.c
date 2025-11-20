@@ -579,14 +579,14 @@ parse_size_value(const char *value, size_t min, size_t max, size_t *out) {
         }
     }
 
-    if (base > ULLONG_MAX / factor)
+    if (base > (unsigned long long)(SIZE_MAX / factor))
         return -1;
 
-    unsigned long long bytes = base * factor;
+    size_t bytes = (size_t)(base * factor);
     if (bytes < min || bytes > max)
         return -1;
 
-    *out = (size_t)bytes;
+    *out = bytes;
     return 0;
 }
 
