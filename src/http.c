@@ -35,8 +35,20 @@
 #include "http2.h"
 
 #define SERVER_NAME_LEN 256
-#define HTTP_MAX_HEADERS 100
 
+static size_t http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
+
+size_t
+http_get_max_headers(void) {
+    return http_max_headers;
+}
+
+void
+http_set_max_headers(size_t max_headers) {
+    if (max_headers == 0)
+        max_headers = 1;
+    http_max_headers = max_headers;
+}
 
 static int parse_http_header(const char *, size_t, char **);
 static int get_header(const char *, size_t, const char *, size_t, char **);
@@ -161,7 +173,7 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
     /* loop through headers stopping at first blank line */
     while ((len = next_header(&data, &data_len)) != 0) {
         /* Limit number of headers to prevent CPU exhaustion attacks */
-        if (header_count >= HTTP_MAX_HEADERS) {
+        if (header_count >= http_max_headers) {
             free(found_value);
             return TLS_ERR_INVALID_CLIENT_HELLO;
         }
@@ -178,13 +190,13 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
 
             if (value_len == 0 || value_len >= SERVER_NAME_LEN) {
                 free(found_value);
-            return TLS_ERR_INVALID_CLIENT_HELLO;
+                return TLS_ERR_INVALID_CLIENT_HELLO;
             }
 
             if (found) {
                 /* Multiple host headers are not permitted */
                 free(found_value);
-            return TLS_ERR_INVALID_CLIENT_HELLO;
+                return TLS_ERR_INVALID_CLIENT_HELLO;
             }
 
             found_value = malloc(value_len + 1);

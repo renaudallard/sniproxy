@@ -78,6 +78,7 @@ static int accept_timeout_collect_interval(struct Config *, const char *);
 static int accept_connection_buffer_limit(struct Config *, const char *);
 static int accept_client_buffer_limit(struct Config *, const char *);
 static int accept_server_buffer_limit(struct Config *, const char *);
+static int accept_http_max_headers(struct Config *, const char *);
 static int parse_size_value(const char *value, size_t min, size_t max, size_t *out);
 static int end_listener_stanza(struct Config *, struct Listener *);
 static int end_table_stanza(struct Config *, struct Table *);
@@ -291,6 +292,10 @@ static struct Keyword global_grammar[] = {
         .parse_arg=(int(*)(void *, const char *))accept_server_buffer_limit,
     },
     {
+        .keyword="http_max_headers",
+        .parse_arg=(int(*)(void *, const char *))accept_http_max_headers,
+    },
+    {
         .keyword="resolver",
         .create=(void *(*)(void))new_resolver_config,
         .block_grammar=resolver_stanza_grammar,
@@ -362,6 +367,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     config->per_ip_connection_rate = DEFAULT_PER_IP_CONNECTION_RATE;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
+    config->http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
     config->max_connections = DEFAULT_MAX_CONNECTIONS;
 
     SLIST_INIT(&config->listeners);
@@ -500,6 +506,8 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->server_buffer_limit = new_config->server_buffer_limit;
     connections_set_buffer_limits(config->client_buffer_limit,
             config->server_buffer_limit);
+    config->http_max_headers = new_config->http_max_headers;
+    http_set_max_headers(config->http_max_headers);
 
     free_config(new_config, loop);
 }
@@ -537,6 +545,9 @@ print_config(FILE *file, struct Config *config) {
         fprintf(file, "client_buffer_limit %zu\n", config->client_buffer_limit);
         fprintf(file, "server_buffer_limit %zu\n\n", config->server_buffer_limit);
     }
+
+    if (config->http_max_headers != HTTP_DEFAULT_MAX_HEADERS)
+        fprintf(file, "http_max_headers %zu\n\n", config->http_max_headers);
 
     print_resolver_config(file, &config->resolver);
 
@@ -627,6 +638,31 @@ accept_server_buffer_limit(struct Config *config, const char *value) {
     }
 
     config->server_buffer_limit = bytes;
+    return 0;
+}
+
+static int
+accept_http_max_headers(struct Config *config, const char *value) {
+    char *endptr = NULL;
+    unsigned long parsed;
+
+    if (value == NULL)
+        return -1;
+
+    errno = 0;
+    parsed = strtoul(value, &endptr, 10);
+    if (errno != 0 || endptr == value || *endptr != '\0') {
+        err("Invalid http_max_headers '%s'", value);
+        return -1;
+    }
+
+    if (parsed < MIN_HTTP_MAX_HEADERS || parsed > MAX_HTTP_MAX_HEADERS) {
+        err("http_max_headers must be between %u and %u",
+                MIN_HTTP_MAX_HEADERS, MAX_HTTP_MAX_HEADERS);
+        return -1;
+    }
+
+    config->http_max_headers = (size_t)parsed;
     return 0;
 }
 
