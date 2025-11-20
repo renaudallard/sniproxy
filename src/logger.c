@@ -26,6 +26,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+#ifndef PACKAGE_NAME
+#define PACKAGE_NAME "sniproxy"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
