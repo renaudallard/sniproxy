@@ -36,9 +36,6 @@
 #define MIN_HTTP_MAX_HEADERS 1
 #define MAX_HTTP_MAX_HEADERS 4096
 
-#define DEFAULT_CLIENT_BUFFER_LIMIT (1U << 20)
-#define DEFAULT_SERVER_BUFFER_LIMIT (1U << 20)
-
 #include <stdio.h>
 #include "http.h"
 #include "table.h"
