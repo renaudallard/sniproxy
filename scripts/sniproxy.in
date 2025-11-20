@@ -1,2 +1,15 @@
 #!/bin/sh
-exec @sbindir@/sniproxy "$@"
+SBINDIR="@sbindir@"
+
+if [ "$SBINDIR" = "@sbindir@" ] || [ -z "$SBINDIR" ]; then
+    # Fallback for builds where the placeholder was not substituted:
+    # assume the binary lives next to this wrapper under ../sbin.
+    SCRIPT_DIR=$(dirname "$0")
+    if CDPATH= cd "$SCRIPT_DIR/../sbin" 2>/dev/null; then
+        SBINDIR=$(pwd 2>/dev/null)
+    else
+        SBINDIR="/usr/local/sbin"
+    fi
+fi
+
+exec "$SBINDIR/sniproxy" "$@"
