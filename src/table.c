@@ -47,7 +47,7 @@ table_lookup_backend(const struct Table *table, const char *name, size_t name_le
     return lookup_backend(&table->backends, name, name_len);
 }
 
-static inline void __attribute__((unused))
+static inline void
 remove_table_backend(struct Table *table, struct Backend *backend) {
     remove_backend(&table->backends, backend);
 }

@@ -1286,7 +1286,7 @@ end_error_logger_stanza(struct Config *config __attribute__ ((unused)), struct L
     return 1;
 }
 
-static int __attribute__((unused))
+static int
 end_global_access_logger_stanza(struct Config *config, struct LoggerBuilder *lb) {
     struct Logger *logger = NULL;
 
