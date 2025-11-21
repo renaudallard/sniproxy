@@ -90,7 +90,11 @@ run_with_optional_quiet() {
 build_fuzzer() {
     local target=$1
     shift
-    "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target"
+    if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
+        "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target"
+    else
+        "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target" >/dev/null
+    fi
 }
 
 vlog "Building fuzzers..."
