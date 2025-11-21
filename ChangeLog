@@ -1,3 +1,21 @@
+2025-11-23  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.11
+	- Security: HTTP parsers enforce a configurable http_max_headers guard
+	  (default 100), TLS ClientHello logic counts extensions before walking
+	  them, and ipc_crypto rejection paths now run dummy decrypts with
+	  dedicated zero_tag buffers so authentication failures do not leak timing
+	  information.
+	- Configuration: Path directives are canonicalized, keyword handlers
+	  gained typed cleanup hooks so repeated resolver/logger/listener ACL
+	  blocks release previous allocations, address/table helpers and resolver
+	  restart queues were hardened with runtime checks, and the
+	  long-deprecated sniproxy-cfg helper plus its man page were removed.
+	- Tooling/Tests: Ship a hardened scripts/sniproxy.service unit along with a
+	  wrapper that tolerates missing @sbindir@ substitution, extend GitHub
+	  releases to build RPM/DEB artifacts, and grow the fuzzing suite with new
+	  address/table/listener ACL/ipc harnesses that default to error-only logs.
+
 2025-11-22  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.10

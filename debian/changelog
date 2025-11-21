@@ -1,3 +1,22 @@
+sniproxy (0.9.11) unstable; urgency=medium
+
+  * Security: Add the http_max_headers directive (default 100) so HTTP
+    frontends bound client header counts, pre-count TLS extensions before
+    parsing ClientHellos, and force ipc_crypto_open() to perform constant-time
+    dummy decrypts with dedicated zero_tag buffers whenever a frame is rejected.
+  * Reliability: Canonicalize every absolute path directive, teach the config
+    parser to use typed cleanup hooks so resolver/log/logger/listener blocks
+    release previous allocations, plug double-free/leak windows triggered by
+    repeated stanzas, and replace assert() calls in address/table/resolver code
+    with runtime checks protected by a new resolver_pending_lock.
+  * Tooling: Retire the sniproxy-cfg helper/man page, ship a hardened
+    scripts/sniproxy.service unit plus a wrapper script fallback when @sbindir@
+    substitution fails, add RPM/DEB builds to the release workflow, and extend
+    the fuzz harness suite (address/table/listener ACL/ipc) while defaulting to
+    error-only logs for quieter CI runs.
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 23 Nov 2025 00:00:00 +0000
+
 sniproxy (0.9.10) unstable; urgency=medium
 
   * Security: Tighten get_secure_temp_dir() so both /var/run and /tmp fallback

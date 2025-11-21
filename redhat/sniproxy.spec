@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.10
+Version: 0.9.11
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,20 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Sun Nov 23 2025 Renaud Allard <renaud@allard.it> 0.9.11-1
+- Security: HTTP parsing now enforces a configurable http_max_headers limit,
+  TLS ClientHello parsing bounds extension counts up front, and ipc_crypto
+  failure paths perform dummy decrypts with dedicated zero_tag buffers to
+  mask timing when packets are rejected.
+- Configuration: all absolute-path directives are canonicalized and the parser
+  gained typed cleanup hooks so resolver/log/logger/listener contexts free
+  their previous allocations on error; the long-deprecated sniproxy-cfg helper
+  and man page were removed to avoid shipping a stale binary.
+- Tooling/Tests: ship a hardened scripts/sniproxy.service template, teach the
+  wrapper script to locate sniproxy even when @sbindir@ was not substituted,
+  add RPM/DEB builds to the release workflow, and expand the fuzz suite with
+  address/table/listener ACL/ipc harnesses that default to error-only logs.
+
 * Sat Nov 22 2025 Renaud Allard <renaud@allard.it> 0.9.10-1
 - Security: get_secure_temp_dir() now runs lstat() checks for /var/run and
   /tmp fallbacks before opening directories with O_NOFOLLOW, preventing

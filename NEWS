@@ -1,3 +1,22 @@
+sniproxy 0.9.11 (2025-11-23)
+===============================
+
+* Security: HTTP parsing now enforces a configurable `http_max_headers` guard
+  (default 100), TLS ClientHello parsing counts extensions before iterating
+  through them, and IPC crypto rejects frames via constant-time dummy decrypts
+  that use dedicated zero_tag buffers so failure timing and nonce contents stay
+  hidden.
+* Reliability: All absolute-path directives are canonicalized, the config
+  parser wires typed cleanup hooks so repeated resolver/logger/listener ACL
+  blocks free their previous allocations, resolver restart paths serialize the
+  pending list, and assertions in address/table helpers were replaced with
+  runtime guardrails to avoid crashes on malformed input.
+* Tooling/Tests: The deprecated `sniproxy-cfg` binary/man page were removed, a
+  hardened `scripts/sniproxy.service` unit and smarter wrapper script now ship
+  with the source, GitHub releases build Debian/RPM packages, and the fuzzing
+  suite gained address/table/listener ACL/ipc harnesses with quieter logging by
+  default.
+
 sniproxy 0.9.10 (2025-11-22)
 ===============================
 
