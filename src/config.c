@@ -1692,6 +1692,11 @@ accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const ch
 
 static int
 end_resolver_stanza(struct Config *config, struct ResolverConfig *resolver) {
+    free_string_vector(config->resolver.nameservers);
+    config->resolver.nameservers = NULL;
+    free_string_vector(config->resolver.search);
+    config->resolver.search = NULL;
+
     config->resolver = *resolver;
     free(resolver);
 
