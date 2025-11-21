@@ -7,6 +7,7 @@ CORPUS_ROOT=${CORPUS_ROOT:-"$ROOT_DIR/tests/fuzz/corpus"}
 FUZZ_CC=${FUZZ_CC:-clang}
 FUZZ_OPTIONAL=${FUZZ_OPTIONAL:-1}
 FUZZ_RUNTIME=${FUZZ_RUNTIME:-30}
+FUZZ_VERBOSE=${FUZZ_VERBOSE:-1}
 EXTRA_FLAGS=${FUZZ_CFLAGS:-"-O1 -g"}
 COMMON_FLAGS=("-fsanitize=fuzzer,address,undefined" "-fno-omit-frame-pointer" "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" "-DHAVE_CONFIG_H" "-DHAVE_LIBPCRE2_8" "-I$ROOT_DIR" "-I$ROOT_DIR/src")
 
@@ -72,13 +73,27 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/config" \
     "$CORPUS_ROOT/ipc_state"
 
+vlog() {
+    if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
+        printf '%s\n' "$*"
+    fi
+}
+
+run_with_optional_quiet() {
+    if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
+        "$@"
+    else
+        "$@" >/dev/null
+    fi
+}
+
 build_fuzzer() {
     local target=$1
     shift
     "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target"
 }
 
-echo "Building fuzzers..."
+vlog "Building fuzzers..."
 
 build_fuzzer ipc_msg_fuzz \
     "$ROOT_DIR/tests/fuzz/ipc_msg_fuzz.c" \
@@ -138,22 +153,22 @@ build_fuzzer tls_fuzz \
     "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
     "$ROOT_DIR/src/tls.c"
 
-echo "Fuzzers built successfully."
+vlog "Fuzzers built successfully."
 
 if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
     exit 0
 fi
 
-echo "Running fuzzers for ${FUZZ_RUNTIME}s each..."
+vlog "Running fuzzers for ${FUZZ_RUNTIME}s each..."
 
-"$OUT_DIR/ipc_msg_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_msg"
-"$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
-"$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
-"$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
-"$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
-"$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
-"$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
-"$OUT_DIR/cfg_tokenizer_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/cfg_tokenizer"
-"$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
+run_with_optional_quiet "$OUT_DIR/ipc_msg_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_msg"
+run_with_optional_quiet "$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
+run_with_optional_quiet "$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
+run_with_optional_quiet "$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
+run_with_optional_quiet "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
+run_with_optional_quiet "$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
+run_with_optional_quiet "$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
+run_with_optional_quiet "$OUT_DIR/cfg_tokenizer_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/cfg_tokenizer"
+run_with_optional_quiet "$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
 
-echo "Fuzzing complete. No crashes detected."
+vlog "Fuzzing complete. No crashes detected."

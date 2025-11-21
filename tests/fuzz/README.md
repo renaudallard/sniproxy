@@ -111,6 +111,7 @@ You can also manually trigger continuous fuzzing from the GitHub Actions tab.
 - `FUZZ_RUNTIME`: Seconds to run each fuzzer (default: `30`)
 - `FUZZ_OPTIONAL`: Skip if libFuzzer unavailable (default: `1`)
 - `RUN_FUZZ`: Run fuzzers after building (default: `1`, set to `0` to build only)
+- `FUZZ_VERBOSE`: Emit progress logs (default: `1`, set to `0` for error-only output)
 - `OUT_DIR`: Output directory for binaries (default: `tests/fuzz/bin`)
 - `CORPUS_ROOT`: Corpus directory (default: `tests/fuzz/corpus`)
 

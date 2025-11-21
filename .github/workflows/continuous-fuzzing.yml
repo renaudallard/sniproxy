@@ -62,11 +62,12 @@ jobs:
           name: fuzzer-corpus-continuous
           path: tests/fuzz/corpus/
 
-      - name: Run extended fuzzing
-        env:
-          FUZZ_OPTIONAL: 0
-          FUZZ_RUNTIME: ${{ github.event.inputs.fuzz_runtime || '3600' }}
-        run: tests/fuzz/run_fuzz.sh
+  - name: Run extended fuzzing
+    env:
+      FUZZ_OPTIONAL: 0
+      FUZZ_RUNTIME: ${{ github.event.inputs.fuzz_runtime || '3600' }}
+      FUZZ_VERBOSE: 0
+    run: tests/fuzz/run_fuzz.sh
 
       - name: Upload crash artifacts
         if: failure()

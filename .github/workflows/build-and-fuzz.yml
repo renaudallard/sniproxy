@@ -54,11 +54,12 @@ jobs:
           SKIP_BAD_REQUEST_TEST: 1
         run: make check
 
-      - name: Run fuzzers
-        env:
-          FUZZ_OPTIONAL: 0
-          FUZZ_RUNTIME: 120
-        run: tests/fuzz/run_fuzz.sh
+  - name: Run fuzzers
+    env:
+      FUZZ_OPTIONAL: 0
+      FUZZ_RUNTIME: 120
+      FUZZ_VERBOSE: 0
+    run: tests/fuzz/run_fuzz.sh
 
       - name: Upload crash artifacts
         if: failure()
