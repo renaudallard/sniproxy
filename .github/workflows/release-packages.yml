@@ -1,0 +1,133 @@
+name: Release Packages
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-deb:
+    name: Build Debian Packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential devscripts debhelper \
+            cdbs dh-autoreconf autotools-dev \
+            autoconf automake libtool pkg-config \
+            gettext libev-dev libpcre2-dev \
+            libc-ares-dev fakeroot dpkg-dev
+
+      - name: Build Debian packages
+        run: |
+          set -euo pipefail
+          dpkg-buildpackage -us -uc -b -j"$(nproc)"
+
+      - name: Collect Debian artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/deb
+          shopt -s nullglob
+          for pkg in ../*.deb; do
+            cp "$pkg" artifacts/deb/
+          done
+
+      - name: Upload Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages
+          path: artifacts/deb/
+          if-no-files-found: error
+
+  build-rpm:
+    name: Build RPM Packages
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:39
+    steps:
+      - name: Install required tooling
+        run: |
+          set -euo pipefail
+          dnf install -y \
+            git rpm-build make gcc gcc-c++ \
+            autoconf automake libtool pkgconfig \
+            gettext-devel libev-devel pcre2-devel \
+            c-ares-devel openssl-devel which tar
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare source tarball
+        run: |
+          set -euo pipefail
+          ./autogen.sh
+          ./configure
+          make dist
+          DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          RPM_TOPDIR=$(rpm --eval '%{_topdir}')
+          mkdir -p "${RPM_TOPDIR}/SOURCES" "${RPM_TOPDIR}/SPECS"
+          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
+          cp redhat/sniproxy.spec "${RPM_TOPDIR}/SPECS/"
+
+      - name: Build RPM packages
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR=$(rpm --eval '%{_topdir}')
+          rpmbuild -ba "${RPM_TOPDIR}/SPECS/sniproxy.spec"
+
+      - name: Collect RPM artifacts
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR=$(rpm --eval '%{_topdir}')
+          mkdir -p artifacts/rpm
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} artifacts/rpm/ \;
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages
+          path: artifacts/rpm/
+          if-no-files-found: error
+
+  publish:
+    name: Upload Release Assets
+    runs-on: ubuntu-latest
+    needs:
+      - build-deb
+      - build-rpm
+    steps:
+      - name: Download Debian artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-packages
+          path: release-assets/deb
+
+      - name: Download RPM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-packages
+          path: release-assets/rpm
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            release-assets/deb/*.deb
+            release-assets/rpm/*.rpm
