@@ -1,5 +1,5 @@
 bin_SCRIPTS = sniproxy
-EXTRA_DIST = sniproxy.in
+EXTRA_DIST = sniproxy.in sniproxy.service
 CLEANFILES = $(bin_SCRIPTS)
 
 sniproxy: sniproxy.in Makefile

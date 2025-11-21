@@ -1,0 +1,27 @@
+[Unit]
+Description=sniproxy TLS/HTTP proxy
+Documentation=man:sniproxy(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sniproxy
+Group=sniproxy
+Environment="SNIPROXY_CONFIG=/etc/sniproxy.conf"
+EnvironmentFile=-/etc/default/sniproxy
+ExecStart=/usr/sbin/sniproxy -f -c ${SNIPROXY_CONFIG} ${SNIPROXY_OPTS}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
