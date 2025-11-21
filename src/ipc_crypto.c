@@ -41,6 +41,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/kdf.h>
+#include <openssl/crypto.h>
 #include "ipc_crypto.h"
 
 static uint64_t host_to_be64(uint64_t host) {
@@ -161,6 +162,55 @@ secure_memzero(void *ptr, size_t len) {
     while (len-- > 0)
         *p++ = 0;
 #endif
+}
+
+static void
+ipc_crypto_mask_failure(size_t payload_len) {
+    const size_t MIN_PAD = 32;
+    const size_t MAX_PAD = 4096;
+    size_t work = payload_len;
+
+    if (work < MIN_PAD)
+        work = MIN_PAD;
+    if (work > MAX_PAD)
+        work = MAX_PAD;
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL)
+        return;
+
+    uint8_t *scratch = malloc(work);
+    if (scratch == NULL) {
+        EVP_CIPHER_CTX_free(ctx);
+        return;
+    }
+    memset(scratch, 0, work);
+
+    uint8_t zero_key[32] = {0};
+    uint8_t zero_nonce[IPC_CRYPTO_NONCE_LEN] = {0};
+    uint8_t aad[sizeof(uint32_t) * 2] = {0};
+    int len;
+
+    if (EVP_DecryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) == 1 &&
+            EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
+                IPC_CRYPTO_NONCE_LEN, NULL) == 1 &&
+            EVP_DecryptInit_ex(ctx, NULL, NULL, zero_key, zero_nonce) == 1 &&
+            EVP_DecryptUpdate(ctx, NULL, &len, aad, sizeof(aad)) == 1) {
+        size_t remaining = work;
+        while (remaining > 0) {
+            size_t chunk = remaining > (size_t)INT_MAX ? (size_t)INT_MAX : remaining;
+            if (EVP_DecryptUpdate(ctx, scratch, &len, scratch, (int)chunk) != 1)
+                break;
+            remaining -= chunk;
+        }
+        (void)EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG,
+                IPC_CRYPTO_TAG_LEN, zero_nonce);
+        (void)EVP_DecryptFinal_ex(ctx, scratch, &len);
+    }
+
+    OPENSSL_cleanse(scratch, work);
+    free(scratch);
+    EVP_CIPHER_CTX_free(ctx);
 }
 
 static void
@@ -514,8 +564,10 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     if (state == NULL || frame == NULL || plaintext == NULL || plaintext_len == NULL)
         return -1;
 
-    if (frame_len < IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN)
+    if (frame_len < IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN) {
+        ipc_crypto_mask_failure(0);
         return -1;
+    }
 
     struct __attribute__((__packed__)) ipc_frame_header {
         uint32_t magic;
@@ -525,18 +577,24 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     memcpy(&header, frame, sizeof(header));
 
-    if (ntohl(header.magic) != IPC_CRYPTO_MAGIC)
+    if (ntohl(header.magic) != IPC_CRYPTO_MAGIC) {
+        ipc_crypto_mask_failure(0);
         return -1;
+    }
 
     uint32_t payload_len = ntohl(header.length);
 
     /* Validate payload_len against maximum before allocation (defense-in-depth) */
-    if (payload_len > max_payload_len)
+    if (payload_len > max_payload_len) {
+        ipc_crypto_mask_failure(payload_len);
         return -1;
+    }
 
     size_t expected = IPC_CRYPTO_HEADER_LEN + payload_len + IPC_CRYPTO_TAG_LEN;
-    if (frame_len != expected)
+    if (frame_len != expected) {
+        ipc_crypto_mask_failure(payload_len);
         return -1;
+    }
 
     /* Extract counter from nonce to detect rekey */
     uint64_t msg_counter = extract_counter_from_nonce(header.nonce);
@@ -547,20 +605,25 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
      * the remote side has rekeyed and reset its counter. */
     if (msg_counter < state->recv_counter) {
         /* Remote side has rekeyed, we need to rekey our recv_key */
-        if (ipc_crypto_rekey_recv(state) < 0)
+        if (ipc_crypto_rekey_recv(state) < 0) {
+            ipc_crypto_mask_failure(payload_len);
             return -1;
+        }
     }
 
     const uint8_t *ciphertext = frame + IPC_CRYPTO_HEADER_LEN;
     const uint8_t *tag = frame + IPC_CRYPTO_HEADER_LEN + payload_len;
 
     uint8_t *output = malloc(payload_len > 0 ? payload_len : 1);
-    if (output == NULL)
+    if (output == NULL) {
+        ipc_crypto_mask_failure(payload_len);
         return -1;
+    }
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     if (ctx == NULL) {
         free(output);
+        ipc_crypto_mask_failure(payload_len);
         return -1;
     }
 
@@ -595,7 +658,9 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     EVP_CIPHER_CTX_free(ctx);
 
     if (!ok) {
+        OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
+        ipc_crypto_mask_failure(payload_len);
         return -1;
     }
 
