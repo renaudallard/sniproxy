@@ -13,6 +13,7 @@ with AddressSanitizer and UndefinedBehaviorSanitizer.
 | `hostname_fuzz` | src/hostname_sanitize.h | Hostname validation and sanitization |
 | `cfg_tokenizer_fuzz` | src/cfg_tokenizer.c | Configuration file tokenization |
 | `ipc_crypto_fuzz` | src/ipc_crypto.c | IPC encryption/decryption with ChaCha20-Poly1305 |
+| `ipc_msg_fuzz` | src/ipc_crypto.c | IPC message send/recv framing over Unix sockets |
 | `config_fuzz` | init_config()/config.c | Full configuration parsing/validation pipeline |
 | `ipc_state_fuzz` | ipc_crypto state machine | Exercises channel init, role swaps, sealing, and opens |
 

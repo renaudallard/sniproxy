@@ -68,6 +68,7 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/hostname" \
     "$CORPUS_ROOT/cfg_tokenizer" \
     "$CORPUS_ROOT/ipc_crypto" \
+    "$CORPUS_ROOT/ipc_msg" \
     "$CORPUS_ROOT/config" \
     "$CORPUS_ROOT/ipc_state"
 
@@ -78,6 +79,21 @@ build_fuzzer() {
 }
 
 echo "Building fuzzers..."
+
+build_fuzzer ipc_msg_fuzz \
+    "$ROOT_DIR/tests/fuzz/ipc_msg_fuzz.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    -lcrypto
+
+build_fuzzer ipc_crypto_fuzz \
+    "$ROOT_DIR/tests/fuzz/ipc_crypto_fuzz.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    -lcrypto
+
+build_fuzzer ipc_state_fuzz \
+    "$ROOT_DIR/tests/fuzz/ipc_state_fuzz.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    -lcrypto
 
 build_fuzzer config_fuzz \
     "$ROOT_DIR/tests/fuzz/config_fuzz.c" \
@@ -118,16 +134,6 @@ build_fuzzer cfg_tokenizer_fuzz \
     "$ROOT_DIR/tests/fuzz/cfg_tokenizer_fuzz.c" \
     "$ROOT_DIR/src/cfg_tokenizer.c"
 
-build_fuzzer ipc_crypto_fuzz \
-    "$ROOT_DIR/tests/fuzz/ipc_crypto_fuzz.c" \
-    "$ROOT_DIR/src/ipc_crypto.c" \
-    -lcrypto
-
-build_fuzzer ipc_state_fuzz \
-    "$ROOT_DIR/tests/fuzz/ipc_state_fuzz.c" \
-    "$ROOT_DIR/src/ipc_crypto.c" \
-    -lcrypto
-
 build_fuzzer tls_fuzz \
     "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
     "$ROOT_DIR/src/tls.c"
@@ -140,13 +146,14 @@ fi
 
 echo "Running fuzzers for ${FUZZ_RUNTIME}s each..."
 
+"$OUT_DIR/ipc_msg_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_msg"
+"$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
+"$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
 "$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
 "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
 "$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
 "$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
 "$OUT_DIR/cfg_tokenizer_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/cfg_tokenizer"
-"$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
-"$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
 "$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
 
 echo "Fuzzing complete. No crashes detected."
