@@ -67,7 +67,7 @@ jobs:
           FUZZ_OPTIONAL: 0
           FUZZ_RUNTIME: ${{ github.event.inputs.fuzz_runtime || '3600' }}
           FUZZ_VERBOSE: 0
-        run: tests/fuzz/run_fuzz.sh
+        run: tests/fuzz/run_fuzz.sh >/dev/null
 
       - name: Upload crash artifacts
         if: failure()
