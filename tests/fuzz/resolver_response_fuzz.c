@@ -154,7 +154,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             (flags >> 1) & 0x1,
             (flags >> 2) & 0x1,
             (flags >> 3) & 0x1);
-    query->id = data[3];
+    resolver_fuzz_query_set_id(query, data[3]);
 
     size_t offset = 4;
     struct ares_addrinfo *result = calloc(1, sizeof(*result));

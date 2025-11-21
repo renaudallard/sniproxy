@@ -342,6 +342,13 @@ resolver_fuzz_query_create(void) {
 }
 
 void
+resolver_fuzz_query_set_id(struct ResolverChildQuery *query, uint32_t id) {
+    if (query == NULL)
+        return;
+    query->id = id;
+}
+
+void
 resolver_fuzz_query_configure(struct ResolverChildQuery *query,
         int cancelled, int pending_v4, int pending_v6, int callback_completed) {
     if (query == NULL)

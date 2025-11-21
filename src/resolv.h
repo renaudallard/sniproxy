@@ -28,6 +28,8 @@
 
 #include "address.h"
 
+struct ev_loop;
+
 struct ResolvQuery;
 
 int resolv_init(struct ev_loop *, char **, char **, int, int);

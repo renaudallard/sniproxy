@@ -6,6 +6,7 @@
 #define RESOLVER_FUZZ_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <ares_dns.h>
 
 struct ResolverChildQuery;
@@ -18,5 +19,6 @@ void resolver_fuzz_query_free(struct ResolverChildQuery *query);
 size_t resolver_fuzz_query_response_count(const struct ResolverChildQuery *query);
 void resolver_fuzz_handle_addrinfo(struct ResolverChildQuery *query,
         int status, struct ares_addrinfo *result, int family);
+void resolver_fuzz_query_set_id(struct ResolverChildQuery *query, uint32_t id);
 
 #endif /* RESOLVER_FUZZ_H */
