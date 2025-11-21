@@ -1,6 +1,1 @@
-bin_SCRIPTS = sniproxy
-EXTRA_DIST = sniproxy.in sniproxy.service
-CLEANFILES = $(bin_SCRIPTS)
-
-sniproxy: sniproxy.in Makefile
-	$(AM_V_GEN)sed -e 's|@sbindir@|$(sbindir)|g' $(srcdir)/sniproxy.in > $@ && chmod +x $@
+EXTRA_DIST = sniproxy.service

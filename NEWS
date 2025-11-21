@@ -12,10 +12,10 @@ sniproxy 0.9.11 (2025-11-23)
   pending list, and assertions in address/table helpers were replaced with
   runtime guardrails to avoid crashes on malformed input.
 * Tooling/Tests: The deprecated `sniproxy-cfg` binary/man page were removed, a
-  hardened `scripts/sniproxy.service` unit and smarter wrapper script now ship
-  with the source, GitHub releases build Debian/RPM packages, and the fuzzing
-  suite gained address/table/listener ACL/ipc harnesses with quieter logging by
-  default.
+  hardened `scripts/sniproxy.service` unit now ships while the wrapper script
+  is gone so the daemon only installs under sbin, GitHub releases build
+  Debian/RPM packages, and the fuzzing suite gained address/table/listener
+  ACL/ipc harnesses with quieter logging by default.
 
 sniproxy 0.9.10 (2025-11-22)
 ===============================

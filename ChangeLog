@@ -11,10 +11,11 @@
 	  blocks release previous allocations, address/table helpers and resolver
 	  restart queues were hardened with runtime checks, and the
 	  long-deprecated sniproxy-cfg helper plus its man page were removed.
-	- Tooling/Tests: Ship a hardened scripts/sniproxy.service unit along with a
-	  wrapper that tolerates missing @sbindir@ substitution, extend GitHub
-	  releases to build RPM/DEB artifacts, and grow the fuzzing suite with new
-	  address/table/listener ACL/ipc harnesses that default to error-only logs.
+	- Tooling/Tests: Ship a hardened scripts/sniproxy.service unit, drop the
+	  wrapper shim so only the real sniproxy binary installs under sbin on every
+	  platform, extend GitHub releases to build RPM/DEB artifacts, and grow the
+	  fuzzing suite with new address/table/listener ACL/ipc harnesses that
+	  default to error-only logs.
 
 2025-11-22  Renaud Allard  <renaud@allard.it>
 

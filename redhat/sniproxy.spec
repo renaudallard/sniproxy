@@ -39,7 +39,6 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %{_sbindir}/sniproxy
-%{_bindir}/sniproxy
 %doc
 %{_mandir}/man8/sniproxy.8.gz
 %{_mandir}/man5/sniproxy.conf.5.gz
@@ -56,9 +55,9 @@ rm -rf $RPM_BUILD_ROOT
   gained typed cleanup hooks so resolver/log/logger/listener contexts free
   their previous allocations on error; the long-deprecated sniproxy-cfg helper
   and man page were removed to avoid shipping a stale binary.
-- Tooling/Tests: ship a hardened scripts/sniproxy.service template, teach the
-  wrapper script to locate sniproxy even when @sbindir@ was not substituted,
-  add RPM/DEB builds to the release workflow, and expand the fuzz suite with
+- Tooling/Tests: ship a hardened scripts/sniproxy.service template, drop the
+  sniproxy wrapper so only %{_sbindir}/sniproxy is installed everywhere, add
+  RPM/DEB builds to the release workflow, and expand the fuzz suite with
   address/table/listener ACL/ipc harnesses that default to error-only logs,
   while dropping the unused perl BuildRequires so rpmbuild no longer depends
   on perl just to assemble the package.
