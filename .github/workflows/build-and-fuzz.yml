@@ -59,7 +59,12 @@ jobs:
           FUZZ_OPTIONAL: 0
           FUZZ_RUNTIME: 120
           FUZZ_VERBOSE: 0
-        run: tests/fuzz/run_fuzz.sh >/dev/null
+        run: |
+          set -euo pipefail
+          if ! tests/fuzz/run_fuzz.sh >fuzz.log 2>&1; then
+            cat fuzz.log >&2
+            exit 1
+          fi
 
       - name: Upload crash artifacts
         if: failure()

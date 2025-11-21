@@ -11,10 +11,6 @@ FUZZ_VERBOSE=${FUZZ_VERBOSE:-1}
 EXTRA_FLAGS=${FUZZ_CFLAGS:-"-O1 -g"}
 COMMON_FLAGS=("-fsanitize=fuzzer,address,undefined" "-fno-omit-frame-pointer" "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" "-DHAVE_CONFIG_H" "-DHAVE_LIBPCRE2_8" "-I$ROOT_DIR" "-I$ROOT_DIR/src")
 
-if [[ "${FUZZ_VERBOSE}" -eq 0 ]]; then
-    exec >/dev/null
-fi
-
 if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libpcre2-8; then
     : "${PCRE2_CFLAGS:=$(pkg-config --cflags libpcre2-8)}"
     : "${PCRE2_LIBS:=$(pkg-config --libs libpcre2-8)}"
