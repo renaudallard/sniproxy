@@ -39,6 +39,7 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %{_sbindir}/sniproxy
+%{_bindir}/sniproxy
 %doc
 %{_mandir}/man8/sniproxy.8.gz
 %{_mandir}/man5/sniproxy.conf.5.gz
