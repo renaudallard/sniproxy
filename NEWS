@@ -1,3 +1,16 @@
+sniproxy 0.9.12 (2025-11-24)
+===============================
+
+* Packaging: rpmbuild now preserves distribution `%{optflags}` while appending
+  the libev include path, drops the unused perl dependency, ships the missing
+  `hostname_sanitize.h` in release tarballs, and the release-packages workflow
+  can be triggered manually to build RPM/DEB artifacts on demand.
+* Installation: Remove the `sniproxy` wrapper so only the real daemon is
+  installed under sbin, avoiding duplicate or stale binaries on PATH.
+* Tests: Added a resolver response fuzz harness with fuzz-only resolver helpers,
+  expanded the libev stub to cover timers/signals/loop lifecycle, and fixed a
+  resolver fuzz leak to keep fuzz runs stable.
+
 sniproxy 0.9.11 (2025-11-23)
 ===============================
 

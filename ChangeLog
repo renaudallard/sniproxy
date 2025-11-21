@@ -1,3 +1,17 @@
+2025-11-24  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.12
+	- Build/Packaging: rpmbuild now preserves %{optflags} while appending the
+	  libev include path, drops the unused perl BuildRequires, ships the missing
+	  hostname_sanitize.h in release tarballs, and allows the release-packages
+	  workflow to be triggered manually for RPM/DEB artifacts.
+	- Installation: removed the sniproxy wrapper entirely so only the real
+	  daemon installs under sbin, avoiding duplicate or stale binaries.
+	- Tests/Fuzzing: added a resolver response fuzz harness with fuzz-only
+	  resolver helpers, broadened the libev stub to cover timers/signals/loop
+	  lifecycle, and fixed a leak in the resolver fuzz harness to keep fuzz runs
+	  stable.
+
 2025-11-23  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.11

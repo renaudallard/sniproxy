@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.11
+Version: 0.9.12
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -46,6 +46,17 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Mon Nov 24 2025 Renaud Allard <renaud@allard.it> 0.9.12-1
+- Build: rpmbuild now preserves %{optflags} while appending the libev include
+  path, drops the unused perl BuildRequires, and the release-packages workflow
+  can be run manually to generate RPM/DEB artifacts on demand.
+- Packaging: distribution tarballs ship the missing hostname_sanitize.h so
+  builds from released archives no longer fail, and the %{_bindir}/sniproxy
+  wrapper is removed so only the real daemon is installed.
+- Tests: Added a resolver response fuzz harness, exposed fuzz-only resolver
+  helpers, expanded the libev stub to cover timers/signals/loop lifecycle, and
+  fixed a leak in the resolver fuzz harness to keep fuzz runs stable.
+
 * Sun Nov 23 2025 Renaud Allard <renaud@allard.it> 0.9.11-1
 - Security: HTTP parsing now enforces a configurable http_max_headers limit,
   TLS ClientHello parsing bounds extension counts up front, and ipc_crypto

@@ -1,3 +1,17 @@
+sniproxy (0.9.12) unstable; urgency=medium
+
+  * Packaging: rpmbuild now keeps distribution %{optflags} while still adding
+    the libev include path, drops the unused perl Build-Depends from the spec,
+    and the release-packages workflow can be triggered manually to build RPM/DEB
+    artifacts on demand.
+  * Distribution: Ship the missing hostname_sanitize.h in release tarballs and
+    remove the sniproxy wrapper so only /usr/sbin/sniproxy is installed.
+  * Testing: Add a resolver response fuzz harness with exported fuzz-only
+    helpers, expand the libev stub to cover timers/signals/loop lifecycle, and
+    plug a leak in the resolver fuzz harness for stable fuzz runs.
+
+ -- Renaud Allard <renaud@allard.it>  Mon, 24 Nov 2025 00:00:00 +0000
+
 sniproxy (0.9.11) unstable; urgency=medium
 
   * Security: Add the http_max_headers directive (default 100) so HTTP
