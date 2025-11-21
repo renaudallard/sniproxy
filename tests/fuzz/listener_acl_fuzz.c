@@ -1,12 +1,41 @@
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include "protocol.h"
 #include "listener.h"
 
 struct Logger;
+
+static int stub_protocol_parse_cb(const char *buf __attribute__((unused)),
+        size_t len __attribute__((unused)),
+        char **host __attribute__((unused))) {
+    return -1;
+}
+
+static const char http_abort_message[] = "http abort";
+static const struct Protocol http_protocol_impl = {
+    .name = "http",
+    .default_port = 80,
+    .parse_packet = stub_protocol_parse_cb,
+    .abort_message = http_abort_message,
+    .abort_message_len = sizeof(http_abort_message) - 1,
+};
+
+static const char tls_abort_message[] = "tls abort";
+static const struct Protocol tls_protocol_impl = {
+    .name = "tls",
+    .default_port = 443,
+    .parse_packet = stub_protocol_parse_cb,
+    .abort_message = tls_abort_message,
+    .abort_message_len = sizeof(tls_abort_message) - 1,
+};
+
+const struct Protocol *const http_protocol = &http_protocol_impl;
+const struct Protocol *const tls_protocol = &tls_protocol_impl;
 
 static void swallow_log(const char *fmt __attribute__((unused)),
         va_list ap __attribute__((unused))) {}
@@ -57,6 +86,21 @@ void debug(const char *fmt, ...) {
 void log_msg(struct Logger *logger __attribute__((unused)),
         int priority __attribute__((unused)),
         const char *fmt __attribute__((unused)), ...) {}
+
+struct Logger *
+logger_ref_get(struct Logger *logger) {
+    return logger;
+}
+
+void
+logger_ref_put(struct Logger *logger __attribute__((unused))) {}
+
+int
+bind_socket(const struct sockaddr *addr __attribute__((unused)),
+        size_t len __attribute__((unused))) {
+    errno = EACCES;
+    return -1;
+}
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
