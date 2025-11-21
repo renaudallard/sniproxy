@@ -9,7 +9,7 @@ URL: https://github.com/dlundquist/sniproxy
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires: autoconf, automake, curl, libev-devel, pcre2-devel, perl, gettext-devel, c-ares-devel
+BuildRequires: autoconf, automake, curl, libev-devel, pcre2-devel, gettext-devel, c-ares-devel
 
 %description
 Proxies incoming HTTP and TLS connections based on the hostname contained in
@@ -58,7 +58,9 @@ rm -rf $RPM_BUILD_ROOT
 - Tooling/Tests: ship a hardened scripts/sniproxy.service template, teach the
   wrapper script to locate sniproxy even when @sbindir@ was not substituted,
   add RPM/DEB builds to the release workflow, and expand the fuzz suite with
-  address/table/listener ACL/ipc harnesses that default to error-only logs.
+  address/table/listener ACL/ipc harnesses that default to error-only logs,
+  while dropping the unused perl BuildRequires so rpmbuild no longer depends
+  on perl just to assemble the package.
 
 * Sat Nov 22 2025 Renaud Allard <renaud@allard.it> 0.9.10-1
 - Security: get_secure_temp_dir() now runs lstat() checks for /var/run and
