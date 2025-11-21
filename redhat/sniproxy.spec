@@ -139,7 +139,7 @@ rm -rf $RPM_BUILD_ROOT
 * Sun Nov 9 2025 Renaud Allard <renaud@allard.it> 0.9.1-1
 - Prepare 0.9.1 release
 
-* Fri Nov 8 2025 Renaud Allard <renaud@allard.it> 0.9.0-1
+* Sat Nov 8 2025 Renaud Allard <renaud@allard.it> 0.9.0-1
 - Major performance and security release
 - Security: DNS query IDs use PRNG (xorshift32) instead of linear counter
 - Security: c-ares resolver hardening (async-signal-safe, integer overflow protection)
@@ -155,7 +155,7 @@ rm -rf $RPM_BUILD_ROOT
 * Thu Sep 4 2025 Renaud Allard <renaud@allard.it> 0.8.6-1
 - Prepare 0.8.6 release
 
-* Thu Sep 4 2024 Dustin Lundquist <dustin@null-ptr.net> 0.7.0-1
+* Wed Sep 4 2024 Dustin Lundquist <dustin@null-ptr.net> 0.7.0-1
 - Deprecate project
 - Cleanup autoconf
 - Require autoconf 2.71
