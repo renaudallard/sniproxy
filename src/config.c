@@ -1236,12 +1236,6 @@ end_listener_stanza(struct Config *config, struct Listener *listener) {
     if (valid_listener(listener) <= 0) {
         err("Invalid listener");
         print_listener_config(stderr, listener);
-
-        /* free listener */
-        listener_ref_get(listener);
-        assert(listener->reference_count == 1);
-        listener_ref_put(listener);
-
         return -1;
     }
 
@@ -1255,11 +1249,6 @@ end_table_stanza(struct Config *config, struct Table *table) {
     if (valid_table(table) <= 0) {
         err("Invalid table");
         print_table_config(stderr, table);
-
-        table_ref_get(table);
-        assert(table->reference_count == 1);
-        table_ref_put(table);
-
         return -1;
     }
 
@@ -1274,7 +1263,6 @@ end_backend(struct Table *table, struct Backend *backend) {
 
     if (!valid_backend(backend)) {
         err("Invalid backend in table \"%s\"", table_name);
-        free_backend(backend);
         return -1;
     }
 
