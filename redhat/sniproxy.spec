@@ -23,7 +23,7 @@ proxy machine.
 
 
 %build
-%configure CFLAGS="-I/usr/include/libev"
+%configure CFLAGS="%{optflags} -I/usr/include/libev"
 make %{?_smp_mflags}
 
 
