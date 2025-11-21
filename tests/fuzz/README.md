@@ -16,6 +16,7 @@ with AddressSanitizer and UndefinedBehaviorSanitizer.
 | `ipc_crypto_fuzz` | src/ipc_crypto.c | IPC encryption/decryption with ChaCha20-Poly1305 |
 | `table_lookup_fuzz` | src/table.c | Backend table matching and regex routing |
 | `listener_acl_fuzz` | src/listener.c | Listener ACL CIDR evaluation |
+| `resolver_response_fuzz` | src/resolv.c | DNS resolver address handling / edge-case responses |
 | `ipc_msg_fuzz` | src/ipc_crypto.c | IPC message send/recv framing over Unix sockets |
 | `config_fuzz` | init_config()/config.c | Full configuration parsing/validation pipeline |
 | `ipc_state_fuzz` | ipc_crypto state machine | Exercises channel init, role swaps, sealing, and opens |

@@ -74,7 +74,8 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/table_lookup" \
     "$CORPUS_ROOT/listener_acl" \
     "$CORPUS_ROOT/config" \
-    "$CORPUS_ROOT/ipc_state"
+    "$CORPUS_ROOT/ipc_state" \
+    "$CORPUS_ROOT/resolver_response"
 
 vlog() {
     if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
@@ -135,6 +136,14 @@ build_fuzzer listener_acl_fuzz \
     "$ROOT_DIR/src/table.c" \
     -I"$ROOT_DIR/tests/include"
 
+build_fuzzer resolver_response_fuzz \
+    "$ROOT_DIR/tests/fuzz/resolver_response_fuzz.c" \
+    "$ROOT_DIR/src/address.c" \
+    "$ROOT_DIR/src/ipc_crypto.c" \
+    "$ROOT_DIR/src/resolv.c" \
+    -I"$ROOT_DIR/tests/include" \
+    -lev -lssl -lcrypto -lcares
+
 build_fuzzer config_fuzz \
     "$ROOT_DIR/tests/fuzz/config_fuzz.c" \
     "$ROOT_DIR/src/binder.c" \
@@ -192,6 +201,7 @@ run_with_optional_quiet "$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME 
 run_with_optional_quiet "$OUT_DIR/address_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/address"
 run_with_optional_quiet "$OUT_DIR/table_lookup_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/table_lookup"
 run_with_optional_quiet "$OUT_DIR/listener_acl_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/listener_acl"
+run_with_optional_quiet "$OUT_DIR/resolver_response_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/resolver_response"
 run_with_optional_quiet "$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
 run_with_optional_quiet "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
 run_with_optional_quiet "$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"

@@ -1,5 +1,5 @@
-SNI Proxy
-=========
+Hardened SNI Proxy
+==================
 
 Proxies incoming HTTP and TLS connections based on the hostname contained in
 the initial request of the TCP session. This enables HTTPS name-based virtual

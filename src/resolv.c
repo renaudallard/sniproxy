@@ -57,6 +57,9 @@
 #ifdef HAVE_RESOLV_H
 #include <resolv.h>
 #endif
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#include "tests/include/resolver_fuzz.h"
+#endif
 #ifndef ARES_GETSOCK_MAXNUM
 #define ARES_GETSOCK_MAXNUM 16
 #endif
@@ -331,6 +334,68 @@ struct ResolverChildQuery {
     struct Address *best_address;
     struct ResolverChildQuery *next;
 };
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+struct ResolverChildQuery *
+resolver_fuzz_query_create(void) {
+    return calloc(1, sizeof(struct ResolverChildQuery));
+}
+
+void
+resolver_fuzz_query_configure(struct ResolverChildQuery *query,
+        int cancelled, int pending_v4, int pending_v6, int callback_completed) {
+    if (query == NULL)
+        return;
+
+    query->cancelled = cancelled ? 1 : 0;
+    query->pending_v4 = pending_v4;
+    query->pending_v6 = pending_v6;
+    query->callback_completed = callback_completed ? 1 : 0;
+}
+
+void
+resolver_fuzz_query_reset(struct ResolverChildQuery *query) {
+    if (query == NULL)
+        return;
+
+    if (query->responses != NULL) {
+        for (size_t i = 0; i < query->response_count; i++) {
+            free(query->responses[i]);
+        }
+        free(query->responses);
+    }
+
+    query->responses = NULL;
+    query->response_count = 0;
+    query->ipv4_response_count = 0;
+    query->ipv6_response_count = 0;
+    query->best_address = NULL;
+}
+
+void
+resolver_fuzz_query_free(struct ResolverChildQuery *query) {
+    if (query == NULL)
+        return;
+
+    resolver_fuzz_query_reset(query);
+    if (query->hostname != NULL) {
+        free(query->hostname);
+        query->hostname = NULL;
+    }
+    free(query);
+}
+
+size_t
+resolver_fuzz_query_response_count(const struct ResolverChildQuery *query) {
+    return query != NULL ? query->response_count : 0;
+}
+
+void
+resolver_fuzz_handle_addrinfo(struct ResolverChildQuery *query,
+        int status, struct ares_addrinfo *result, int family) {
+    resolver_child_handle_addrinfo(query, status, result, family);
+}
+#endif /* FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
 
 int
 resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_mode) {
