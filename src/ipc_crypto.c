@@ -188,6 +188,7 @@ ipc_crypto_mask_failure(size_t payload_len) {
 
     uint8_t zero_key[32] = {0};
     uint8_t zero_nonce[IPC_CRYPTO_NONCE_LEN] = {0};
+    uint8_t zero_tag[IPC_CRYPTO_TAG_LEN] = {0};
     uint8_t aad[sizeof(uint32_t) * 2] = {0};
     int len;
 
@@ -204,7 +205,7 @@ ipc_crypto_mask_failure(size_t payload_len) {
             remaining -= chunk;
         }
         (void)EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG,
-                IPC_CRYPTO_TAG_LEN, zero_nonce);
+                IPC_CRYPTO_TAG_LEN, zero_tag);
         (void)EVP_DecryptFinal_ex(ctx, scratch, &len);
     }
 
