@@ -143,8 +143,10 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
             case TOKEN_EOL:
                 if (keyword && sub_context && keyword->finalize) {
                     result = keyword->finalize(context, sub_context);
-                    if (result <= 0)
+                    if (result <= 0) {
+                        cleanup_keyword_context(keyword, context, sub_context);
                         return result;
+                    }
                 }
 
                 keyword = NULL;
@@ -154,8 +156,10 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
             case TOKEN_CBRACE:
                 if (keyword && sub_context && keyword->finalize) {
                     result = keyword->finalize(context, sub_context);
-                    if (result <= 0)
+                    if (result <= 0) {
+                        cleanup_keyword_context(keyword, context, sub_context);
                         return result;
+                    }
                 }
                 return 1;
             case TOKEN_END:
