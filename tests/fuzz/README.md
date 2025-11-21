@@ -12,7 +12,10 @@ with AddressSanitizer and UndefinedBehaviorSanitizer.
 | `http_fuzz` | src/http.c | HTTP/1.x request parsing and Host header extraction |
 | `hostname_fuzz` | src/hostname_sanitize.h | Hostname validation and sanitization |
 | `cfg_tokenizer_fuzz` | src/cfg_tokenizer.c | Configuration file tokenization |
+| `address_fuzz` | src/address.c | Address parsing/formatting logic |
 | `ipc_crypto_fuzz` | src/ipc_crypto.c | IPC encryption/decryption with ChaCha20-Poly1305 |
+| `table_lookup_fuzz` | src/table.c | Backend table matching and regex routing |
+| `listener_acl_fuzz` | src/listener.c | Listener ACL CIDR evaluation |
 | `ipc_msg_fuzz` | src/ipc_crypto.c | IPC message send/recv framing over Unix sockets |
 | `config_fuzz` | init_config()/config.c | Full configuration parsing/validation pipeline |
 | `ipc_state_fuzz` | ipc_crypto state machine | Exercises channel init, role swaps, sealing, and opens |

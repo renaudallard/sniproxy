@@ -70,6 +70,9 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/cfg_tokenizer" \
     "$CORPUS_ROOT/ipc_crypto" \
     "$CORPUS_ROOT/ipc_msg" \
+    "$CORPUS_ROOT/address" \
+    "$CORPUS_ROOT/table_lookup" \
+    "$CORPUS_ROOT/listener_acl" \
     "$CORPUS_ROOT/config" \
     "$CORPUS_ROOT/ipc_state"
 
@@ -113,6 +116,23 @@ build_fuzzer ipc_state_fuzz \
     "$ROOT_DIR/tests/fuzz/ipc_state_fuzz.c" \
     "$ROOT_DIR/src/ipc_crypto.c" \
     -lcrypto
+
+build_fuzzer address_fuzz \
+    "$ROOT_DIR/tests/fuzz/address_fuzz.c" \
+    "$ROOT_DIR/src/address.c"
+
+build_fuzzer table_lookup_fuzz \
+    "$ROOT_DIR/tests/fuzz/table_lookup_fuzz.c" \
+    "$ROOT_DIR/src/address.c" \
+    "$ROOT_DIR/src/backend.c" \
+    "$ROOT_DIR/src/table.c"
+
+build_fuzzer listener_acl_fuzz \
+    "$ROOT_DIR/tests/fuzz/listener_acl_fuzz.c" \
+    "$ROOT_DIR/src/listener.c" \
+    "$ROOT_DIR/src/address.c" \
+    "$ROOT_DIR/src/backend.c" \
+    "$ROOT_DIR/src/table.c"
 
 build_fuzzer config_fuzz \
     "$ROOT_DIR/tests/fuzz/config_fuzz.c" \
@@ -168,6 +188,9 @@ vlog "Running fuzzers for ${FUZZ_RUNTIME}s each..."
 run_with_optional_quiet "$OUT_DIR/ipc_msg_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_msg"
 run_with_optional_quiet "$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
 run_with_optional_quiet "$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
+run_with_optional_quiet "$OUT_DIR/address_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/address"
+run_with_optional_quiet "$OUT_DIR/table_lookup_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/table_lookup"
+run_with_optional_quiet "$OUT_DIR/listener_acl_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/listener_acl"
 run_with_optional_quiet "$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
 run_with_optional_quiet "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
 run_with_optional_quiet "$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
