@@ -900,21 +900,20 @@ static int
 end_listener_acl_value(struct ListenerACLBuilder *builder, struct ListenerACLRuleValue *entry) {
     int result = 0;
 
-    if (builder == NULL || entry == NULL) {
-        free(entry);
+    if (builder == NULL || entry == NULL)
         return 0;
-    }
 
     if (entry->value == NULL) {
         err("ACL entry must specify an address or network");
-        free(entry);
         return 0;
     }
 
     result = accept_listener_acl_cidr(builder, entry->value);
 
-    free(entry->value);
-    free(entry);
+    if (result > 0) {
+        free(entry->value);
+        free(entry);
+    }
 
     return result;
 }
@@ -963,15 +962,12 @@ accept_listener_acl_cidr(struct ListenerACLBuilder *builder, const char *value) 
 
 static int
 end_listener_acl_stanza(struct Listener *listener, struct ListenerACLBuilder *builder) {
-    if (listener == NULL || builder == NULL) {
-        free_listener_acl_builder(builder);
+    if (listener == NULL || builder == NULL)
         return 0;
-    }
 
     if (listener->acl_mode != LISTENER_ACL_MODE_DISABLED ||
             !SLIST_EMPTY(&listener->acl_rules)) {
         err("Duplicate ACL definition for listener");
-        free_listener_acl_builder(builder);
         return 0;
     }
 
@@ -1368,19 +1364,13 @@ end_error_logger_stanza(struct Config *config __attribute__ ((unused)), struct L
     else
         err("Logger can not be both file logger and syslog logger");
 
-    if (logger == NULL) {
-        free((char *)lb->filename);
-        free((char *)lb->syslog_facility);
-        free(lb);
+    if (logger == NULL)
         return -1;
-    }
 
     set_logger_priority(logger, lb->priority);
     set_default_logger(logger);
 
-    free((char *)lb->filename);
-    free((char *)lb->syslog_facility);
-    free(lb);
+    cleanup_logger_builder(lb);
     return 1;
 }
 
@@ -1395,20 +1385,14 @@ end_global_access_logger_stanza(struct Config *config, struct LoggerBuilder *lb)
     else
         err("Logger can not be both file logger and syslog logger");
 
-    if (logger == NULL) {
-        free((char *)lb->filename);
-        free((char *)lb->syslog_facility);
-        free(lb);
+    if (logger == NULL)
         return -1;
-    }
 
     set_logger_priority(logger, lb->priority);
     logger_ref_put(config->access_log);
     config->access_log = logger_ref_get(logger);
 
-    free((char *)lb->filename);
-    free((char *)lb->syslog_facility);
-    free(lb);
+    cleanup_logger_builder(lb);
     return 1;
 }
 
@@ -1423,20 +1407,14 @@ end_listener_access_logger_stanza(struct Listener *listener, struct LoggerBuilde
     else
         err("Logger can not be both file logger and syslog logger");
 
-    if (logger == NULL) {
-        free((char *)lb->filename);
-        free((char *)lb->syslog_facility);
-        free(lb);
+    if (logger == NULL)
         return -1;
-    }
 
     set_logger_priority(logger, lb->priority);
     logger_ref_put(listener->access_log);
     listener->access_log = logger_ref_get(logger);
 
-    free((char *)lb->filename);
-    free((char *)lb->syslog_facility);
-    free(lb);
+    cleanup_logger_builder(lb);
     return 1;
 }
 
