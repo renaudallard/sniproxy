@@ -122,7 +122,11 @@ build_nodes(const uint8_t *data, size_t size, size_t *offset) {
         }
 
         node->ai_family = node_family;
-        node->ai_addr = (ctrl & 0x8u) ? NULL : addr;
+        if ((ctrl & 0x8u) != 0 && addr != NULL) {
+            free(addr);
+            addr = NULL;
+        }
+        node->ai_addr = addr;
         node->ai_addrlen = (ctrl & 0x4u) ? (socklen_t)(addr_len / 2) : addr_len;
 
         if (head == NULL)
