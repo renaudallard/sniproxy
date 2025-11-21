@@ -19,6 +19,7 @@ permissions:
 
 env:
   DEBIAN_FRONTEND: noninteractive
+  RPMBUILD_TOPDIR: /tmp/rpmbuild
 
 jobs:
   build-deb:
@@ -91,21 +92,27 @@ jobs:
           ./configure
           make dist
           DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
-          RPM_TOPDIR=$(rpm --eval '%{_topdir}')
-          mkdir -p "${RPM_TOPDIR}/SOURCES" "${RPM_TOPDIR}/SPECS"
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-$(rpm --eval '%{_topdir}')}"
+          rm -rf "${RPM_TOPDIR}"
+          mkdir -p "${RPM_TOPDIR}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
           cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
           cp redhat/sniproxy.spec "${RPM_TOPDIR}/SPECS/"
+          printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
 
       - name: Build RPM packages
         run: |
           set -euo pipefail
-          RPM_TOPDIR=$(rpm --eval '%{_topdir}')
-          rpmbuild -ba "${RPM_TOPDIR}/SPECS/sniproxy.spec"
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          if ! rpmbuild --define "_topdir ${RPM_TOPDIR}" -ba "${RPM_TOPDIR}/SPECS/sniproxy.spec"; then
+            echo "rpmbuild failed, dumping config.log files:" >&2
+            find "${RPM_TOPDIR}/BUILD" -name config.log -print -exec cat {} \; || true
+            exit 1
+          fi
 
       - name: Collect RPM artifacts
         run: |
           set -euo pipefail
-          RPM_TOPDIR=$(rpm --eval '%{_topdir}')
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
           mkdir -p artifacts/rpm
           find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} artifacts/rpm/ \;
 
