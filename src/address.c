@@ -132,7 +132,7 @@ new_address(const char *hostname_or_ip) {
             unsigned long port_num = strtoul(port + 1, NULL, 10);
 
             if (len < sizeof(ip_buf) && errno == 0 && port_num <= UINT16_MAX) {
-                strncpy(ip_buf, input, len);
+                memcpy(ip_buf, input, len);
                 ip_buf[len] = '\0';
                 input = ip_buf;
                 parsed_port = (uint16_t)port_num;
