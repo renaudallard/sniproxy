@@ -1007,7 +1007,10 @@ listener_ref_put(struct Listener *listener) {
     if (listener == NULL)
         return;
 
-    assert(listener->reference_count > 0);
+    if (listener->reference_count == 0) {
+        err("%s: reference_count underflow", __func__);
+        return;
+    }
     listener->reference_count--;
     if (listener->reference_count == 0)
         free_listener(listener);
