@@ -45,6 +45,7 @@
 #define TLS_HANDSHAKE_TYPE_CLIENT_HELLO 0x01
 #define CLIENT_HELLO_VERSION_RANDOM_LEN 34
 #define TLS_MAX_EXTENSIONS 64
+#define TLS_MAX_EXTENSION_LENGTH 4096
 
 #ifndef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -265,7 +266,10 @@ parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
             return -5;
         }
         size_t ext_len = ((size_t)data[probe + 2] << 8) + (size_t)data[probe + 3];
-        if (probe + 4 + ext_len > data_len)
+        if (ext_len > data_len - probe - 4)
+            return -5;
+        /* Cap individual extension length to avoid pathological scanning */
+        if (ext_len > TLS_MAX_EXTENSION_LENGTH)
             return -5;
         probe += 4 + ext_len;
     }
