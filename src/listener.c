@@ -649,6 +649,8 @@ valid_listener(const struct Listener *listener) {
 static int
 init_listener(struct Listener *listener, const struct Table_head *tables,
         struct ev_loop *loop) {
+    int sockfd = -1;
+    int rc = -1;
     char address[ADDRESS_BUFFER_SIZE];
     struct Table *table = table_lookup(tables, listener->table_name);
     if (table == NULL) {
@@ -672,16 +674,17 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;
 #endif
-    int sockfd = socket(address_sa(listener->address)->sa_family, socket_type, 0);
+    sockfd = socket(address_sa(listener->address)->sa_family, socket_type, 0);
     if (sockfd < 0) {
         err("socket failed: %s", strerror(errno));
-        return sockfd;
+        rc = sockfd;
+        goto error;
     }
 
     if (set_cloexec(sockfd) < 0) {
         err("failed to set close-on-exec on listener socket: %s", strerror(errno));
-        close(sockfd);
-        return -1;
+        rc = -1;
+        goto error;
     }
 
     /* set SO_REUSEADDR on server socket to facilitate restart */
@@ -689,8 +692,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
     int result = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
     if (result < 0) {
         err("setsockopt SO_REUSEADDR failed: %s", strerror(errno));
-        close(sockfd);
-        return result;
+        rc = result;
+        goto error;
     }
 
     /* set SO_KEEPALIVE on the server socket so that abandoned client connections
@@ -698,8 +701,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
     result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
     if (result < 0) {
         err("setsockopt SO_KEEPALIVE failed: %s", strerror(errno));
-        close(sockfd);
-        return result;
+        rc = result;
+        goto error;
     }
 
     if (listener->reuseport == 1) {
@@ -712,8 +715,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 #endif
         if (result < 0) {
             err("setsockopt SO_REUSEPORT failed: %s", strerror(errno));
-            close(sockfd);
-            return result;
+            rc = result;
+            goto error;
         }
     }
 
@@ -728,8 +731,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 #endif
         if (result < 0) {
             err("setsockopt IPV6_V6ONLY failed: %s", strerror(errno));
-            close(sockfd);
-            return result;
+            rc = result;
+            goto error;
         }
     }
 
@@ -743,27 +746,28 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         if (sockfd < 0) {
             err("binder failed to bind to %s",
                 display_address(listener->address, address, sizeof(address)));
-            return sockfd;
+            rc = sockfd;
+            goto error;
         }
 
         if (set_cloexec(sockfd) < 0) {
             err("failed to set close-on-exec on bound listener socket: %s", strerror(errno));
-            close(sockfd);
-            return -1;
+            rc = -1;
+            goto error;
         }
     } else if (result < 0) {
         err("bind %s failed: %s",
             display_address(listener->address, address, sizeof(address)),
             strerror(errno));
-        close(sockfd);
-        return result;
+        rc = result;
+        goto error;
     }
 
     result = listen(sockfd, SOMAXCONN);
     if (result < 0) {
         err("listen failed: %s", strerror(errno));
-        close(sockfd);
-        return result;
+        rc = result;
+        goto error;
     }
 
 #ifndef HAVE_ACCEPT4
@@ -778,6 +782,15 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
     ev_io_start(loop, &listener->watcher);
 
     return sockfd;
+
+error:
+    if (sockfd >= 0)
+        close(sockfd);
+    if (listener->table != NULL) {
+        table_ref_put(listener->table);
+        listener->table = NULL;
+    }
+    return rc;
 }
 
 /*
