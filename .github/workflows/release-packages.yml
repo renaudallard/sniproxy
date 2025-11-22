@@ -166,7 +166,8 @@ jobs:
             export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/$(machine -s)/"
             pkg_add rsync curl
           run: |
-            set -euo pipefail
+            set -eu
+            set -o pipefail 2>/dev/null || true
             export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/$(machine -s)/"
             ftp "https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/ports.tar.gz"
             tar -C /usr -xzf ports.tar.gz
@@ -238,7 +239,8 @@ jobs:
             env ASSUME_ALWAYS_YES=yes pkg bootstrap -f
             env ASSUME_ALWAYS_YES=yes pkg install -y git rsync
           run: |
-            set -euo pipefail
+            set -eu
+            set -o pipefail 2>/dev/null || true
             env ASSUME_ALWAYS_YES=yes pkg install -y ports-mgmt/pkg
             if [ ! -d /usr/ports ]; then
               git clone --depth=1 https://git.FreeBSD.org/ports.git /usr/ports
@@ -312,7 +314,8 @@ jobs:
           prepare: |
             export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/$(machine -s)/binary/sets"
           run: |
-            set -euo pipefail
+            set -eu
+            set -o pipefail 2>/dev/null || true
             ftp https://cdn.NetBSD.org/pub/pkgsrc/stable/pkgsrc.tar.gz
             tar -C /usr -xzf pkgsrc.tar.gz
 
