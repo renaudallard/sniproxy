@@ -169,6 +169,7 @@ jobs:
           run: |
             set -eu
             set -o pipefail 2>/dev/null || true
+            cd "$GITHUB_WORKSPACE"
             ARCH=$(uname -m)
             export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/${ARCH}/"
             ftp "https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/ports.tar.gz"
@@ -178,7 +179,11 @@ jobs:
             PORTPATH="${PORTSDIR}/net/sniproxy"
             rm -rf "${PORTPATH}"
             mkdir -p "${PORTPATH}"
-            cp -R "${GITHUB_WORKSPACE}"/openbsd/* "${PORTPATH}/"
+            if [ ! -d "${GITHUB_WORKSPACE}/openbsd" ]; then
+              echo "OpenBSD port skeleton not found in workspace" >&2
+              exit 1
+            fi
+            (cd "${GITHUB_WORKSPACE}/openbsd" && tar -cf - .) | tar -C "${PORTPATH}" -xf -
             sed -i'' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION ?= ${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
 
             make -C "${PORTPATH}" makesum
@@ -243,6 +248,7 @@ jobs:
           run: |
             set -eu
             set -o pipefail 2>/dev/null || true
+            cd "$GITHUB_WORKSPACE"
             env ASSUME_ALWAYS_YES=yes pkg install -y ports-mgmt/pkg
             if [ ! -d /usr/ports ]; then
               git clone --depth=1 https://git.FreeBSD.org/ports.git /usr/ports
@@ -325,6 +331,7 @@ jobs:
           run: |
             set -eu
             set -o pipefail 2>/dev/null || true
+            cd "$GITHUB_WORKSPACE"
             ARCH=$(uname -m)
             ftp https://cdn.NetBSD.org/pub/pkgsrc/stable/pkgsrc.tar.gz
             tar -C /usr -xzf pkgsrc.tar.gz
