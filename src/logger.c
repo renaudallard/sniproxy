@@ -311,6 +311,57 @@ new_file_logger(const char *filepath) {
     return logger;
 }
 
+/* Open a log file defensively and verify the fd still refers to the on-disk path.
+ * This limits TOCTOU exposure between open() and validation by rejecting
+ * mismatched inode/device pairs or non-regular files. */
+static FILE *
+open_log_file_checked(const char *filepath) {
+    int open_flags = O_WRONLY | O_APPEND | O_CREAT;
+#ifdef O_CLOEXEC
+    open_flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    open_flags |= O_NOFOLLOW;
+#endif
+
+    int fd = open(filepath, open_flags, 0600);
+    if (fd < 0)
+        return NULL;
+
+    struct stat st_fd;
+    if (fstat(fd, &st_fd) != 0 || !S_ISREG(st_fd.st_mode)) {
+        int saved_errno = errno != 0 ? errno : EINVAL;
+        close(fd);
+        errno = saved_errno;
+        return NULL;
+    }
+
+    /* Ensure the path we opened still refers to the same inode to block
+     * post-open symlink/hardlink swaps. */
+    struct stat st_path;
+    if (lstat(filepath, &st_path) != 0 ||
+            !S_ISREG(st_path.st_mode) ||
+            st_fd.st_dev != st_path.st_dev ||
+            st_fd.st_ino != st_path.st_ino) {
+        int saved_errno = errno != 0 ? errno : EINVAL;
+        close(fd);
+        errno = saved_errno;
+        return NULL;
+    }
+
+    FILE *file = fdopen(fd, "a");
+    if (file == NULL) {
+        int saved_errno = errno != 0 ? errno : EINVAL;
+        close(fd);
+        errno = saved_errno;
+        return NULL;
+    }
+
+    setvbuf(file, NULL, _IOLBF, 0);
+
+    return file;
+}
+
 void
 reopen_loggers(void) {
     struct LogSink *sink;
@@ -335,91 +386,33 @@ reopen_loggers(void) {
                     disable_logger_process();
                 }
                 if (!logger_parent_fs_locked && sink->fd != NULL && sink->fd_owned) {
-                    /* SECURITY: Use open() with O_NOFOLLOW instead of freopen()
-                     * to prevent TOCTOU symlink attacks. freopen() internally does
-                     * stat+open which creates a race window. */
-                    int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-                    open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-                    open_flags |= O_NOFOLLOW;
-#endif
-                    int fd = open(sink->filepath, open_flags, 0600);
-                    if (fd < 0) {
+                    FILE *file = open_log_file_checked(sink->filepath);
+                    if (file == NULL) {
                         err("failed to reopen local log file %s: %s",
                                 sink->filepath, strerror(errno));
                         fclose(sink->fd);
                         sink->fd = NULL;
                         sink->fd_owned = 0;
                     } else {
-                        struct stat st;
-                        if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode)) {
-                            FILE *file = fdopen(fd, "a");
-                            if (file != NULL) {
-                                fclose(sink->fd);
-                                sink->fd = file;
-                                sink->fd_owned = 1;
-                                setvbuf(sink->fd, NULL, _IOLBF, 0);
-                            } else {
-                                err("failed to fdopen log file %s: %s",
-                                        sink->filepath, strerror(errno));
-                                close(fd);
-                                fclose(sink->fd);
-                                sink->fd = NULL;
-                                sink->fd_owned = 0;
-                            }
-                        } else {
-                            err("log file %s is not a regular file", sink->filepath);
-                            close(fd);
-                            fclose(sink->fd);
-                            sink->fd = NULL;
-                            sink->fd_owned = 0;
-                        }
+                        fclose(sink->fd);
+                        sink->fd = file;
+                        sink->fd_owned = 1;
                     }
                 }
             } else {
                 if (!logger_parent_fs_locked) {
-                    /* SECURITY: Use open() with O_NOFOLLOW instead of freopen()
-                     * to prevent TOCTOU symlink attacks. */
-                    int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-                    open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-                    open_flags |= O_NOFOLLOW;
-#endif
-                    int fd = open(sink->filepath, open_flags, 0600);
-                    if (fd < 0) {
+                    FILE *file = open_log_file_checked(sink->filepath);
+                    if (file == NULL) {
                         err("failed to reopen log file %s: %s",
                                 sink->filepath, strerror(errno));
                         if (sink->fd != NULL)
                             fclose(sink->fd);
                         sink->fd = NULL;
                     } else {
-                        struct stat st;
-                        if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode)) {
-                            FILE *file = fdopen(fd, "a");
-                            if (file != NULL) {
-                                if (sink->fd != NULL)
-                                    fclose(sink->fd);
-                                sink->fd = file;
-                                setvbuf(sink->fd, NULL, _IOLBF, 0);
-                            } else {
-                                err("failed to fdopen log file %s: %s",
-                                        sink->filepath, strerror(errno));
-                                close(fd);
-                                if (sink->fd != NULL)
-                                    fclose(sink->fd);
-                                sink->fd = NULL;
-                            }
-                        } else {
-                            err("log file %s is not a regular file", sink->filepath);
-                            close(fd);
-                            if (sink->fd != NULL)
-                                fclose(sink->fd);
-                            sink->fd = NULL;
-                        }
+                        if (sink->fd != NULL)
+                            fclose(sink->fd);
+                        sink->fd = file;
+                        sink->fd_owned = 1;
                     }
                 } else if (sink->fd == NULL) {
                     sink->fd = stderr;
@@ -1099,31 +1092,9 @@ disable_logger_process(void) {
     while (sink != NULL) {
         if (sink->type == LOG_SINK_FILE && sink->fd == NULL && sink->filepath != NULL) {
             if (!logger_parent_fs_locked) {
-                /* SECURITY: Use open() with O_NOFOLLOW instead of fopen()
-                 * to prevent TOCTOU symlink attacks. */
-                int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-                open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-                open_flags |= O_NOFOLLOW;
-#endif
-                int fd = open(sink->filepath, open_flags, 0600);
-                if (fd >= 0) {
-                    struct stat st;
-                    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode)) {
-                        FILE *file = fdopen(fd, "a");
-                        if (file != NULL) {
-                            setvbuf(file, NULL, _IOLBF, 0);
-                            sink->fd = file;
-                            sink->fd_owned = 1;
-                        } else {
-                            close(fd);
-                        }
-                    } else {
-                        close(fd);
-                    }
-                }
+                sink->fd = open_log_file_checked(sink->filepath);
+                if (sink->fd != NULL)
+                    sink->fd_owned = 1;
             } else {
                 sink->fd = stderr;
                 sink->fd_owned = 0;
