@@ -433,6 +433,7 @@ accept_listener_table_name(struct Listener *listener, const char *table_name) {
         err("Duplicate table: %s", table_name);
         return 0;
     }
+    free(listener->table_name);
     listener->table_name = strdup(table_name);
     if (listener->table_name == NULL) {
         err("%s: strdup", __func__);
