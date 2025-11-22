@@ -51,6 +51,8 @@
 #include "fd_util.h"
 
 #define LISTENER_ACCEPT_MAX_BATCH 64
+/* Yield to the event loop after this many successful accepts to avoid starvation. */
+#define LISTENER_ACCEPT_YIELD_BATCH 16
 
 static void close_listener(struct ev_loop *, struct Listener *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
@@ -1057,11 +1059,15 @@ accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
 
     int last_errno = 0;
+    int accepted = 0;
 
     for (int i = 0; i < LISTENER_ACCEPT_MAX_BATCH; i++) {
         int result = listener->accept_cb(listener, loop);
         if (result > 0) {
             last_errno = 0;
+            accepted++;
+            if (accepted >= LISTENER_ACCEPT_YIELD_BATCH)
+                break;
             continue;
         }
 
