@@ -163,12 +163,14 @@ jobs:
           release: ${{ env.OPENBSD_RELEASE }}
           sync: sshfs
           prepare: |
-            export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/$(machine -s)/"
+            ARCH=$(uname -m)
+            export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/${ARCH}/"
             pkg_add rsync curl
           run: |
             set -eu
             set -o pipefail 2>/dev/null || true
-            export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/$(machine -s)/"
+            ARCH=$(uname -m)
+            export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/${ARCH}/"
             ftp "https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/ports.tar.gz"
             tar -C /usr -xzf ports.tar.gz
 
@@ -177,13 +179,13 @@ jobs:
             rm -rf "${PORTPATH}"
             mkdir -p "${PORTPATH}"
             cp -R "${GITHUB_WORKSPACE}"/openbsd/* "${PORTPATH}/"
-            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION ?= ${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+            sed -i'' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION ?= ${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
 
             make -C "${PORTPATH}" makesum
             USE_PACKAGE_DEPENDS=Yes make -C "${PORTPATH}" package
 
             mkdir -p "${GITHUB_WORKSPACE}/artifacts/openbsd"
-            pkg_file=$(ls /usr/ports/packages/$(machine -s)/all/sniproxy-*.tgz 2>/dev/null | head -n1)
+            pkg_file=$(ls /usr/ports/packages/${ARCH}/all/sniproxy-*.tgz 2>/dev/null | head -n1)
             if [ -z "${pkg_file}" ]; then
               echo "No OpenBSD package produced" >&2
               exit 1
@@ -249,7 +251,11 @@ jobs:
             PORTPATH="/usr/ports/net/sniproxy"
             rm -rf "${PORTPATH}"
             mkdir -p "${PORTPATH}"
-            cp -R "${GITHUB_WORKSPACE}"/freebsd/* "${PORTPATH}/"
+            if [ ! -d "${GITHUB_WORKSPACE}/freebsd" ]; then
+              echo "FreeBSD port skeleton not found in workspace" >&2
+              exit 1
+            fi
+            (cd "${GITHUB_WORKSPACE}/freebsd" && tar -cf - .) | tar -C "${PORTPATH}" -xf -
             sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
 
             make -C "${PORTPATH}" makesum
@@ -312,10 +318,12 @@ jobs:
           release: ${{ env.NETBSD_RELEASE }}
           sync: sshfs
           prepare: |
-            export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/$(machine -s)/binary/sets"
+            ARCH=$(uname -m)
+            export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/${ARCH}/binary/sets"
           run: |
             set -eu
             set -o pipefail 2>/dev/null || true
+            ARCH=$(uname -m)
             ftp https://cdn.NetBSD.org/pub/pkgsrc/stable/pkgsrc.tar.gz
             tar -C /usr -xzf pkgsrc.tar.gz
 
