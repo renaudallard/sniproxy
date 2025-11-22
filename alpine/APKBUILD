@@ -22,6 +22,8 @@ prepare() {
 
 build() {
 	cd "$builddir"
+	export ac_cv_lib_ev_ev_run=yes
+	export LIBS="-lev"
 	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-rpath --enable-dns
 	make
 }
