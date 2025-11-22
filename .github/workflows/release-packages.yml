@@ -409,7 +409,9 @@ jobs:
           #!/bin/sh
           set -euo pipefail
           apk update
-          apk add --no-cache alpine-sdk sudo bash coreutils
+          apk add --no-cache alpine-sdk sudo bash coreutils \
+            autoconf automake libtool pkgconfig gettext-dev \
+            libev-dev pcre2-dev c-ares-dev openssl-dev linux-headers
           adduser -D builder
           addgroup builder abuild
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
