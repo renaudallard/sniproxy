@@ -148,7 +148,7 @@ jobs:
         id: openbsd-release
         run: |
           set -euo pipefail
-          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/openbsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/openbsd-vm/v1/conf/default.release.conf | sed -n 's/^DEFAULT_RELEASE=//p' | tr -d '\n')
           if [ -z "$release" ]; then
             echo "Failed to detect OpenBSD release" >&2
             exit 1
@@ -219,7 +219,7 @@ jobs:
         id: freebsd-release
         run: |
           set -euo pipefail
-          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/freebsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/freebsd-vm/v1/conf/default.release.conf | sed -n 's/^DEFAULT_RELEASE=//p' | tr -d '\n')
           if [ -z "$release" ]; then
             echo "Failed to detect FreeBSD release" >&2
             exit 1
@@ -293,7 +293,7 @@ jobs:
         id: netbsd-release
         run: |
           set -euo pipefail
-          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/netbsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/netbsd-vm/v1/conf/default.release.conf | sed -n 's/^DEFAULT_RELEASE=//p' | tr -d '\n')
           if [ -z "$release" ]; then
             echo "Failed to detect NetBSD release" >&2
             exit 1
