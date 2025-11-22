@@ -364,11 +364,16 @@ jobs:
           set -euo pipefail
           release=$(curl -fsSL https://dl-cdn.alpinelinux.org/alpine/latest-stable/VERSION | tr -d '\n')
           release=${release#v}
+          branch=${release%.*}
+          if [ -z "$branch" ] || [ "$branch" = "$release" ]; then
+            branch="$release"
+          fi
           if [ -z "$release" ]; then
             echo "Failed to detect Alpine release" >&2
             exit 1
           fi
           echo "ALPINE_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "ALPINE_BRANCH=$branch" >> "$GITHUB_ENV"
           echo "release=$release" >> "$GITHUB_OUTPUT"
 
       - name: Build dist tarball
@@ -417,7 +422,7 @@ jobs:
             -e DIST_TARBALL \
             -v "$PWD":/workspace \
             -w /workspace \
-            "alpine:${ALPINE_RELEASE}" \
+            "alpine:${ALPINE_BRANCH}" \
             /bin/sh /workspace/alpine/ci-build.sh
 
       - name: Collect Alpine artifact
