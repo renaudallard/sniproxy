@@ -29,7 +29,7 @@
  * TLS handshake and RFC4366.
  */
 #include <stdio.h>
-#include <stdlib.h> /* malloc() */
+#include <stdlib.h> /* malloc(), calloc() */
 #include <stdint.h>
 #include <string.h> /* memcpy() */
 #include <sys/socket.h>
@@ -372,9 +372,10 @@ parse_server_name_extension(const uint8_t *data, size_t data_len,
                 if (memchr(hostname_bytes, '\0', len) != NULL)
                     return -5;
 
-                *hostname = malloc(len + 1);
+                size_t alloc_len = len + 1;
+                *hostname = calloc(alloc_len, 1);
                 if (*hostname == NULL) {
-                    err("malloc() failure");
+                    err("calloc() failure");
                     return -4;
                 }
 
