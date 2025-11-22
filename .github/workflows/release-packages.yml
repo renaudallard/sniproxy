@@ -331,7 +331,9 @@ jobs:
             rm -rf "${PORTPATH}"
             mkdir -p "${PORTPATH}"
             cp -R "${GITHUB_WORKSPACE}"/netbsd/* "${PORTPATH}/"
-            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+            tmpfile=$(mktemp)
+            sed "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile" > "${tmpfile}"
+            mv "${tmpfile}" "${PORTPATH}/Makefile"
 
             cd "${PORTPATH}"
             bmake distinfo
