@@ -687,7 +687,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (revents & EV_READ && buffer_room(input_buffer) == 0) {
         if (!is_client) {
             size_t current = buffer_size(input_buffer);
-            size_t desired;
+            size_t desired = current;
             /* Prevent integer overflow when doubling buffer size */
             if (current > SIZE_MAX / 2) {
                 /* Cannot safely double - buffer has reached maximum size */
@@ -702,11 +702,16 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 close_server_socket(con, loop);
                 return;
             }
-            desired = current << 1;
+            if (current > 0)
+                desired = current << 1;
 
             size_t load = buffer_len(input_buffer);
-            if (load < current * 3 / 4 && current > 0)
-                desired = current;
+            /* Avoid overflow in load threshold comparison */
+            if (current > 0) {
+                size_t threshold = current - (current / 4); /* 75% of current */
+                if (load < threshold)
+                    desired = current;
+            }
             if (buffer_reserve(input_buffer, desired) < 0) {
                 char server[INET6_ADDRSTRLEN + 8];
 
