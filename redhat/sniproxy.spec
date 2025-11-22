@@ -9,7 +9,7 @@ URL: https://github.com/dlundquist/sniproxy
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires: autoconf, automake, curl, libev-devel, pcre2-devel, gettext-devel, c-ares-devel
+BuildRequires: autoconf, automake, curl, libev-devel, pcre2-devel, gettext-devel, c-ares-devel, systemd-rpm-macros
 
 %description
 Proxies incoming HTTP and TLS connections based on the hostname contained in
@@ -30,6 +30,7 @@ make %{?_smp_mflags}
 %install
 rm -rf $RPM_BUILD_ROOT
 make install DESTDIR=$RPM_BUILD_ROOT
+install -D -m 0644 scripts/sniproxy.service $RPM_BUILD_ROOT%{_unitdir}/sniproxy.service
 
 
 %clean
@@ -42,6 +43,22 @@ rm -rf $RPM_BUILD_ROOT
 %doc
 %{_mandir}/man8/sniproxy.8.gz
 %{_mandir}/man5/sniproxy.conf.5.gz
+%{_unitdir}/sniproxy.service
+
+%post
+if [ -x /usr/bin/systemctl ]; then
+    /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
+fi
+
+%preun
+if [ $1 -eq 0 ] && [ -x /usr/bin/systemctl ]; then
+    /usr/bin/systemctl --no-reload --quiet stop sniproxy.service 2>/dev/null || :
+fi
+
+%postun
+if [ -x /usr/bin/systemctl ]; then
+    /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
+fi
 
 
 

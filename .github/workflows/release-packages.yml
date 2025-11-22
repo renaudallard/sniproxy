@@ -77,7 +77,8 @@ jobs:
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkgconfig \
             gettext-devel libev-devel pcre2-devel \
-            c-ares-devel openssl-devel which tar
+            c-ares-devel openssl-devel systemd-rpm-macros \
+            which tar
 
       - name: Checkout
         uses: actions/checkout@v4
