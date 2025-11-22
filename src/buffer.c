@@ -200,6 +200,9 @@ struct Buffer *
 new_buffer(size_t size, struct ev_loop *loop) {
     if (NOT_POWER_OF_2(size))
         return NULL;
+
+    if (size > BUFFER_MAX_SIZE)
+        return NULL;
     struct Buffer *buf = malloc(sizeof(struct Buffer));
     if (buf == NULL)
         return NULL;
