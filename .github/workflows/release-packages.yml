@@ -161,6 +161,7 @@ jobs:
         with:
           envs: SNIPROXY_VERSION
           release: ${{ env.OPENBSD_RELEASE }}
+          sync: sshfs
           prepare: |
             ARCH=$(uname -m)
             export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/${ARCH}/"
@@ -235,6 +236,7 @@ jobs:
         with:
           envs: SNIPROXY_VERSION
           release: ${{ env.FREEBSD_RELEASE }}
+          sync: sshfs
           prepare: |
             env ASSUME_ALWAYS_YES=yes pkg bootstrap -f
             env ASSUME_ALWAYS_YES=yes pkg install -y git rsync
@@ -316,6 +318,7 @@ jobs:
         with:
           envs: SNIPROXY_VERSION
           release: ${{ env.NETBSD_RELEASE }}
+          sync: sshfs
           prepare: |
             ARCH=$(uname -m)
             export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/${ARCH}/binary/sets"
