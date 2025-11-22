@@ -324,22 +324,28 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
     assert(new_listener != NULL);
     assert(address_compare(existing_listener->address, new_listener->address) == 0);
 
-    free(existing_listener->fallback_address);
-    existing_listener->fallback_address = new_listener->fallback_address;
-    new_listener->fallback_address = NULL;
+    if (existing_listener->fallback_address != new_listener->fallback_address) {
+        free(existing_listener->fallback_address);
+        existing_listener->fallback_address = new_listener->fallback_address;
+        new_listener->fallback_address = NULL;
+    }
     existing_listener->fallback_use_proxy_header =
             new_listener->fallback_use_proxy_header;
 
-    free(existing_listener->source_address);
-    existing_listener->source_address = new_listener->source_address;
-    new_listener->source_address = NULL;
+    if (existing_listener->source_address != new_listener->source_address) {
+        free(existing_listener->source_address);
+        existing_listener->source_address = new_listener->source_address;
+        new_listener->source_address = NULL;
+    }
     existing_listener->transparent_proxy = new_listener->transparent_proxy;
 
     existing_listener->protocol = new_listener->protocol;
 
-    free(existing_listener->table_name);
-    existing_listener->table_name = new_listener->table_name;
-    new_listener->table_name = NULL;
+    if (existing_listener->table_name != new_listener->table_name) {
+        free(existing_listener->table_name);
+        existing_listener->table_name = new_listener->table_name;
+        new_listener->table_name = NULL;
+    }
 
     logger_ref_put(existing_listener->access_log);
     existing_listener->access_log = logger_ref_get(new_listener->access_log);
