@@ -202,6 +202,16 @@ static int sockaddr_equal_ip(const struct sockaddr_storage *,
 static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
 static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
 
+/* SplitMix64-derived mixer reduced to 32 bits to improve avalanche for IPv6 hashing. */
+static inline uint32_t
+mix64_to_32(uint64_t v) {
+    v += 0x9e3779b97f4a7c15ULL;
+    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
+    v ^= (v >> 31);
+    return (uint32_t)(v ^ (v >> 32));
+}
+
 enum dns_acquire_status {
     DNS_ACQUIRE_OK = 0,
     DNS_ACQUIRE_GLOBAL_LIMIT,
@@ -1047,15 +1057,14 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
             const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
             uint32_t words[4];
             memcpy(words, &in6->sin6_addr, sizeof(words));
-            /* Use FNV-1a hash with random seed to prevent collision attacks */
-            uint32_t hash = 2166136261u ^ rate_limit_hash_seed;
-            for (int i = 0; i < 4; i++) {
-                hash ^= words[i];
-                hash *= 16777619u;
-            }
-            hash ^= in6->sin6_scope_id;
-            hash *= 16777619u;
-            return hash;
+            uint64_t acc = ((uint64_t)rate_limit_hash_seed << 32) |
+                    (uint64_t)rate_limit_hash_seed;
+            acc ^= (uint64_t)in6->sin6_scope_id;
+
+            for (int i = 0; i < 4; i++)
+                acc = ((uint64_t)words[i] ^ acc) + mix64_to_32(acc);
+
+            return mix64_to_32(acc);
         }
         default:
             return 0;
