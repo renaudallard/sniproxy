@@ -249,6 +249,8 @@ init_connections(void) {
  */
 int
 accept_connection(struct Listener *listener, struct ev_loop *loop) {
+    int sockfd = -1;
+    int rc = 0;
     struct Connection *con = new_connection(loop);
     if (con == NULL) {
         err("new_connection failed");
@@ -261,12 +263,12 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 #ifdef SOCK_CLOEXEC
     accept_flags |= SOCK_CLOEXEC;
 #endif
-    int sockfd = accept4(listener->watcher.fd,
+    sockfd = accept4(listener->watcher.fd,
                     (struct sockaddr *)&con->client.addr,
                     &con->client.addr_len,
                     accept_flags);
 #else
-    int sockfd = accept(listener->watcher.fd,
+    sockfd = accept(listener->watcher.fd,
                     (struct sockaddr *)&con->client.addr,
                     &con->client.addr_len);
 #endif
@@ -278,19 +280,15 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         else if (!IS_TEMPORARY_SOCKERR(saved_errno))
             warn("accept failed: %s", strerror(saved_errno));
 
-        free_connection(con);
-
         errno = saved_errno;
-        return 0;
+        goto cleanup;
     }
 
     if (set_cloexec(sockfd) < 0) {
         int saved_errno = errno;
         warn("fcntl(FD_CLOEXEC) failed on accepted socket: %s", strerror(errno));
-        close(sockfd);
-        free_connection(con);
         errno = saved_errno;
-        return 0;
+        goto cleanup;
     }
 
 #ifndef HAVE_ACCEPT4
@@ -306,9 +304,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         info("Connection from %s denied by ACL on %s",
                 ip != NULL ? ip : "(unknown)",
                 display_address(listener->address, listener_buf, sizeof(listener_buf)));
-        close(sockfd);
-        free_connection(con);
-        return 1;
+        rc = 1;
+        goto cleanup;
     }
 
     ev_tstamp now = loop_now(loop);
@@ -318,9 +315,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
 
         info("Per-IP connection rate exceeded for %s", ip != NULL ? ip : "(unknown)");
-        close(sockfd);
-        free_connection(con);
-        return 1;
+        rc = 1;
+        goto cleanup;
     }
 
     if (max_global_connections > 0 &&
@@ -333,9 +329,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
                     ip != NULL ? ip : "(unknown)");
             max_connections_log_throttle = now;
         }
-        close(sockfd);
-        free_connection(con);
-        return 1;
+        rc = 1;
+        goto cleanup;
     }
 
     if (cache_client_local_addr(con, sockfd) != 0)
@@ -358,6 +353,12 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     shrink_candidate_update(con, loop, 0.0);
     return 1;
+
+cleanup:
+    if (sockfd >= 0)
+        close(sockfd);
+    free_connection(con);
+    return rc;
 }
 
 /*
