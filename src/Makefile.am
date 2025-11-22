@@ -22,6 +22,7 @@ sniproxy_common_sources = address.c \
                           config.h \
                           connection.c \
                           connection.h \
+                          hostname_sanitize.h \
                           http.c \
                           http.h \
                           http2.c \
