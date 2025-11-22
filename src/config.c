@@ -1272,9 +1272,9 @@ end_backend(struct Table *table, struct Backend *backend) {
 
 static struct LoggerBuilder *
 new_logger_builder(void) {
-    struct LoggerBuilder *lb = malloc(sizeof(struct LoggerBuilder));
+    struct LoggerBuilder *lb = calloc(1, sizeof(struct LoggerBuilder));
     if (lb == NULL) {
-        err("%s: malloc", __func__);
+        err("%s: calloc", __func__);
         return NULL;
     }
 
@@ -1421,7 +1421,7 @@ end_listener_access_logger_stanza(struct Listener *listener, struct LoggerBuilde
 
 static struct ResolverConfig *
 new_resolver_config(void) {
-    struct ResolverConfig *resolver = malloc(sizeof(struct ResolverConfig));
+    struct ResolverConfig *resolver = calloc(1, sizeof(struct ResolverConfig));
 
     if (resolver != NULL) {
         resolver->nameservers = NULL;

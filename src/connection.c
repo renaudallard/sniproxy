@@ -1892,9 +1892,9 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         abort_connection(con, loop);
         return;
     } else if (address_is_hostname(result.address)) {
-        struct resolv_cb_data *cb_data = malloc(sizeof(struct resolv_cb_data));
+        struct resolv_cb_data *cb_data = calloc(1, sizeof(struct resolv_cb_data));
         if (cb_data == NULL) {
-            err("%s: malloc", __func__);
+            err("%s: calloc", __func__);
 
             if (result.caller_free_address)
                 free((void *)result.address);

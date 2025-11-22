@@ -179,12 +179,11 @@ ipc_crypto_mask_failure(size_t payload_len) {
     if (ctx == NULL)
         return;
 
-    uint8_t *scratch = malloc(work);
+    uint8_t *scratch = calloc(1, work);
     if (scratch == NULL) {
         EVP_CIPHER_CTX_free(ctx);
         return;
     }
-    memset(scratch, 0, work);
 
     uint8_t zero_key[32] = {0};
     uint8_t zero_nonce[IPC_CRYPTO_NONCE_LEN] = {0};

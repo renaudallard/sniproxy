@@ -886,17 +886,16 @@ obtain_file_sink(const char *filepath) {
         if (send_logger_new_sink(sink, fd_for_child) < 0) {
             err("Failed to register log file %s with logger process: %s", filepath,
                     strerror(errno));
-            if (sink->fd != NULL && sink->fd_owned) {
-                fclose(sink->fd);
-                sink->fd = NULL;
-                sink->fd_owned = 0;
-            }
-            free((char *)sink->filepath);
-            free(sink);
+            if (fd_for_child >= 0)
+                close(fd_for_child);
+            /* Fall back to in-process logging */
             disable_logger_process();
-            return NULL;
         }
-    } else if (sink->fd == NULL) {
+    } else if (fd_for_child >= 0) {
+        close(fd_for_child);
+    }
+
+    if (!logger_process_enabled && sink->fd == NULL) {
         int open_flags = O_WRONLY | O_APPEND | O_CREAT;
 #ifdef O_CLOEXEC
         open_flags |= O_CLOEXEC;
@@ -1550,7 +1549,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
 
     switch (header->type) {
         case LOGGER_CMD_NEW_SINK:
-            sink = malloc(sizeof(*sink));
+            sink = calloc(1, sizeof(*sink));
             if (sink == NULL)
                 break;
             sink->id = header->sink_id;
