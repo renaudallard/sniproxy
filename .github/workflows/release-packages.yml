@@ -256,7 +256,9 @@ jobs:
               exit 1
             fi
             (cd "${GITHUB_WORKSPACE}/freebsd" && tar -cf - .) | tar -C "${PORTPATH}" -xf -
-            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+            tmpfile=$(mktemp)
+            sed "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile" > "${tmpfile}"
+            mv "${tmpfile}" "${PORTPATH}/Makefile"
 
             make -C "${PORTPATH}" makesum
             env BATCH=yes MAKE_JOBS_NUMBER=$(sysctl -n hw.ncpu) PACKAGES=/tmp/packages make -C "${PORTPATH}" package
