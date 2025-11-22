@@ -23,7 +23,7 @@ env:
 
 jobs:
   build-deb:
-    name: Build Debian Packages
+    name: Build Debian Package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -60,12 +60,12 @@ jobs:
       - name: Upload Debian artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deb-packages
+          name: deb-package
           path: artifacts/deb/
           if-no-files-found: error
 
   build-rpm:
-    name: Build RPM Packages
+    name: Build RPM Package
     runs-on: ubuntu-latest
     container:
       image: fedora:39
@@ -120,7 +120,7 @@ jobs:
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rpm-packages
+          name: rpm-package
           path: artifacts/rpm/
           if-no-files-found: error
 
@@ -447,13 +447,13 @@ jobs:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v4
         with:
-          name: deb-packages
+          name: deb-package
           path: release-assets/deb
 
       - name: Download RPM artifacts
         uses: actions/download-artifact@v4
         with:
-          name: rpm-packages
+          name: rpm-package
           path: release-assets/rpm
 
       - name: Download OpenBSD artifact
