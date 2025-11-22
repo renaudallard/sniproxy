@@ -110,9 +110,11 @@ buffer_pool_acquire(size_t size, int *pooled) {
         if (node->magic != BUFFER_POOL_MAGIC) {
             err("Buffer pool corruption detected: invalid magic 0x%x (expected 0x%x)",
                 node->magic, BUFFER_POOL_MAGIC);
-            /* Skip this corrupted entry and try to continue */
+            /* Drain the pool class to avoid reusing corrupted memory. */
             cls->head = NULL;
             cls->cached = 0;
+            /* Drop the class size so future acquisitions bypass the pool. */
+            cls->size = 0;
             continue;
         }
 
