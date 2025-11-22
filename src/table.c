@@ -353,8 +353,8 @@ table_ref_put(struct Table *table) {
     if (table == NULL)
         return;
 
-    if (table->reference_count == 0) {
-        err("table_ref_put called on table \"%s\" with zero references",
+    if (table->reference_count <= 0) {
+        err("table_ref_put called on table \"%s\" with non-positive references",
                 table->name != NULL ? table->name : "(unnamed)");
         return;
     }
