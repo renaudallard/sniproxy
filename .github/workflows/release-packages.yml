@@ -368,8 +368,7 @@ jobs:
         id: alpine-release
         run: |
           set -euo pipefail
-          release_yaml=$(curl -fsSL https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/latest-releases.yaml)
-          release=$(printf '%s\n' "$release_yaml" | sed -n 's/^latest:[[:space:]]*//p' | head -n1 | tr -d '\r\n"')
+          release=$(curl -fsSL https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/latest-releases.yaml | grep -E '^version:' | head -n1 | awk '{print $2}' | tr -d '\"')
           release=${release#v}
           branch=${release%.*}
           if [ -z "$branch" ] || [ "$branch" = "$release" ]; then
