@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+
+name="sniproxy"
+command="/usr/sbin/sniproxy"
+command_args="${SNIPROXY_OPTS:-} -c ${SNIPROXY_CONFIG:-/etc/sniproxy.conf}"
+pidfile="/var/run/sniproxy.pid"
+command_background=yes
+
+depend() {
+	need net
+}

@@ -1,0 +1,9 @@
+@newgroup _sniproxy:853
+@newuser _sniproxy:853:853::sniproxy daemon:/var/empty:/sbin/nologin
+@rcscript ${RCDIR}/sniproxy
+@man man/man5/sniproxy.conf.5
+@man man/man8/sniproxy.8
+@bin sbin/sniproxy
+share/examples/sniproxy/
+share/examples/sniproxy/sniproxy.conf
+@sample ${SYSCONFDIR}/sniproxy.conf

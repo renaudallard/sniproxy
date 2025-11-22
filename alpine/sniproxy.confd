@@ -1,0 +1,2 @@
+SNIPROXY_CONFIG="/etc/sniproxy.conf"
+SNIPROXY_OPTS=""

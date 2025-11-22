@@ -1,0 +1,5 @@
+@comment $NetBSD$
+man/man5/sniproxy.conf.5
+man/man8/sniproxy.8
+sbin/sniproxy
+share/examples/sniproxy/sniproxy.conf

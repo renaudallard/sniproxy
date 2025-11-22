@@ -124,12 +124,468 @@ jobs:
           path: artifacts/rpm/
           if-no-files-found: error
 
+  build-openbsd:
+    name: Build OpenBSD Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.release_tag }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+          fi
+          echo "SNIPROXY_VERSION=${version#v}" >> "$GITHUB_ENV"
+
+      - name: Detect latest OpenBSD release
+        id: openbsd-release
+        run: |
+          set -euo pipefail
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/openbsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          if [ -z "$release" ]; then
+            echo "Failed to detect OpenBSD release" >&2
+            exit 1
+          fi
+          echo "OPENBSD_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build in OpenBSD VM
+        uses: vmactions/openbsd-vm@v1
+        with:
+          envs: SNIPROXY_VERSION
+          release: ${{ env.OPENBSD_RELEASE }}
+          prepare: |
+            export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/$(machine -s)/"
+            pkg_add rsync curl
+          run: |
+            set -euo pipefail
+            export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/$(machine -s)/"
+            ftp "https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/ports.tar.gz"
+            tar -C /usr -xzf ports.tar.gz
+
+            PORTSDIR=/usr/ports
+            PORTPATH="${PORTSDIR}/net/sniproxy"
+            rm -rf "${PORTPATH}"
+            mkdir -p "${PORTPATH}"
+            cp -R "${GITHUB_WORKSPACE}"/openbsd/* "${PORTPATH}/"
+            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION ?= ${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+
+            make -C "${PORTPATH}" makesum
+            USE_PACKAGE_DEPENDS=Yes make -C "${PORTPATH}" package
+
+            mkdir -p "${GITHUB_WORKSPACE}/artifacts/openbsd"
+            pkg_file=$(ls /usr/ports/packages/$(machine -s)/all/sniproxy-*.tgz 2>/dev/null | head -n1)
+            if [ -z "${pkg_file}" ]; then
+              echo "No OpenBSD package produced" >&2
+              exit 1
+            fi
+            cp "${pkg_file}" "${GITHUB_WORKSPACE}/artifacts/openbsd/"
+
+      - name: Upload OpenBSD artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbsd-package
+          path: artifacts/openbsd/
+          if-no-files-found: error
+
+  build-freebsd:
+    name: Build FreeBSD Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.release_tag }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+          fi
+          echo "SNIPROXY_VERSION=${version#v}" >> "$GITHUB_ENV"
+
+      - name: Detect latest FreeBSD release
+        id: freebsd-release
+        run: |
+          set -euo pipefail
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/freebsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          if [ -z "$release" ]; then
+            echo "Failed to detect FreeBSD release" >&2
+            exit 1
+          fi
+          echo "FREEBSD_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          envs: SNIPROXY_VERSION
+          release: ${{ env.FREEBSD_RELEASE }}
+          prepare: |
+            env ASSUME_ALWAYS_YES=yes pkg bootstrap -f
+            env ASSUME_ALWAYS_YES=yes pkg install -y git rsync
+          run: |
+            set -euo pipefail
+            env ASSUME_ALWAYS_YES=yes pkg install -y ports-mgmt/pkg
+            if [ ! -d /usr/ports ]; then
+              git clone --depth=1 https://git.FreeBSD.org/ports.git /usr/ports
+            fi
+
+            PORTPATH="/usr/ports/net/sniproxy"
+            rm -rf "${PORTPATH}"
+            mkdir -p "${PORTPATH}"
+            cp -R "${GITHUB_WORKSPACE}"/freebsd/* "${PORTPATH}/"
+            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+
+            make -C "${PORTPATH}" makesum
+            env BATCH=yes MAKE_JOBS_NUMBER=$(sysctl -n hw.ncpu) PACKAGES=/tmp/packages make -C "${PORTPATH}" package
+
+            mkdir -p "${GITHUB_WORKSPACE}/artifacts/freebsd"
+            pkg_file=$(find /tmp/packages -name 'sniproxy-*.pkg' 2>/dev/null | head -n1)
+            if [ -z "${pkg_file}" ]; then
+              pkg_file=$(find /usr/ports/packages -name 'sniproxy-*.pkg' 2>/dev/null | head -n1)
+            fi
+            if [ -z "${pkg_file}" ]; then
+              echo "No FreeBSD package produced" >&2
+              exit 1
+            fi
+            cp "${pkg_file}" "${GITHUB_WORKSPACE}/artifacts/freebsd/"
+
+      - name: Upload FreeBSD artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freebsd-package
+          path: artifacts/freebsd/
+          if-no-files-found: error
+
+  build-netbsd:
+    name: Build NetBSD Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.release_tag }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+          fi
+          echo "SNIPROXY_VERSION=${version#v}" >> "$GITHUB_ENV"
+
+      - name: Detect latest NetBSD release
+        id: netbsd-release
+        run: |
+          set -euo pipefail
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/netbsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          if [ -z "$release" ]; then
+            echo "Failed to detect NetBSD release" >&2
+            exit 1
+          fi
+          echo "NETBSD_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build in NetBSD VM
+        uses: vmactions/netbsd-vm@v1
+        with:
+          envs: SNIPROXY_VERSION
+          release: ${{ env.NETBSD_RELEASE }}
+          prepare: |
+            export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/$(machine -s)/binary/sets"
+          run: |
+            set -euo pipefail
+            ftp https://cdn.NetBSD.org/pub/pkgsrc/stable/pkgsrc.tar.gz
+            tar -C /usr -xzf pkgsrc.tar.gz
+
+            PORTPATH="/usr/pkgsrc/net/sniproxy"
+            rm -rf "${PORTPATH}"
+            mkdir -p "${PORTPATH}"
+            cp -R "${GITHUB_WORKSPACE}"/netbsd/* "${PORTPATH}/"
+            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+
+            cd "${PORTPATH}"
+            bmake distinfo
+            env BATCH=yes MAKE_JOBS=$(sysctl -n hw.ncpu) bmake package
+
+            mkdir -p "${GITHUB_WORKSPACE}/artifacts/netbsd"
+            pkg_file=$(find /usr/pkgsrc/packages -name 'sniproxy-*.tgz' 2>/dev/null | head -n1)
+            if [ -z "${pkg_file}" ]; then
+              echo "No NetBSD package produced" >&2
+              exit 1
+            fi
+            cp "${pkg_file}" "${GITHUB_WORKSPACE}/artifacts/netbsd/"
+
+      - name: Upload NetBSD artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: netbsd-package
+          path: artifacts/netbsd/
+          if-no-files-found: error
+
+  build-alpine:
+    name: Build Alpine Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.release_tag }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+          fi
+          echo "SNIPROXY_VERSION=${version#v}" >> "$GITHUB_ENV"
+
+      - name: Detect latest Alpine release
+        id: alpine-release
+        run: |
+          set -euo pipefail
+          release=$(curl -fsSL https://dl-cdn.alpinelinux.org/alpine/latest-stable/VERSION | tr -d '\n')
+          release=${release#v}
+          if [ -z "$release" ]; then
+            echo "Failed to detect Alpine release" >&2
+            exit 1
+          fi
+          echo "ALPINE_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build dist tarball
+        run: |
+          set -euo pipefail
+          ./autogen.sh
+          ./configure
+          make dist
+          DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          install -D -m 644 "$DIST_TARBALL" "alpine/${DIST_TARBALL##*/}"
+          echo "DIST_TARBALL=${DIST_TARBALL##*/}" >> "$GITHUB_ENV"
+
+      - name: Build in Alpine container
+        run: |
+          set -euo pipefail
+          cat > alpine/ci-build.sh <<'EOF'
+          #!/bin/sh
+          set -euo pipefail
+          apk update
+          apk add --no-cache alpine-sdk sudo bash coreutils
+          adduser -D builder
+          addgroup builder abuild
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          mkdir -p /workspace/artifacts/alpine /var/cache/distfiles
+          cp /workspace/alpine/${DIST_TARBALL} /var/cache/distfiles/
+          chown -R builder:abuild /workspace /var/cache/distfiles /workspace/artifacts/alpine
+          su builder -c "
+            set -e
+            cd /workspace/alpine
+            sed -i 's/^pkgver=.*/pkgver=${SNIPROXY_VERSION}/' APKBUILD
+            mkdir -p ~/.abuild
+            abuild-keygen -ani
+            {
+              echo 'PACKAGER=\"Sniproxy CI <ci@sniproxy>\"'
+              echo 'REPODEST=/workspace/artifacts/alpine'
+              echo 'SRCDEST=/var/cache/distfiles'
+            } >> ~/.abuild/abuild.conf
+            abuild checksum
+            abuild -r
+          "
+          find /workspace/artifacts/alpine -maxdepth 3 -name "sniproxy-*.apk" -print
+          EOF
+          chmod +x alpine/ci-build.sh
+          docker run --rm \
+            -e SNIPROXY_VERSION \
+            -e DIST_TARBALL \
+            -v "$PWD":/workspace \
+            -w /workspace \
+            "alpine:${ALPINE_RELEASE}" \
+            /bin/sh /workspace/alpine/ci-build.sh
+
+      - name: Collect Alpine artifact
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/alpine
+          find artifacts/alpine -maxdepth 4 -name 'sniproxy-*.apk' -print -exec cp {} artifacts/alpine/ \;
+
+      - name: Upload Alpine artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-package
+          path: artifacts/alpine/
+          if-no-files-found: error
+
+  build-freebsd:
+    name: Build FreeBSD Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.release_tag }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+          fi
+          echo "SNIPROXY_VERSION=${version#v}" >> "$GITHUB_ENV"
+
+      - name: Detect latest FreeBSD release
+        id: freebsd-release
+        run: |
+          set -euo pipefail
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/freebsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          if [ -z "$release" ]; then
+            echo "Failed to detect FreeBSD release" >&2
+            exit 1
+          fi
+          echo "FREEBSD_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          envs: SNIPROXY_VERSION
+          release: ${{ env.FREEBSD_RELEASE }}
+          prepare: |
+            env ASSUME_ALWAYS_YES=yes pkg bootstrap -f
+            env ASSUME_ALWAYS_YES=yes pkg install -y git rsync
+          run: |
+            set -euo pipefail
+            env ASSUME_ALWAYS_YES=yes pkg install -y ports-mgmt/pkg
+            if [ ! -d /usr/ports ]; then
+              git clone --depth=1 https://git.FreeBSD.org/ports.git /usr/ports
+            fi
+
+            PORTPATH="/usr/ports/net/sniproxy"
+            rm -rf "${PORTPATH}"
+            mkdir -p "${PORTPATH}"
+            cp -R "${GITHUB_WORKSPACE}"/freebsd/* "${PORTPATH}/"
+            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+
+            make -C "${PORTPATH}" makesum
+            env BATCH=yes MAKE_JOBS_NUMBER=$(sysctl -n hw.ncpu) PACKAGES=/tmp/packages make -C "${PORTPATH}" package
+
+            mkdir -p "${GITHUB_WORKSPACE}/artifacts/freebsd"
+            pkg_file=$(find /tmp/packages -name 'sniproxy-*.pkg' 2>/dev/null | head -n1)
+            if [ -z "${pkg_file}" ]; then
+              pkg_file=$(find /usr/ports/packages -name 'sniproxy-*.pkg' 2>/dev/null | head -n1)
+            fi
+            if [ -z "${pkg_file}" ]; then
+              echo "No FreeBSD package produced" >&2
+              exit 1
+            fi
+            cp "${pkg_file}" "${GITHUB_WORKSPACE}/artifacts/freebsd/"
+
+      - name: Upload FreeBSD artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freebsd-package
+          path: artifacts/freebsd/
+          if-no-files-found: error
+
+  build-netbsd:
+    name: Build NetBSD Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.release_tag }}"
+          else
+            version="${{ github.event.release.tag_name }}"
+          fi
+          echo "SNIPROXY_VERSION=${version#v}" >> "$GITHUB_ENV"
+
+      - name: Detect latest NetBSD release
+        id: netbsd-release
+        run: |
+          set -euo pipefail
+          release=$(curl -fsSL https://raw.githubusercontent.com/vmactions/netbsd-vm/v1/conf/default.release.conf | tr -d '\n')
+          if [ -z "$release" ]; then
+            echo "Failed to detect NetBSD release" >&2
+            exit 1
+          fi
+          echo "NETBSD_RELEASE=$release" >> "$GITHUB_ENV"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build in NetBSD VM
+        uses: vmactions/netbsd-vm@v1
+        with:
+          envs: SNIPROXY_VERSION
+          release: ${{ env.NETBSD_RELEASE }}
+          prepare: |
+            export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/$(machine -s)/binary/sets"
+          run: |
+            set -euo pipefail
+            ftp https://cdn.NetBSD.org/pub/pkgsrc/stable/pkgsrc.tar.gz
+            tar -C /usr -xzf pkgsrc.tar.gz
+
+            PORTPATH="/usr/pkgsrc/net/sniproxy"
+            rm -rf "${PORTPATH}"
+            mkdir -p "${PORTPATH}"
+            cp -R "${GITHUB_WORKSPACE}"/netbsd/* "${PORTPATH}/"
+            sed -i '' -e "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile"
+
+            cd "${PORTPATH}"
+            bmake distinfo
+            env BATCH=yes MAKE_JOBS=$(sysctl -n hw.ncpu) bmake package
+
+            mkdir -p "${GITHUB_WORKSPACE}/artifacts/netbsd"
+            pkg_file=$(find /usr/pkgsrc/packages -name 'sniproxy-*.tgz' 2>/dev/null | head -n1)
+            if [ -z "${pkg_file}" ]; then
+              echo "No NetBSD package produced" >&2
+              exit 1
+            fi
+            cp "${pkg_file}" "${GITHUB_WORKSPACE}/artifacts/netbsd/"
+
+      - name: Upload NetBSD artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: netbsd-package
+          path: artifacts/netbsd/
+          if-no-files-found: error
+
   publish:
     name: Upload Release Assets
     runs-on: ubuntu-latest
     needs:
       - build-deb
       - build-rpm
+      - build-openbsd
+      - build-freebsd
+      - build-netbsd
+      - build-alpine
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v4
@@ -143,6 +599,30 @@ jobs:
           name: rpm-packages
           path: release-assets/rpm
 
+      - name: Download OpenBSD artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openbsd-package
+          path: release-assets/openbsd
+
+      - name: Download FreeBSD artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: freebsd-package
+          path: release-assets/freebsd
+
+      - name: Download NetBSD artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: netbsd-package
+          path: release-assets/netbsd
+
+      - name: Download Alpine artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: alpine-package
+          path: release-assets/alpine
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
@@ -150,3 +630,7 @@ jobs:
           files: |
             release-assets/deb/*.deb
             release-assets/rpm/*.rpm
+            release-assets/openbsd/*.tgz
+            release-assets/freebsd/*.pkg
+            release-assets/netbsd/*.tgz
+            release-assets/alpine/*.apk
