@@ -1,0 +1,120 @@
+name: Build sniproxy packages
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build for ${{ matrix.distro.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - { name: "Debian Latest", image: "debian:latest", type: "deb" }
+          - { name: "Debian LTS", image: "debian:bookworm", type: "deb" }
+          - { name: "Ubuntu Latest", image: "ubuntu:latest", type: "deb" }
+          #- { name: "Fedora Latest", image: "fedora:latest", type: "rpm" }
+
+    container:
+      image: ${{ matrix.distro.image }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies (Debian)
+        if: matrix.distro.type == 'deb'
+        run: |
+          apt-get update
+          apt-get install -y \
+            git \
+            curl \
+            ca-certificates
+          apt-get install -y \
+            autotools-dev \
+            cdbs \
+            debhelper \
+            dh-autoreconf \
+            dpkg-dev \
+            gettext \
+            libev-dev \
+            libpcre2-dev \
+            libc-ares-dev \
+            pkg-config \
+            fakeroot \
+            devscripts \
+            build-essential \
+            libssl-dev
+
+      - name: Build Debian package
+        if: matrix.distro.type == 'deb'
+        run: |
+          ./autogen.sh
+          dpkg-buildpackage -us -uc -b
+          mkdir -p dist
+          mv ../*.deb dist/
+
+      - name: Install build dependencies (RPM)
+        if: matrix.distro.type == 'rpm'
+        run: |
+          dnf makecache -y
+          dnf install -y \
+            git \
+            ca-certificates
+          dnf install -y \
+            autoconf \
+            automake \
+            gettext-devel \
+            libev-devel \
+            pcre-devel \
+            perl \
+            pkgconfig \
+            rpm-build \
+            c-ares-devel \
+            make \
+            gcc \
+            openssl-devel
+
+      - name: Build RPM package
+        if: matrix.distro.type == 'rpm'
+        run: |
+          ./autogen.sh
+          ./configure
+          make dist
+          rpmbuild --define "_sourcedir `pwd`" -ba redhat/sniproxy.spec
+          mkdir -p dist
+          find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} dist/ \;
+
+      - name: List built packages
+        run: ls -lh dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.distro.name }} packages
+          path: dist/*
+
+  release:
+    name: Upload all release packages
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-dist
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: all-dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
