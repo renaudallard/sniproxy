@@ -161,7 +161,6 @@ jobs:
         with:
           envs: SNIPROXY_VERSION
           release: ${{ env.OPENBSD_RELEASE }}
-          sync: sshfs
           prepare: |
             ARCH=$(uname -m)
             export PKG_PATH="https://cdn.openbsd.org/pub/OpenBSD/$(uname -r)/packages/${ARCH}/"
@@ -236,7 +235,6 @@ jobs:
         with:
           envs: SNIPROXY_VERSION
           release: ${{ env.FREEBSD_RELEASE }}
-          sync: sshfs
           prepare: |
             env ASSUME_ALWAYS_YES=yes pkg bootstrap -f
             env ASSUME_ALWAYS_YES=yes pkg install -y git rsync
@@ -318,7 +316,6 @@ jobs:
         with:
           envs: SNIPROXY_VERSION
           release: ${{ env.NETBSD_RELEASE }}
-          sync: sshfs
           prepare: |
             ARCH=$(uname -m)
             export PKG_PATH="https://cdn.NetBSD.org/pub/NetBSD/$(uname -r)/${ARCH}/binary/sets"
@@ -332,7 +329,11 @@ jobs:
             PORTPATH="/usr/pkgsrc/net/sniproxy"
             rm -rf "${PORTPATH}"
             mkdir -p "${PORTPATH}"
-            cp -R "${GITHUB_WORKSPACE}"/netbsd/* "${PORTPATH}/"
+            if [ ! -d "${GITHUB_WORKSPACE}/netbsd" ]; then
+              echo "NetBSD port skeleton not found in workspace" >&2
+              exit 1
+            fi
+            (cd "${GITHUB_WORKSPACE}/netbsd" && tar -cf - .) | tar -C "${PORTPATH}" -xf -
             tmpfile=$(mktemp)
             sed "s/^SNIPROXY_VERSION.*/SNIPROXY_VERSION?=${SNIPROXY_VERSION}/" "${PORTPATH}/Makefile" > "${tmpfile}"
             mv "${tmpfile}" "${PORTPATH}/Makefile"
