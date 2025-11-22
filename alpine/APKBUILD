@@ -26,6 +26,7 @@ build() {
 	export LIBS="-lev"
 	export CPPFLAGS="$CPPFLAGS -I/usr/include"
 	export LDFLAGS="$LDFLAGS -L/usr/lib"
+	export PKG_CONFIG_PATH="/usr/lib/pkgconfig"
 	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-rpath --enable-dns
 	make
 }
