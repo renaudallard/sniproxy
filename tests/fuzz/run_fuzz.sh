@@ -23,6 +23,16 @@ if [[ -n "$PCRE2_CFLAGS" ]]; then
     COMMON_FLAGS+=("$PCRE2_CFLAGS")
 fi
 
+LIBBSD_CFLAGS=""
+LIBBSD_LIBS=""
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libbsd; then
+    LIBBSD_CFLAGS=$(pkg-config --cflags libbsd)
+    LIBBSD_LIBS=$(pkg-config --libs libbsd)
+fi
+if [[ -n "$LIBBSD_CFLAGS" ]]; then
+    COMMON_FLAGS+=("$LIBBSD_CFLAGS" "-DHAVE_ARC4RANDOM" "-DHAVE_BSD_STDLIB_H")
+fi
+
 if ! command -v "$FUZZ_CC" >/dev/null 2>&1; then
     echo "error: $FUZZ_CC is required for libFuzzer builds" >&2
     exit 1
@@ -95,9 +105,9 @@ build_fuzzer() {
     local target=$1
     shift
     if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
-        "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target"
+        "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS $LIBBSD_LIBS -o "$OUT_DIR/$target"
     else
-        "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS -o "$OUT_DIR/$target" >/dev/null
+        "$FUZZ_CC" $EXTRA_FLAGS "${COMMON_FLAGS[@]}" "$@" $PCRE2_LIBS $LIBBSD_LIBS -o "$OUT_DIR/$target" >/dev/null
     fi
 }
 
