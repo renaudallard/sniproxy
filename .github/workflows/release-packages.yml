@@ -668,6 +668,21 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
+      - name: Ensure autoconf 2.71+
+        run: |
+          set -euo pipefail
+          zypper -n install --recommends --type pattern devel_basis || true
+          ver=$(autoconf --version | head -n1 | awk '{print $NF}')
+          need="2.71"
+          if [ "$(printf '%s\n' "$need" "$ver" | sort -V | head -n1)" != "$need" ]; then
+            curl -fsSL -o /tmp/autoconf.tar.gz https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
+            tar -C /tmp -xf /tmp/autoconf.tar.gz
+            cd /tmp/autoconf-2.71
+            ./configure --prefix=/usr/local
+            make -j"$(nproc)"
+            make install
+          fi
+
       - name: Prepare source tarball
         run: |
           set -euo pipefail
@@ -683,20 +698,6 @@ jobs:
           cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
           sed "s/^Version:.*/Version: ${TAR_VERSION}/" redhat/sniproxy.spec > "${RPM_TOPDIR}/SPECS/sniproxy.spec"
           printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
-
-      - name: Ensure autoconf 2.71+
-        run: |
-          set -euo pipefail
-          ver=$(autoconf --version | head -n1 | awk '{print $NF}')
-          need="2.71"
-          if [ "$(printf '%s\n' "$need" "$ver" | sort -V | head -n1)" != "$need" ]; then
-            curl -fsSL -o /tmp/autoconf.tar.gz https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
-            tar -C /tmp -xf /tmp/autoconf.tar.gz
-            cd /tmp/autoconf-2.71
-            ./configure --prefix=/usr/local
-            make -j"$(nproc)"
-            make install
-          fi
 
       - name: Build RPM packages
         run: |
