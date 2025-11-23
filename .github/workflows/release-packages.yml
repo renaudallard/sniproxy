@@ -149,7 +149,8 @@ jobs:
           mkdir -p artifacts/deb/ubuntu-stable
           shopt -s nullglob
           for pkg in ../*.deb; do
-            cp "$pkg" artifacts/deb/ubuntu-stable/
+            base=$(basename "$pkg")
+            cp "$pkg" "artifacts/deb/ubuntu-stable/${base%.deb}-ubuntu-${{ needs.detect-versions.outputs.ubuntu_stable }}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -198,7 +199,8 @@ jobs:
           mkdir -p artifacts/deb/ubuntu-lts
           shopt -s nullglob
           for pkg in ../*.deb; do
-            cp "$pkg" artifacts/deb/ubuntu-lts/
+            base=$(basename "$pkg")
+            cp "$pkg" "artifacts/deb/ubuntu-lts/${base%.deb}-ubuntu-${{ needs.detect-versions.outputs.ubuntu_lts }}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -247,7 +249,8 @@ jobs:
           mkdir -p artifacts/deb/debian-stable
           shopt -s nullglob
           for pkg in ../*.deb; do
-            cp "$pkg" artifacts/deb/debian-stable/
+            base=$(basename "$pkg")
+            cp "$pkg" "artifacts/deb/debian-stable/${base%.deb}-debian-${{ needs.detect-versions.outputs.debian_stable }}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -296,7 +299,8 @@ jobs:
           mkdir -p artifacts/deb/debian-lts
           shopt -s nullglob
           for pkg in ../*.deb; do
-            cp "$pkg" artifacts/deb/debian-lts/
+            base=$(basename "$pkg")
+            cp "$pkg" "artifacts/deb/debian-lts/${base%.deb}-debian-${{ needs.detect-versions.outputs.debian_oldstable }}.deb"
           done
 
       - name: Upload Debian artifacts
