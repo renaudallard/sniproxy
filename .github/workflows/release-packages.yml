@@ -621,7 +621,10 @@ jobs:
           set -euo pipefail
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
           mkdir -p artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}
-          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}/" \;
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print | while read -r pkg; do
+            base=$(basename "$pkg")
+            cp "$pkg" "artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}/${base%.rpm}-opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}.rpm"
+          done
 
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
@@ -714,7 +717,10 @@ jobs:
           set -euo pipefail
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
           mkdir -p artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}
-          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/" \;
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print | while read -r pkg; do
+            base=$(basename "$pkg")
+            cp "$pkg" "artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/${base%.rpm}-suse-${{ needs.detect-versions.outputs.suse_bci }}.rpm"
+          done
 
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
