@@ -388,12 +388,13 @@ jobs:
           ./configure
           make dist
           DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          TAR_VERSION=${DIST_TARBALL#sniproxy-}
+          TAR_VERSION=${TAR_VERSION%.tar.gz}
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-$(rpm --eval '%{_topdir}')}"
           rm -rf "${RPM_TOPDIR}"
           mkdir -p "${RPM_TOPDIR}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-          SPEC_VERSION=$(rpmspec --query --qf '%{VERSION}\n' redhat/sniproxy.spec | head -n1)
-          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/sniproxy-${SPEC_VERSION}.tar.gz"
-          cp redhat/sniproxy.spec "${RPM_TOPDIR}/SPECS/"
+          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
+          sed "s/^Version:.*/Version: ${TAR_VERSION}/" redhat/sniproxy.spec > "${RPM_TOPDIR}/SPECS/sniproxy.spec"
           printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
 
       - name: Build RPM packages
@@ -484,12 +485,13 @@ jobs:
           ./configure
           make dist
           DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          TAR_VERSION=${DIST_TARBALL#sniproxy-}
+          TAR_VERSION=${TAR_VERSION%.tar.gz}
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-$(rpm --eval '%{_topdir}')}"
           rm -rf "${RPM_TOPDIR}"
           mkdir -p "${RPM_TOPDIR}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-          SPEC_VERSION=$(rpmspec --query --qf '%{VERSION}\n' redhat/sniproxy.spec | head -n1)
-          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/sniproxy-${SPEC_VERSION}.tar.gz"
-          cp redhat/sniproxy.spec "${RPM_TOPDIR}/SPECS/"
+          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
+          sed "s/^Version:.*/Version: ${TAR_VERSION}/" redhat/sniproxy.spec > "${RPM_TOPDIR}/SPECS/sniproxy.spec"
           printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
 
       - name: Build RPM packages
