@@ -549,9 +549,12 @@ jobs:
           zypper -n install \
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkg-config \
-            gettext-tools libev-devel libpcre2-devel libpcre2-8-devel \
+            gettext-tools libev-devel \
             c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
             tar which
+          if ! zypper -n install libpcre2-8-devel; then
+            zypper -n install pcre2-devel || zypper -n install libpcre2-devel
+          fi
       - name: Mark workspace as safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
@@ -630,15 +633,20 @@ jobs:
         run: |
           set -euo pipefail
           ver="${{ needs.detect-versions.outputs.suse_bci }}"
-          SUSEConnect -p "sle-module-development-tools/${ver}/x86_64" || true
-          SUSEConnect -p "PackageHub/${ver}/x86_64" || true
+          if command -v SUSEConnect >/dev/null 2>&1; then
+            SUSEConnect -p "sle-module-development-tools/${ver}/x86_64" || true
+            SUSEConnect -p "PackageHub/${ver}/x86_64" || true
+          fi
           zypper -n ref
           zypper -n install \
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkg-config \
-            gettext-tools libev-devel libpcre2-devel libpcre2-8-devel \
+            gettext-tools libev-devel \
             c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
             tar which curl
+          if ! zypper -n install libpcre2-8-devel; then
+            zypper -n install pcre2-devel || zypper -n install libpcre2-devel
+          fi
       - name: Mark workspace as safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
