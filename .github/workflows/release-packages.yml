@@ -354,6 +354,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - detect-versions
+    defaults:
+      run:
+        shell: bash
     container:
       image: fedora:${{ needs.detect-versions.outputs.fedora_release }}
     steps:
@@ -364,7 +367,7 @@ jobs:
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkgconfig \
             gettext-devel libev-devel pcre2-devel \
-            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
             which tar
 
       - name: Checkout
@@ -372,6 +375,8 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+      - name: Allow git in container path
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Prepare source tarball
         run: |
@@ -416,6 +421,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - detect-versions
+    defaults:
+      run:
+        shell: bash
     container:
       image: rockylinux:${{ needs.detect-versions.outputs.rocky_release }}
     steps:
@@ -429,7 +437,7 @@ jobs:
               git rpm-build make gcc gcc-c++ \
               autoconf automake libtool pkgconfig \
               gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
               which tar
           else
             yum install -y yum-utils epel-release
@@ -438,7 +446,7 @@ jobs:
               git rpm-build make gcc gcc-c++ \
               autoconf automake libtool pkgconfig \
               gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
               which tar
           fi
 
