@@ -36,6 +36,8 @@ jobs:
       debian_oldstable: ${{ steps.detect.outputs.debian_oldstable }}
       fedora_release: ${{ steps.detect.outputs.fedora_release }}
       rocky_release: ${{ steps.detect.outputs.rocky_release }}
+      opensuse_leap: ${{ steps.detect.outputs.opensuse_leap }}
+      suse_bci: ${{ steps.detect.outputs.suse_bci }}
     steps:
       - name: Fetch latest Ubuntu/Debian versions
         id: detect
@@ -133,12 +135,45 @@ jobs:
                   pass
               return "9"
 
+          def latest_opensuse_leap():
+              import re
+              try:
+                  data = fetch_text("https://download.opensuse.org/distribution/leap/")
+                  versions = []
+                  for line in data.splitlines():
+                      match = re.search(r'href=\"([0-9]+(?:\\.[0-9]+)?)/\"', line)
+                      if match:
+                          versions.append(match.group(1))
+                  if versions:
+                      versions_sorted = sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
+                      return versions_sorted[-1]
+              except Exception:
+                  pass
+              return "15.6"
+
+          def latest_suse_bci():
+              try:
+                  data = fetch_text("https://registry.suse.com/v2/bci/bci-base/tags/list")
+                  tags = json.loads(data).get("tags", [])
+                  versions = []
+                  for t in tags:
+                      if all(ch.isdigit() or ch == "." for ch in t):
+                          versions.append(t)
+                  if versions:
+                      versions_sorted = sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
+                      return versions_sorted[-1]
+              except Exception:
+                  pass
+              return "15.6"
+
           ubuntu_stable = latest_ubuntu_non_lts()
           ubuntu_lts = latest_ubuntu_lts()
           debian_stable = debian_codename("stable")
           debian_oldstable = debian_codename("oldstable")
           fedora_release = latest_fedora_release()
           rocky_release = latest_rocky_release()
+          opensuse_leap = latest_opensuse_leap()
+          suse_bci = latest_suse_bci()
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"ubuntu_stable={ubuntu_stable}\n")
@@ -147,6 +182,8 @@ jobs:
               fh.write(f"debian_oldstable={debian_oldstable}\n")
               fh.write(f"fedora_release={fedora_release}\n")
               fh.write(f"rocky_release={rocky_release}\n")
+              fh.write(f"opensuse_leap={opensuse_leap}\n")
+              fh.write(f"suse_bci={suse_bci}\n")
           PY
 
   build-deb-ubuntu-stable:
@@ -494,6 +531,174 @@ jobs:
           sed "s/^Version:.*/Version: ${TAR_VERSION}/" redhat/sniproxy.spec > "${RPM_TOPDIR}/SPECS/sniproxy.spec"
           printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
 
+  build-rpm-opensuse:
+    name: Build RPM Packages (openSUSE Leap)
+    runs-on: ubuntu-latest
+    needs:
+      - detect-versions
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: opensuse/leap:${{ needs.detect-versions.outputs.opensuse_leap }}
+    steps:
+      - name: Install required tooling
+        run: |
+          set -euo pipefail
+          zypper -n ref
+          zypper -n install \
+            git rpm-build make gcc gcc-c++ \
+            autoconf automake libtool pkg-config \
+            gettext-tools libev-devel libpcre2-devel \
+            c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
+            tar which
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Prepare source tarball
+        run: |
+          set -euo pipefail
+          ./autogen.sh
+          ./configure
+          make dist
+          DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          TAR_VERSION=${DIST_TARBALL#sniproxy-}
+          TAR_VERSION=${TAR_VERSION%.tar.gz}
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-$(rpm --eval '%{_topdir}')}"
+          rm -rf "${RPM_TOPDIR}"
+          mkdir -p "${RPM_TOPDIR}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
+          sed "s/^Version:.*/Version: ${TAR_VERSION}/" redhat/sniproxy.spec > "${RPM_TOPDIR}/SPECS/sniproxy.spec"
+          printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
+
+      - name: Ensure autoconf 2.71+
+        run: |
+          set -euo pipefail
+          ver=$(autoconf --version | head -n1 | awk '{print $NF}')
+          need="2.71"
+          if [ "$(printf '%s\n' "$need" "$ver" | sort -V | head -n1)" != "$need" ]; then
+            curl -fsSL -o /tmp/autoconf.tar.gz https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
+            tar -C /tmp -xf /tmp/autoconf.tar.gz
+            cd /tmp/autoconf-2.71
+            ./configure --prefix=/usr/local
+            make -j"$(nproc)"
+            make install
+          fi
+
+      - name: Build RPM packages
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          if ! rpmbuild --define "_topdir ${RPM_TOPDIR}" -ba "${RPM_TOPDIR}/SPECS/sniproxy.spec"; then
+            echo "rpmbuild failed, dumping config.log files:" >&2
+            find "${RPM_TOPDIR}/BUILD" -name config.log -print -exec cat {} \; || true
+            exit 1
+          fi
+
+      - name: Collect RPM artifacts
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          mkdir -p artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}/" \;
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages-opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}
+          path: artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}/
+          if-no-files-found: error
+
+  build-rpm-suse:
+    name: Build RPM Packages (SUSE BCI)
+    runs-on: ubuntu-latest
+    needs:
+      - detect-versions
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: registry.suse.com/bci/bci-base:${{ needs.detect-versions.outputs.suse_bci }}
+    steps:
+      - name: Install required tooling
+        run: |
+          set -euo pipefail
+          zypper -n ref
+          zypper -n install \
+            git rpm-build make gcc gcc-c++ \
+            autoconf automake libtool pkg-config \
+            gettext-tools libev-devel libpcre2-devel \
+            c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
+            tar which curl
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Prepare source tarball
+        run: |
+          set -euo pipefail
+          ./autogen.sh
+          ./configure
+          make dist
+          DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          TAR_VERSION=${DIST_TARBALL#sniproxy-}
+          TAR_VERSION=${TAR_VERSION%.tar.gz}
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-$(rpm --eval '%{_topdir}')}"
+          rm -rf "${RPM_TOPDIR}"
+          mkdir -p "${RPM_TOPDIR}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
+          sed "s/^Version:.*/Version: ${TAR_VERSION}/" redhat/sniproxy.spec > "${RPM_TOPDIR}/SPECS/sniproxy.spec"
+          printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
+
+      - name: Ensure autoconf 2.71+
+        run: |
+          set -euo pipefail
+          ver=$(autoconf --version | head -n1 | awk '{print $NF}')
+          need="2.71"
+          if [ "$(printf '%s\n' "$need" "$ver" | sort -V | head -n1)" != "$need" ]; then
+            curl -fsSL -o /tmp/autoconf.tar.gz https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
+            tar -C /tmp -xf /tmp/autoconf.tar.gz
+            cd /tmp/autoconf-2.71
+            ./configure --prefix=/usr/local
+            make -j"$(nproc)"
+            make install
+          fi
+
+      - name: Build RPM packages
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          if ! rpmbuild --define "_topdir ${RPM_TOPDIR}" -ba "${RPM_TOPDIR}/SPECS/sniproxy.spec"; then
+            echo "rpmbuild failed, dumping config.log files:" >&2
+            find "${RPM_TOPDIR}/BUILD" -name config.log -print -exec cat {} \; || true
+            exit 1
+          fi
+
+      - name: Collect RPM artifacts
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          mkdir -p artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/" \;
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages-suse-${{ needs.detect-versions.outputs.suse_bci }}
+          path: artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/
+          if-no-files-found: error
+
       - name: Build RPM packages
         run: |
           set -euo pipefail
@@ -529,6 +734,8 @@ jobs:
       - build-deb-debian-lts
       - build-rpm-fedora
       - build-rpm-rocky
+      - build-rpm-opensuse
+      - build-rpm-suse
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v4
