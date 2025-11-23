@@ -34,6 +34,8 @@ jobs:
       ubuntu_lts: ${{ steps.detect.outputs.ubuntu_lts }}
       debian_stable: ${{ steps.detect.outputs.debian_stable }}
       debian_oldstable: ${{ steps.detect.outputs.debian_oldstable }}
+      fedora_release: ${{ steps.detect.outputs.fedora_release }}
+      rocky_release: ${{ steps.detect.outputs.rocky_release }}
     steps:
       - name: Fetch latest Ubuntu/Debian versions
         id: detect
@@ -42,6 +44,7 @@ jobs:
           python - <<'PY'
           import os
           import urllib.request
+          import json
 
           def fetch_text(url):
               with urllib.request.urlopen(url, timeout=10) as resp:
@@ -98,16 +101,52 @@ jobs:
                   pass
               return track
 
+          def latest_fedora_release():
+              try:
+                  data = fetch_text("https://getfedora.org/releases.json")
+                  releases = json.loads(data)
+                  versions = []
+                  for entry in releases.get("fedora", []):
+                      ver = entry.get("version")
+                      status = entry.get("status")
+                      edition = entry.get("edition")
+                      if edition == "Everything" and status == "Active" and ver is not None:
+                          versions.append(int(ver))
+                  if versions:
+                      return str(max(versions))
+              except Exception:
+                  pass
+              return "39"
+
+          def latest_rocky_release():
+              try:
+                  data = fetch_text("https://download.rockylinux.org/pub/rocky/metadata.json")
+                  meta = json.loads(data)
+                  versions = []
+                  for rel in meta.get("releases", []):
+                      if rel.get("released") is True:
+                          versions.append(rel.get("version"))
+                  if versions:
+                      versions_sorted = sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
+                      return versions_sorted[-1]
+              except Exception:
+                  pass
+              return "9"
+
           ubuntu_stable = latest_ubuntu_non_lts()
           ubuntu_lts = latest_ubuntu_lts()
           debian_stable = debian_codename("stable")
           debian_oldstable = debian_codename("oldstable")
+          fedora_release = latest_fedora_release()
+          rocky_release = latest_rocky_release()
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"ubuntu_stable={ubuntu_stable}\n")
               fh.write(f"ubuntu_lts={ubuntu_lts}\n")
               fh.write(f"debian_stable={debian_stable}\n")
               fh.write(f"debian_oldstable={debian_oldstable}\n")
+              fh.write(f"fedora_release={fedora_release}\n")
+              fh.write(f"rocky_release={rocky_release}\n")
           PY
 
   build-deb-ubuntu-stable:
@@ -311,20 +350,41 @@ jobs:
           if-no-files-found: error
 
   build-rpm:
-    name: Build RPM Packages
+    name: Build RPM Packages (${{ matrix.display_name }})
     runs-on: ubuntu-latest
+    needs:
+      - detect-versions
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - display_name: Fedora
+            image: fedora:${{ needs.detect-versions.outputs.fedora_release }}
+            artifact_suffix: fedora-${{ needs.detect-versions.outputs.fedora_release }}
+          - display_name: Rocky Linux
+            image: rockylinux:${{ needs.detect-versions.outputs.rocky_release }}
+            artifact_suffix: rocky-${{ needs.detect-versions.outputs.rocky_release }}
     container:
-      image: fedora:39
+      image: ${{ matrix.image }}
     steps:
       - name: Install required tooling
         run: |
           set -euo pipefail
-          dnf install -y \
-            git rpm-build make gcc gcc-c++ \
-            autoconf automake libtool pkgconfig \
-            gettext-devel libev-devel pcre2-devel \
-            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
-            which tar
+          if command -v dnf >/dev/null 2>&1; then
+            dnf install -y \
+              git rpm-build make gcc gcc-c++ \
+              autoconf automake libtool pkgconfig \
+              gettext-devel libev-devel pcre2-devel \
+              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+              which tar
+          else
+            yum install -y \
+              git rpm-build make gcc gcc-c++ \
+              autoconf automake libtool pkgconfig \
+              gettext-devel libev-devel pcre2-devel \
+              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+              which tar
+          fi
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -360,14 +420,14 @@ jobs:
         run: |
           set -euo pipefail
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
-          mkdir -p artifacts/rpm
-          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} artifacts/rpm/ \;
+          mkdir -p "artifacts/rpm/${{ matrix.artifact_suffix }}"
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/${{ matrix.artifact_suffix }}/" \;
 
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rpm-packages
-          path: artifacts/rpm/
+          name: rpm-packages-${{ matrix.artifact_suffix }}
+          path: artifacts/rpm/${{ matrix.artifact_suffix }}/
           if-no-files-found: error
 
   publish:
@@ -391,8 +451,9 @@ jobs:
       - name: Download RPM artifacts
         uses: actions/download-artifact@v4
         with:
-          name: rpm-packages
+          pattern: rpm-packages-*
           path: release-assets/rpm
+          merge-multiple: true
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
