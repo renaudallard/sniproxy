@@ -421,6 +421,11 @@ jobs:
       - name: Prepare source tarball
         run: |
           set -euo pipefail
+          ver="${{ needs.detect-versions.outputs.suse_bci }}"
+          if command -v SUSEConnect >/dev/null 2>&1; then
+            SUSEConnect -p "sle-module-development-tools/${ver}/x86_64" || true
+            SUSEConnect -p "PackageHub/${ver}/x86_64" || true
+          fi
           ./autogen.sh
           ./configure
           make dist
@@ -518,6 +523,11 @@ jobs:
       - name: Prepare source tarball
         run: |
           set -euo pipefail
+          ver="${{ needs.detect-versions.outputs.opensuse_leap }}"
+          if command -v SUSEConnect >/dev/null 2>&1; then
+            SUSEConnect -p "sle-module-development-tools/${ver}/x86_64" || true
+            SUSEConnect -p "PackageHub/${ver}/x86_64" || true
+          fi
           ./autogen.sh
           ./configure
           make dist
