@@ -40,75 +40,75 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-import os
-import urllib.request
+          import os
+          import urllib.request
 
-def fetch_text(url):
-    with urllib.request.urlopen(url, timeout=10) as resp:
-        return resp.read().decode()
+          def fetch_text(url):
+              with urllib.request.urlopen(url, timeout=10) as resp:
+                  return resp.read().decode()
 
-def latest_ubuntu_non_lts():
-    try:
-        data = fetch_text("https://changelogs.ubuntu.com/meta-release")
-        versions = []
-        block = {}
-        for line in data.splitlines() + [""]:
-            if not line.strip():
-                if block.get("Supported") == "1" and block.get("Lts", "0") == "0" and "Version" in block:
-                    versions.append(block["Version"])
-                block = {}
-                continue
-            if ":" in line:
-                k, v = line.split(":", 1)
-                block[k.strip()] = v.strip()
-        if versions:
-            return versions[-1]
-    except Exception:
-        pass
-    return "latest"
+          def latest_ubuntu_non_lts():
+              try:
+                  data = fetch_text("https://changelogs.ubuntu.com/meta-release")
+                  versions = []
+                  block = {}
+                  for line in data.splitlines() + [""]:
+                      if not line.strip():
+                          if block.get("Supported") == "1" and block.get("Lts", "0") == "0" and "Version" in block:
+                              versions.append(block["Version"])
+                          block = {}
+                          continue
+                      if ":" in line:
+                          k, v = line.split(":", 1)
+                          block[k.strip()] = v.strip()
+                  if versions:
+                      return versions[-1]
+              except Exception:
+                  pass
+              return "latest"
 
-def latest_ubuntu_lts():
-    try:
-        data = fetch_text("https://changelogs.ubuntu.com/meta-release-lts")
-        versions = []
-        block = {}
-        for line in data.splitlines() + [""]:
-            if not line.strip():
-                if block.get("Supported") == "1" and block.get("Lts") == "1" and "Version" in block:
-                    versions.append(block["Version"])
-                block = {}
-                continue
-            if ":" in line:
-                k, v = line.split(":", 1)
-                block[k.strip()] = v.strip()
-        if versions:
-            return versions[-1]
-    except Exception:
-        pass
-    return "22.04"
+          def latest_ubuntu_lts():
+              try:
+                  data = fetch_text("https://changelogs.ubuntu.com/meta-release-lts")
+                  versions = []
+                  block = {}
+                  for line in data.splitlines() + [""]:
+                      if not line.strip():
+                          if block.get("Supported") == "1" and block.get("Lts") == "1" and "Version" in block:
+                              versions.append(block["Version"])
+                          block = {}
+                          continue
+                      if ":" in line:
+                          k, v = line.split(":", 1)
+                          block[k.strip()] = v.strip()
+                  if versions:
+                      return versions[-1]
+              except Exception:
+                  pass
+              return "22.04"
 
-def debian_codename(track):
-    url = f"https://deb.debian.org/debian/dists/{track}/Release"
-    try:
-        data = fetch_text(url)
-        for line in data.splitlines():
-            if line.startswith("Codename:"):
-                return line.split(":", 1)[1].strip()
-    except Exception:
-        pass
-    return track
+          def debian_codename(track):
+              url = f"https://deb.debian.org/debian/dists/{track}/Release"
+              try:
+                  data = fetch_text(url)
+                  for line in data.splitlines():
+                      if line.startswith("Codename:"):
+                          return line.split(":", 1)[1].strip()
+              except Exception:
+                  pass
+              return track
 
-ubuntu_stable = latest_ubuntu_non_lts()
-ubuntu_lts = latest_ubuntu_lts()
-debian_stable = debian_codename("stable")
-debian_oldstable = debian_codename("oldstable")
+          ubuntu_stable = latest_ubuntu_non_lts()
+          ubuntu_lts = latest_ubuntu_lts()
+          debian_stable = debian_codename("stable")
+          debian_oldstable = debian_codename("oldstable")
 
-with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-    fh.write(f"ubuntu_stable={ubuntu_stable}\n")
-    fh.write(f"ubuntu_lts={ubuntu_lts}\n")
-    fh.write(f"debian_stable={debian_stable}\n")
-    fh.write(f"debian_oldstable={debian_oldstable}\n")
-PY
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"ubuntu_stable={ubuntu_stable}\n")
+              fh.write(f"ubuntu_lts={ubuntu_lts}\n")
+              fh.write(f"debian_stable={debian_stable}\n")
+              fh.write(f"debian_oldstable={debian_oldstable}\n")
+          PY
 
   build-deb-ubuntu-stable:
     name: Build Debian Packages (Ubuntu Stable)
