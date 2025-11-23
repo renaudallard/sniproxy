@@ -22,26 +22,28 @@ env:
   RPMBUILD_TOPDIR: /tmp/rpmbuild
 
 jobs:
-  build-deb:
-    name: Build Debian Packages
+  build-deb-ubuntu-stable:
+    name: Build Debian Packages (Ubuntu Stable)
     runs-on: ubuntu-latest
+    container: ubuntu:latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
-
-      - name: Install build dependencies
+      - name: Prepare build environment
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y \
+            git ca-certificates \
             build-essential devscripts debhelper \
             cdbs dh-autoreconf autotools-dev \
             autoconf automake libtool pkg-config \
             gettext libev-dev libpcre2-dev \
             libc-ares-dev fakeroot dpkg-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Build Debian packages
         run: |
@@ -51,17 +53,149 @@ jobs:
       - name: Collect Debian artifacts
         run: |
           set -euo pipefail
-          mkdir -p artifacts/deb
+          mkdir -p artifacts/deb/ubuntu-stable
           shopt -s nullglob
           for pkg in ../*.deb; do
-            cp "$pkg" artifacts/deb/
+            cp "$pkg" artifacts/deb/ubuntu-stable/
           done
 
       - name: Upload Debian artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deb-packages
-          path: artifacts/deb/
+          name: deb-packages-ubuntu-stable
+          path: artifacts/deb/ubuntu-stable/
+          if-no-files-found: error
+
+  build-deb-ubuntu-lts:
+    name: Build Debian Packages (Ubuntu LTS)
+    runs-on: ubuntu-latest
+    container: ubuntu:lts
+    steps:
+      - name: Prepare build environment
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y \
+            git ca-certificates \
+            build-essential devscripts debhelper \
+            cdbs dh-autoreconf autotools-dev \
+            autoconf automake libtool pkg-config \
+            gettext libev-dev libpcre2-dev \
+            libc-ares-dev fakeroot dpkg-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Build Debian packages
+        run: |
+          set -euo pipefail
+          dpkg-buildpackage -us -uc -b -j"$(nproc)"
+
+      - name: Collect Debian artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/deb/ubuntu-lts
+          shopt -s nullglob
+          for pkg in ../*.deb; do
+            cp "$pkg" artifacts/deb/ubuntu-lts/
+          done
+
+      - name: Upload Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages-ubuntu-lts
+          path: artifacts/deb/ubuntu-lts/
+          if-no-files-found: error
+
+  build-deb-debian-stable:
+    name: Build Debian Packages (Debian Stable)
+    runs-on: ubuntu-latest
+    container: debian:stable
+    steps:
+      - name: Prepare build environment
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y \
+            git ca-certificates \
+            build-essential devscripts debhelper \
+            cdbs dh-autoreconf autotools-dev \
+            autoconf automake libtool pkg-config \
+            gettext libev-dev libpcre2-dev \
+            libc-ares-dev fakeroot dpkg-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Build Debian packages
+        run: |
+          set -euo pipefail
+          dpkg-buildpackage -us -uc -b -j"$(nproc)"
+
+      - name: Collect Debian artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/deb/debian-stable
+          shopt -s nullglob
+          for pkg in ../*.deb; do
+            cp "$pkg" artifacts/deb/debian-stable/
+          done
+
+      - name: Upload Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages-debian-stable
+          path: artifacts/deb/debian-stable/
+          if-no-files-found: error
+
+  build-deb-debian-lts:
+    name: Build Debian Packages (Debian LTS)
+    runs-on: ubuntu-latest
+    container: debian:oldstable
+    steps:
+      - name: Prepare build environment
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y \
+            git ca-certificates \
+            build-essential devscripts debhelper \
+            cdbs dh-autoreconf autotools-dev \
+            autoconf automake libtool pkg-config \
+            gettext libev-dev libpcre2-dev \
+            libc-ares-dev fakeroot dpkg-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Build Debian packages
+        run: |
+          set -euo pipefail
+          dpkg-buildpackage -us -uc -b -j"$(nproc)"
+
+      - name: Collect Debian artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/deb/debian-lts
+          shopt -s nullglob
+          for pkg in ../*.deb; do
+            cp "$pkg" artifacts/deb/debian-lts/
+          done
+
+      - name: Upload Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages-debian-lts
+          path: artifacts/deb/debian-lts/
           if-no-files-found: error
 
   build-rpm:
@@ -128,14 +262,18 @@ jobs:
     name: Upload Release Assets
     runs-on: ubuntu-latest
     needs:
-      - build-deb
+      - build-deb-ubuntu-stable
+      - build-deb-ubuntu-lts
+      - build-deb-debian-stable
+      - build-deb-debian-lts
       - build-rpm
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v4
         with:
-          name: deb-packages
+          pattern: deb-packages-*
           path: release-assets/deb
+          merge-multiple: true
 
       - name: Download RPM artifacts
         uses: actions/download-artifact@v4
