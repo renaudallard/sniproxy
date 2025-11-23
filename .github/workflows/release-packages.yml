@@ -360,6 +360,9 @@ jobs:
     container:
       image: fedora:${{ needs.detect-versions.outputs.fedora_release }}
     steps:
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install required tooling
         run: |
           set -euo pipefail
@@ -427,6 +430,9 @@ jobs:
     container:
       image: rockylinux:${{ needs.detect-versions.outputs.rocky_release }}
     steps:
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install required tooling
         run: |
           set -euo pipefail
@@ -448,6 +454,20 @@ jobs:
               gettext-devel libev-devel pcre2-devel \
               c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
               which tar
+          fi
+
+      - name: Upgrade autoconf to 2.71 if needed
+        run: |
+          set -euo pipefail
+          ver=$(autoconf --version | head -n1 | awk '{print $NF}')
+          need="2.71"
+          if [ "$(printf '%s\n' "$need" "$ver" | sort -V | head -n1)" != "$need" ]; then
+            curl -fsSL -o /tmp/autoconf.tar.gz https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
+            tar -C /tmp -xf /tmp/autoconf.tar.gz
+            cd /tmp/autoconf-2.71
+            ./configure --prefix=/usr/local
+            make -j"$(nproc)"
+            make install
           fi
 
       - name: Checkout
