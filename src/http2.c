@@ -150,67 +150,67 @@ struct hpack_static_name_index {
     uint8_t count;
 };
 
-#define STATIC_NAME_INDEX_ENTRY(first_idx, entry_count) \
+#define STATIC_NAME_INDEX_ENTRY(first_idx, entry_count, literal) \
     { \
-        static_table[(first_idx) - 1].name, \
-        static_table[(first_idx) - 1].name_len, \
+        (literal), \
+        sizeof(literal) - 1, \
         (uint8_t)(first_idx), \
         (uint8_t)(entry_count) \
     }
 
 static const struct hpack_static_name_index static_name_index[] = {
-    STATIC_NAME_INDEX_ENTRY(1, 1),   /* :authority */
-    STATIC_NAME_INDEX_ENTRY(2, 2),   /* :method */
-    STATIC_NAME_INDEX_ENTRY(4, 2),   /* :path */
-    STATIC_NAME_INDEX_ENTRY(6, 2),   /* :scheme */
-    STATIC_NAME_INDEX_ENTRY(8, 7),   /* :status */
-    STATIC_NAME_INDEX_ENTRY(19, 1),  /* accept */
-    STATIC_NAME_INDEX_ENTRY(15, 1),  /* accept-charset */
-    STATIC_NAME_INDEX_ENTRY(16, 1),  /* accept-encoding */
-    STATIC_NAME_INDEX_ENTRY(17, 1),  /* accept-language */
-    STATIC_NAME_INDEX_ENTRY(18, 1),  /* accept-ranges */
-    STATIC_NAME_INDEX_ENTRY(20, 1),  /* access-control-allow-origin */
-    STATIC_NAME_INDEX_ENTRY(21, 1),  /* age */
-    STATIC_NAME_INDEX_ENTRY(22, 1),  /* allow */
-    STATIC_NAME_INDEX_ENTRY(23, 1),  /* authorization */
-    STATIC_NAME_INDEX_ENTRY(24, 1),  /* cache-control */
-    STATIC_NAME_INDEX_ENTRY(25, 1),  /* content-disposition */
-    STATIC_NAME_INDEX_ENTRY(26, 1),  /* content-encoding */
-    STATIC_NAME_INDEX_ENTRY(27, 1),  /* content-language */
-    STATIC_NAME_INDEX_ENTRY(28, 1),  /* content-length */
-    STATIC_NAME_INDEX_ENTRY(29, 1),  /* content-location */
-    STATIC_NAME_INDEX_ENTRY(30, 1),  /* content-range */
-    STATIC_NAME_INDEX_ENTRY(31, 1),  /* content-type */
-    STATIC_NAME_INDEX_ENTRY(32, 1),  /* cookie */
-    STATIC_NAME_INDEX_ENTRY(33, 1),  /* date */
-    STATIC_NAME_INDEX_ENTRY(34, 1),  /* etag */
-    STATIC_NAME_INDEX_ENTRY(35, 1),  /* expect */
-    STATIC_NAME_INDEX_ENTRY(36, 1),  /* expires */
-    STATIC_NAME_INDEX_ENTRY(37, 1),  /* from */
-    STATIC_NAME_INDEX_ENTRY(38, 1),  /* host */
-    STATIC_NAME_INDEX_ENTRY(39, 1),  /* if-match */
-    STATIC_NAME_INDEX_ENTRY(40, 1),  /* if-modified-since */
-    STATIC_NAME_INDEX_ENTRY(41, 1),  /* if-none-match */
-    STATIC_NAME_INDEX_ENTRY(42, 1),  /* if-range */
-    STATIC_NAME_INDEX_ENTRY(43, 1),  /* if-unmodified-since */
-    STATIC_NAME_INDEX_ENTRY(44, 1),  /* last-modified */
-    STATIC_NAME_INDEX_ENTRY(45, 1),  /* link */
-    STATIC_NAME_INDEX_ENTRY(46, 1),  /* location */
-    STATIC_NAME_INDEX_ENTRY(47, 1),  /* max-forwards */
-    STATIC_NAME_INDEX_ENTRY(48, 1),  /* proxy-authenticate */
-    STATIC_NAME_INDEX_ENTRY(49, 1),  /* proxy-authorization */
-    STATIC_NAME_INDEX_ENTRY(50, 1),  /* range */
-    STATIC_NAME_INDEX_ENTRY(51, 1),  /* referer */
-    STATIC_NAME_INDEX_ENTRY(52, 1),  /* refresh */
-    STATIC_NAME_INDEX_ENTRY(53, 1),  /* retry-after */
-    STATIC_NAME_INDEX_ENTRY(54, 1),  /* server */
-    STATIC_NAME_INDEX_ENTRY(55, 1),  /* set-cookie */
-    STATIC_NAME_INDEX_ENTRY(56, 1),  /* strict-transport-security */
-    STATIC_NAME_INDEX_ENTRY(57, 1),  /* transfer-encoding */
-    STATIC_NAME_INDEX_ENTRY(58, 1),  /* user-agent */
-    STATIC_NAME_INDEX_ENTRY(59, 1),  /* vary */
-    STATIC_NAME_INDEX_ENTRY(60, 1),  /* via */
-    STATIC_NAME_INDEX_ENTRY(61, 1),  /* www-authenticate */
+    STATIC_NAME_INDEX_ENTRY(1, 1, ":authority"),
+    STATIC_NAME_INDEX_ENTRY(2, 2, ":method"),
+    STATIC_NAME_INDEX_ENTRY(4, 2, ":path"),
+    STATIC_NAME_INDEX_ENTRY(6, 2, ":scheme"),
+    STATIC_NAME_INDEX_ENTRY(8, 7, ":status"),
+    STATIC_NAME_INDEX_ENTRY(19, 1, "accept"),
+    STATIC_NAME_INDEX_ENTRY(15, 1, "accept-charset"),
+    STATIC_NAME_INDEX_ENTRY(16, 1, "accept-encoding"),
+    STATIC_NAME_INDEX_ENTRY(17, 1, "accept-language"),
+    STATIC_NAME_INDEX_ENTRY(18, 1, "accept-ranges"),
+    STATIC_NAME_INDEX_ENTRY(20, 1, "access-control-allow-origin"),
+    STATIC_NAME_INDEX_ENTRY(21, 1, "age"),
+    STATIC_NAME_INDEX_ENTRY(22, 1, "allow"),
+    STATIC_NAME_INDEX_ENTRY(23, 1, "authorization"),
+    STATIC_NAME_INDEX_ENTRY(24, 1, "cache-control"),
+    STATIC_NAME_INDEX_ENTRY(25, 1, "content-disposition"),
+    STATIC_NAME_INDEX_ENTRY(26, 1, "content-encoding"),
+    STATIC_NAME_INDEX_ENTRY(27, 1, "content-language"),
+    STATIC_NAME_INDEX_ENTRY(28, 1, "content-length"),
+    STATIC_NAME_INDEX_ENTRY(29, 1, "content-location"),
+    STATIC_NAME_INDEX_ENTRY(30, 1, "content-range"),
+    STATIC_NAME_INDEX_ENTRY(31, 1, "content-type"),
+    STATIC_NAME_INDEX_ENTRY(32, 1, "cookie"),
+    STATIC_NAME_INDEX_ENTRY(33, 1, "date"),
+    STATIC_NAME_INDEX_ENTRY(34, 1, "etag"),
+    STATIC_NAME_INDEX_ENTRY(35, 1, "expect"),
+    STATIC_NAME_INDEX_ENTRY(36, 1, "expires"),
+    STATIC_NAME_INDEX_ENTRY(37, 1, "from"),
+    STATIC_NAME_INDEX_ENTRY(38, 1, "host"),
+    STATIC_NAME_INDEX_ENTRY(39, 1, "if-match"),
+    STATIC_NAME_INDEX_ENTRY(40, 1, "if-modified-since"),
+    STATIC_NAME_INDEX_ENTRY(41, 1, "if-none-match"),
+    STATIC_NAME_INDEX_ENTRY(42, 1, "if-range"),
+    STATIC_NAME_INDEX_ENTRY(43, 1, "if-unmodified-since"),
+    STATIC_NAME_INDEX_ENTRY(44, 1, "last-modified"),
+    STATIC_NAME_INDEX_ENTRY(45, 1, "link"),
+    STATIC_NAME_INDEX_ENTRY(46, 1, "location"),
+    STATIC_NAME_INDEX_ENTRY(47, 1, "max-forwards"),
+    STATIC_NAME_INDEX_ENTRY(48, 1, "proxy-authenticate"),
+    STATIC_NAME_INDEX_ENTRY(49, 1, "proxy-authorization"),
+    STATIC_NAME_INDEX_ENTRY(50, 1, "range"),
+    STATIC_NAME_INDEX_ENTRY(51, 1, "referer"),
+    STATIC_NAME_INDEX_ENTRY(52, 1, "refresh"),
+    STATIC_NAME_INDEX_ENTRY(53, 1, "retry-after"),
+    STATIC_NAME_INDEX_ENTRY(54, 1, "server"),
+    STATIC_NAME_INDEX_ENTRY(55, 1, "set-cookie"),
+    STATIC_NAME_INDEX_ENTRY(56, 1, "strict-transport-security"),
+    STATIC_NAME_INDEX_ENTRY(57, 1, "transfer-encoding"),
+    STATIC_NAME_INDEX_ENTRY(58, 1, "user-agent"),
+    STATIC_NAME_INDEX_ENTRY(59, 1, "vary"),
+    STATIC_NAME_INDEX_ENTRY(60, 1, "via"),
+    STATIC_NAME_INDEX_ENTRY(61, 1, "www-authenticate"),
 };
 
 #define STATIC_NAME_INDEX_COUNT (sizeof(static_name_index) / sizeof(static_name_index[0]))

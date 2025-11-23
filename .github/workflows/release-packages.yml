@@ -426,6 +426,7 @@ jobs:
             SUSEConnect -p "sle-module-development-tools/${ver}/x86_64" || true
             SUSEConnect -p "PackageHub/${ver}/x86_64" || true
           fi
+          zypper -n install --recommends --type pattern devel_basis || true
           ./autogen.sh
           ./configure
           make dist
