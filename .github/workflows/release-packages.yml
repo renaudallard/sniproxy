@@ -349,49 +349,92 @@ jobs:
           path: artifacts/deb/debian-lts/
           if-no-files-found: error
 
-  build-rpm:
-    name: Build RPM Packages (${{ matrix.display_name }})
+  build-rpm-fedora:
+    name: Build RPM Packages (Fedora)
     runs-on: ubuntu-latest
     needs:
       - detect-versions
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - display_name: Fedora
-            image: fedora:${{ needs.detect-versions.outputs.fedora_release }}
-            artifact_suffix: fedora-${{ needs.detect-versions.outputs.fedora_release }}
-          - display_name: Rocky Linux
-            image: rockylinux:${{ needs.detect-versions.outputs.rocky_release }}
-            artifact_suffix: rocky-${{ needs.detect-versions.outputs.rocky_release }}
     container:
-      image: ${{ matrix.image }}
+      image: fedora:${{ needs.detect-versions.outputs.fedora_release }}
     steps:
       - name: Install required tooling
         run: |
           set -euo pipefail
-          if grep -qi "rocky" /etc/os-release; then
-            if command -v dnf >/dev/null 2>&1; then
-              dnf install -y dnf-plugins-core epel-release
-              dnf config-manager --set-enabled crb || true
-              dnf install -y \
-                git rpm-build make gcc gcc-c++ \
-                autoconf automake libtool pkgconfig \
-                gettext-devel libev-devel pcre2-devel \
-                c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
-                which tar
-            else
-              yum install -y yum-utils epel-release
-              yum config-manager --set-enabled crb || true
-              yum install -y \
-                git rpm-build make gcc gcc-c++ \
-                autoconf automake libtool pkgconfig \
-                gettext-devel libev-devel pcre2-devel \
-                c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
-                which tar
-            fi
-          else
+          dnf install -y \
+            git rpm-build make gcc gcc-c++ \
+            autoconf automake libtool pkgconfig \
+            gettext-devel libev-devel pcre2-devel \
+            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+            which tar
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Prepare source tarball
+        run: |
+          set -euo pipefail
+          ./autogen.sh
+          ./configure
+          make dist
+          DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-$(rpm --eval '%{_topdir}')}"
+          rm -rf "${RPM_TOPDIR}"
+          mkdir -p "${RPM_TOPDIR}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          cp "${DIST_TARBALL}" "${RPM_TOPDIR}/SOURCES/"
+          cp redhat/sniproxy.spec "${RPM_TOPDIR}/SPECS/"
+          printf 'RPM_TOPDIR=%s\n' "$RPM_TOPDIR" >> "$GITHUB_ENV"
+
+      - name: Build RPM packages
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          if ! rpmbuild --define "_topdir ${RPM_TOPDIR}" -ba "${RPM_TOPDIR}/SPECS/sniproxy.spec"; then
+            echo "rpmbuild failed, dumping config.log files:" >&2
+            find "${RPM_TOPDIR}/BUILD" -name config.log -print -exec cat {} \; || true
+            exit 1
+          fi
+
+      - name: Collect RPM artifacts
+        run: |
+          set -euo pipefail
+          RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
+          mkdir -p artifacts/rpm/fedora-${{ needs.detect-versions.outputs.fedora_release }}
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/fedora-${{ needs.detect-versions.outputs.fedora_release }}/" \;
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages-fedora-${{ needs.detect-versions.outputs.fedora_release }}
+          path: artifacts/rpm/fedora-${{ needs.detect-versions.outputs.fedora_release }}/
+          if-no-files-found: error
+
+  build-rpm-rocky:
+    name: Build RPM Packages (Rocky)
+    runs-on: ubuntu-latest
+    needs:
+      - detect-versions
+    container:
+      image: rockylinux:${{ needs.detect-versions.outputs.rocky_release }}
+    steps:
+      - name: Install required tooling
+        run: |
+          set -euo pipefail
+          if command -v dnf >/dev/null 2>&1; then
+            dnf install -y dnf-plugins-core epel-release
+            dnf config-manager --set-enabled crb || true
             dnf install -y \
+              git rpm-build make gcc gcc-c++ \
+              autoconf automake libtool pkgconfig \
+              gettext-devel libev-devel pcre2-devel \
+              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+              which tar
+          else
+            yum install -y yum-utils epel-release
+            yum config-manager --set-enabled crb || true
+            yum install -y \
               git rpm-build make gcc gcc-c++ \
               autoconf automake libtool pkgconfig \
               gettext-devel libev-devel pcre2-devel \
@@ -433,14 +476,14 @@ jobs:
         run: |
           set -euo pipefail
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
-          mkdir -p "artifacts/rpm/${{ matrix.artifact_suffix }}"
-          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/${{ matrix.artifact_suffix }}/" \;
+          mkdir -p artifacts/rpm/rocky-${{ needs.detect-versions.outputs.rocky_release }}
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/rocky-${{ needs.detect-versions.outputs.rocky_release }}/" \;
 
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rpm-packages-${{ matrix.artifact_suffix }}
-          path: artifacts/rpm/${{ matrix.artifact_suffix }}/
+          name: rpm-packages-rocky-${{ needs.detect-versions.outputs.rocky_release }}
+          path: artifacts/rpm/rocky-${{ needs.detect-versions.outputs.rocky_release }}/
           if-no-files-found: error
 
   publish:
@@ -452,7 +495,8 @@ jobs:
       - build-deb-ubuntu-lts
       - build-deb-debian-stable
       - build-deb-debian-lts
-      - build-rpm
+      - build-rpm-fedora
+      - build-rpm-rocky
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v4
