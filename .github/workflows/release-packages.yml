@@ -130,7 +130,7 @@ jobs:
             cdbs dh-autoreconf autotools-dev \
             autoconf automake libtool pkg-config \
             gettext libev-dev libpcre2-dev \
-            libc-ares-dev libssl-dev fakeroot dpkg-dev
+            libc-ares-dev libssl-dev libbsd-dev fakeroot dpkg-dev
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -179,7 +179,7 @@ jobs:
             cdbs dh-autoreconf autotools-dev \
             autoconf automake libtool pkg-config \
             gettext libev-dev libpcre2-dev \
-            libc-ares-dev libssl-dev fakeroot dpkg-dev
+            libc-ares-dev libssl-dev libbsd-dev fakeroot dpkg-dev
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -228,7 +228,7 @@ jobs:
             cdbs dh-autoreconf autotools-dev \
             autoconf automake libtool pkg-config \
             gettext libev-dev libpcre2-dev \
-            libc-ares-dev libssl-dev fakeroot dpkg-dev
+            libc-ares-dev libssl-dev libbsd-dev fakeroot dpkg-dev
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -277,7 +277,7 @@ jobs:
             cdbs dh-autoreconf autotools-dev \
             autoconf automake libtool pkg-config \
             gettext libev-dev libpcre2-dev \
-            libc-ares-dev libssl-dev fakeroot dpkg-dev
+            libc-ares-dev libssl-dev libbsd-dev fakeroot dpkg-dev
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -319,7 +319,7 @@ jobs:
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkgconfig \
             gettext-devel libev-devel pcre2-devel \
-            c-ares-devel openssl-devel systemd-rpm-macros \
+            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
             which tar
 
       - name: Checkout

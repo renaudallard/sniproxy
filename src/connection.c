@@ -44,6 +44,9 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <stdatomic.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
 #include "connection.h"
 #include "resolv.h"
 #include "address.h"
@@ -52,7 +55,7 @@
 #include "tls.h"
 #include "fd_util.h"
 
-#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
+#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__))
 #error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, macOS, and modern Linux)."
 #endif
 

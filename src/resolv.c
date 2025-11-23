@@ -49,6 +49,9 @@
 #include <sys/uio.h>
 #include <ares.h>
 #include <ares_dns.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
@@ -64,7 +67,7 @@
 #define ARES_GETSOCK_MAXNUM 16
 #endif
 
-#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
+#if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__))
 #error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, macOS, and modern Linux)."
 #endif
 
@@ -304,7 +307,7 @@ static int child_default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
 static int child_sock = -1;
 static struct ev_loop *child_loop = NULL;
 static struct ResolverChildQuery *child_queries = NULL;
-static ares_channel_t *child_channel = NULL;
+static ares_channel child_channel = NULL;
 static int child_shutting_down = 0;
 static struct ev_io child_ipc_watcher;
 static struct ev_timer child_dns_timeout_watcher;

@@ -120,6 +120,13 @@ AC_CHECK_HEADERS([ares_dns.h], [],
 AC_CHECK_LIB([cares], [ares_library_init], [],
   [AC_MSG_ERROR([c-ares is required])])
 
+AC_CHECK_HEADERS([bsd/stdlib.h])
+AC_SEARCH_LIBS([arc4random], [bsd], [LIBBSD_LIBS="$ac_cv_search_arc4random"], [LIBBSD_LIBS=""])
+AS_IF([test "x$LIBBSD_LIBS" = "xnone required"], [LIBBSD_LIBS=""])
+AC_CHECK_FUNCS([arc4random], [],
+  [AC_MSG_ERROR([arc4random() is required; install libbsd-dev or provide arc4random])])
+AC_SUBST([LIBBSD_LIBS])
+
 AC_CHECK_HEADERS([openssl/evp.h openssl/rand.h openssl/sha.h], [],
   [AC_MSG_ERROR([OpenSSL/LibreSSL headers with ChaCha20-Poly1305 are required])])
 AC_CHECK_LIB([crypto], [EVP_chacha20_poly1305], [],
