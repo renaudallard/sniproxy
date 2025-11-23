@@ -360,9 +360,6 @@ jobs:
     container:
       image: fedora:${{ needs.detect-versions.outputs.fedora_release }}
     steps:
-      - name: Mark workspace as safe for git
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
       - name: Install required tooling
         run: |
           set -euo pipefail
@@ -372,6 +369,9 @@ jobs:
             gettext-devel libev-devel pcre2-devel \
             c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
             which tar
+
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -431,9 +431,6 @@ jobs:
     container:
       image: rockylinux:${{ needs.detect-versions.outputs.rocky_release }}
     steps:
-      - name: Mark workspace as safe for git
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
       - name: Install required tooling
         run: |
           set -euo pipefail
@@ -456,6 +453,9 @@ jobs:
               c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
               which tar
           fi
+
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Upgrade autoconf to 2.71 if needed
         run: |
