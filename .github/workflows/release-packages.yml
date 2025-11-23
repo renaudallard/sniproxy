@@ -549,7 +549,7 @@ jobs:
           zypper -n install \
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkg-config \
-            gettext-tools libev-devel libpcre2-devel \
+            gettext-tools libev-devel libpcre2-devel libpcre2-8-devel \
             c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
             tar which
       - name: Mark workspace as safe for git
@@ -629,11 +629,14 @@ jobs:
       - name: Install required tooling
         run: |
           set -euo pipefail
+          ver="${{ needs.detect-versions.outputs.suse_bci }}"
+          SUSEConnect -p "sle-module-development-tools/${ver}/x86_64" || true
+          SUSEConnect -p "PackageHub/${ver}/x86_64" || true
           zypper -n ref
           zypper -n install \
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkg-config \
-            gettext-tools libev-devel libpcre2-8-devel \
+            gettext-tools libev-devel libpcre2-devel libpcre2-8-devel \
             c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
             tar which curl
       - name: Mark workspace as safe for git
