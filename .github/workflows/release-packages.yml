@@ -370,15 +370,28 @@ jobs:
       - name: Install required tooling
         run: |
           set -euo pipefail
-          if command -v dnf >/dev/null 2>&1; then
-            dnf install -y \
-              git rpm-build make gcc gcc-c++ \
-              autoconf automake libtool pkgconfig \
-              gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
-              which tar
+          if grep -qi "rocky" /etc/os-release; then
+            if command -v dnf >/dev/null 2>&1; then
+              dnf install -y dnf-plugins-core epel-release
+              dnf config-manager --set-enabled crb || true
+              dnf install -y \
+                git rpm-build make gcc gcc-c++ \
+                autoconf automake libtool pkgconfig \
+                gettext-devel libev-devel pcre2-devel \
+                c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+                which tar
+            else
+              yum install -y yum-utils epel-release
+              yum config-manager --set-enabled crb || true
+              yum install -y \
+                git rpm-build make gcc gcc-c++ \
+                autoconf automake libtool pkgconfig \
+                gettext-devel libev-devel pcre2-devel \
+                c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros \
+                which tar
+            fi
           else
-            yum install -y \
+            dnf install -y \
               git rpm-build make gcc gcc-c++ \
               autoconf automake libtool pkgconfig \
               gettext-devel libev-devel pcre2-devel \
