@@ -226,7 +226,11 @@ jobs:
           shopt -s nullglob
           for pkg in ../*.deb; do
             base=$(basename "$pkg")
-            cp "$pkg" "artifacts/deb/ubuntu-stable/${base%.deb}-ubuntu-${{ needs.detect-versions.outputs.ubuntu_stable }}.deb"
+            name=${base%%_*}
+            ver_arch=${base#*_}
+            arch=${ver_arch##*_}
+            ver=${ver_arch%_*}
+            cp "$pkg" "artifacts/deb/ubuntu-stable/${name}_${ver}~ubuntu-${{ needs.detect-versions.outputs.ubuntu_stable }}_${arch}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -276,7 +280,11 @@ jobs:
           shopt -s nullglob
           for pkg in ../*.deb; do
             base=$(basename "$pkg")
-            cp "$pkg" "artifacts/deb/ubuntu-lts/${base%.deb}-ubuntu-${{ needs.detect-versions.outputs.ubuntu_lts }}.deb"
+            name=${base%%_*}
+            ver_arch=${base#*_}
+            arch=${ver_arch##*_}
+            ver=${ver_arch%_*}
+            cp "$pkg" "artifacts/deb/ubuntu-lts/${name}_${ver}~ubuntu-${{ needs.detect-versions.outputs.ubuntu_lts }}_${arch}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -326,7 +334,11 @@ jobs:
           shopt -s nullglob
           for pkg in ../*.deb; do
             base=$(basename "$pkg")
-            cp "$pkg" "artifacts/deb/debian-stable/${base%.deb}-debian-${{ needs.detect-versions.outputs.debian_stable }}.deb"
+            name=${base%%_*}
+            ver_arch=${base#*_}
+            arch=${ver_arch##*_}
+            ver=${ver_arch%_*}
+            cp "$pkg" "artifacts/deb/debian-stable/${name}_${ver}~debian-${{ needs.detect-versions.outputs.debian_stable }}_${arch}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -376,7 +388,11 @@ jobs:
           shopt -s nullglob
           for pkg in ../*.deb; do
             base=$(basename "$pkg")
-            cp "$pkg" "artifacts/deb/debian-lts/${base%.deb}-debian-${{ needs.detect-versions.outputs.debian_oldstable }}.deb"
+            name=${base%%_*}
+            ver_arch=${base#*_}
+            arch=${ver_arch##*_}
+            ver=${ver_arch%_*}
+            cp "$pkg" "artifacts/deb/debian-lts/${name}_${ver}~debian-${{ needs.detect-versions.outputs.debian_oldstable }}_${arch}.deb"
           done
 
       - name: Upload Debian artifacts
@@ -455,7 +471,11 @@ jobs:
           set -euo pipefail
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
           mkdir -p artifacts/rpm/fedora-${{ needs.detect-versions.outputs.fedora_release }}
-          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/fedora-${{ needs.detect-versions.outputs.fedora_release }}/" \;
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print | while read -r pkg; do
+            base=$(basename "$pkg")
+            namever=${base%%.rpm}
+            cp "$pkg" "artifacts/rpm/fedora-${{ needs.detect-versions.outputs.fedora_release }}/${namever}.fedora.${{ needs.detect-versions.outputs.fedora_release }}.rpm"
+          done
 
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
@@ -623,7 +643,8 @@ jobs:
           mkdir -p artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}
           find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print | while read -r pkg; do
             base=$(basename "$pkg")
-            cp "$pkg" "artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}/${base%.rpm}-opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}.rpm"
+            namever=${base%%.rpm}
+            cp "$pkg" "artifacts/rpm/opensuse-${{ needs.detect-versions.outputs.opensuse_leap }}/${namever}.opensuse.${{ needs.detect-versions.outputs.opensuse_leap }}.rpm"
           done
 
       - name: Upload RPM artifacts
@@ -720,7 +741,8 @@ jobs:
           mkdir -p artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}
           find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print | while read -r pkg; do
             base=$(basename "$pkg")
-            cp "$pkg" "artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/${base%.rpm}-suse-${{ needs.detect-versions.outputs.suse_bci }}.rpm"
+            namever=${base%%.rpm}
+            cp "$pkg" "artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/${namever}.suse.${{ needs.detect-versions.outputs.suse_bci }}.rpm"
           done
 
       - name: Upload RPM artifacts
@@ -745,7 +767,11 @@ jobs:
           set -euo pipefail
           RPM_TOPDIR="${RPMBUILD_TOPDIR:-/tmp/rpmbuild}"
           mkdir -p artifacts/rpm/rocky-${{ needs.detect-versions.outputs.rocky_release }}
-          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print -exec cp {} "artifacts/rpm/rocky-${{ needs.detect-versions.outputs.rocky_release }}/" \;
+          find "${RPM_TOPDIR}/RPMS" -name '*.rpm' -print | while read -r pkg; do
+            base=$(basename "$pkg")
+            namever=${base%%.rpm}
+            cp "$pkg" "artifacts/rpm/rocky-${{ needs.detect-versions.outputs.rocky_release }}/${namever}.rocky.${{ needs.detect-versions.outputs.rocky_release }}.rpm"
+          done
 
       - name: Upload RPM artifacts
         uses: actions/upload-artifact@v4
