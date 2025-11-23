@@ -633,7 +633,7 @@ jobs:
           zypper -n install \
             git rpm-build make gcc gcc-c++ \
             autoconf automake libtool pkg-config \
-            gettext-tools libev-devel libpcre2-devel \
+            gettext-tools libev-devel libpcre2-8-devel \
             c-ares-devel libopenssl-devel libbsd-devel systemd-rpm-macros \
             tar which curl
       - name: Mark workspace as safe for git
