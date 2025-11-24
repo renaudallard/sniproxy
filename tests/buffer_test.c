@@ -34,13 +34,15 @@
 #include <ev.h>
 #include "buffer.h"
 
+static struct ev_loop *test_loop;
+
 static void test1(void) {
     struct Buffer *buffer;
     char input[] = "This is a test.";
     char output[sizeof(input)];
     int len, i;
 
-    buffer = new_buffer(256, EV_DEFAULT);
+    buffer = new_buffer(256, test_loop);
     assert(buffer != NULL);
 
     len = buffer_push(buffer, input, sizeof(input));
@@ -79,7 +81,7 @@ static void test2(void) {
     char output[sizeof(input)];
     int len, i = 0;
 
-    buffer = new_buffer(256, EV_DEFAULT);
+    buffer = new_buffer(256, test_loop);
     assert(buffer != NULL);
 
     while (i < 236) {
@@ -128,7 +130,7 @@ static void test3(void) {
     char output[sizeof(input)];
     int len, i;
 
-    buffer = new_buffer(256, EV_DEFAULT);
+    buffer = new_buffer(256, test_loop);
     assert(buffer != NULL);
 
     len = buffer_push(buffer, input, sizeof(input));
@@ -155,7 +157,7 @@ static void test4(void) {
     struct Buffer *buffer;
     int read_fd, write_fd;
 
-    buffer = new_buffer(16384, EV_DEFAULT);
+    buffer = new_buffer(16384, test_loop);
     assert(buffer != NULL);
 
     read_fd = open("/dev/zero", O_RDONLY);
@@ -186,7 +188,7 @@ static void test_buffer_coalesce(void) {
     char output[sizeof(input)];
     int len;
 
-    buffer = new_buffer(16384, EV_DEFAULT);
+    buffer = new_buffer(16384, test_loop);
     len = buffer_push(buffer, input, sizeof(input));
     assert(len == sizeof(input));
 
@@ -207,7 +209,7 @@ static void test_buffer_reserve_and_expand(void) {
     char extra[32];
     size_t len;
 
-    buffer = new_buffer(8, EV_DEFAULT);
+    buffer = new_buffer(8, test_loop);
     assert(buffer != NULL);
 
     len = buffer_push(buffer, payload, sizeof(payload));
@@ -227,7 +229,7 @@ static void test_buffer_reserve_and_expand(void) {
 }
 
 static void test_buffer_reserve_overflow(void) {
-    struct Buffer *buffer = new_buffer(1024, EV_DEFAULT);
+    struct Buffer *buffer = new_buffer(1024, test_loop);
     assert(buffer != NULL);
 
     assert(buffer_reserve(buffer, SIZE_MAX) == -1);
@@ -236,7 +238,7 @@ static void test_buffer_reserve_overflow(void) {
 }
 
 static void test_buffer_maybe_shrink(void) {
-    struct Buffer *buffer = new_buffer(16, EV_DEFAULT);
+    struct Buffer *buffer = new_buffer(16, test_loop);
     char payload[128] = {0};
 
     assert(buffer != NULL);
@@ -254,6 +256,9 @@ static void test_buffer_maybe_shrink(void) {
 }
 
 int main(void) {
+    test_loop = ev_loop_new(0);
+    assert(test_loop != NULL);
+
     test1();
 
     test2();
@@ -269,4 +274,6 @@ int main(void) {
     test_buffer_reserve_overflow();
 
     test_buffer_maybe_shrink();
+
+    ev_loop_destroy(test_loop);
 }
