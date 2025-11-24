@@ -41,10 +41,25 @@ jobs:
       - name: Run valgrind on tests
         run: |
           set -euo pipefail
+          mkdir -p valgrind-logs
           for bin in \
             tests/buffer_test \
             tests/cfg_tokenizer_test \
             tests/address_test; do
             echo "valgrind $bin"
-            valgrind --quiet --leak-check=full --errors-for-leak-kinds=all --error-exitcode=1 "$bin"
+            name=$(basename "$bin")
+            log="valgrind-logs/${name}.log"
+            if ! valgrind --leak-check=full --errors-for-leak-kinds=all --show-leak-kinds=all --track-origins=yes --error-exitcode=1 "$bin" &> "$log"; then
+              echo "Valgrind failures in $bin:"
+              cat "$log"
+              exit 1
+            fi
           done
+
+      - name: Upload valgrind logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valgrind-logs
+          path: valgrind-logs/
+          if-no-files-found: ignore
