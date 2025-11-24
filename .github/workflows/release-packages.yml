@@ -748,7 +748,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - detect-versions
-      - build-rpm-rocky
     defaults:
       run:
         shell: bash
@@ -841,7 +840,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - detect-versions
-      - build-rpm-rocky
     defaults:
       run:
         shell: bash
