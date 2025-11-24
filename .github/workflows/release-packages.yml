@@ -582,25 +582,25 @@ jobs:
       - name: Install required tooling
         run: |
           set -euo pipefail
+          pkgmgr=""
           if command -v dnf >/dev/null 2>&1; then
-            dnf install -y dnf-plugins-core epel-release
-            dnf config-manager --set-enabled crb || true
-            dnf install -y \
-              git rpm-build make gcc gcc-c++ \
-              autoconf automake libtool pkgconfig \
-              gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
-              which tar
-          else
-            yum install -y yum-utils epel-release
-            yum config-manager --set-enabled crb || true
-            yum install -y \
-              git rpm-build make gcc gcc-c++ \
-              autoconf automake libtool pkgconfig \
-              gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
-              which tar
+            pkgmgr="dnf"
+          elif command -v microdnf >/dev/null 2>&1; then
+            microdnf install -y dnf dnf-plugins-core
+            pkgmgr="dnf"
           fi
+          if [ -z "$pkgmgr" ]; then
+            echo "No supported package manager (dnf/microdnf) found" >&2
+            exit 1
+          fi
+          $pkgmgr install -y dnf-plugins-core epel-release
+          dnf config-manager --set-enabled crb || true
+          $pkgmgr install -y \
+            git rpm-build make gcc gcc-c++ \
+            autoconf automake libtool pkgconfig \
+            gettext-devel libev-devel pcre2-devel \
+            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
+            which tar
 
       - name: Mark workspace as safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -688,25 +688,25 @@ jobs:
       - name: Install required tooling
         run: |
           set -euo pipefail
+          pkgmgr=""
           if command -v dnf >/dev/null 2>&1; then
-            dnf install -y dnf-plugins-core epel-release
-            dnf config-manager --set-enabled crb || true
-            dnf install -y \
-              git rpm-build make gcc gcc-c++ \
-              autoconf automake libtool pkgconfig \
-              gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
-              which tar
-          else
-            yum install -y yum-utils epel-release
-            yum config-manager --set-enabled crb || true
-            yum install -y \
-              git rpm-build make gcc gcc-c++ \
-              autoconf automake libtool pkgconfig \
-              gettext-devel libev-devel pcre2-devel \
-              c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
-              which tar
+            pkgmgr="dnf"
+          elif command -v microdnf >/dev/null 2>&1; then
+            microdnf install -y dnf dnf-plugins-core
+            pkgmgr="dnf"
           fi
+          if [ -z "$pkgmgr" ]; then
+            echo "No supported package manager (dnf/microdnf) found" >&2
+            exit 1
+          fi
+          $pkgmgr install -y dnf-plugins-core epel-release
+          dnf config-manager --set-enabled crb || true
+          $pkgmgr install -y \
+            git rpm-build make gcc gcc-c++ \
+            autoconf automake libtool pkgconfig \
+            gettext-devel libev-devel pcre2-devel \
+            c-ares-devel openssl-devel libbsd-devel systemd-rpm-macros autoconf-archive \
+            which tar
 
       - name: Mark workspace as safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
