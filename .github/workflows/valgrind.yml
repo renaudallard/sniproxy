@@ -36,7 +36,10 @@ jobs:
           make -j"$(nproc)" -C tests \
             buffer_test \
             cfg_tokenizer_test \
-            address_test
+            address_test \
+            table_test \
+            tls_test \
+            http_test
 
       - name: Run valgrind on tests
         run: |
@@ -45,7 +48,10 @@ jobs:
           for bin in \
             tests/buffer_test \
             tests/cfg_tokenizer_test \
-            tests/address_test; do
+            tests/address_test \
+            tests/table_test \
+            tests/tls_test \
+            tests/http_test; do
             echo "valgrind $bin"
             name=$(basename "$bin")
             log="valgrind-logs/${name}.log"
