@@ -196,6 +196,36 @@ resolver_next_query_prng(void) {
     return arc4random();
 }
 
+/* Resolver Concurrency Design
+ * ===========================
+ * The resolver uses three independent mutexes to coordinate concurrent DNS
+ * queries and resolver restarts. These locks are NEVER nested to prevent
+ * deadlock. When multiple locks are needed, they are acquired and released
+ * sequentially.
+ *
+ * Lock Hierarchy (acquire/release independently, never hold multiple):
+ *
+ * 1. resolver_queries_lock
+ *    Protects: resolver_queries[] and resolver_hosts[] hash tables
+ *    Scope: Query lookup, attachment, detachment
+ *    Critical sections: Can be held during allocations and network I/O
+ *                      (resolver_emit_query to make attach+send atomic)
+ *
+ * 2. resolver_restart_lock
+ *    Protects: resolver_restart_in_progress flag
+ *    Scope: Restart coordination and serialization
+ *    Critical sections: Very short, just flag checks/updates
+ *
+ * 3. resolver_pending_lock
+ *    Protects: resolver_pending_restart_list
+ *    Scope: Queries captured during restart for resubmission
+ *    Critical sections: Medium, list transfers during restart
+ *
+ * Key Invariant: resolver_attach_query() + resolver_emit_query() is atomic
+ * under resolver_queries_lock to prevent restart from capturing queries
+ * before they're sent to the child process.
+ */
+
 static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_io resolver_ipc_watcher;
 static int default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
@@ -655,9 +685,14 @@ resolv_query(const char *hostname, int mode,
     }
 
     resolver_attach_query(new_pending);
+    /* Hold lock during send to make attach+emit atomic.
+     * This prevents a race where resolver_restart() could capture
+     * a query between attach and emit, leading to the query being
+     * sent on a stale socket and potentially duplicated or lost. */
+    int send_result = resolver_emit_query(new_pending);
     pthread_mutex_unlock(&resolver_queries_lock);
 
-    if (resolver_emit_query(new_pending) < 0) {
+    if (send_result < 0) {
         pthread_mutex_lock(&resolver_queries_lock);
         resolver_remove_pending(new_pending);
         pthread_mutex_unlock(&resolver_queries_lock);
