@@ -155,6 +155,7 @@ static void test4(void) {
     int read_fd, write_fd;
 
     buffer = new_buffer(16384, EV_DEFAULT);
+    assert(buffer != NULL);
 
     read_fd = open("/dev/zero", O_RDONLY);
     if (read_fd < 0) {
@@ -173,6 +174,8 @@ static void test4(void) {
         buffer_write(buffer, write_fd);
     }
 
+    close(read_fd);
+    close(write_fd);
     free_buffer(buffer);
 }
 
@@ -193,6 +196,8 @@ static void test_buffer_coalesce(void) {
 
     len = buffer_coalesce(buffer, NULL);
     assert(len == 0);
+
+    free_buffer(buffer);
 }
 
 static void test_buffer_reserve_and_expand(void) {
