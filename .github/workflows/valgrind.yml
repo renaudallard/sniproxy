@@ -33,10 +33,10 @@ jobs:
       - name: Build targeted tests
         run: |
           set -euo pipefail
-          make -j"$(nproc)" \
-            tests/buffer_test \
-            tests/cfg_tokenizer_test \
-            tests/address_test
+          make -j"$(nproc)" -C tests \
+            buffer_test \
+            cfg_tokenizer_test \
+            address_test
 
       - name: Run valgrind on tests
         run: |
