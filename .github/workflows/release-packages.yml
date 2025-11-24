@@ -820,6 +820,7 @@ jobs:
           need="2.71"
           if [ "$(printf '%s\n' "$need" "$ver" | sort -V | head -n1)" != "$need" ]; then
             zypper -n install --recommends --type pattern devel_basis || true
+            curl -fsSL -o /tmp/autoconf.tar.gz https://mirrors.kernel.org/gnu/autoconf/autoconf-2.71.tar.gz || \
             curl -fsSL -o /tmp/autoconf.tar.gz https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
             tar -C /tmp -xf /tmp/autoconf.tar.gz
             cd /tmp/autoconf-2.71
