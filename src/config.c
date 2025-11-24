@@ -482,7 +482,6 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     if (fstat(fileno(file), &config_st) == 0 && (config_st.st_mode & 0077)) {
         if (fatal_on_perm_error) {
             fclose(file);
-            free_config(config, loop);
             fatal("Config file %s must not be group/world accessible (mode %04o)",
                 config->filename, config_st.st_mode & 0777);
         }
