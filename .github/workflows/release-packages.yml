@@ -38,6 +38,8 @@ jobs:
       rocky_release: ${{ steps.detect.outputs.rocky_release }}
       rocky_previous: ${{ steps.detect.outputs.rocky_previous }}
       rocky_latest: ${{ steps.detect.outputs.rocky_latest }}
+      rocky_container_previous: ${{ steps.detect.outputs.rocky_container_previous }}
+      rocky_container_latest: ${{ steps.detect.outputs.rocky_container_latest }}
       rocky_releases: ${{ steps.detect.outputs.rocky_releases }}
       opensuse_leap: ${{ steps.detect.outputs.opensuse_leap }}
       suse_bci: ${{ steps.detect.outputs.suse_bci }}
@@ -187,7 +189,7 @@ jobs:
 
               if len(chosen) < count and tags:
                   numeric_tags = [t for t in tags if t and t[0].isdigit()]
-                  for tag in sorted(numeric_tags, key=lambda v: [int(x) for x in re.findall(r"\d+", v) or [0]]):
+                  for tag in sorted(numeric_tags, key=lambda v: [int(x) for x in re.findall(r"\d+", v) or [0]], reverse=True):
                       if tag not in chosen:
                           chosen.append(tag)
                       if len(chosen) >= count:
