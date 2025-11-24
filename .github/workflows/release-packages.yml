@@ -168,6 +168,38 @@ jobs:
                   pass
               return sorted(set(all_versions), key=lambda v: [int(x) for x in v.split(".")])
 
+          def rocky_container_tags(majors, count=2):
+              try:
+                  data = fetch_text("https://hub.docker.com/v2/repositories/library/rockylinux/tags?page_size=100")
+                  tags = {t.get("name") for t in json.loads(data).get("results", []) if t.get("name")}
+              except Exception:
+                  tags = set()
+
+              chosen = []
+              for rel in reversed(majors):
+                  candidates = [rel, f"{rel}.0", f"{rel}.1"]
+                  for cand in candidates:
+                      if cand in tags and cand not in chosen:
+                          chosen.append(cand)
+                          break
+                  if len(chosen) >= count:
+                      break
+
+              if len(chosen) < count and tags:
+                  numeric_tags = [t for t in tags if t and t[0].isdigit()]
+                  for tag in sorted(numeric_tags, key=lambda v: [int(x) for x in re.findall(r"\d+", v) or [0]]):
+                      if tag not in chosen:
+                          chosen.append(tag)
+                      if len(chosen) >= count:
+                          break
+
+              if not chosen:
+                  chosen.append("9")
+              while len(chosen) < count:
+                  chosen.append(chosen[-1])
+
+              return chosen[:count]
+
           def latest_rocky_releases(count=2):
               versions_sorted = rocky_version_list()
               if not versions_sorted:
@@ -215,6 +247,7 @@ jobs:
           rocky_releases = latest_rocky_releases()
           rocky_latest = rocky_releases[-1]
           rocky_previous = rocky_releases[-2] if len(rocky_releases) > 1 else rocky_releases[-1]
+          rocky_container_latest, rocky_container_previous = rocky_container_tags(rocky_releases, count=2)
           rocky_release = rocky_latest
           opensuse_leap = latest_opensuse_leap()
           suse_bci = latest_suse_bci()
@@ -228,6 +261,8 @@ jobs:
               fh.write(f"rocky_release={rocky_release}\n")
               fh.write(f"rocky_previous={rocky_previous}\n")
               fh.write(f"rocky_latest={rocky_latest}\n")
+              fh.write(f"rocky_container_latest={rocky_container_latest}\n")
+              fh.write(f"rocky_container_previous={rocky_container_previous}\n")
               fh.write(f"rocky_releases={json.dumps(rocky_releases)}\n")
               fh.write(f"opensuse_leap={opensuse_leap}\n")
               fh.write(f"suse_bci={suse_bci}\n")
@@ -540,7 +575,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: rockylinux:${{ needs.detect-versions.outputs.rocky_latest }}
+      image: rockylinux:${{ needs.detect-versions.outputs.rocky_container_latest }}
     steps:
       - name: Install required tooling
         run: |
@@ -646,7 +681,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: rockylinux:${{ needs.detect-versions.outputs.rocky_previous }}
+      image: rockylinux:${{ needs.detect-versions.outputs.rocky_container_previous }}
     steps:
       - name: Install required tooling
         run: |
