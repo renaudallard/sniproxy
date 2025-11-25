@@ -47,11 +47,6 @@ table_lookup_backend(const struct Table *table, const char *name, size_t name_le
     return lookup_backend(&table->backends, name, name_len);
 }
 
-static inline void
-remove_table_backend(struct Table *table, struct Backend *backend) {
-    remove_backend(&table->backends, backend);
-}
-
 static inline uint32_t
 table_hash_hostname(const char *name, size_t len) {
     uint32_t hash = 2166136261u;
