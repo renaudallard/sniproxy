@@ -1,3 +1,16 @@
+2025-11-25  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.13
+	- Build/CI: Release workflow discovers Rocky releases via mirrors and Docker
+	  tags, builds both latest and previous Rocky majors with consistent jobs,
+	  falls back to microdnf when dnf is missing, and openSUSE autoconf downloads
+	  use a mirrored source when ftp.gnu.org is unavailable.
+	- Testing: Buffer tests now create/destroy a dedicated libev loop and fix the
+	  leak that broke Valgrind runs; the Valgrind workflow builds from tests/ and
+	  surfaces failures.
+	- Bug fix: Resolved a use-after-free when config files have incorrect
+	  permissions.
+
 2025-11-24  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.12

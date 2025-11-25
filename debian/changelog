@@ -1,3 +1,17 @@
+sniproxy (0.9.13) unstable; urgency=medium
+
+  * Packaging/CI: Discover Rocky releases via mirrors and Docker tags, build
+    both latest and previous Rocky majors in the release workflow, fall back to
+    microdnf when dnf is missing, and use a mirrored autoconf source for
+    openSUSE builds.
+  * Testing: Buffer tests create/destroy a dedicated libev loop, fix the leak
+    that broke Valgrind runs, and the Valgrind workflow runs from tests/ and
+    surfaces failures.
+  * Bug fix: Resolve a use-after-free when configuration files have incorrect
+    permissions.
+
+ -- Renaud Allard <renaud@allard.it>  Tue, 25 Nov 2025 00:00:00 +0000
+
 sniproxy (0.9.12) unstable; urgency=medium
 
   * Packaging: rpmbuild now keeps distribution %{optflags} while still adding

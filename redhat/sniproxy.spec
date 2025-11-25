@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.12
+Version: 0.9.13
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,17 @@ fi
 
 
 %changelog
+* Tue Nov 25 2025 Renaud Allard <renaud@allard.it> 0.9.13-1
+- Packaging/CI: Rocky builds now detect releases via mirrors and Docker tags,
+  build both latest and previous majors with consistent jobs, fall back to
+  microdnf when dnf is missing, and the openSUSE autoconf download uses a
+  mirrored source.
+- Testing: Buffer tests create/destroy a dedicated libev loop and fix the leak
+  that broke Valgrind runs; the Valgrind workflow builds from tests/ and
+  surfaces failures.
+- Bug fix: Resolve a use-after-free when configuration files have incorrect
+  permissions.
+
 * Mon Nov 24 2025 Renaud Allard <renaud@allard.it> 0.9.12-1
 - Build: rpmbuild now preserves %{optflags} while appending the libev include
   path, drops the unused perl BuildRequires, and the release-packages workflow

@@ -1,3 +1,16 @@
+sniproxy 0.9.13 (2025-11-25)
+===============================
+
+* Packaging/CI: Release workflow now discovers Rocky Linux releases via mirrors
+  and Docker tags, builds both latest and previous Rocky majors with consistent
+  jobs, falls back to microdnf when dnf is missing, and the openSUSE autoconf
+  download uses a mirrored source when ftp.gnu.org is unavailable.
+* Testing: Buffer tests create/destroy a dedicated libev loop to stop leaks,
+  Valgrind workflow runs from the tests directory and surfaces failures, and
+  the buffer leak regression is fixed.
+* Bug fixes: Resolved a use-after-free when config files have incorrect
+  permissions.
+
 sniproxy 0.9.12 (2025-11-24)
 ===============================
 
