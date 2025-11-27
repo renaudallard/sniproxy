@@ -54,6 +54,7 @@
 #include "logger.h"
 #include "fd_util.h"
 #include "ipc_crypto.h"
+#include "seccomp_filter.h"
 
 struct Logger {
     struct LogSink *sink;
@@ -1712,6 +1713,13 @@ logger_child_main(int sockfd) {
             IPC_CRYPTO_ROLE_CHILD) < 0) {
         err("logger child: failed to initialize crypto context");
         logger_child_exit(EXIT_FAILURE);
+    }
+
+    /* Install seccomp filter after initialization */
+    if (seccomp_available()) {
+        if (seccomp_install_filter(SECCOMP_PROCESS_LOGGER) < 0) {
+            fatal("logger: failed to install seccomp filter: %s", strerror(errno));
+        }
     }
 
     for (;;) {

@@ -79,6 +79,7 @@
 #include "logger.h"
 #include "fd_util.h"
 #include "ipc_crypto.h"
+#include "seccomp_filter.h"
 
 /*
  * Implement DNS resolution interface using a dedicated resolver child process
@@ -1334,6 +1335,13 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 
     ev_io_init(&child_ipc_watcher, resolver_child_ipc_cb, child_sock, EV_READ);
     ev_io_start(child_loop, &child_ipc_watcher);
+
+    /* Install seccomp filter after all initialization is complete */
+    if (seccomp_available()) {
+        if (seccomp_install_filter(SECCOMP_PROCESS_RESOLVER) < 0) {
+            fatal("resolver: failed to install seccomp filter: %s", strerror(errno));
+        }
+    }
 
     ev_run(child_loop, 0);
 

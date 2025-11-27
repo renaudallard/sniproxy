@@ -10,7 +10,8 @@ TESTS = address_test \
         table_test \
         http_test \
         tls_test \
-        binder_test
+        binder_test \
+        seccomp_test
 
 TESTS += functional_test \
          bad_request_test \
@@ -36,7 +37,8 @@ check_PROGRAMS = http_test \
                  cfg_tokenizer_test \
                  address_test \
                  resolv_test \
-                 config_test
+                 config_test \
+                 seccomp_test
 
 http_test_SOURCES = http_test.c \
                     ../src/http.c \
@@ -46,12 +48,18 @@ http_test_SOURCES = http_test.c \
 tls_test_SOURCES = tls_test.c \
                    ../src/tls.c \
                    ../src/logger.c \
-                   ../src/ipc_crypto.c
+                   ../src/ipc_crypto.c \
+                   ../src/seccomp.c
+
+tls_test_LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 binder_test_SOURCES = binder_test.c \
                       ../src/binder.c \
                       ../src/logger.c \
-                      ../src/ipc_crypto.c
+                      ../src/ipc_crypto.c \
+                      ../src/seccomp.c
+
+binder_test_LDADD = $(LIBSECCOMP_LIBS)
 
 buffer_test_SOURCES = buffer_test.c \
                       ../src/buffer.c
@@ -82,23 +90,31 @@ config_test_SOURCES = config_test.c \
                       ../src/tls.c \
                       ../src/http.c \
                       ../src/http2.c \
-                      ../src/http2_huffman.c
+                      ../src/http2_huffman.c \
+                      ../src/seccomp.c
 
-config_test_LDADD = $(LIBEV_LIBS) $(PCRE2_LIBS) -lssl $(LIBCRYPTO_LIBS)
+config_test_LDADD = $(LIBEV_LIBS) $(PCRE2_LIBS) -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 resolv_test_SOURCES = resolv_test.c \
                       ../src/resolv.c \
                       ../src/address.c \
                       ../src/logger.c \
-                      ../src/ipc_crypto.c
+                      ../src/ipc_crypto.c \
+                      ../src/seccomp.c
 
-resolv_test_LDADD = $(LIBEV_LIBS) -lssl $(LIBCRYPTO_LIBS)
+resolv_test_LDADD = $(LIBEV_LIBS) -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 table_test_SOURCES = table_test.c \
                       ../src/backend.c \
                       ../src/table.c \
                       ../src/address.c \
                       ../src/logger.c \
-                      ../src/ipc_crypto.c
+                      ../src/ipc_crypto.c \
+                      ../src/seccomp.c
 
-table_test_LDADD = $(PCRE2_LIBS)
+table_test_LDADD = $(PCRE2_LIBS) $(LIBSECCOMP_LIBS)
+
+seccomp_test_SOURCES = seccomp_test.c \
+                       ../src/seccomp.c
+
+seccomp_test_LDADD = $(LIBSECCOMP_LIBS) -lpthread
