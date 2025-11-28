@@ -1307,6 +1307,7 @@ accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
     if (!validate_config_path("logger filename", filename, &normalized))
         return 0;
 
+    free((char *)lb->filename);
     lb->filename = normalized;
 
     return 1;
@@ -1316,11 +1317,14 @@ static int
 accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
     assert(lb != NULL);
 
-    lb->syslog_facility = strdup(facility);
-    if (lb->syslog_facility == NULL) {
+    char *new_facility = strdup(facility);
+    if (new_facility == NULL) {
         err("%s: strdup", __func__);
         return -1;
     }
+
+    free((char *)lb->syslog_facility);
+    lb->syslog_facility = new_facility;
 
     return 1;
 }
