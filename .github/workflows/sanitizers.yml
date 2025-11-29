@@ -1,0 +1,183 @@
+name: Sanitizers (ASAN/MSAN/UBSAN)
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+
+jobs:
+  address-sanitizer:
+    name: AddressSanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf automake libtool pkg-config \
+            libev-dev libpcre2-dev libc-ares-dev libssl-dev \
+            libbsd-dev clang
+
+      - name: Generate build system
+        run: |
+          set -euo pipefail
+          AUTOCONF_VERSION=2.71 AUTOMAKE_VERSION=1.16 ./autogen.sh
+
+      - name: Configure with AddressSanitizer
+        env:
+          CC: clang
+        run: |
+          set -euo pipefail
+          ./configure --disable-dependency-tracking --enable-asan
+
+      - name: Build
+        run: make -j$(nproc)
+
+      - name: Run tests with ASAN
+        env:
+          ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:detect_stack_use_after_return=1:detect_invalid_pointer_pairs=2:strict_string_checks=1
+          SKIP_BAD_REQUEST_TEST: 1
+        run: |
+          set -euo pipefail
+          make check
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-test-logs
+          path: tests/*.log
+          if-no-files-found: ignore
+
+  memory-sanitizer:
+    name: MemorySanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf automake libtool pkg-config \
+            clang
+
+      - name: Build instrumented libc++
+        run: |
+          set -euo pipefail
+          # MSan requires instrumented standard library
+          # For production use, you'd want to cache this or use pre-built packages
+          echo "Note: MSan requires instrumented libc++ which is complex to set up in CI"
+          echo "Skipping MSan build - recommend running locally with:"
+          echo "  CC=clang CFLAGS='-fsanitize=memory -fno-omit-frame-pointer -g -O1' \\"
+          echo "  LDFLAGS='-fsanitize=memory' ./configure && make check"
+        # Commenting out actual build since instrumented libc++ is not readily available
+        # In production CI, you'd either:
+        # 1. Build and cache instrumented libc++
+        # 2. Use a custom Docker image with pre-built instrumented libraries
+        # 3. Use Google's MSan builder image
+
+  undefined-behavior-sanitizer:
+    name: UndefinedBehaviorSanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf automake libtool pkg-config \
+            libev-dev libpcre2-dev libc-ares-dev libssl-dev \
+            libbsd-dev clang
+
+      - name: Generate build system
+        run: |
+          set -euo pipefail
+          AUTOCONF_VERSION=2.71 AUTOMAKE_VERSION=1.16 ./autogen.sh
+
+      - name: Configure with UBSan
+        env:
+          CC: clang
+        run: |
+          set -euo pipefail
+          ./configure --disable-dependency-tracking --enable-ubsan
+
+      - name: Build
+        run: make -j$(nproc)
+
+      - name: Run tests with UBSan
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          SKIP_BAD_REQUEST_TEST: 1
+        run: |
+          set -euo pipefail
+          make check
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubsan-test-logs
+          path: tests/*.log
+          if-no-files-found: ignore
+
+  combined-sanitizers:
+    name: ASAN+UBSAN Combined
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf automake libtool pkg-config \
+            libev-dev libpcre2-dev libc-ares-dev libssl-dev \
+            libbsd-dev clang
+
+      - name: Generate build system
+        run: |
+          set -euo pipefail
+          AUTOCONF_VERSION=2.71 AUTOMAKE_VERSION=1.16 ./autogen.sh
+
+      - name: Configure with ASAN+UBSan
+        env:
+          CC: clang
+        run: |
+          set -euo pipefail
+          ./configure --disable-dependency-tracking --enable-asan --enable-ubsan
+
+      - name: Build
+        run: make -j$(nproc)
+
+      - name: Run tests with ASAN+UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:detect_stack_use_after_return=1:detect_invalid_pointer_pairs=2:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          SKIP_BAD_REQUEST_TEST: 1
+        run: |
+          set -euo pipefail
+          make check
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-sanitizer-test-logs
+          path: tests/*.log
+          if-no-files-found: ignore

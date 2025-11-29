@@ -507,10 +507,15 @@ Contributions are welcome! Areas of particular interest:
 - Documentation improvements
 - Bug reports and test cases
 
+When developing, please use the memory sanitizers to catch bugs early:
+- See [SANITIZERS.md](SANITIZERS.md) for AddressSanitizer, MemorySanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer usage
+- CI automatically runs ASAN and UBSAN on all pull requests
+
 ### Resources
 
 - **Source code**: https://github.com/renaudallard/sniproxy
 - **Architecture documentation**: See [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Memory sanitizers guide**: See [SANITIZERS.md](SANITIZERS.md)
 - **Issue tracking**: GitHub Issues
 - **License**: BSD 2-Clause
 

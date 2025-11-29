@@ -64,6 +64,26 @@ AC_ARG_ENABLE([hardening],
   [enable_hardening=$enableval],
   [enable_hardening=yes])
 
+AC_ARG_ENABLE([asan],
+  [AS_HELP_STRING([--enable-asan], [Enable AddressSanitizer (requires clang or gcc >= 4.8)])],
+  [enable_asan=$enableval],
+  [enable_asan=no])
+
+AC_ARG_ENABLE([msan],
+  [AS_HELP_STRING([--enable-msan], [Enable MemorySanitizer (requires clang with instrumented libc++)])],
+  [enable_msan=$enableval],
+  [enable_msan=no])
+
+AC_ARG_ENABLE([ubsan],
+  [AS_HELP_STRING([--enable-ubsan], [Enable UndefinedBehaviorSanitizer])],
+  [enable_ubsan=$enableval],
+  [enable_ubsan=no])
+
+AC_ARG_ENABLE([tsan],
+  [AS_HELP_STRING([--enable-tsan], [Enable ThreadSanitizer (incompatible with other sanitizers)])],
+  [enable_tsan=$enableval],
+  [enable_tsan=no])
+
 AC_CACHE_CHECK([whether the compiler is clang], [sniproxy_cv_cc_is_clang], [
   AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
 #ifndef __clang__
@@ -102,6 +122,56 @@ AS_IF([test "x$enable_hardening" != "xno"], [
 AC_SUBST([HARDEN_CFLAGS])
 AC_SUBST([HARDEN_CPPFLAGS])
 AC_SUBST([HARDEN_LDFLAGS])
+
+# Sanitizer support
+SANITIZER_CFLAGS=""
+SANITIZER_LDFLAGS=""
+
+# Check for conflicting sanitizer options
+sanitizer_count=0
+AS_IF([test "x$enable_asan" = "xyes"], [sanitizer_count=$((sanitizer_count + 1))])
+AS_IF([test "x$enable_msan" = "xyes"], [sanitizer_count=$((sanitizer_count + 1))])
+AS_IF([test "x$enable_tsan" = "xyes"], [sanitizer_count=$((sanitizer_count + 1))])
+
+AS_IF([test $sanitizer_count -gt 1], [
+  AC_MSG_ERROR([Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously])
+])
+
+AS_IF([test "x$enable_asan" = "xyes"], [
+  AC_MSG_NOTICE([Enabling AddressSanitizer])
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize=address -fno-omit-frame-pointer"
+  SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=address"
+])
+
+AS_IF([test "x$enable_msan" = "xyes"], [
+  AC_MSG_NOTICE([Enabling MemorySanitizer])
+  AC_MSG_WARN([MemorySanitizer requires instrumented libc++ - ensure you have built and linked against it])
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize=memory -fno-omit-frame-pointer -fsanitize-memory-track-origins"
+  SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=memory"
+])
+
+AS_IF([test "x$enable_ubsan" = "xyes"], [
+  AC_MSG_NOTICE([Enabling UndefinedBehaviorSanitizer])
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize=undefined -fno-sanitize-recover=all"
+  SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=undefined"
+])
+
+AS_IF([test "x$enable_tsan" = "xyes"], [
+  AC_MSG_NOTICE([Enabling ThreadSanitizer])
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize=thread -fno-omit-frame-pointer"
+  SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=thread"
+])
+
+# Disable hardening if sanitizers are enabled (some flags conflict)
+AS_IF([test "x$enable_asan" = "xyes" -o "x$enable_msan" = "xyes" -o "x$enable_tsan" = "xyes" -o "x$enable_ubsan" = "xyes"], [
+  AS_IF([test "x$enable_hardening" = "xyes"], [
+    AC_MSG_WARN([Disabling hardening flags due to sanitizer usage (some flags conflict)])
+    enable_hardening=no
+  ])
+])
+
+AC_SUBST([SANITIZER_CFLAGS])
+AC_SUBST([SANITIZER_LDFLAGS])
 
 # Checks for libraries.
 AC_CHECK_LIB([ev], [ev_run], [],
