@@ -126,7 +126,7 @@ static void log_bad_request(struct Connection *, const char *, size_t, int);
 static void free_connection(struct Connection *);
 static int cache_client_local_addr(struct Connection *, int);
 static void print_connection(FILE *, const struct Connection *);
-static void free_resolv_cb_data(struct resolv_cb_data *);
+static void free_resolv_cb_data(void *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void connection_header_timeout_cb(struct ev_loop *, struct ev_timer *, int);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
@@ -2002,7 +2002,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         con->state = RESOLVING;
         con->query_handle = resolv_query(hostname,
                 resolv_mode, resolv_cb,
-                (void (*)(void *))free_resolv_cb_data, cb_data);
+                free_resolv_cb_data, cb_data);
 
         if (con->query_handle == NULL) {
             if (con->dns_query_acquired) {
@@ -2088,7 +2088,8 @@ resolv_cb(struct Address *result, void *data) {
 }
 
 static void
-free_resolv_cb_data(struct resolv_cb_data *cb_data) {
+free_resolv_cb_data(void *data) {
+    struct resolv_cb_data *cb_data = (struct resolv_cb_data *)data;
     if (cb_data->cb_free_addr)
         free((void *)cb_data->address);
     free(cb_data);
