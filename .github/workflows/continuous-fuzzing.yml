@@ -14,7 +14,7 @@ on:
 jobs:
   continuous-fuzz:
     runs-on: ubuntu-latest
-    timeout-minutes: 480
+    timeout-minutes: 300
     steps:
       - name: Checkout
         uses: actions/checkout@v4
