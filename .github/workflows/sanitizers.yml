@@ -150,7 +150,9 @@ jobs:
           cd /tmp
           git clone https://github.com/enki/libev.git
           cd libev
-          git checkout v4.33
+          # Use latest stable release tag
+          git fetch --tags
+          git checkout $(git tag | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1 || echo master)
 
           ./autogen.sh
 
@@ -171,9 +173,13 @@ jobs:
           export MSAN_PREFIX=~/msan-libs
 
           cd /tmp
-          wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.42/pcre2-10.42.tar.gz
-          tar xzf pcre2-10.42.tar.gz
-          cd pcre2-10.42
+          PCRE2_VERSION=10.42
+          if ! wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz; then
+            echo "ERROR: PCRE2 ${PCRE2_VERSION} not found. Update version in workflow."
+            exit 1
+          fi
+          tar xzf pcre2-${PCRE2_VERSION}.tar.gz
+          cd pcre2-${PCRE2_VERSION}
 
           CC=clang \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
@@ -194,7 +200,9 @@ jobs:
           cd /tmp
           git clone https://github.com/c-ares/c-ares.git
           cd c-ares
-          git checkout v1.33.1
+          # Use latest stable release tag
+          git fetch --tags
+          git checkout $(git tag | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
 
           mkdir build
           cd build
@@ -222,9 +230,13 @@ jobs:
           export MSAN_PREFIX=~/msan-libs
 
           cd /tmp
-          wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.2.1.tar.gz
-          tar xzf libressl-4.2.1.tar.gz
-          cd libressl-4.2.1
+          LIBRESSL_VERSION=4.2.1
+          if ! wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-${LIBRESSL_VERSION}.tar.gz; then
+            echo "ERROR: LibreSSL ${LIBRESSL_VERSION} not found. Update version in workflow."
+            exit 1
+          fi
+          tar xzf libressl-${LIBRESSL_VERSION}.tar.gz
+          cd libressl-${LIBRESSL_VERSION}
 
           CC=clang \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
@@ -243,9 +255,13 @@ jobs:
           export MSAN_PREFIX=~/msan-libs
 
           cd /tmp
-          wget https://libbsd.freedesktop.org/releases/libbsd-0.11.7.tar.xz
-          tar xf libbsd-0.11.7.tar.xz
-          cd libbsd-0.11.7
+          LIBBSD_VERSION=0.11.7
+          if ! wget https://libbsd.freedesktop.org/releases/libbsd-${LIBBSD_VERSION}.tar.xz; then
+            echo "ERROR: libbsd ${LIBBSD_VERSION} not found. Update version in workflow."
+            exit 1
+          fi
+          tar xf libbsd-${LIBBSD_VERSION}.tar.xz
+          cd libbsd-${LIBBSD_VERSION}
 
           CC=clang \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
