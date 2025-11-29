@@ -52,7 +52,7 @@
 #endif
 
 
-static int parse_tls_header(const uint8_t*, size_t, char **);
+static int parse_tls_header(const char *, size_t, char **);
 static int parse_extensions(const uint8_t*, size_t, char **);
 static int parse_server_name_extension(const uint8_t*, size_t, char **);
 static int extensions_have_required_version(const uint8_t *, size_t,
@@ -82,7 +82,7 @@ static const char tls_alert[] = {
 const struct Protocol *const tls_protocol = &(struct Protocol){
     .name = "tls",
     .default_port = 443,
-    .parse_packet = (int (*const)(const char *, size_t, char **))&parse_tls_header,
+    .parse_packet = &parse_tls_header,
     .abort_message = tls_alert,
     .abort_message_len = sizeof(tls_alert)
 };
@@ -102,7 +102,8 @@ const struct Protocol *const tls_protocol = &(struct Protocol){
  *  < -4 - Invalid TLS client hello
  */
 static int
-parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
+parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
+    const uint8_t *data = (const uint8_t *)data_char;
     uint8_t tls_content_type;
     uint8_t tls_version_major;
     uint8_t tls_version_minor;
