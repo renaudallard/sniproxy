@@ -128,7 +128,7 @@ jobs:
             -DLLVM_USE_SANITIZER=MemoryWithOrigins \
             -DCMAKE_C_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -Wno-strict-overflow" \
             -DCMAKE_CXX_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -Wno-deprecated-declarations -Wno-strict-overflow -Wno-user-defined-literals" \
-            -DRUNTIMES_CMAKE_ARGS="-DCMAKE_C_COMPILER=clang;-DCMAKE_CXX_COMPILER=clang++;-DCMAKE_LINKER=ld.lld;-DCMAKE_C_FLAGS=-fsanitize=memory -fsanitize-memory-track-origins -Wno-strict-overflow;-DCMAKE_CXX_FLAGS=-fsanitize=memory -fsanitize-memory-track-origins -Wno-deprecated-declarations -Wno-strict-overflow -Wno-user-defined-literals;-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=memory -fuse-ld=lld;-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=memory -fuse-ld=lld" \
+            -DRUNTIMES_CMAKE_ARGS="-DCMAKE_C_COMPILER=clang;-DCMAKE_CXX_COMPILER=clang++;-DCMAKE_LINKER=ld.lld;-DCMAKE_C_FLAGS=-fsanitize=memory -fsanitize-memory-track-origins -Wno-strict-overflow;-DCMAKE_CXX_FLAGS=-fsanitize=memory -fsanitize-memory-track-origins -Wno-deprecated-declarations -Wno-strict-overflow -Wno-user-defined-literals;-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=memory -fuse-ld=lld -rtlib=compiler-rt;-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=memory -fuse-ld=lld -rtlib=compiler-rt" \
             ../llvm
 
           ninja cxx cxxabi
