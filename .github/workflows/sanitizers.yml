@@ -128,6 +128,7 @@ jobs:
             -DLLVM_USE_SANITIZER=MemoryWithOrigins \
             -DCMAKE_C_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -Wno-strict-overflow" \
             -DCMAKE_CXX_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -Wno-deprecated-declarations -Wno-strict-overflow" \
+            -DRUNTIMES_CMAKE_ARGS="-DCMAKE_C_FLAGS=-fsanitize=memory -fsanitize-memory-track-origins -Wno-strict-overflow;-DCMAKE_CXX_FLAGS=-fsanitize=memory -fsanitize-memory-track-origins -Wno-deprecated-declarations -Wno-strict-overflow" \
             ../llvm
 
           ninja cxx cxxabi
