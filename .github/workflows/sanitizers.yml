@@ -91,6 +91,18 @@ jobs:
           git clone --depth=1 --branch=release/17.x https://github.com/llvm/llvm-project.git
           cd llvm-project
 
+          # Build non-sanitized llvm-tblgen to avoid MSAN aborts in TableGen
+          mkdir build-tools
+          cd build-tools
+          cmake -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_TARGETS_TO_BUILD="X86" \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            ../llvm
+          ninja llvm-tblgen
+          export HOST_LLVM_TABLEGEN="$(pwd)/bin/llvm-tblgen"
+          cd ..
+
           # Build instrumented libc++ and libc++abi
           mkdir build-msan
           cd build-msan
@@ -103,6 +115,7 @@ jobs:
             -DLLVM_BUILD_UTILS=OFF \
             -DLLVM_INCLUDE_UTILS=OFF \
             -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_TABLEGEN="$HOST_LLVM_TABLEGEN" \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_INSTALL_PREFIX="$MSAN_PREFIX" \
