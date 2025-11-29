@@ -34,6 +34,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h> /* inet_pton */
 #include <sys/un.h>
+#ifdef HAVE_BSD_STRING_H
+#include <bsd/string.h>
+#endif
 #include "address.h"
 
 
@@ -108,15 +111,11 @@ new_address(const char *hostname_or_ip) {
         /* Unix socket */
         memset(&s, 0, sizeof(s));
         if (strncmp("unix:", input, 5) == 0) {
-            if (strlen(input) >= sizeof(s.un.sun_path))
-                return NULL;
-
             /* XXX: only supporting pathname unix sockets */
             s.un.sun_family = AF_UNIX;
-            strncpy(s.un.sun_path,
-                    input + 5,
-                    sizeof(s.un.sun_path) - 1);
-            s.un.sun_path[sizeof(s.un.sun_path) - 1] = '\0';
+            if (strlcpy(s.un.sun_path, input + 5, sizeof(s.un.sun_path))
+                >= sizeof(s.un.sun_path))
+                return NULL;
 
             return apply_port_if_needed(new_address_sa(&s.a,
                         offsetof(struct sockaddr_un, sun_path) +
