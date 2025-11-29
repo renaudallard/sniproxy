@@ -88,33 +88,22 @@ make check
 
 ### MemorySanitizer (Advanced)
 
-MSan requires an instrumented C++ standard library. This is more complex to set up:
+MSan requires instrumented versions of ALL libraries (libc++, libev, libpcre2, c-ares, OpenSSL, libbsd).
 
+**Good news:** The GitHub Actions workflow builds and caches all instrumented libraries automatically!
+
+**For local use:**
 ```bash
-# First, build instrumented libc++ (example for Ubuntu/Debian)
-# This is a simplified example - see Clang documentation for full details
-git clone https://github.com/llvm/llvm-project.git
-cd llvm-project
-mkdir build-msan && cd build-msan
-
-cmake -GNinja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_ENABLE_PROJECTS="libcxx;libcxxabi" \
-  -DCMAKE_C_COMPILER=clang \
-  -DCMAKE_CXX_COMPILER=clang++ \
-  -DLLVM_USE_SANITIZER=MemoryWithOrigins \
-  ../llvm
-
-ninja cxx cxxabi
-
-# Then build sniproxy with MSan
-export MSAN_PREFIX=/path/to/llvm-project/build-msan
-./configure --enable-msan \
-  LDFLAGS="-L$MSAN_PREFIX/lib -Wl,-rpath,$MSAN_PREFIX/lib" \
-  CXXFLAGS="-stdlib=libc++"
+# Use the --enable-msan flag (but you'll need instrumented libraries)
+./configure --enable-msan
 make -j$(nproc)
 make check
 ```
+
+**Note:** Local MSAN testing requires building instrumented versions of all dependencies.
+See the CI workflow `.github/workflows/sanitizers.yml` for the complete build process.
+The workflow caches the instrumented libraries, so the first run takes ~60 minutes,
+but subsequent runs use cached libraries and complete in ~5 minutes.
 
 ## CI/CD Usage
 
@@ -130,6 +119,10 @@ The project includes a comprehensive sanitizer workflow in `.github/workflows/sa
 The workflow runs automatically on:
 - Every push to any branch
 - Every pull request
+
+**MSAN Caching:** The first MSAN run builds all instrumented libraries (~60 minutes).
+Subsequent runs use cached libraries and complete in ~5 minutes. Cache is invalidated
+when the workflow file changes.
 
 ### Environment Variables
 
