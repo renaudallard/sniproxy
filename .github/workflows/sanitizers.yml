@@ -154,7 +154,7 @@ jobs:
           git fetch --tags
           git checkout $(git tag | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1 || echo master)
 
-          ./autogen.sh
+          sh autogen.sh
 
           CC=clang \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
