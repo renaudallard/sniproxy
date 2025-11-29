@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2011 and 2012, Dustin Lundquist <dustin@null-ptr.net>
+ * Copyright (c) 2025, Renaud Allard <renaud@allard.it>
  * Copyright (c) 2011 Manuel Kasper <mk@neon1.net>
  * All rights reserved.
  *

@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2013, Dustin Lundquist <dustin@null-ptr.net>
+ * Copyright (c) 2025, Renaud Allard <renaud@allard.it>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
