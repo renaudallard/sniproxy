@@ -127,7 +127,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$MSAN_PREFIX" \
             -DLLVM_USE_SANITIZER=MemoryWithOrigins \
             -DCMAKE_C_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins" \
-            -DCMAKE_CXX_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -Wno-deprecated-declarations" \
             ../llvm
 
           ninja cxx cxxabi
