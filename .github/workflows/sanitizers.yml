@@ -141,6 +141,31 @@ jobs:
 
           echo "✓ Instrumented libc++ built and installed to $MSAN_PREFIX"
 
+      - name: Build instrumented libmd
+        if: steps.cache-msan-libs.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          export MSAN_PREFIX=~/msan-libs
+
+          cd /tmp
+          LIBMD_VERSION=1.1.0
+          if ! wget https://archive.hadrons.org/software/libmd/libmd-${LIBMD_VERSION}.tar.xz; then
+            echo "ERROR: libmd ${LIBMD_VERSION} not found. Update version in workflow."
+            exit 1
+          fi
+          tar xf libmd-${LIBMD_VERSION}.tar.xz
+          cd libmd-${LIBMD_VERSION}
+
+          CC=clang \
+          CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
+          LDFLAGS="-fsanitize=memory" \
+          ./configure --prefix="$MSAN_PREFIX"
+
+          make -j$(nproc)
+          make install
+
+          echo "✓ Instrumented libmd built"
+
       - name: Build instrumented libev
         if: steps.cache-msan-libs.outputs.cache-hit != 'true'
         run: |
@@ -156,9 +181,13 @@ jobs:
 
           sh autogen.sh
 
+          # Point configure to our MSAN-instrumented libmd
+          export PKG_CONFIG_PATH="$MSAN_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          export CPPFLAGS="-I$MSAN_PREFIX/include"
+          export LDFLAGS="-L$MSAN_PREFIX/lib -fsanitize=memory"
+
           CC=clang \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
-          LDFLAGS="-fsanitize=memory" \
           ./configure --prefix="$MSAN_PREFIX"
 
           make -j$(nproc)
