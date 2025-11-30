@@ -183,11 +183,11 @@ jobs:
 
           # Point configure to our MSAN-instrumented libmd
           export PKG_CONFIG_PATH="$MSAN_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          export CPPFLAGS="-I$MSAN_PREFIX/include"
-          export LDFLAGS="-L$MSAN_PREFIX/lib -fsanitize=memory"
 
           CC=clang \
+          CPPFLAGS="-I$MSAN_PREFIX/include" \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
+          LDFLAGS="-L$MSAN_PREFIX/lib -fsanitize=memory" \
           ./configure --prefix="$MSAN_PREFIX"
 
           make -j$(nproc)
@@ -292,9 +292,13 @@ jobs:
           tar xf libbsd-${LIBBSD_VERSION}.tar.xz
           cd libbsd-${LIBBSD_VERSION}
 
+          # Point configure to our MSAN-instrumented libmd
+          export PKG_CONFIG_PATH="$MSAN_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+
           CC=clang \
+          CPPFLAGS="-I$MSAN_PREFIX/include" \
           CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1" \
-          LDFLAGS="-fsanitize=memory" \
+          LDFLAGS="-L$MSAN_PREFIX/lib -fsanitize=memory" \
           ./configure --prefix="$MSAN_PREFIX"
 
           make -j$(nproc)
