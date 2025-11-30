@@ -334,8 +334,6 @@ jobs:
 
       - name: Build
         run: |
-          export MSAN_PREFIX=~/msan-libs
-          export LD_LIBRARY_PATH="$MSAN_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           make -j$(nproc)
 
       - name: Run tests with MSAN
@@ -344,8 +342,6 @@ jobs:
           SKIP_BAD_REQUEST_TEST: 1
         run: |
           set -euo pipefail
-          export MSAN_PREFIX=~/msan-libs
-          export LD_LIBRARY_PATH="$MSAN_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           make check
 
       - name: Upload test logs
