@@ -324,14 +324,13 @@ jobs:
           export MSAN_PREFIX=~/msan-libs
 
           # Configure with MSAN using instrumented libraries
-          # Note: --enable-msan sets the sanitizer flags, we just need to point to our libs
+          # Set MSAN flags explicitly so configure tests work correctly
           export PKG_CONFIG_PATH="$MSAN_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          export CPPFLAGS="-I$MSAN_PREFIX/include"
-          export CXXFLAGS="-stdlib=libc++ -nostdinc++ -isystem $MSAN_PREFIX/include/c++/v1"
-          export LDFLAGS="-L$MSAN_PREFIX/lib -Wl,-rpath,$MSAN_PREFIX/lib -lc++ -lc++abi"
-          export LIBS="-lc++ -lc++abi"
+          export CFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g"
+          export CXXFLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -stdlib=libc++ -nostdinc++ -isystem $MSAN_PREFIX/include/c++/v1"
+          export LDFLAGS="-fsanitize=memory -L$MSAN_PREFIX/lib -Wl,-rpath,$MSAN_PREFIX/lib -stdlib=libc++"
 
-          ./configure --disable-dependency-tracking --enable-msan
+          ./configure --disable-dependency-tracking
 
       - name: Build
         run: |
