@@ -485,6 +485,8 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
             /* Use original filename parameter to avoid use-after-free.
              * config->filename will be freed by free_config() below, so we
              * must not dereference it in the fatal() call. */
+            fprintf(stderr, "FATAL: Config file %s must not be group/world accessible (mode %04o)\n",
+                filename, config_st.st_mode & 0777);
             fclose(file);
             free_config(config, loop);
             fatal("Config file %s must not be group/world accessible (mode %04o)",
