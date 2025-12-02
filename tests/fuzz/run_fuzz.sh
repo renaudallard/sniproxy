@@ -152,8 +152,9 @@ build_fuzzer resolver_response_fuzz \
     "$ROOT_DIR/src/address.c" \
     "$ROOT_DIR/src/ipc_crypto.c" \
     "$ROOT_DIR/src/resolv.c" \
+    "$ROOT_DIR/src/seccomp.c" \
     -I"$ROOT_DIR/tests/include" \
-    -lev -lssl -lcrypto -lcares
+    -lev -lssl -lcrypto -lcares -lseccomp
 
 build_fuzzer config_fuzz \
     "$ROOT_DIR/tests/fuzz/config_fuzz.c" \
@@ -174,7 +175,8 @@ build_fuzzer config_fuzz \
     "$ROOT_DIR/src/http.c" \
     "$ROOT_DIR/src/http2.c" \
     "$ROOT_DIR/src/http2_huffman.c" \
-    -lev -lssl -lcrypto -lcares
+    "$ROOT_DIR/src/seccomp.c" \
+    -lev -lssl -lcrypto -lcares -lseccomp
 
 build_fuzzer http2_fuzz \
     "$ROOT_DIR/tests/fuzz/http2_fuzz.c" \

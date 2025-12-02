@@ -62,6 +62,7 @@
 #include "ipc_crypto.h"
 #include "http.h"
 #include "tls.h"
+#include "seccomp_filter.h"
 
 
 static void usage(void);
@@ -479,6 +480,13 @@ main(int argc, char **argv) {
             config->resolver.dnssec_validation_mode);
 
     init_connections();
+
+    /* Install seccomp filter after all initialization is complete */
+    if (seccomp_available()) {
+        if (seccomp_install_filter(SECCOMP_PROCESS_MAIN) < 0) {
+            fatal("Failed to install seccomp filter: %s", strerror(errno));
+        }
+    }
 
     ev_run(loop, 0);
 

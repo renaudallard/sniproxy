@@ -45,6 +45,7 @@
 #include "logger.h"
 #include "fd_util.h"
 #include "ipc_crypto.h"
+#include "seccomp_filter.h"
 
 /*
  * binder is a child process we spawn before dropping privileges that is
@@ -253,6 +254,13 @@ binder_main(int sockfd) {
             IPC_CRYPTO_ROLE_CHILD) < 0) {
         err("binder child: failed to initialize crypto context");
         binder_child_exit(EXIT_FAILURE);
+    }
+
+    /* Install seccomp filter after initialization */
+    if (seccomp_available()) {
+        if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0) {
+            fatal("binder: failed to install seccomp filter: %s", strerror(errno));
+        }
     }
 
     for (;;) {

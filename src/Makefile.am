@@ -2,7 +2,7 @@ AM_CPPFLAGS = $(HARDEN_CPPFLAGS) \
               -DDEFAULT_DNSSEC_VALIDATION_MODE=DNSSEC_VALIDATION_RELAXED
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings $(HARDEN_CFLAGS) $(SANITIZER_CFLAGS)
 AM_LDFLAGS = $(HARDEN_LDFLAGS) $(SANITIZER_LDFLAGS)
-LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBBSD_LIBS)
+LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBBSD_LIBS) $(LIBSECCOMP_LIBS)
 
 sbin_PROGRAMS = sniproxy
 
@@ -40,6 +40,8 @@ sniproxy_common_sources = address.c \
                           protocol.h \
                           resolv.c \
                           resolv.h \
+                          seccomp.c \
+                          seccomp_filter.h \
                           table.c \
                           table.h \
                           tls.c \
