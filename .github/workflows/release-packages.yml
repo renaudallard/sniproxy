@@ -309,11 +309,9 @@ jobs:
           mkdir -p artifacts/deb/ubuntu-stable
           shopt -s nullglob
           for pkg in ../*.deb; do
-            base=$(basename "$pkg")
-            name=${base%%_*}
-            ver_arch=${base#*_}
-            arch=${ver_arch##*_}
-            ver=${ver_arch%_*}
+            name=$(dpkg-deb -f "$pkg" Package)
+            ver=$(dpkg-deb -f "$pkg" Version)
+            arch=$(dpkg-deb -f "$pkg" Architecture)
             cp "$pkg" "artifacts/deb/ubuntu-stable/${name}_${ver}~ubuntu-${{ needs.detect-versions.outputs.ubuntu_stable }}_${arch}.deb"
           done
 
@@ -363,11 +361,9 @@ jobs:
           mkdir -p artifacts/deb/ubuntu-lts
           shopt -s nullglob
           for pkg in ../*.deb; do
-            base=$(basename "$pkg")
-            name=${base%%_*}
-            ver_arch=${base#*_}
-            arch=${ver_arch##*_}
-            ver=${ver_arch%_*}
+            name=$(dpkg-deb -f "$pkg" Package)
+            ver=$(dpkg-deb -f "$pkg" Version)
+            arch=$(dpkg-deb -f "$pkg" Architecture)
             cp "$pkg" "artifacts/deb/ubuntu-lts/${name}_${ver}~ubuntu-${{ needs.detect-versions.outputs.ubuntu_lts }}_${arch}.deb"
           done
 
@@ -417,11 +413,9 @@ jobs:
           mkdir -p artifacts/deb/debian-stable
           shopt -s nullglob
           for pkg in ../*.deb; do
-            base=$(basename "$pkg")
-            name=${base%%_*}
-            ver_arch=${base#*_}
-            arch=${ver_arch##*_}
-            ver=${ver_arch%_*}
+            name=$(dpkg-deb -f "$pkg" Package)
+            ver=$(dpkg-deb -f "$pkg" Version)
+            arch=$(dpkg-deb -f "$pkg" Architecture)
             cp "$pkg" "artifacts/deb/debian-stable/${name}_${ver}~debian-${{ needs.detect-versions.outputs.debian_stable }}_${arch}.deb"
           done
 
@@ -471,11 +465,9 @@ jobs:
           mkdir -p artifacts/deb/debian-lts
           shopt -s nullglob
           for pkg in ../*.deb; do
-            base=$(basename "$pkg")
-            name=${base%%_*}
-            ver_arch=${base#*_}
-            arch=${ver_arch##*_}
-            ver=${ver_arch%_*}
+            name=$(dpkg-deb -f "$pkg" Package)
+            ver=$(dpkg-deb -f "$pkg" Version)
+            arch=$(dpkg-deb -f "$pkg" Architecture)
             cp "$pkg" "artifacts/deb/debian-lts/${name}_${ver}~debian-${{ needs.detect-versions.outputs.debian_oldstable }}_${arch}.deb"
           done
 
