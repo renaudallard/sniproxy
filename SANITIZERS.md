@@ -1,21 +1,22 @@
 # Memory Sanitizers Guide
 
-This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer with sniproxy.
+This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer with sniproxy. Sanitizer support is built into `./configure` and is exercised by GitHub Actions on every push and pull request via `.github/workflows/sanitizers.yml`.
 
-## Overview
-
-Memory sanitizers are runtime error detection tools that help identify memory bugs, undefined behavior, and concurrency issues. They are invaluable for finding subtle bugs that might not cause immediate crashes but can lead to security vulnerabilities or data corruption.
+## Quick facts
+- Configure flags: `--enable-asan`, `--enable-msan`, `--enable-ubsan`, `--enable-tsan`; `--enable-asan --enable-ubsan` is supported for combined coverage.
+- Mutual exclusions: ASAN, MSAN, and TSAN cannot be combined. Configure fails fast with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously`.
+- Hardening: when a sanitizer is enabled, configure automatically disables conflicting hardening flags (`-fstack-protector-strong`, `-fcf-protection`, PIE).
+- CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on every push/PR. MSAN builds and caches instrumented dependencies so the first run can take ~60 minutes; cached runs finish in ~5 minutes.
+- CI toolchain: clang plus libev, pcre2, c-ares, openssl, libbsd, autotools. Tests run with `SKIP_BAD_REQUEST_TEST=1`.
+- Local smoke test: run `./test-sanitizer-build.sh` to validate the configure flags and conflict detection without installing every dependency.
 
 ## Available Sanitizers
 
 ### AddressSanitizer (ASAN)
 Detects:
 - Use-after-free
-- Heap buffer overflow
-- Stack buffer overflow
-- Global buffer overflow
-- Use-after-return
-- Use-after-scope
+- Heap/stack/global buffer overflow
+- Use-after-return/scope
 - Memory leaks
 - Invalid pointer dereferences
 
@@ -23,39 +24,30 @@ Detects:
 Detects:
 - Use of uninitialized memory
 - Reading uninitialized variables
-
-**Note:** MSan requires all code (including libraries) to be built with MSan instrumentation.
+Note: requires all code (including libraries) to be built with MSAN instrumentation.
 
 ### UndefinedBehaviorSanitizer (UBSAN)
 Detects:
-- Integer overflow
+- Integer overflow and invalid shifts
 - Division by zero
-- Null pointer dereference
-- Misaligned pointer access
-- Signed integer overflow
-- Invalid shifts
-- And many other undefined behaviors
+- Null pointer dereference and misaligned pointer access
+- Many other undefined behaviors
 
 ### ThreadSanitizer (TSAN)
 Detects:
-- Data races
-- Deadlocks
+- Data races and deadlocks
 - Use of destroyed mutexes
-
-**Note:** TSAN cannot be used simultaneously with ASAN or MSAN.
+Note: TSAN cannot be used simultaneously with ASAN or MSAN.
 
 ## Local Development Usage
+
+Use `clang` for best sanitizer support.
 
 ### Quick Start with AddressSanitizer
 
 ```bash
-# Generate build system
 ./autogen.sh
-
-# Configure with ASAN
 ./configure --enable-asan
-
-# Build and test
 make -j$(nproc)
 make check
 ```
@@ -69,8 +61,6 @@ make check
 ```
 
 ### Combined ASAN + UBSAN (Recommended)
-
-You can combine ASAN and UBSAN for comprehensive coverage:
 
 ```bash
 ./configure --enable-asan --enable-ubsan
@@ -88,64 +78,53 @@ make check
 
 ### MemorySanitizer (Advanced)
 
-MSan requires instrumented versions of ALL libraries (libc++, libev, libpcre2, c-ares, OpenSSL, libbsd).
+MSAN needs instrumented versions of all dependencies (libc++/libc++abi, libmd, libev, PCRE2, c-ares, LibreSSL, libbsd).
 
-**Good news:** The GitHub Actions workflow builds and caches all instrumented libraries automatically!
-
-**For local use:**
 ```bash
-# Use the --enable-msan flag (but you'll need instrumented libraries)
 ./configure --enable-msan
 make -j$(nproc)
 make check
 ```
 
-**Note:** Local MSAN testing requires building instrumented versions of all dependencies.
-See the CI workflow `.github/workflows/sanitizers.yml` for the complete build process.
-The workflow caches the instrumented libraries, so the first run takes ~60 minutes,
-but subsequent runs use cached libraries and complete in ~5 minutes.
+For local use, build instrumented libraries and point `PKG_CONFIG_PATH`, `CFLAGS`, `CXXFLAGS`, and `LDFLAGS` at them as shown in `.github/workflows/sanitizers.yml`. Expect the first build of the instrumented toolchain to take about an hour; reuse the same prefix to avoid rebuilding.
 
 ## CI/CD Usage
 
-### GitHub Actions
+- Workflow: `.github/workflows/sanitizers.yml`
+- Triggers: every push and pull request
+- Jobs:
+  - **AddressSanitizer**: `./configure --enable-asan`
+  - **UndefinedBehaviorSanitizer**: `./configure --enable-ubsan`
+  - **ASAN+UBSAN**: `./configure --enable-asan --enable-ubsan`
+  - **MemorySanitizer**: fully enabled; builds and caches instrumented dependencies, then configures with MSAN flags
+- Each job builds with `make -j$(nproc)` and runs `make check`, uploading `tests/*.log` on failure.
 
-The project includes a comprehensive sanitizer workflow in `.github/workflows/sanitizers.yml` that automatically runs:
+MSAN caching: the cache key includes the workflow file; the first run compiles all instrumented libraries (~60 minutes), while cache hits finish in ~5 minutes.
 
-1. **AddressSanitizer** - Detects memory errors
-2. **UndefinedBehaviorSanitizer** - Detects undefined behavior
-3. **Combined ASAN+UBSAN** - Both sanitizers together
-4. **MemorySanitizer** - Notes on setup (disabled by default due to complexity)
+## Environment Variables
 
-The workflow runs automatically on:
-- Every push to any branch
-- Every pull request
+### AddressSanitizer Options
 
-**MSAN Caching:** The first MSAN run builds all instrumented libraries (~60 minutes).
-Subsequent runs use cached libraries and complete in ~5 minutes. Cache is invalidated
-when the workflow file changes.
-
-### Environment Variables
-
-Sanitizers can be configured via environment variables:
-
-#### AddressSanitizer Options
 ```bash
 export ASAN_OPTIONS="detect_leaks=1:check_initialization_order=1:strict_init_order=1:detect_stack_use_after_return=1:detect_invalid_pointer_pairs=2:strict_string_checks=1"
 ```
 
-#### UndefinedBehaviorSanitizer Options
+### UndefinedBehaviorSanitizer Options
+
 ```bash
 export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1"
 ```
 
-#### ThreadSanitizer Options
+### ThreadSanitizer Options
+
 ```bash
 export TSAN_OPTIONS="halt_on_error=1:second_deadlock_stack=1"
 ```
 
-#### MemorySanitizer Options
+### MemorySanitizer Options
+
 ```bash
-export MSAN_OPTIONS="halt_on_error=1:print_stats=1"
+export MSAN_OPTIONS="halt_on_error=1:print_stats=1:exitcode=1"
 ```
 
 ## Manual Builds (Without configure flags)
@@ -153,6 +132,7 @@ export MSAN_OPTIONS="halt_on_error=1:print_stats=1"
 If you prefer to manually specify flags:
 
 ### AddressSanitizer
+
 ```bash
 CC=clang \
 CFLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
@@ -164,6 +144,7 @@ make check
 ```
 
 ### UndefinedBehaviorSanitizer
+
 ```bash
 CC=clang \
 CFLAGS="-fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g -O1" \
@@ -175,6 +156,7 @@ make check
 ```
 
 ### ThreadSanitizer
+
 ```bash
 CC=clang \
 CFLAGS="-fsanitize=thread -fno-omit-frame-pointer -g -O1" \
@@ -216,12 +198,12 @@ This indicates a variable was read before being initialized.
 
 ## Best Practices
 
-1. **Run sanitizers regularly** - Include them in your CI/CD pipeline
-2. **Fix issues immediately** - Don't let sanitizer errors accumulate
-3. **Combine ASAN + UBSAN** - They complement each other well
-4. **Use TSAN for concurrency** - Essential for multi-threaded code
-5. **Test with realistic workloads** - Sanitizers only detect issues in code that actually runs
-6. **Minimize false positives** - Use suppression files if needed (but investigate first!)
+1. Run sanitizers regularly (CI already does)
+2. Fix issues immediately to avoid regressions
+3. Combine ASAN + UBSAN for broad coverage
+4. Use TSAN for concurrency testing
+5. Test with realistic workloads so sanitizers exercise real code paths
+6. Minimize false positives; use suppression files only after investigation
 
 ## Performance Impact
 
@@ -229,13 +211,14 @@ Sanitizers add runtime overhead:
 - **ASAN**: ~2x slowdown, 2-3x memory usage
 - **UBSAN**: ~20% slowdown
 - **TSAN**: ~5-15x slowdown, 5-10x memory usage
-- **MSAN**: ~3x slowdown
+- **MSAN**: ~3x slowdown, ~2x memory usage
 
 For CI/CD, this is acceptable. For production, build without sanitizers.
 
 ## Troubleshooting
 
 ### Sanitizer library not found
+
 ```bash
 # Install sanitizer libraries (Ubuntu/Debian)
 sudo apt-get install libasan6 libubsan1 libtsan0
@@ -245,10 +228,13 @@ CC=clang ./configure --enable-asan
 ```
 
 ### Conflicts with hardening flags
-The configure script automatically disables hardening flags when sanitizers are enabled, as some flags conflict.
+Hardening flags are disabled automatically when sanitizers are enabled. You should see `Disabling hardening flags` in the configure output.
+
+### Incompatible sanitizer combination
+ASAN/MSAN/TSAN are mutually exclusive; configure aborts with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously` if you try to combine them.
 
 ### Tests fail with sanitizers but pass normally
-This is expected! Sanitizers reveal bugs that don't always cause immediate failures. Investigate and fix the issues.
+This is expected—sanitizers reveal bugs that don't always cause immediate failures. Investigate and fix the issues.
 
 ## References
 
