@@ -8,6 +8,7 @@ FUZZ_CC=${FUZZ_CC:-clang}
 FUZZ_OPTIONAL=${FUZZ_OPTIONAL:-1}
 FUZZ_RUNTIME=${FUZZ_RUNTIME:-30}
 FUZZ_VERBOSE=${FUZZ_VERBOSE:-1}
+FUZZ_PARALLEL=${FUZZ_PARALLEL:-0}
 EXTRA_FLAGS=${FUZZ_CFLAGS:-"-O1 -g"}
 COMMON_FLAGS=("-fsanitize=fuzzer,address,undefined" "-fno-omit-frame-pointer" "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" "-DHAVE_CONFIG_H" "-DHAVE_LIBPCRE2_8" "-I$ROOT_DIR" "-I$ROOT_DIR/src")
 
@@ -203,20 +204,81 @@ if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
     exit 0
 fi
 
-vlog "Running fuzzers for ${FUZZ_RUNTIME}s each..."
+# Define all fuzz targets
+FUZZ_TARGETS=(
+    "ipc_msg_fuzz:ipc_msg"
+    "ipc_crypto_fuzz:ipc_crypto"
+    "ipc_state_fuzz:ipc_state"
+    "address_fuzz:address"
+    "table_lookup_fuzz:table_lookup"
+    "listener_acl_fuzz:listener_acl"
+    "resolver_response_fuzz:resolver_response"
+    "config_fuzz:config"
+    "http2_fuzz:http2"
+    "http_fuzz:http"
+    "hostname_fuzz:hostname"
+    "cfg_tokenizer_fuzz:cfg_tokenizer"
+    "tls_fuzz:tls"
+)
 
-run_with_optional_quiet "$OUT_DIR/ipc_msg_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_msg"
-run_with_optional_quiet "$OUT_DIR/ipc_crypto_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_crypto"
-run_with_optional_quiet "$OUT_DIR/ipc_state_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/ipc_state"
-run_with_optional_quiet "$OUT_DIR/address_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/address"
-run_with_optional_quiet "$OUT_DIR/table_lookup_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/table_lookup"
-run_with_optional_quiet "$OUT_DIR/listener_acl_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/listener_acl"
-run_with_optional_quiet "$OUT_DIR/resolver_response_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/resolver_response"
-run_with_optional_quiet "$OUT_DIR/config_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/config"
-run_with_optional_quiet "$OUT_DIR/http2_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http2"
-run_with_optional_quiet "$OUT_DIR/http_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/http"
-run_with_optional_quiet "$OUT_DIR/hostname_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/hostname"
-run_with_optional_quiet "$OUT_DIR/cfg_tokenizer_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/cfg_tokenizer"
-run_with_optional_quiet "$OUT_DIR/tls_fuzz" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/tls"
+run_single_fuzzer() {
+    local fuzzer=$1
+    local corpus=$2
+    local log_file="$OUT_DIR/${fuzzer}.log"
 
-vlog "Fuzzing complete. No crashes detected."
+    if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
+        "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/$corpus" 2>&1 | tee "$log_file"
+    else
+        "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/$corpus" >"$log_file" 2>&1
+    fi
+
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        echo "error: $fuzzer exited with code $exit_code" >&2
+        if [[ "${FUZZ_VERBOSE}" -eq 0 ]]; then
+            echo "Last 50 lines of $fuzzer output:" >&2
+            tail -n 50 "$log_file" >&2 || true
+        fi
+    fi
+    return $exit_code
+}
+
+if [[ "${FUZZ_PARALLEL}" -ne 0 ]]; then
+    vlog "Running ${#FUZZ_TARGETS[@]} fuzzers in parallel for ${FUZZ_RUNTIME}s each..."
+
+    pids=()
+    failed_fuzzers=()
+
+    # Start all fuzzers in background
+    for target in "${FUZZ_TARGETS[@]}"; do
+        IFS=':' read -r fuzzer corpus <<< "$target"
+        run_single_fuzzer "$fuzzer" "$corpus" &
+        pids+=($!)
+    done
+
+    # Wait for all fuzzers and collect exit codes
+    overall_status=0
+    for i in "${!pids[@]}"; do
+        IFS=':' read -r fuzzer corpus <<< "${FUZZ_TARGETS[$i]}"
+        if ! wait "${pids[$i]}"; then
+            failed_fuzzers+=("$fuzzer")
+            overall_status=1
+        fi
+    done
+
+    if [[ $overall_status -ne 0 ]]; then
+        echo "error: The following fuzzers failed: ${failed_fuzzers[*]}" >&2
+        exit 1
+    fi
+
+    vlog "Parallel fuzzing complete. No crashes detected."
+else
+    vlog "Running fuzzers sequentially for ${FUZZ_RUNTIME}s each..."
+
+    for target in "${FUZZ_TARGETS[@]}"; do
+        IFS=':' read -r fuzzer corpus <<< "$target"
+        run_with_optional_quiet "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/$corpus"
+    done
+
+    vlog "Fuzzing complete. No crashes detected."
+fi

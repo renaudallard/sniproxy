@@ -59,6 +59,7 @@ jobs:
           FUZZ_OPTIONAL: 0
           FUZZ_RUNTIME: 120
           FUZZ_VERBOSE: 0
+          FUZZ_PARALLEL: 1
         run: |
           set -euo pipefail
           if ! tests/fuzz/run_fuzz.sh >fuzz.log 2>&1; then
@@ -75,6 +76,7 @@ jobs:
             tests/fuzz/crash-*
             tests/fuzz/leak-*
             tests/fuzz/timeout-*
+            tests/fuzz/bin/*.log
           if-no-files-found: ignore
 
       - name: Upload corpus
