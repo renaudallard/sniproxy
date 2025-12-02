@@ -195,7 +195,18 @@ AC_SEARCH_LIBS([arc4random], [bsd], [LIBBSD_LIBS="$ac_cv_search_arc4random"], [L
 AS_IF([test "x$LIBBSD_LIBS" = "xnone required"], [LIBBSD_LIBS=""])
 AC_CHECK_FUNCS([arc4random], [],
   [AC_MSG_ERROR([arc4random() is required; install libbsd-dev or provide arc4random])])
-AC_CHECK_FUNCS([strlcpy])
+AC_SEARCH_LIBS([strlcpy], [bsd], [
+  AC_DEFINE([HAVE_STRLCPY], 1, [Define to 1 if you have the `strlcpy' function.])
+  AS_IF([test "x$ac_cv_search_strlcpy" != "xnone required"], [
+    AS_IF([test "x$LIBBSD_LIBS" = "x"], [
+      LIBBSD_LIBS="$ac_cv_search_strlcpy"
+    ], [AS_IF([test "x$LIBBSD_LIBS" != "x$ac_cv_search_strlcpy"], [
+      LIBBSD_LIBS="$LIBBSD_LIBS $ac_cv_search_strlcpy"
+    ])])
+  ])
+], [
+  AC_MSG_ERROR([strlcpy() is required; install libbsd-dev])
+])
 AC_SUBST([LIBBSD_LIBS])
 
 AC_CHECK_HEADERS([openssl/evp.h openssl/rand.h openssl/sha.h], [],
