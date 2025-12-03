@@ -767,6 +767,14 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
         return (int)ret;
     }
 
+    /* Reject truncated payload or ancillary data to avoid using undefined data
+     * (e.g., partially received SCM_RIGHTS file descriptors). */
+    if (msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) {
+        free(cipher);
+        errno = EMSGSIZE;
+        return -1;
+    }
+
     if ((size_t)ret != frame_len) {
         free(cipher);
         errno = EIO;
