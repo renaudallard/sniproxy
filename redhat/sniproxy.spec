@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.13
+Version: 0.9.14
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,10 @@ fi
 
 
 %changelog
+* Wed Dec 03 2025 Renaud Allard <renaud@allard.it> 0.9.14-1
+- Enforce DoT IP entries to require a TLS hostname or '/insecure'; improve
+  logging of fatal exit paths.
+
 * Tue Nov 25 2025 Renaud Allard <renaud@allard.it> 0.9.13-1
 - Packaging/CI: Rocky builds now detect releases via mirrors and Docker tags,
   build both latest and previous majors with consistent jobs, fall back to

@@ -1,3 +1,12 @@
+2025-12-03  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.14
+	- Breaking change: DNS-over-TLS nameserver entries using IP literals now
+	  require either a TLS hostname (`dot://IP/hostname`) or `/insecure`; bare
+	  IP-only entries are rejected to avoid silent verification bypass.
+	- Reliability: Fatal exit paths log the failure reason before terminating,
+	  covering daemonization, privilege drops, and child process handoffs.
+
 2025-11-25  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.13

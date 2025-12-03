@@ -1,3 +1,11 @@
+sniproxy (0.9.14) unstable; urgency=medium
+
+  * Enforce DoT IP literals to supply a TLS hostname or '/insecure'; bare IP
+    entries are rejected to avoid silent verification bypass.
+  * Log fatal exit paths so termination reasons are always recorded.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 03 Dec 2025 00:00:00 +0000
+
 sniproxy (0.9.13) unstable; urgency=medium
 
   * Packaging/CI: Discover Rocky releases via mirrors and Docker tags, build
