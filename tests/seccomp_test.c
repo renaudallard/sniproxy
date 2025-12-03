@@ -27,6 +27,8 @@
 #include <config.h>
 #endif
 
+#if defined(__linux__) && defined(HAVE_SECCOMP)
+
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
@@ -204,10 +206,6 @@ run_child_with_seccomp(int (*fn)(void)) {
 
 int
 main(void) {
-#if !defined(__linux__) || !defined(HAVE_SECCOMP)
-    return 77; /* skip when seccomp is unavailable */
-#endif
-
     unsetenv("SNIPROXY_DISABLE_SECCOMP");
 
     if (!seccomp_available())
@@ -224,3 +222,15 @@ main(void) {
 
     return 0;
 }
+
+#else /* !(defined(__linux__) && defined(HAVE_SECCOMP)) */
+
+#include <stdio.h>
+
+int
+main(void) {
+    printf("seccomp_test skipped: requires Linux with libseccomp\n");
+    return 77; /* Automake skip */
+}
+
+#endif /* defined(__linux__) && defined(HAVE_SECCOMP) */
