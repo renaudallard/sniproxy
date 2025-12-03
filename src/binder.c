@@ -113,8 +113,10 @@ binder_spawn_child(void) {
     } else if (pid == 0) { /* child */
         close(sockets[0]);
         int child_fd = fd_preserve_only(sockets[1]);
-        if (child_fd < 0)
+        if (child_fd < 0) {
+            err("binder child: failed to preserve IPC socket: %s", strerror(errno));
             binder_child_exit(EXIT_FAILURE);
+        }
 
         binder_main(child_fd);
         binder_child_exit(EXIT_SUCCESS);
@@ -245,7 +247,7 @@ binder_main(int sockfd) {
 
 #ifdef __OpenBSD__
     if (pledge("stdio unix inet", NULL) == -1) {
-        perror("binder pledge");
+        err("binder pledge failed: %s", strerror(errno));
         binder_child_exit(EXIT_FAILURE);
     }
 #endif

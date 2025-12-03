@@ -1143,8 +1143,11 @@ ensure_logger_process(void) {
     } else if (pid == 0) {
         close(sockets[0]);
         int child_fd = fd_preserve_only(sockets[1]);
-        if (child_fd < 0)
+        if (child_fd < 0) {
+            fprintf(stderr, "logger child: failed to preserve IPC socket: %s\n",
+                    strerror(errno));
             _exit(EXIT_FAILURE);
+        }
         logger_child_main(child_fd);
     }
 

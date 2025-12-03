@@ -315,6 +315,7 @@ static void resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int
 static void resolver_child_maybe_free_query(struct ResolverChildQuery *query);
 static char *resolver_child_nameservers_csv(char **nameservers);
 static int resolver_child_process_nameservers(char **nameservers, char ***processed_out);
+static void resolver_child_exit(int status) __attribute__((noreturn));
 static void resolver_child_free_processed_nameservers(char **list);
 static void resolver_child_free_dot_servers(void);
 static int resolver_child_handle_dot_server(const char *target, char **converted);
@@ -520,8 +521,10 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     } else if (pid == 0) {
         close(sockets[0]);
         int child_fd = fd_preserve_only(sockets[1]);
-        if (child_fd < 0)
-            _exit(EXIT_FAILURE);
+        if (child_fd < 0) {
+            err("resolver child: failed to preserve IPC socket: %s", strerror(errno));
+            resolver_child_exit(EXIT_FAILURE);
+        }
         resolver_child_main(child_fd, nameservers, search, mode,
                 dnssec_mode);
     }
@@ -1329,7 +1332,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 #ifdef __OpenBSD__
     /* Allow rpath so OpenSSL can read trusted CA bundles for DoT verification. */
     if (pledge("stdio rpath inet dns unix", NULL) == -1) {
-        perror("resolver pledge");
+        err("resolver pledge failed: %s", strerror(errno));
         resolver_child_exit(EXIT_FAILURE);
     }
 #endif

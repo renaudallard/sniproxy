@@ -115,34 +115,27 @@ openbsd_unveil_parent(const char *path, const char *permissions) {
 
     copy = strdup(path);
     if (copy == NULL) {
-        perror("strdup");
-        exit(EXIT_FAILURE);
+        fatal("unveil %s: strdup failed: %s", path, strerror(errno));
     }
 
     parent = dirname(copy);
     if (parent != NULL && parent[0] != '\0') {
         len = strlen(permissions);
         if (len >= sizeof(perms_buf)) {
-            fprintf(stderr, "unveil %s: permission string too long\n", parent);
-            free(copy);
-            exit(EXIT_FAILURE);
+            fatal("unveil %s: permission string too long", parent);
         }
         memcpy(perms_buf, permissions, len);
         perms_buf[len] = '\0';
         if (strchr(perms_buf, 'x') == NULL) {
             if (len + 1 >= sizeof(perms_buf)) {
-                fprintf(stderr, "unveil %s: permission string too long\n", parent);
-                free(copy);
-                exit(EXIT_FAILURE);
+                fatal("unveil %s: permission string too long", parent);
             }
             perms_buf[len++] = 'x';
             perms_buf[len] = '\0';
         }
 
         if (unveil(parent, perms_buf) == -1) {
-            fprintf(stderr, "unveil %s: %s\n", parent, strerror(errno));
-            free(copy);
-            exit(EXIT_FAILURE);
+            fatal("unveil %s failed: %s", parent, strerror(errno));
         }
     }
 
@@ -159,8 +152,7 @@ openbsd_unveil_path(const char *path, const char *permissions, int allow_create)
 
     if (unveil(path, permissions) == -1) {
         if (!(allow_create && errno == ENOENT)) {
-            fprintf(stderr, "unveil %s: %s\n", path, strerror(errno));
-            exit(EXIT_FAILURE);
+            fatal("unveil %s failed: %s", path, strerror(errno));
         }
     }
 
@@ -241,8 +233,7 @@ main(int argc, char **argv) {
     logger_prepare_process_title(argc, argv);
 
     if (ipc_crypto_system_init() < 0) {
-        fprintf(stderr, "Unable to initialize IPC crypto\n");
-        return EXIT_FAILURE;
+        fatal("Unable to initialize IPC crypto");
     }
 
     while ((opt = getopt(argc, argv, "fc:n:T:Vd")) != -1) {
@@ -259,11 +250,11 @@ main(int argc, char **argv) {
                     char *endptr = NULL;
                     unsigned long value = strtoul(optarg, &endptr, 10);
                     if (errno != 0 || endptr == optarg || (endptr != NULL && *endptr != '\0')) {
-                        fprintf(stderr, "Invalid file descriptor limit '%s'\n", optarg);
+                        err("Invalid file descriptor limit '%s'", optarg);
                         return EXIT_FAILURE;
                     }
                     if (value == 0) {
-                        fprintf(stderr, "max file descriptor limit must be > 0\n");
+                        err("max file descriptor limit must be > 0");
                         return EXIT_FAILURE;
                     }
                     if (value > RLIM_INFINITY)
@@ -279,7 +270,7 @@ main(int argc, char **argv) {
                     uint8_t parsed_major;
                     uint8_t parsed_minor;
                     if (!parse_min_tls_version(optarg, &parsed_major, &parsed_minor)) {
-                        fprintf(stderr, "Invalid TLS version '%s'. Supported values: 1.0, 1.1, 1.2, 1.3\n", optarg);
+                        err("Invalid TLS version '%s'. Supported values: 1.0, 1.1, 1.2, 1.3", optarg);
                         return EXIT_FAILURE;
                     }
                     min_tls_major = parsed_major;
@@ -291,6 +282,7 @@ main(int argc, char **argv) {
                 fprintf(stderr, "Resolver debug logging enabled\n");
                 break;
             default:
+                err("Invalid command line arguments");
                 usage();
                 return EXIT_FAILURE;
         }
@@ -321,13 +313,12 @@ main(int argc, char **argv) {
 #endif
     loop = ev_default_loop(loop_flags);
     if (loop == NULL) {
-        fprintf(stderr, "Unable to initialize libev main loop\n");
-        return EXIT_FAILURE;
+        fatal("Unable to initialize libev main loop");
     }
 
     config = init_config(config_file, loop, 1);
     if (config == NULL) {
-        fprintf(stderr, "Unable to load %s\n", config_file);
+        err("Unable to load %s", config_file);
         usage();
         return EXIT_FAILURE;
     }
@@ -403,13 +394,11 @@ main(int argc, char **argv) {
         openbsd_unveil_path("/etc/ssl/cert.pem", "r", 0);
 
         if (unveil(NULL, NULL) == -1) {
-            perror("unveil");
-            exit(EXIT_FAILURE);
+            fatal("unveil commit failed: %s", strerror(errno));
         }
 
         if (pledge("stdio getpw inet dns rpath proc id wpath cpath unix", NULL) == -1) {
-            fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
-            exit(EXIT_FAILURE);
+            fatal("%s: pledge failed: %s", argv[0], strerror(errno));
         }
     }
 #endif
@@ -431,8 +420,7 @@ main(int argc, char **argv) {
 #ifdef __OpenBSD__
     if (logger_process_is_active()) {
         if (pledge("stdio getpw inet dns rpath proc id unix", NULL) == -1) {
-            fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
-            exit(EXIT_FAILURE);
+            fatal("%s: pledge failed: %s", argv[0], strerror(errno));
         }
         logger_parent_notify_fs_locked();
     }
@@ -461,8 +449,7 @@ main(int argc, char **argv) {
 #ifdef __OpenBSD__
     /* Tighten pledge after dropping privileges - no longer need getpw */
     if (pledge("stdio inet dns rpath proc id unix", NULL) == -1) {
-        fprintf(stderr, "%s: pledge: %s\n", argv[0], strerror(errno));
-        exit(EXIT_FAILURE);
+        fatal("%s: pledge failed: %s", argv[0], strerror(errno));
     }
 #endif
 
@@ -642,8 +629,7 @@ rename_main_process(void) {
 
 static void
 perror_exit(const char *msg) {
-    perror(msg);
-    exit(EXIT_FAILURE);
+    fatal("%s: %s", msg, strerror(errno));
 }
 
 static void
