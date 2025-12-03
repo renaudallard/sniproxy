@@ -2130,6 +2130,7 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
     const char *address_part = target;
     char *address_copy = NULL;
     char *sni_override = NULL;
+    int insecure_override = 0;
 
     const char *slash = strchr(target, '/');
     if (slash != NULL) {
@@ -2158,25 +2159,29 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             return -1;
         }
 
-        struct Address *sni_addr = new_address(sni_part);
-        if (sni_addr == NULL || !address_is_hostname(sni_addr)) {
-            if (sni_addr != NULL)
+        if (strcasecmp(sni_part, "insecure") == 0) {
+            insecure_override = 1;
+        } else {
+            struct Address *sni_addr = new_address(sni_part);
+            if (sni_addr == NULL || !address_is_hostname(sni_addr)) {
+                if (sni_addr != NULL)
+                    free(sni_addr);
+                free(address_copy);
+                warn("resolver child: DoT nameserver '%s' has invalid TLS hostname '%s'", target, sni_part);
+                return -1;
+            }
+            const char *canon = address_hostname(sni_addr);
+            if (canon == NULL) {
                 free(sni_addr);
-            free(address_copy);
-            warn("resolver child: DoT nameserver '%s' has invalid TLS hostname '%s'", target, sni_part);
-            return -1;
-        }
-        const char *canon = address_hostname(sni_addr);
-        if (canon == NULL) {
+                free(address_copy);
+                return -1;
+            }
+            sni_override = strdup(canon);
             free(sni_addr);
-            free(address_copy);
-            return -1;
-        }
-        sni_override = strdup(canon);
-        free(sni_addr);
-        if (sni_override == NULL) {
-            free(address_copy);
-            return -1;
+            if (sni_override == NULL) {
+                free(address_copy);
+                return -1;
+            }
         }
     }
 
@@ -2214,10 +2219,28 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         }
         memcpy(&server.addr, sa, len);
         server.addr_len = len;
-        server.sni_hostname = sni_override;
-        server.verify_certificate = (sni_override != NULL);
-        sni_override = NULL;
+        if (insecure_override) {
+            server.sni_hostname = NULL;
+            server.verify_certificate = 0;
+        } else if (sni_override != NULL) {
+            server.sni_hostname = sni_override;
+            server.verify_certificate = 1;
+            sni_override = NULL;
+        } else {
+            free(addr);
+            free(address_copy);
+            free(sni_override);
+            warn("resolver child: DoT nameserver '%s' must specify a TLS hostname or '/insecure' when using an IP literal", target);
+            return -1;
+        }
     } else if (address_is_hostname(addr)) {
+        if (insecure_override) {
+            free(addr);
+            free(address_copy);
+            free(sni_override);
+            warn("resolver child: DoT nameserver '%s' cannot use '/insecure' with a hostname; specify a TLS hostname instead", target);
+            return -1;
+        }
         const char *hostname = address_hostname(addr);
         if (hostname == NULL) {
             free(addr);

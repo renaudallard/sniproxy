@@ -1,6 +1,9 @@
 sniproxy 0.9.13 (2025-11-25)
 ===============================
 
+* Breaking change: DNS-over-TLS nameserver entries using IP literals now require
+  either an explicit TLS hostname (`dot://IP/hostname`) or `/insecure`; bare
+  IP-only DoT entries are rejected to avoid silent certificate skipping.
 * Packaging/CI: Release workflow now discovers Rocky Linux releases via mirrors
   and Docker tags, builds both latest and previous Rocky majors with consistent
   jobs, falls back to microdnf when dnf is missing, and the openSUSE autoconf

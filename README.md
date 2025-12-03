@@ -65,8 +65,8 @@ Features
   on reload, all path directives must be absolute, and resolver search domains are
   treated as literal suffixes instead of being DNS-parsed.
 + **DNS-over-TLS upstreams**: Resolver blocks can send queries over TLS via
-  `dot://IP-or-hostname/<SNI>` entries, verifying certificates with the system
-  trust store.
+  `dot://IP-or-hostname/<SNI>` entries; IP literals now require either a TLS
+  hostname after the slash or `/insecure` to explicitly disable verification.
 
 ### DNS Resolution
 + **Asynchronous DNS** via dedicated resolver process (powered by c-ares from 0.8.7)
@@ -302,9 +302,10 @@ http_max_headers 200
         dnssec_validation strict
     }
 
-`dot://` entries accept either an IP literal or hostname before the slash and
-the TLS verification hostname after the slash. If only an IP is provided,
-the resolver uses the OS resolver to determine the TLS SNI/verification name.
+`dot://` entries accept an IP literal or hostname before the slash and the TLS
+verification hostname after the slash. Bare IP literals are no longer accepted;
+for IPs you must supply either a TLS hostname (preferred) or `/insecure` to
+explicitly disable certificate verification (e.g. `nameserver dot://9.9.9.9/insecure`).
 Certificates are validated against the system trust store, so keep `/etc/ssl`
 up-to-date.
 
