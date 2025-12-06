@@ -2222,6 +2222,7 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         if (insecure_override) {
             server.sni_hostname = NULL;
             server.verify_certificate = 0;
+            warn("SECURITY WARNING: DoT nameserver '%s' configured without certificate verification; DNS responses may be tampered with", target);
         } else if (sni_override != NULL) {
             server.sni_hostname = sni_override;
             server.verify_certificate = 1;
