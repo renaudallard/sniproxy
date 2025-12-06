@@ -309,6 +309,19 @@ explicitly disable certificate verification (e.g. `nameserver dot://9.9.9.9/inse
 Certificates are validated against the system trust store, so keep `/etc/ssl`
 up-to-date.
 
+**Security recommendation**: For maximum security, use IP literals with explicit
+SNI hostnames rather than DNS hostnames for your DoT servers. This avoids a
+bootstrap problem where the DoT server's hostname must be resolved via
+potentially untrusted DNS before the secure channel is established:
+
+```
+# Recommended: IP literal with explicit TLS hostname
+nameserver dot://9.9.9.9/dns.quad9.net
+
+# Less secure: hostname requires DNS resolution before DoT is available
+nameserver dot://dns.quad9.net
+```
+
     listener [::]:443 {
         protocol tls
         table SecureHosts
