@@ -24,8 +24,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef CFG_PARSER
-#define CFG_PARSER
+#ifndef CFG_PARSER_H
+#define CFG_PARSER_H
 
 #include <stdio.h>
 
@@ -41,4 +41,4 @@ struct Keyword {
 
 int parse_config(void *, FILE *, const struct Keyword *, const char *);
 
-#endif
+#endif /* CFG_PARSER_H */

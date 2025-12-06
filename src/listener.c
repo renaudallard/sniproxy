@@ -27,8 +27,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdlib.h>
 #include <stddef.h> /* offsetof */
+#include <stdint.h>
 #include <strings.h> /* strcasecmp() */
 #include <unistd.h>
 #include <fcntl.h>
@@ -39,9 +39,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
-#include <stdint.h>
 #include <arpa/inet.h>
-#include <assert.h>
 #include "address.h"
 #include "listener.h"
 #include "logger.h"

@@ -23,8 +23,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef CFG_TOKENIZER
-#define CFG_TOKENIZER
+#ifndef CFG_TOKENIZER_H
+#define CFG_TOKENIZER_H
 
 #include <stdio.h>
 
@@ -39,4 +39,4 @@ enum Token {
 
 enum Token next_token(FILE *, char *, size_t);
 
-#endif
+#endif /* CFG_TOKENIZER_H */

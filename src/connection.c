@@ -28,7 +28,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
-#include <unistd.h>
+#include <unistd.h> /* close */
 #include <string.h>
 #include <errno.h>
 #include <sys/queue.h>
@@ -36,7 +36,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h> /* getaddrinfo */
-#include <unistd.h> /* close */
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <time.h>
