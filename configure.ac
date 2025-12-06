@@ -220,14 +220,19 @@ AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],
   [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])
 
-# Check for libseccomp (optional on Linux)
-AC_CHECK_HEADERS([seccomp.h])
-AC_SEARCH_LIBS([seccomp_init], [seccomp], [
-  AS_IF([test "x$ac_cv_search_seccomp_init" != "xnone required"],
-    [LIBSECCOMP_LIBS="$ac_cv_search_seccomp_init"],
-    [LIBSECCOMP_LIBS=""])
-  AC_DEFINE([HAVE_SECCOMP], 1, [Define to 1 if libseccomp is available])
-], [LIBSECCOMP_LIBS=""])
+# Check for libseccomp (Linux only)
+LIBSECCOMP_LIBS=""
+case "$host_os" in
+  linux*)
+    AC_CHECK_HEADERS([seccomp.h])
+    AC_SEARCH_LIBS([seccomp_init], [seccomp], [
+      AS_IF([test "x$ac_cv_search_seccomp_init" != "xnone required"],
+        [LIBSECCOMP_LIBS="$ac_cv_search_seccomp_init"],
+        [LIBSECCOMP_LIBS=""])
+      AC_DEFINE([HAVE_SECCOMP], 1, [Define to 1 if libseccomp is available])
+    ])
+    ;;
+esac
 AC_SUBST([LIBSECCOMP_LIBS])
 
 AC_CHECK_FUNCS([accept4 daemon setproctitle mkostemp])

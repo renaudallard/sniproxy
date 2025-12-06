@@ -471,7 +471,7 @@ main(int argc, char **argv) {
     /* Install seccomp filter after all initialization is complete */
     if (seccomp_available()) {
         if (seccomp_install_filter(SECCOMP_PROCESS_MAIN) < 0) {
-            fatal("Failed to install seccomp filter: %s", strerror(errno));
+            fatal("main: failed to install seccomp filter: %s", strerror(errno));
         }
     }
 

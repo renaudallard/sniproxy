@@ -56,7 +56,7 @@ static const char *const common_syscalls[] = {
 };
 
 static const char *const file_syscalls[] = {
-    "open", "openat",
+    "open", "openat", "openat2",
     "stat", "lstat", "newfstatat", "fstatfs", "statfs", "statx",
     "readlink", "readlinkat",
     "faccessat", "access",
@@ -75,10 +75,7 @@ static const char *const file_syscalls[] = {
     "utime", "utimes", "futimesat", "utimensat",
     "link", "linkat",
     "symlink", "symlinkat",
-    "readlink", "readlinkat",
     "truncate", "ftruncate", "truncate64", "ftruncate64",
-    "statx",
-    "openat2", /* kernel will ignore if unsupported */
     NULL,
 };
 
@@ -106,7 +103,7 @@ static const char *const event_syscalls[] = {
 static const char *const process_syscalls[] = {
     "clone", "clone3", "fork", "vfork",
     "wait4", "waitid",
-    "kill", "tkill", "tgkill",
+    "kill", "tkill",
     "setpgid", "getpgid", "getsid", "setsid",
     "setgid", "setuid", "setgroups",
     "capget", "capset",
