@@ -1169,8 +1169,8 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
     if (bucket == NULL) {
         bucket = rate_limit_bucket_acquire();
         if (bucket == NULL) {
-            err("calloc: %s", strerror(errno));
-            return 1;
+            err("rate limit bucket allocation failed: %s; rejecting connection", strerror(errno));
+            return 0;  /* Fail-closed: reject connection when we can't track rate limits */
         }
 
         bucket->addr = *addr;

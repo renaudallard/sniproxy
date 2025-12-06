@@ -68,6 +68,7 @@ struct Listener {
     int reference_count;
     struct ev_io watcher;
     struct ev_timer backoff_timer;
+    int backoff_seconds;  /* Current backoff duration for FD exhaustion */
     struct Table *table;
     int (*accept_cb)(struct Listener *, struct ev_loop *);
     SLIST_ENTRY(Listener) entries;

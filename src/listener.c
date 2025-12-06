@@ -397,6 +397,7 @@ new_listener(void) {
      * are not active */
     ev_io_init(&listener->watcher, accept_cb, -1, EV_READ);
     ev_timer_init(&listener->backoff_timer, backoff_timer_cb, 0.0, 0.0);
+    listener->backoff_seconds = 0;  /* Will be set to initial value on first backoff */
     listener->table = NULL;
 
     return listener;
@@ -1090,17 +1091,28 @@ accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         break;
     }
 
+    /* Reset exponential backoff on successful accept */
+    if (accepted > 0)
+        listener->backoff_seconds = 0;
+
     if (last_errno == EMFILE || last_errno == ENFILE) {
         char address_buf[ADDRESS_BUFFER_SIZE];
-        int backoff_time = 2;
+
+        /* Exponential backoff: start at 2s, double each time, cap at 60s */
+        if (listener->backoff_seconds == 0)
+            listener->backoff_seconds = 2;
+        else if (listener->backoff_seconds < 60)
+            listener->backoff_seconds = listener->backoff_seconds * 2;
+        if (listener->backoff_seconds > 60)
+            listener->backoff_seconds = 60;
 
         err("File descriptor limit reached! "
             "Suspending accepting new connections on %s for %d seconds",
             display_address(listener->address, address_buf, sizeof(address_buf)),
-            backoff_time);
+            listener->backoff_seconds);
         ev_io_stop(loop, w);
 
-        ev_timer_set(&listener->backoff_timer, backoff_time, 0.0);
+        ev_timer_set(&listener->backoff_timer, listener->backoff_seconds, 0.0);
         ev_timer_start(loop, &listener->backoff_timer);
     }
 }
