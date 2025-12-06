@@ -398,7 +398,7 @@ main(int argc, char **argv) {
         }
 
         if (pledge("stdio getpw inet dns rpath proc id wpath cpath unix", NULL) == -1) {
-            fatal("%s: pledge failed: %s", argv[0], strerror(errno));
+            fatal("main: pledge failed: %s", strerror(errno));
         }
     }
 #endif
@@ -420,7 +420,7 @@ main(int argc, char **argv) {
 #ifdef __OpenBSD__
     if (logger_process_is_active()) {
         if (pledge("stdio getpw inet dns rpath proc id unix", NULL) == -1) {
-            fatal("%s: pledge failed: %s", argv[0], strerror(errno));
+            fatal("main: pledge failed: %s", strerror(errno));
         }
         logger_parent_notify_fs_locked();
     }
@@ -449,7 +449,7 @@ main(int argc, char **argv) {
 #ifdef __OpenBSD__
     /* Tighten pledge after dropping privileges - no longer need getpw */
     if (pledge("stdio inet dns rpath proc id unix", NULL) == -1) {
-        fatal("%s: pledge failed: %s", argv[0], strerror(errno));
+        fatal("main: pledge failed: %s", strerror(errno));
     }
 #endif
 
