@@ -1,0 +1,6 @@
+/usr/sbin/sniproxy      --      gen_context(system_u:object_r:sniproxy_exec_t,s0)
+/etc/sniproxy(/.*)?             gen_context(system_u:object_r:sniproxy_conf_t,s0)
+/etc/sniproxy\.conf     --      gen_context(system_u:object_r:sniproxy_conf_t,s0)
+/var/run/sniproxy(/.*)?         gen_context(system_u:object_r:sniproxy_var_run_t,s0)
+/var/run/sniproxy\.pid  --      gen_context(system_u:object_r:sniproxy_var_run_t,s0)
+/var/log/sniproxy(/.*)?         gen_context(system_u:object_r:sniproxy_log_t,s0)

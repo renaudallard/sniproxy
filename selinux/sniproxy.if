@@ -1,0 +1,46 @@
+
+## <summary>policy for sniproxy</summary>
+
+########################################
+## <summary>
+##      Execute sniproxy in the sniproxy domain.
+## </summary>
+## <param name="domain">
+##      <summary>
+##      Domain allowed to transition.
+##      </summary>
+## </param>
+#
+interface(`sniproxy_domtrans',`
+        gen_require(`
+                type sniproxy_t, sniproxy_exec_t;
+        ')
+
+        corecmd_search_bin($1)
+        domtrans_pattern($1, sniproxy_exec_t, sniproxy_t)
+')
+
+########################################
+## <summary>
+##      Execute sniproxy in the sniproxy domain, and
+##      allow the specified role the sniproxy domain.
+## </summary>
+## <param name="domain">
+##      <summary>
+##      Domain allowed to transition.
+##      </summary>
+## </param>
+## <param name="role">
+##      <summary>
+##      Role allowed access.
+##      </summary>
+## </param>
+#
+interface(`sniproxy_run',`
+        gen_require(`
+                type sniproxy_t;
+        ')
+
+        sniproxy_domtrans($1)
+        role $2 types sniproxy_t;
+')

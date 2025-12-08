@@ -1,0 +1,69 @@
+policy_module(sniproxy, 1.0.0)
+
+########################################
+#
+# Declarations
+#
+
+type sniproxy_t;
+type sniproxy_exec_t;
+init_daemon_domain(sniproxy_t, sniproxy_exec_t)
+
+type sniproxy_conf_t;
+files_config_file(sniproxy_conf_t)
+
+type sniproxy_var_run_t;
+files_pid_file(sniproxy_var_run_t)
+
+type sniproxy_log_t;
+logging_log_file(sniproxy_log_t)
+
+########################################
+#
+# sniproxy local policy
+#
+
+allow sniproxy_t self:capability { setgid setuid sys_resource net_bind_service kill };
+allow sniproxy_t self:process { signal signull fork setrlimit };
+allow sniproxy_t self:fifo_file rw_fifo_file_perms;
+allow sniproxy_t self:unix_stream_socket create_stream_socket_perms;
+allow sniproxy_t self:unix_dgram_socket create_socket_perms;
+allow sniproxy_t self:tcp_socket create_stream_socket_perms;
+allow sniproxy_t self:udp_socket create_socket_perms;
+
+# Configuration files
+allow sniproxy_t sniproxy_conf_t:file read_file_perms;
+allow sniproxy_t sniproxy_conf_t:dir list_dir_perms;
+
+# PID files and Unix Sockets in /var/run
+manage_dirs_pattern(sniproxy_t, sniproxy_var_run_t, sniproxy_var_run_t)
+manage_files_pattern(sniproxy_t, sniproxy_var_run_t, sniproxy_var_run_t)
+manage_sock_files_pattern(sniproxy_t, sniproxy_var_run_t, sniproxy_var_run_t)
+files_pid_filetrans(sniproxy_t, sniproxy_var_run_t, { file dir sock_file })
+
+# Logging
+manage_dirs_pattern(sniproxy_t, sniproxy_log_t, sniproxy_log_t)
+manage_files_pattern(sniproxy_t, sniproxy_log_t, sniproxy_log_t)
+logging_log_filetrans(sniproxy_t, sniproxy_log_t, { file dir })
+logging_send_syslog_msg(sniproxy_t)
+
+# Network
+sysnet_read_config(sniproxy_t)
+sysnet_dns_name_resolve(sniproxy_t)
+
+# Bind to standard HTTP ports and unreserved ports
+corenet_tcp_bind_generic_node(sniproxy_t)
+corenet_tcp_bind_http_port(sniproxy_t)
+corenet_tcp_bind_http_cache_port(sniproxy_t)
+corenet_tcp_bind_all_unreserved_ports(sniproxy_t)
+
+# Connect to backends
+corenet_tcp_connect_all_ports(sniproxy_t)
+
+# Misc system
+kernel_read_system_state(sniproxy_t)
+corecmd_exec_bin(sniproxy_t)
+dev_read_urand(sniproxy_t)
+miscfiles_read_localization(sniproxy_t)
+auth_use_nsswitch(sniproxy_t)
+miscfiles_read_generic_certs(sniproxy_t)
