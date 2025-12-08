@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stddef.h> /* offsetof */
 #include <stdint.h>
+#include <limits.h>
 #include <strings.h> /* strcasecmp() */
 #include <unistd.h>
 #include <fcntl.h>
@@ -1042,6 +1043,10 @@ struct Listener *
 listener_ref_get(struct Listener *listener) {
     assert(listener != NULL);
 
+    if (listener->reference_count == INT_MAX) {
+        err("%s: reference_count overflow", __func__);
+        return listener;
+    }
     listener->reference_count++;
     return listener;
 }

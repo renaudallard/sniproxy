@@ -38,6 +38,7 @@
 #include <syslog.h>
 #include <time.h>
 #include <assert.h>
+#include <limits.h>
 #include <sys/queue.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -478,8 +479,14 @@ logger_ref_put(struct Logger *logger) {
 
 struct Logger *
 logger_ref_get(struct Logger *logger) {
-    if (logger != NULL)
-        logger->reference_count++;
+    if (logger == NULL)
+        return NULL;
+
+    if (logger->reference_count == INT_MAX) {
+        err("%s: reference_count overflow", __func__);
+        return logger;
+    }
+    logger->reference_count++;
 
     return logger;
 }
@@ -939,8 +946,14 @@ obtain_file_sink(const char *filepath) {
 
 static struct LogSink *
 log_sink_ref_get(struct LogSink *sink) {
-    if (sink != NULL)
-        sink->reference_count++;
+    if (sink == NULL)
+        return NULL;
+
+    if (sink->reference_count == INT_MAX) {
+        err("%s: reference_count overflow", __func__);
+        return sink;
+    }
+    sink->reference_count++;
 
     return sink;
 }

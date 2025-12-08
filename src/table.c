@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdint.h>
+#include <limits.h>
 #include "table.h"
 #include "backend.h"
 #include "address.h"
@@ -366,6 +367,11 @@ table_ref_get(struct Table *table) {
         return NULL;
     }
 
+    if (table->reference_count == INT_MAX) {
+        err("table_ref_get called on table \"%s\" with maximum references",
+                table->name != NULL ? table->name : "(unnamed)");
+        return table;
+    }
     table->reference_count++;
     return table;
 }
