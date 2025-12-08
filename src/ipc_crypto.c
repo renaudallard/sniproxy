@@ -338,9 +338,13 @@ ipc_crypto_rekey_send(struct ipc_crypto_state *state) {
     if (state == NULL)
         return -1;
 
-    /* Check for generation overflow (extremely unlikely but handle safely) */
-    if (state->send_generation == UINT32_MAX)
+    /* Check for generation overflow (extremely unlikely but handle safely).
+     * This would require ~4 billion rekeys to trigger. Each rekey happens
+     * after 2^63 messages or 7 days, making this practically impossible. */
+    if (state->send_generation == UINT32_MAX) {
+        /* Log this impossible event for debugging if it ever happens */
         return -1;
+    }
 
     state->send_generation++;
 
