@@ -2529,8 +2529,10 @@ resolver_child_dot_socket_attach(ares_socket_t fd, struct ResolverDotServer *ser
     sock->failed = 0;
 
     sock->ssl = SSL_new(child_dot_ssl_ctx);
-    if (sock->ssl == NULL)
+    if (sock->ssl == NULL) {
+        resolver_child_dot_socket_detach(fd);
         return -1;
+    }
 
     SSL_set_connect_state(sock->ssl);
     if (SSL_set_fd(sock->ssl, fd) != 1)
