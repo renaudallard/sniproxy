@@ -55,16 +55,27 @@ static const char *const common_syscalls[] = {
     NULL,
 };
 
-static const char *const file_syscalls[] = {
+static const char *const fs_read_syscalls[] = {
     "open", "openat", "openat2",
     "stat", "lstat", "newfstatat", "fstatfs", "statfs", "statx",
     "readlink", "readlinkat",
     "faccessat", "access",
+    NULL,
+};
+
+static const char *const fs_write_syscalls[] = {
     "fchmod", "fchmodat", "chmod",
     "fchown", "fchownat", "chown", "lchown",
     "unlink", "unlinkat",
     "mkdir", "mkdirat", "rmdir",
     "rename", "renameat", "renameat2",
+    "link", "linkat",
+    "symlink", "symlinkat",
+    "truncate", "ftruncate", "truncate64", "ftruncate64",
+    NULL,
+};
+
+static const char *const fs_misc_syscalls[] = {
     "dup", "dup2", "dup3",
     "fcntl", "ioctl",
     "fsync", "fdatasync",
@@ -73,9 +84,6 @@ static const char *const file_syscalls[] = {
     "close_range", "closefrom",
     "chdir", "fchdir",
     "utime", "utimes", "futimesat", "utimensat",
-    "link", "linkat",
-    "symlink", "symlinkat",
-    "truncate", "ftruncate", "truncate64", "ftruncate64",
     NULL,
 };
 
@@ -107,6 +115,11 @@ static const char *const process_syscalls[] = {
     "setpgid", "getpgid", "getsid", "setsid",
     "setgid", "setuid", "setgroups",
     "capget", "capset",
+    NULL,
+};
+
+static const char *const privilege_syscalls[] = {
+    "setgid", "setuid", "setgroups",
     NULL,
 };
 
@@ -155,13 +168,51 @@ install_filter(enum seccomp_process_type type) {
         return -1;
     }
 
+    /* Common syscalls for all processes */
     if (allow_syscalls(ctx, common_syscalls) < 0 ||
-            allow_syscalls(ctx, file_syscalls) < 0 ||
-            allow_syscalls(ctx, process_syscalls) < 0 ||
-            allow_syscalls(ctx, network_syscalls) < 0 ||
-            allow_syscalls(ctx, event_syscalls) < 0) {
+        allow_syscalls(ctx, event_syscalls) < 0 ||
+        allow_syscalls(ctx, network_syscalls) < 0) {
         seccomp_release(ctx);
         return -1;
+    }
+
+    /* Process-specific rules */
+    switch (type) {
+        case SECCOMP_PROCESS_MAIN:
+            if (allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_write_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
+                allow_syscalls(ctx, process_syscalls) < 0) {
+                seccomp_release(ctx);
+                return -1;
+            }
+            break;
+
+        case SECCOMP_PROCESS_LOGGER:
+            if (allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_write_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
+                allow_syscalls(ctx, privilege_syscalls) < 0) {
+                seccomp_release(ctx);
+                return -1;
+            }
+            break;
+
+        case SECCOMP_PROCESS_RESOLVER:
+            if (allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_misc_syscalls) < 0) {
+                seccomp_release(ctx);
+                return -1;
+            }
+            break;
+
+        case SECCOMP_PROCESS_BINDER:
+            /* Binder doesn't need to open/write files, just manage sockets */
+            if (allow_syscalls(ctx, fs_misc_syscalls) < 0) {
+                seccomp_release(ctx);
+                return -1;
+            }
+            break;
     }
 
     if (seccomp_load(ctx) < 0) {
@@ -170,7 +221,6 @@ install_filter(enum seccomp_process_type type) {
     }
 
     seccomp_release(ctx);
-    (void)type; /* currently same profile for all process types */
     return 0;
 }
 
