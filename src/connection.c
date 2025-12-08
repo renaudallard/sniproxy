@@ -757,8 +757,6 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         if (read_activity)
             reset_idle_timer_with_now(con, loop, now);
-        if (read_activity)
-            stop_header_timer(con, loop);
 
         if (bytes_received < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("recv(%s): %s, closing connection",
@@ -1884,6 +1882,7 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
 
     con->hostname = hostname;
     con->hostname_len = (size_t)result;
+    stop_header_timer(con, loop);
     con->state = PARSED;
 }
 

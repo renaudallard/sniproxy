@@ -798,22 +798,36 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
         return -1;
     }
 
-    ssize_t written = send(resolver_sock, frame, frame_len, 0);
-    free(frame);
-    if (written < 0) {
-        err("resolver send failed: %s", strerror(errno));
-        pthread_mutex_lock(&resolver_restart_lock);
-        int restarting = resolver_restart_in_progress;
-        pthread_mutex_unlock(&resolver_restart_lock);
-        if (!restarting &&
-                (errno == EDESTADDRREQ || errno == ENOTCONN || errno == ECONNRESET || errno == EPIPE)) {
-            if (resolver_restart() < 0)
-                err("resolver restart failed");
-        }
-        return -1;
+    ssize_t written;
+
+    do {
+        written = send(resolver_sock, frame, frame_len, 0);
+    } while (written < 0 && errno == EINTR);
+
+    if (written == (ssize_t)frame_len) {
+        free(frame);
+        return 0;
     }
 
-    return 0;
+    int send_errno = errno;
+    free(frame);
+
+    if (written >= 0) {
+        /* Partial write should never happen with SOCK_SEQPACKET/DGRAM. */
+        send_errno = EIO;
+    }
+
+    err("resolver send failed: %s", strerror(send_errno));
+    pthread_mutex_lock(&resolver_restart_lock);
+    int restarting = resolver_restart_in_progress;
+    pthread_mutex_unlock(&resolver_restart_lock);
+    if (!restarting &&
+            (send_errno == EDESTADDRREQ || send_errno == ENOTCONN ||
+             send_errno == ECONNRESET || send_errno == EPIPE)) {
+        if (resolver_restart() < 0)
+            err("resolver restart failed");
+    }
+    return -1;
 }
 
 static void
