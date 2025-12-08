@@ -194,6 +194,13 @@ init_backend(struct Backend *backend) {
         return 0;
     }
 
+    /* Initialize global match context eagerly at config time */
+    backend_regex_runtime_init();
+    if (backend_match_ctx == NULL) {
+        err("Failed to initialize regex match context");
+        return 0;
+    }
+
     if (backend->pattern_re == NULL) {
 
         int reerr;
@@ -251,7 +258,13 @@ struct Backend *
 lookup_backend(const struct Backend_head *head, const char *name, size_t name_len) {
     struct Backend *iter;
 
-    backend_regex_runtime_init();
+    /* Match context should already be initialized by init_backend(),
+     * but check defensively in case lookup is called without init */
+    if (backend_match_ctx == NULL) {
+        backend_regex_runtime_init();
+        if (backend_match_ctx == NULL)
+            return NULL;
+    }
 
     if (name == NULL) {
         name = "";
