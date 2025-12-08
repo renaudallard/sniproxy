@@ -195,7 +195,9 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
              client_hello_version_minor < min_client_hello_version_minor)) {
         debug("Client hello TLS version %" PRIu8 ".%" PRIu8 " is not supported.",
               client_hello_version_major, client_hello_version_minor);
-        return -2;
+        /* Treat version-too-low as an unsupported ClientHello so the caller
+         * rejects the connection even if a fallback backend is configured. */
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
     int require_supported_versions = (min_client_hello_version_major > 3) ||
