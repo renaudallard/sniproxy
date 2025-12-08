@@ -46,7 +46,9 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/select.h>
 #include <grp.h>
+#include <ev.h>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -201,6 +203,15 @@ static int logger_process_enabled = 0;
 static int logger_process_failed = 0;
 static int logger_parent_fs_locked = 0;
 
+/* Health check state */
+#define LOGGER_HEALTH_CHECK_INTERVAL 30.0
+#define LOGGER_HEALTH_CHECK_TIMEOUT 5.0
+static struct ev_timer logger_health_timer;
+static struct ev_loop *logger_health_loop = NULL;
+static uint32_t logger_ping_id = 0;
+static int logger_ping_pending = 0;
+static int logger_health_check_active = 0;
+
 struct logger_ipc_header;
 
 static void free_logger(struct Logger *);
@@ -237,6 +248,9 @@ static void child_sink_free(struct ChildSink_head *, struct ChildSink *);
 static FILE *logger_child_open_file(const char *filepath);
 static int logger_register_sink(struct LogSink *sink);
 static void logger_resend_sinks(void);
+static void logger_health_check_cb(struct ev_loop *, struct ev_timer *, int);
+static int logger_send_ping(void);
+static int logger_check_pong(void);
 
 static void __attribute__((noreturn))
 logger_child_exit(int status) {
@@ -250,6 +264,8 @@ logger_child_exit(int status) {
 #define LOGGER_CMD_DROP           4U
 #define LOGGER_CMD_SHUTDOWN       5U
 #define LOGGER_CMD_PRIVILEGES     6U
+#define LOGGER_CMD_PING           7U
+#define LOGGER_CMD_PONG           8U
 
 #define LOGGER_IPC_CHANNEL_ID 0x4c4f4752u /* LOGR */
 #define LOGGER_IPC_MAX_PAYLOAD (64 * 1024)
@@ -1697,6 +1713,20 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 sink = next;
             }
             logger_child_exit(EXIT_SUCCESS);
+        case LOGGER_CMD_PING:
+            {
+                /* Respond with PONG to indicate we're alive */
+                struct logger_ipc_header pong = {
+                    .type = LOGGER_CMD_PONG,
+                    .sink_id = 0,
+                    .arg0 = header->arg0, /* Echo back the ping ID */
+                    .arg1 = 0,
+                    .payload_len = 0,
+                };
+                (void)ipc_crypto_send_msg(&logger_crypto_child, sockfd,
+                        &pong, sizeof(pong), -1);
+            }
+            break;
         default:
             break;
     }
@@ -1781,6 +1811,140 @@ logger_process_is_active(void) {
 void
 logger_parent_notify_fs_locked(void) {
     logger_parent_fs_locked = 1;
+}
+
+/*
+ * Logger health check implementation
+ *
+ * Periodically sends a PING to the logger child process and waits for a PONG
+ * response. If the logger fails to respond, it is considered dead and the
+ * process terminates with a fatal error.
+ */
+
+static int
+logger_send_ping(void) {
+    if (!logger_process_enabled || logger_sock < 0)
+        return -1;
+
+    logger_ping_id++;
+    struct logger_ipc_header header = {
+        .type = LOGGER_CMD_PING,
+        .sink_id = 0,
+        .arg0 = logger_ping_id,
+        .arg1 = 0,
+        .payload_len = 0,
+    };
+
+    if (send_logger_header(&header, -1) < 0)
+        return -1;
+
+    logger_ping_pending = 1;
+    return 0;
+}
+
+static int
+logger_check_pong(void) {
+    if (!logger_process_enabled || logger_sock < 0 || !logger_ping_pending)
+        return -1;
+
+    /* Use poll/select with timeout to check for response */
+    fd_set readfds;
+    struct timeval tv;
+    FD_ZERO(&readfds);
+    FD_SET(logger_sock, &readfds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000; /* 100ms */
+
+    int ret = select(logger_sock + 1, &readfds, NULL, NULL, &tv);
+    if (ret <= 0)
+        return -1; /* No response or error */
+
+    /* Try to receive the PONG */
+    uint8_t *msg = NULL;
+    size_t msg_len = 0;
+    int received_fd = -1;
+
+    ret = ipc_crypto_recv_msg(&logger_crypto_parent, logger_sock,
+            sizeof(struct logger_ipc_header), &msg, &msg_len, &received_fd);
+
+    if (received_fd >= 0)
+        close(received_fd);
+
+    if (ret <= 0 || msg == NULL || msg_len < sizeof(struct logger_ipc_header)) {
+        free(msg);
+        return -1;
+    }
+
+    struct logger_ipc_header *pong = (struct logger_ipc_header *)msg;
+    if (pong->type != LOGGER_CMD_PONG || pong->arg0 != logger_ping_id) {
+        free(msg);
+        return -1;
+    }
+
+    free(msg);
+    logger_ping_pending = 0;
+    return 0;
+}
+
+static void
+logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
+    (void)w;
+    (void)revents;
+
+    if (!logger_process_enabled) {
+        /* Logger not running, stop health checks */
+        ev_timer_stop(loop, &logger_health_timer);
+        logger_health_check_active = 0;
+        return;
+    }
+
+    /* Check if previous ping got a response */
+    if (logger_ping_pending) {
+        /* Try one more time to get the response */
+        if (logger_check_pong() < 0) {
+            /* Logger failed to respond - this is fatal */
+            ev_timer_stop(loop, &logger_health_timer);
+            logger_health_check_active = 0;
+            fatal("Logger process health check failed: no response to ping");
+        }
+    }
+
+    /* Send new ping */
+    if (logger_send_ping() < 0) {
+        /* Failed to send ping - logger may be dead */
+        ev_timer_stop(loop, &logger_health_timer);
+        logger_health_check_active = 0;
+        fatal("Logger process health check failed: unable to send ping");
+    }
+}
+
+void
+logger_start_health_check(struct ev_loop *loop) {
+    if (loop == NULL || !logger_process_enabled)
+        return;
+
+    if (logger_health_check_active)
+        return;
+
+    logger_health_loop = loop;
+    logger_ping_pending = 0;
+    logger_ping_id = 0;
+
+    ev_timer_init(&logger_health_timer, logger_health_check_cb,
+            LOGGER_HEALTH_CHECK_INTERVAL, LOGGER_HEALTH_CHECK_INTERVAL);
+    ev_timer_start(loop, &logger_health_timer);
+    logger_health_check_active = 1;
+}
+
+void
+logger_stop_health_check(void) {
+    if (!logger_health_check_active || logger_health_loop == NULL)
+        return;
+
+    ev_timer_stop(logger_health_loop, &logger_health_timer);
+    logger_health_check_active = 0;
+    logger_health_loop = NULL;
+    logger_ping_pending = 0;
 }
 
 /* Global resolver debug flag */

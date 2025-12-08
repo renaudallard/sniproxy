@@ -475,8 +475,13 @@ main(int argc, char **argv) {
         }
     }
 
+    /* Start logger health check watchdog */
+    if (logger_process_is_active())
+        logger_start_health_check(loop);
+
     ev_run(loop, 0);
 
+    logger_stop_health_check();
     free_connections(loop);
     resolv_shutdown(loop);
 
