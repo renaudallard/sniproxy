@@ -529,6 +529,9 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     fclose(file);
 
+    /* Reset global ACL policy state - only needed during parsing */
+    global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
+
     /* Listeners without access logger defined used global access log */
     if (config != NULL && config->access_log != NULL) {
         struct Listener *listener = SLIST_FIRST(&config->listeners);
