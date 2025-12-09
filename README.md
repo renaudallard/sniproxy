@@ -438,8 +438,8 @@ SNIProxy is designed for high performance and low resource usage:
   handling thousands of concurrent connections per process
 - **Minimal per-connection overhead**: Dynamic buffers start small and grow only
   as needed, then shrink when idle
-- **Zero-copy operations**: Uses splice() on Linux to move data between sockets
-  without copying through userspace
+- **Efficient buffered I/O**: Ring buffers and vectored writes minimize copies
+  while remaining portable (no splice/sendfile dependency)
 - **SO_REUSEPORT support**: Run multiple SNIProxy instances on the same port for
   kernel-level load balancing across CPU cores
 - **Compiled regex patterns**: Pattern matching happens once at config load,

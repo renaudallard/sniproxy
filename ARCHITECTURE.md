@@ -506,8 +506,7 @@ buffer assembly, reducing the number of buffer operations required
 ## Performance Considerations
 
 - **Event-driven**: libev for efficient I/O multiplexing
-- **Zero-copy**: splice() on Linux (if available)
-- **Minimal copying**: Ring buffers, vectored I/O
+- **Minimal copying**: Ring buffers and vectored I/O; zero-copy syscalls are not required
 - **SO_REUSEPORT**: Multiple processes can accept on same port
 - **Connection pooling**: Reuses connection structures
 - **Compiled regexes**: One-time compilation, cached for all lookups
