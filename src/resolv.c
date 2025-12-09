@@ -129,11 +129,17 @@ struct ResolverPending {
     struct ResolverPending *next_host;
 };
 
+enum dot_min_tls_version {
+    DOT_TLS_VERSION_1_2 = 0,  /* Default: TLS 1.2 minimum */
+    DOT_TLS_VERSION_1_3 = 1,  /* TLS 1.3 minimum */
+};
+
 struct ResolverDotServer {
     struct sockaddr_storage addr;
     socklen_t addr_len;
     char *sni_hostname;
     int verify_certificate;
+    enum dot_min_tls_version min_tls_version;
 };
 
 struct ResolverChildDotSocket {
@@ -2145,6 +2151,7 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
     char *address_copy = NULL;
     char *sni_override = NULL;
     int insecure_override = 0;
+    enum dot_min_tls_version min_tls_version = DOT_TLS_VERSION_1_2;
 
     const char *slash = strchr(target, '/');
     if (slash != NULL) {
@@ -2167,10 +2174,54 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             free(address_copy);
             return -1;
         }
-        if (strchr(sni_part, '/') != NULL) {
-            warn("resolver child: DoT nameserver '%s' contains multiple '/' characters", target);
-            free(address_copy);
-            return -1;
+
+        /* Check for optional third field (TLS version) */
+        const char *second_slash = strchr(sni_part, '/');
+        char *sni_copy = NULL;
+        const char *tls_version_part = NULL;
+
+        if (second_slash != NULL) {
+            /* Have a third field */
+            size_t sni_len = (size_t)(second_slash - sni_part);
+            if (sni_len == 0) {
+                warn("resolver child: DoT nameserver '%s' is missing TLS hostname between slashes", target);
+                free(address_copy);
+                return -1;
+            }
+            sni_copy = malloc(sni_len + 1);
+            if (sni_copy == NULL) {
+                free(address_copy);
+                return -1;
+            }
+            memcpy(sni_copy, sni_part, sni_len);
+            sni_copy[sni_len] = '\0';
+            sni_part = sni_copy;
+
+            tls_version_part = second_slash + 1;
+            if (*tls_version_part == '\0') {
+                warn("resolver child: DoT nameserver '%s' is missing TLS version after second '/'", target);
+                free(sni_copy);
+                free(address_copy);
+                return -1;
+            }
+            if (strchr(tls_version_part, '/') != NULL) {
+                warn("resolver child: DoT nameserver '%s' contains too many '/' characters", target);
+                free(sni_copy);
+                free(address_copy);
+                return -1;
+            }
+
+            /* Parse TLS version */
+            if (strcasecmp(tls_version_part, "tls1.2") == 0) {
+                min_tls_version = DOT_TLS_VERSION_1_2;
+            } else if (strcasecmp(tls_version_part, "tls1.3") == 0) {
+                min_tls_version = DOT_TLS_VERSION_1_3;
+            } else {
+                warn("resolver child: DoT nameserver '%s' has invalid TLS version '%s' (expected tls1.2 or tls1.3)", target, tls_version_part);
+                free(sni_copy);
+                free(address_copy);
+                return -1;
+            }
         }
 
         if (strcasecmp(sni_part, "insecure") == 0) {
@@ -2180,6 +2231,7 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             if (sni_addr == NULL || !address_is_hostname(sni_addr)) {
                 if (sni_addr != NULL)
                     free(sni_addr);
+                free(sni_copy);
                 free(address_copy);
                 warn("resolver child: DoT nameserver '%s' has invalid TLS hostname '%s'", target, sni_part);
                 return -1;
@@ -2187,16 +2239,19 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             const char *canon = address_hostname(sni_addr);
             if (canon == NULL) {
                 free(sni_addr);
+                free(sni_copy);
                 free(address_copy);
                 return -1;
             }
             sni_override = strdup(canon);
             free(sni_addr);
             if (sni_override == NULL) {
+                free(sni_copy);
                 free(address_copy);
                 return -1;
             }
         }
+        free(sni_copy);
     }
 
     struct Address *addr = new_address(address_part);
@@ -2323,6 +2378,8 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
     free(addr);
     free(address_copy);
     free(sni_override);
+
+    server.min_tls_version = min_tls_version;
 
     if (child_dot_server_count == child_dot_server_capacity) {
         size_t new_cap = child_dot_server_capacity == 0 ? 4 : child_dot_server_capacity * 2;
@@ -2533,6 +2590,20 @@ resolver_child_dot_socket_attach(ares_socket_t fd, struct ResolverDotServer *ser
         resolver_child_dot_socket_detach(fd);
         return -1;
     }
+
+    /* Set minimum TLS version based on server configuration */
+    int min_version = TLS1_2_VERSION;
+#ifdef TLS1_3_VERSION
+    if (server->min_tls_version == DOT_TLS_VERSION_1_3)
+        min_version = TLS1_3_VERSION;
+#else
+    if (server->min_tls_version == DOT_TLS_VERSION_1_3) {
+        warn("resolver child: TLS 1.3 requested for DoT upstream but not supported by this OpenSSL build; falling back to TLS 1.2");
+        min_version = TLS1_2_VERSION;
+    }
+#endif
+    if (SSL_set_min_proto_version(sock->ssl, min_version) != 1)
+        goto error;
 
     SSL_set_connect_state(sock->ssl);
     if (SSL_set_fd(sock->ssl, fd) != 1)
