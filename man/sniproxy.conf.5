@@ -189,6 +189,14 @@ Multiple \fBnameserver\fR directives may be supplied. Optional
 \fBsearch\fR directives append the given domain to hostnames that do not
 already end with a trailing dot before resolution.
 
+Nameservers may point at DNS-over-TLS upstreams using the
+\fBdot://ADDRESS/SNI[/tls1.2|tls1.3]\fR form. ADDRESS can be an IP literal
+or hostname; when using an IP literal you must also supply a TLS hostname or
+the literal \fIinsecure\fR segment to disable verification. TLS 1.2 is the
+default minimum; append \fI/tls1.3\fR to require TLS 1.3 on builds that support
+it. On OpenSSL without TLS 1.3, \fI/tls1.3\fR is ignored with a warning and
+TLS 1.2 is enforced.
+
 Four modes are supported:
 
 ipv4_only: query for any A records, use the first A record returned

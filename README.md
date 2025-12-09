@@ -64,9 +64,14 @@ Features
 + **Configuration integrity**: Config files are re-checked for strict permissions
   on reload, all path directives must be absolute, and resolver search domains are
   treated as literal suffixes instead of being DNS-parsed.
++ **Binder allowlisting**: The privileged binder helper only binds sockets for
+  listener addresses present in the configuration, preventing unprivileged
+  processes from requesting arbitrary bound descriptors.
 + **DNS-over-TLS upstreams**: Resolver blocks can send queries over TLS via
-  `dot://IP-or-hostname/<SNI>` entries; IP literals now require either a TLS
-  hostname after the slash or `/insecure` to explicitly disable verification.
+  `dot://IP-or-hostname/<SNI>[/tls1.2|tls1.3]` entries; IP literals now require
+  either a TLS hostname after the slash or `/insecure` to explicitly disable
+  verification. TLS 1.2 is enforced by default, and TLS 1.3 can be requested
+  when supported by the linked OpenSSL.
 
 ### DNS Resolution
 + **Asynchronous DNS** via dedicated resolver process (powered by c-ares from 0.8.7)
@@ -293,7 +298,7 @@ http_max_headers 200
         nameserver 8.8.8.8
         nameserver 2001:4860:4860::8888
         # DNS-over-TLS upstream with explicit TLS verification hostname
-        #nameserver dot://9.9.9.9/dns.quad9.net
+        #nameserver dot://9.9.9.9/dns.quad9.net/tls1.2
 
         # Limit concurrent DNS queries to prevent resource exhaustion
         max_concurrent_queries 256
@@ -306,8 +311,9 @@ http_max_headers 200
 verification hostname after the slash. Bare IP literals are no longer accepted;
 for IPs you must supply either a TLS hostname (preferred) or `/insecure` to
 explicitly disable certificate verification (e.g. `nameserver dot://9.9.9.9/insecure`).
-Certificates are validated against the system trust store, so keep `/etc/ssl`
-up-to-date.
+An optional third segment lets you pin a minimum TLS version (`/tls1.2` (default)
+or `/tls1.3` where supported by your OpenSSL). Certificates are validated
+against the system trust store, so keep `/etc/ssl` up-to-date.
 
 **Security recommendation**: For maximum security, use IP literals with explicit
 SNI hostnames rather than DNS hostnames for your DoT servers. This avoids a
