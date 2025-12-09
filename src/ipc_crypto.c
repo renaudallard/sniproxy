@@ -43,6 +43,7 @@
 #include <openssl/kdf.h>
 #include <openssl/crypto.h>
 #include "ipc_crypto.h"
+#include "logger.h"
 
 static uint64_t host_to_be64(uint64_t host) {
     uint32_t high = (uint32_t)(host >> 32);
@@ -600,20 +601,8 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         return -1;
     }
 
-    /* Extract counter from nonce to detect rekey */
+    /* Extract counter from nonce for replay protection */
     uint64_t msg_counter = extract_counter_from_nonce(header.nonce);
-
-    /* Detect if remote side has rekeyed (counter wrapped around).
-     * This can happen due to either counter threshold or time-based rotation.
-     * If the received counter is less than our recv_counter, it indicates
-     * the remote side has rekeyed and reset its counter. */
-    if (msg_counter < state->recv_counter) {
-        /* Remote side has rekeyed, we need to rekey our recv_key */
-        if (ipc_crypto_rekey_recv(state) < 0) {
-            ipc_crypto_mask_failure(payload_len);
-            return -1;
-        }
-    }
 
     const uint8_t *ciphertext = frame + IPC_CRYPTO_HEADER_LEN;
     const uint8_t *tag = frame + IPC_CRYPTO_HEADER_LEN + payload_len;
@@ -633,6 +622,37 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     int ok = 0;
     int len;
+    int did_rekey = 0;
+
+    /* Enforce strictly monotonic counters: msg_counter must be > recv_counter.
+     * Exception: if msg_counter is low (sender rekeyed and reset counter),
+     * we try rekeying our recv_key and decrypting. If that fails, it's a replay. */
+    if (msg_counter <= state->recv_counter) {
+        /* Possible rekey: sender reset counter after rekeying.
+         * Only consider rekey if msg_counter is small (near start of new epoch). */
+        if (msg_counter <= 1000 && state->recv_counter > 1000) {
+            /* Try rekeying and decrypting */
+            if (ipc_crypto_rekey_recv(state) < 0) {
+                EVP_CIPHER_CTX_free(ctx);
+                OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
+                free(output);
+                ipc_crypto_mask_failure(payload_len);
+                return -1;
+            }
+            did_rekey = 1;
+        } else {
+            /* Replay or duplicate attack detected */
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
+            free(output);
+            warn("IPC replay attack detected: msg_counter=%llu recv_counter=%llu",
+                    (unsigned long long)msg_counter,
+                    (unsigned long long)state->recv_counter);
+            ipc_crypto_mask_failure(payload_len);
+            errno = EBADMSG;
+            return -1;
+        }
+    }
 
     do {
         if (EVP_DecryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) != 1)
@@ -664,11 +684,16 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     if (!ok) {
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
+        if (did_rekey) {
+            /* Rekey didn't help - this was a replay attack, not a legitimate rekey */
+            warn("IPC replay attack detected after rekey attempt: msg_counter=%llu",
+                    (unsigned long long)msg_counter);
+        }
         ipc_crypto_mask_failure(payload_len);
         return -1;
     }
 
-    /* Update recv_counter to track remote side's counter */
+    /* Update recv_counter to enforce monotonicity for next message */
     state->recv_counter = msg_counter;
 
     *plaintext = output;
