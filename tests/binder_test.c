@@ -62,6 +62,9 @@ test_binder(int port) {
         .sin_port = htons(port),
     };
 
+    int rc = binder_register_allowed_address((struct sockaddr *)&addr, sizeof(addr));
+    assert(rc == 0);
+
     int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr));
 
     assert(fd >= 0);

@@ -34,9 +34,14 @@
 #include <string.h> /* memcpy() */
 #include <errno.h> /* errno */
 #include <fcntl.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
+#include <netinet/in.h>
+#include <sys/un.h>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -56,13 +61,23 @@ static void binder_main(int);
 static int binder_spawn_child(void);
 static int binder_restart_child(void);
 static void binder_cleanup_child(int block);
+static int binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len);
+static int binder_sockaddr_equal(const struct sockaddr *a, size_t alen,
+        const struct sockaddr *b, size_t blen);
+static int binder_sync_allowlist_to_child(void);
+static int binder_send_register(const struct sockaddr *addr, size_t addr_len);
 
 
 struct binder_request {
+    uint8_t cmd;
+    uint8_t reserved[7];
     size_t address_len;
     struct sockaddr address[];
 };
 
+
+#define BINDER_CMD_BIND     1
+#define BINDER_CMD_REGISTER 2
 
 #define BINDER_IPC_MAX_PAYLOAD 512
 #define BINDER_IPC_CHANNEL_ID 0x424e4452u /* BNDR */
@@ -71,6 +86,18 @@ static int binder_sock = -1; /* socket to binder */
 static pid_t binder_pid = -1;
 static struct ipc_crypto_state binder_crypto_parent;
 static struct ipc_crypto_state binder_crypto_child;
+
+struct binder_allowed_addr {
+    struct sockaddr_storage addr;
+    socklen_t len;
+};
+
+static struct binder_allowed_addr *allowed_addrs;
+static size_t allowed_count;
+static size_t allowed_capacity;
+static struct binder_allowed_addr *parent_allowed;
+static size_t parent_allowed_count;
+static size_t parent_allowed_capacity;
 
 static void __attribute__((noreturn))
 binder_child_exit(int status) {
@@ -82,6 +109,85 @@ void
 start_binder(void) {
     if (binder_spawn_child() < 0)
         err("failed to start binder helper");
+}
+
+static int
+binder_send_register(const struct sockaddr *addr, size_t addr_len) {
+    if (addr_len > BINDER_IPC_MAX_PAYLOAD - sizeof(struct binder_request))
+        return -1;
+
+    if (!binder_validate_sockaddr(addr, addr_len))
+        return -1;
+
+    uint8_t buffer[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
+    struct binder_request *req = (struct binder_request *)buffer;
+    memset(req, 0, sizeof(*req));
+    req->cmd = BINDER_CMD_REGISTER;
+    req->address_len = addr_len;
+    memcpy(&req->address, addr, addr_len);
+
+    if (binder_pid <= 0 || binder_sock < 0)
+        return -1;
+
+    if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
+            buffer, sizeof(*req) + addr_len, -1) < 0) {
+        return -1;
+    }
+
+    uint8_t *reply = NULL;
+    size_t reply_len = 0;
+    int rc = ipc_crypto_recv_msg(&binder_crypto_parent, binder_sock,
+            BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, NULL);
+    if (rc <= 0) {
+        free(reply);
+        return -1;
+    }
+
+    int status = -1;
+    if (reply_len == 1 && reply[0] == 0)
+        status = 0;
+
+    free(reply);
+    return status;
+}
+
+int
+binder_register_allowed_address(const struct sockaddr *addr, size_t addr_len) {
+    if (addr == NULL || addr_len == 0)
+        return -1;
+
+    if (!binder_validate_sockaddr(addr, addr_len))
+        return -1;
+
+    /* Check for duplicate registration */
+    for (size_t i = 0; i < parent_allowed_count; i++) {
+        if (binder_sockaddr_equal(addr, addr_len,
+                    (struct sockaddr *)&parent_allowed[i].addr,
+                    parent_allowed[i].len)) {
+            return 0; /* Already registered, success */
+        }
+    }
+
+    if (parent_allowed_count == parent_allowed_capacity) {
+        size_t new_cap = parent_allowed_capacity == 0 ? 8 : parent_allowed_capacity * 2;
+        if (new_cap < parent_allowed_capacity ||
+                new_cap > SIZE_MAX / sizeof(*parent_allowed))
+            return -1;
+        struct binder_allowed_addr *tmp = realloc(parent_allowed,
+                new_cap * sizeof(*tmp));
+        if (tmp == NULL)
+            return -1;
+        parent_allowed = tmp;
+        parent_allowed_capacity = new_cap;
+    }
+
+    struct binder_allowed_addr *slot = &parent_allowed[parent_allowed_count];
+    memset(slot, 0, sizeof(*slot));
+    slot->len = (socklen_t)addr_len;
+    memcpy(&slot->addr, addr, addr_len);
+    parent_allowed_count++;
+
+    return binder_send_register(addr, addr_len);
 }
 
 static int
@@ -155,6 +261,22 @@ binder_cleanup_child(int block) {
 }
 
 static int
+binder_sync_allowlist_to_child(void) {
+    if (binder_pid <= 0 || binder_sock < 0)
+        return -1;
+
+    for (size_t i = 0; i < parent_allowed_count; i++) {
+        const struct binder_allowed_addr *entry = &parent_allowed[i];
+        if (binder_send_register((struct sockaddr *)&entry->addr,
+                    (size_t)entry->len) < 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int
 binder_restart_child(void) {
     binder_cleanup_child(0);
 
@@ -163,7 +285,10 @@ binder_restart_child(void) {
         binder_cleanup_child(1);
     }
 
-    return binder_spawn_child();
+    if (binder_spawn_child() < 0)
+        return -1;
+
+    return binder_sync_allowlist_to_child();
 }
 
 int
@@ -174,6 +299,8 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
     size_t request_len = sizeof(struct binder_request) + addr_len;
     uint8_t buffer[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
     struct binder_request *request = (struct binder_request *)buffer;
+    memset(request, 0, sizeof(*request));
+    request->cmd = BINDER_CMD_BIND;
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
 
@@ -234,6 +361,10 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
 void
 stop_binder(void) {
     binder_cleanup_child(1);
+    free(parent_allowed);
+    parent_allowed = NULL;
+    parent_allowed_count = 0;
+    parent_allowed_capacity = 0;
 }
 
 static void
@@ -302,6 +433,103 @@ binder_main(int sockfd) {
             continue;
         }
 
+        if (req->cmd != BINDER_CMD_BIND && req->cmd != BINDER_CMD_REGISTER) {
+            const char *msg = "Unknown binder command";
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    msg, strlen(msg), -1);
+            free(plain);
+            continue;
+        }
+
+        if (!binder_validate_sockaddr(req->address, req->address_len)) {
+            const char *msg = "Address family or format not permitted";
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    msg, strlen(msg), -1);
+            free(plain);
+            continue;
+        }
+
+        if (req->cmd == BINDER_CMD_REGISTER) {
+            /* Check for duplicate registration */
+            int already_registered = 0;
+            for (size_t i = 0; i < allowed_count; i++) {
+                if (binder_sockaddr_equal(req->address, req->address_len,
+                            (struct sockaddr *)&allowed_addrs[i].addr,
+                            allowed_addrs[i].len)) {
+                    already_registered = 1;
+                    break;
+                }
+            }
+            if (already_registered) {
+                uint8_t status = 0;
+                ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                        &status, sizeof(status), -1);
+                free(plain);
+                continue;
+            }
+
+            if (allowed_count == allowed_capacity) {
+                size_t new_cap = allowed_capacity == 0 ? 8 : allowed_capacity * 2;
+                if (new_cap < allowed_capacity ||
+                        new_cap > SIZE_MAX / sizeof(*allowed_addrs)) {
+                    const char *msg = "Allowlist capacity overflow";
+                    ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                            msg, strlen(msg), -1);
+                    free(plain);
+                    continue;
+                }
+                struct binder_allowed_addr *tmp = realloc(allowed_addrs,
+                        new_cap * sizeof(*tmp));
+                if (tmp == NULL) {
+                    const char *msg = "Unable to grow allowlist";
+                    ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                            msg, strlen(msg), -1);
+                    free(plain);
+                    continue;
+                }
+                allowed_addrs = tmp;
+                allowed_capacity = new_cap;
+            }
+
+            struct binder_allowed_addr *slot = &allowed_addrs[allowed_count];
+            memset(slot, 0, sizeof(*slot));
+            slot->len = (socklen_t)req->address_len;
+            memcpy(&slot->addr, req->address, req->address_len);
+            allowed_count++;
+
+            uint8_t status = 0;
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    &status, sizeof(status), -1);
+            free(plain);
+            continue;
+        }
+
+        if (allowed_count == 0) {
+            const char *msg = "Binder allowlist empty; cannot bind";
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    msg, strlen(msg), -1);
+            free(plain);
+            continue;
+        }
+
+        int found = 0;
+        for (size_t i = 0; i < allowed_count; i++) {
+            if (binder_sockaddr_equal(req->address, req->address_len,
+                        (struct sockaddr *)&allowed_addrs[i].addr,
+                        allowed_addrs[i].len)) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found) {
+            const char *msg = "Requested bind address not in allowlist";
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    msg, strlen(msg), -1);
+            free(plain);
+            continue;
+        }
+
         int socket_type = SOCK_STREAM;
 #ifdef SOCK_CLOEXEC
         socket_type |= SOCK_CLOEXEC;
@@ -357,5 +585,74 @@ binder_main(int sockfd) {
         }
         close(fd);
         free(plain);
+    }
+}
+
+static int
+binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len) {
+    if (addr == NULL)
+        return 0;
+
+    switch (addr->sa_family) {
+        case AF_INET:
+            return addr_len >= sizeof(struct sockaddr_in);
+        case AF_INET6:
+            return addr_len >= sizeof(struct sockaddr_in6);
+        case AF_UNIX: {
+            if (addr_len < offsetof(struct sockaddr_un, sun_path) + 2)
+                return 0;
+            const struct sockaddr_un *sun = (const struct sockaddr_un *)addr;
+            size_t max_len = addr_len - offsetof(struct sockaddr_un, sun_path);
+            size_t path_len = strnlen(sun->sun_path, max_len);
+            if (path_len == 0 || path_len >= max_len)
+                return 0;
+            /* Reject abstract sockets and relative paths. */
+            if (sun->sun_path[0] != '/')
+                return 0;
+            return 1;
+        }
+        default:
+            return 0;
+    }
+}
+
+static int
+binder_sockaddr_equal(const struct sockaddr *a, size_t alen,
+        const struct sockaddr *b, size_t blen) {
+    if (a == NULL || b == NULL || a->sa_family != b->sa_family)
+        return 0;
+
+    switch (a->sa_family) {
+        case AF_INET: {
+            if (alen < sizeof(struct sockaddr_in) || blen < sizeof(struct sockaddr_in))
+                return 0;
+            const struct sockaddr_in *a4 = (const struct sockaddr_in *)a;
+            const struct sockaddr_in *b4 = (const struct sockaddr_in *)b;
+            return a4->sin_port == b4->sin_port &&
+                memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
+        }
+        case AF_INET6: {
+            if (alen < sizeof(struct sockaddr_in6) || blen < sizeof(struct sockaddr_in6))
+                return 0;
+            const struct sockaddr_in6 *a6 = (const struct sockaddr_in6 *)a;
+            const struct sockaddr_in6 *b6 = (const struct sockaddr_in6 *)b;
+            return a6->sin6_port == b6->sin6_port &&
+                a6->sin6_flowinfo == b6->sin6_flowinfo &&
+                a6->sin6_scope_id == b6->sin6_scope_id &&
+                memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0;
+        }
+        case AF_UNIX: {
+            const struct sockaddr_un *au = (const struct sockaddr_un *)a;
+            const struct sockaddr_un *bu = (const struct sockaddr_un *)b;
+            size_t a_max = alen - offsetof(struct sockaddr_un, sun_path);
+            size_t b_max = blen - offsetof(struct sockaddr_un, sun_path);
+            size_t a_len = strnlen(au->sun_path, a_max);
+            size_t b_len = strnlen(bu->sun_path, b_max);
+            if (a_len == 0 || b_len == 0 || a_len >= a_max || b_len >= b_max)
+                return 0;
+            return a_len == b_len && memcmp(au->sun_path, bu->sun_path, a_len) == 0;
+        }
+        default:
+            return 0;
     }
 }

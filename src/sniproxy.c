@@ -428,6 +428,20 @@ main(int argc, char **argv) {
 
     start_binder();
 
+    /* Seed binder allowlist with configured listener addresses so the binder
+     * child will refuse unexpected bind requests. */
+    struct Listener *binder_listener = SLIST_FIRST(&config->listeners);
+    while (binder_listener != NULL) {
+        const struct sockaddr *sa = address_sa(binder_listener->address);
+        socklen_t sa_len = address_sa_len(binder_listener->address);
+        if (sa != NULL && sa_len > 0) {
+            if (binder_register_allowed_address(sa, (size_t)sa_len) < 0) {
+                fatal("Failed to register listener address with binder");
+            }
+        }
+        binder_listener = SLIST_NEXT(binder_listener, entries);
+    }
+
     set_limits(max_nofiles);
     configured_fd_limit = max_nofiles;
 

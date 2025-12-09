@@ -26,9 +26,11 @@
 #ifndef BINDER_H
 #define BINDER_H
 
+#include <stddef.h>
 #include <sys/socket.h>
 
 void start_binder(void);
+int binder_register_allowed_address(const struct sockaddr *, size_t);
 int bind_socket(const struct sockaddr *, size_t);
 void stop_binder(void);
 
