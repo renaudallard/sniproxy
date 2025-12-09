@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.14
+Version: 0.9.15
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,18 @@ fi
 
 
 %changelog
+* Mon Dec 15 2025 Renaud Allard <renaud@allard.it> 0.9.15-1
+- Security: Binder requests are restricted to validated AF_INET/AF_INET6/AF_UNIX
+  stream sockets under the listener allowlist, and seccomp profiles are
+  process-specific to tighten syscall exposure.
+- TLS/DNS: DoT upstreams accept a configurable minimum TLS version with tls1.2
+  as default, and too-old ClientHello versions are rejected instead of routed
+  to fallback backends.
+- Reliability: IPC replay protection enforces monotonic counters, logger child
+  health checks detect stalls, backend regex cache initialization failures no
+  longer crash the process, and rate-limit OOM paths reject connections with
+  clearer backoff.
+
 * Wed Dec 03 2025 Renaud Allard <renaud@allard.it> 0.9.14-1
 - Enforce DoT IP entries to require a TLS hostname or '/insecure'; improve
   logging of fatal exit paths.

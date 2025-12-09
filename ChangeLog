@@ -1,3 +1,20 @@
+2025-12-15  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.15
+	- Security: Binder helper restricts requests to validated AF_INET/AF_INET6/
+	  AF_UNIX stream sockets under the configured allowlist and seccomp filters
+	  are process-specific to narrow syscall exposure.
+	- TLS/DNS: DoT upstreams accept a configurable minimum TLS version
+	  (default tls1.2) and too-old ClientHello versions are rejected instead of
+	  being routed to fallback backends.
+	- Reliability: IPC replay protection enforces monotonic counters, logger
+	  child health checks detect stalls, backend regex cache initialization
+	  failures no longer crash lookup, global ACL policy resets after parsing,
+	  EINTR connect retries were fixed, and rate-limit OOM paths reject with
+	  exponential backoff.
+	- Docs: README/man pages refreshed and the obsolete splice(2) reference was
+	  removed.
+
 2025-12-03  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.14

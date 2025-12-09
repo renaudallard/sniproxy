@@ -1,3 +1,20 @@
+sniproxy 0.9.15 (2025-12-15)
+===============================
+
+* Security: Binder helper now validates AF_INET/AF_INET6/AF_UNIX stream socket
+  requests against the listener allowlist, seccomp filters are
+  process-specific, and IPC replay protection enforces strictly monotonic
+  counters.
+* TLS/DNS: DNS-over-TLS upstreams accept a configurable minimum TLS version
+  (default tls1.2) and too-old ClientHello versions are rejected rather than
+  routed to fallback backends.
+* Reliability: Logger child health watchdog detects stalls, backend regex cache
+  initialization failures no longer crash lookups, global ACL policy state is
+  reset on reload, EINTR connect retries were fixed, and rate-limit OOM paths
+  reject connections with exponential backoff.
+* Documentation: README/man pages were refreshed and the splice(2) mention was
+  removed.
+
 sniproxy 0.9.14 (2025-12-03)
 ===============================
 

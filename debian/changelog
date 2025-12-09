@@ -1,3 +1,19 @@
+sniproxy (0.9.15) unstable; urgency=medium
+
+  * Security: Binder helper validates AF_INET/AF_INET6/AF_UNIX socket requests
+    against the listener allowlist and seccomp filters are process-specific.
+  * TLS/DNS: Add a minimum TLS version setting for DoT upstreams (default
+    tls1.2) and reject too-old ClientHello versions instead of routing them to
+    fallback backends.
+  * Reliability: Enforce monotonic IPC replay counters, add logger child health
+    watchdog, fix backend regex cache initialization crash, reset global ACL
+    policy on reload, retry EINTR connects, and reject connections when
+    rate-limit accounting OOMs with clearer backoff.
+  * Documentation: Refresh README/man pages and drop the unused splice(2)
+    reference.
+
+ -- Renaud Allard <renaud@allard.it>  Mon, 15 Dec 2025 00:00:00 +0000
+
 sniproxy (0.9.14) unstable; urgency=medium
 
   * Enforce DoT IP literals to supply a TLS hostname or '/insecure'; bare IP
