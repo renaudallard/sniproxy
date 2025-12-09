@@ -158,9 +158,6 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
         if (!saw_label)
             return 0;
 
-        if (label_len == 0 && hostname[len - 1] != '.')
-            return 0;
-
         if (last_was_dash && hostname[len - 1] != '.')
             return 0;
 
