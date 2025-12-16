@@ -68,14 +68,15 @@ static void test_time_based_rekey(void) {
     assert(parent_state.send_key_timestamp >= now - 2 &&
            parent_state.send_key_timestamp <= now + 2);
 
-    /* Child should be able to receive and will auto-detect rekey from counter */
+    /* Child should be able to receive - generation is explicit in protocol header */
     uint8_t *plaintext = NULL;
     size_t plaintext_len = 0;
 
     assert(ipc_crypto_open(&child_state, frame, frame_len, 1024, &plaintext, &plaintext_len) == 0);
     assert(plaintext_len == sizeof(test_msg));
     assert(memcmp(plaintext, test_msg, sizeof(test_msg)) == 0);
-    assert(child_state.recv_generation == 1); /* Recv side auto-rekeyed */
+    assert(child_state.recv_generation == 1); /* Recv side auto-rekeyed based on protocol generation */
+    assert(child_state.recv_counter == 1); /* Counter reset during rekey, then updated to msg counter */
 
     free(frame);
     free(plaintext);

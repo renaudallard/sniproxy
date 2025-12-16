@@ -38,11 +38,12 @@ enum ipc_crypto_role {
 
 #define IPC_CRYPTO_NONCE_LEN 12
 #define IPC_CRYPTO_TAG_LEN 16
-#define IPC_CRYPTO_HEADER_LEN (sizeof(uint32_t) * 2 + IPC_CRYPTO_NONCE_LEN)
+/* Header: magic(4) + length(4) + generation(4) + nonce(12) = 24 bytes */
+#define IPC_CRYPTO_HEADER_LEN (sizeof(uint32_t) * 3 + IPC_CRYPTO_NONCE_LEN)
 #define IPC_CRYPTO_OVERHEAD (IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN)
 #define IPC_CRYPTO_MAX_FRAME(payload_max) \
     (IPC_CRYPTO_HEADER_LEN + (payload_max) + IPC_CRYPTO_TAG_LEN)
-#define IPC_CRYPTO_MAGIC 0x49504331u /* 'IPC1' */
+#define IPC_CRYPTO_MAGIC 0x49504332u /* 'IPC2' - protocol v2 with explicit generation */
 
 struct ipc_crypto_state {
     uint32_t channel_id;

@@ -34,9 +34,9 @@ int main(void) {
     printf("Parent send_gen: %u, Child recv_gen: %u\n\n",
            parent_state.send_generation, child_state.recv_generation);
 
-    /* Set counter at threshold */
+    /* Set sender counter at threshold to trigger rekey */
     parent_state.send_counter = ((uint64_t)1 << 63);
-    child_state.recv_counter = ((uint64_t)1 << 63);
+    /* No need to set child recv_counter - protocol includes generation explicitly */
 
     /* Send a message */
     const uint8_t test_msg[] = "test message";

@@ -482,11 +482,13 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
     struct __attribute__((__packed__)) ipc_frame_header {
         uint32_t magic;
         uint32_t length;
+        uint32_t generation;
         uint8_t nonce[IPC_CRYPTO_NONCE_LEN];
     } header;
 
     header.magic = htonl(IPC_CRYPTO_MAGIC);
     header.length = htonl((uint32_t)plaintext_len);
+    header.generation = htonl(state->send_generation);
 
     if (state->send_counter == UINT64_MAX)
         return -1; /* counter would wrap and re-use nonce */
@@ -514,8 +516,9 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         if (EVP_EncryptInit_ex(ctx, NULL, NULL, state->send_key,
                     header.nonce) != 1)
             break;
+        /* AAD includes magic, length, and generation for integrity */
         if (EVP_EncryptUpdate(ctx, NULL, &len, (uint8_t *)&header,
-                    sizeof(header.magic) + sizeof(header.length)) != 1)
+                    sizeof(header.magic) + sizeof(header.length) + sizeof(header.generation)) != 1)
             break;
         if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext,
                     (int)plaintext_len) != 1)
@@ -577,6 +580,7 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     struct __attribute__((__packed__)) ipc_frame_header {
         uint32_t magic;
         uint32_t length;
+        uint32_t generation;
         uint8_t nonce[IPC_CRYPTO_NONCE_LEN];
     } header;
 
@@ -588,6 +592,7 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     }
 
     uint32_t payload_len = ntohl(header.length);
+    uint32_t msg_generation = ntohl(header.generation);
 
     /* Validate payload_len against maximum before allocation (defense-in-depth) */
     if (payload_len > max_payload_len) {
@@ -622,36 +627,43 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     int ok = 0;
     int len;
-    int did_rekey = 0;
 
-    /* Enforce strictly monotonic counters: msg_counter must be > recv_counter.
-     * Exception: if msg_counter is low (sender rekeyed and reset counter),
-     * we try rekeying our recv_key and decrypting. If that fails, it's a replay. */
-    if (msg_counter <= state->recv_counter) {
-        /* Possible rekey: sender reset counter after rekeying.
-         * Only consider rekey if msg_counter is small (near start of new epoch). */
-        if (msg_counter <= 1000 && state->recv_counter > 1000) {
-            /* Try rekeying and decrypting */
-            if (ipc_crypto_rekey_recv(state) < 0) {
-                EVP_CIPHER_CTX_free(ctx);
-                OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
-                free(output);
-                ipc_crypto_mask_failure(payload_len);
-                return -1;
-            }
-            did_rekey = 1;
-        } else {
-            /* Replay or duplicate attack detected */
+    /* Handle generation mismatch - explicit rekey detection via protocol */
+    if (msg_generation < state->recv_generation) {
+        /* Message from old generation - replay attack */
+        EVP_CIPHER_CTX_free(ctx);
+        OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
+        free(output);
+        warn("IPC replay attack: msg_generation=%u < recv_generation=%u",
+                msg_generation, state->recv_generation);
+        ipc_crypto_mask_failure(payload_len);
+        errno = EBADMSG;
+        return -1;
+    }
+
+    /* Advance recv_generation to match sender if needed */
+    while (state->recv_generation < msg_generation) {
+        if (ipc_crypto_rekey_recv(state) < 0) {
             EVP_CIPHER_CTX_free(ctx);
             OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
             free(output);
-            warn("IPC replay attack detected: msg_counter=%llu recv_counter=%llu",
-                    (unsigned long long)msg_counter,
-                    (unsigned long long)state->recv_counter);
             ipc_crypto_mask_failure(payload_len);
-            errno = EBADMSG;
             return -1;
         }
+    }
+
+    /* Within same generation, enforce strictly monotonic counters */
+    if (msg_counter <= state->recv_counter) {
+        EVP_CIPHER_CTX_free(ctx);
+        OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
+        free(output);
+        warn("IPC replay attack: msg_counter=%llu <= recv_counter=%llu (generation=%u)",
+                (unsigned long long)msg_counter,
+                (unsigned long long)state->recv_counter,
+                msg_generation);
+        ipc_crypto_mask_failure(payload_len);
+        errno = EBADMSG;
+        return -1;
     }
 
     do {
@@ -663,8 +675,9 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         if (EVP_DecryptInit_ex(ctx, NULL, NULL, state->recv_key,
                     header.nonce) != 1)
             break;
+        /* AAD includes magic, length, and generation for integrity */
         if (EVP_DecryptUpdate(ctx, NULL, &len, (uint8_t *)&header,
-                    sizeof(header.magic) + sizeof(header.length)) != 1)
+                    sizeof(header.magic) + sizeof(header.length) + sizeof(header.generation)) != 1)
             break;
         if (payload_len > 0) {
             if (EVP_DecryptUpdate(ctx, output, &len, ciphertext,
@@ -684,11 +697,6 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     if (!ok) {
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
-        if (did_rekey) {
-            /* Rekey didn't help - this was a replay attack, not a legitimate rekey */
-            warn("IPC replay attack detected after rekey attempt: msg_counter=%llu",
-                    (unsigned long long)msg_counter);
-        }
         ipc_crypto_mask_failure(payload_len);
         return -1;
     }

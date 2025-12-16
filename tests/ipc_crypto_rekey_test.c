@@ -42,16 +42,16 @@ static void test_rekey_at_threshold(void) {
     /* Check that send key changed */
     assert(memcmp(orig_parent_send, parent_state.send_key, 32) != 0);
 
-    /* Child should be able to receive if it rekeys too */
-    child_state.recv_counter = ((uint64_t)1 << 63); /* Simulate it was at same point */
-
+    /* Child should be able to receive - generation is explicit in protocol,
+     * so child will automatically rekey to match sender's generation */
     uint8_t *plaintext = NULL;
     size_t plaintext_len = 0;
 
     assert(ipc_crypto_open(&child_state, frame, frame_len, 1024, &plaintext, &plaintext_len) == 0);
     assert(plaintext_len == sizeof(test_msg));
     assert(memcmp(plaintext, test_msg, sizeof(test_msg)) == 0);
-    assert(child_state.recv_generation == 1); /* Recv side rekeyed */
+    assert(child_state.recv_generation == 1); /* Recv side auto-rekeyed based on protocol generation */
+    assert(child_state.recv_counter == 1); /* Counter was reset and updated to message counter */
     assert(child_state.send_generation == 0); /* Send side unchanged */
 
     free(frame);
