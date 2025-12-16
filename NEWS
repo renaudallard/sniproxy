@@ -1,3 +1,13 @@
+sniproxy 0.9.16 (2025-12-16)
+===============================
+
+* IPC crypto: Protocol bumped to IPC2 with an authenticated generation field,
+  making rekey detection deterministic, auto-rekeying receivers after missed
+  epochs, rejecting stale-generation frames to block replay-driven hangs, and
+  keeping time-based rekeys working even when traffic is sparse.
+* Tests: ipc_crypto debug and time-based rekey harnesses exercise the IPC2
+  protocol and auto-resync behavior.
+
 sniproxy 0.9.15 (2025-12-15)
 ===============================
 

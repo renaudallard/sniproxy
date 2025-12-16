@@ -1,3 +1,15 @@
+sniproxy (0.9.16) unstable; urgency=medium
+
+  * IPC crypto: Bump protocol to IPC2 with an authenticated generation
+    field so rekeys are deterministic, receivers auto-resynchronize after
+    missed epochs, stale-generation frames are rejected to block
+    replay-driven hangs, and time-based rekeys keep working even when
+    traffic is sparse.
+  * Tests: Expand ipc_crypto debug and time-based rekey coverage for the
+    IPC2 protocol and auto-resync behavior.
+
+ -- Renaud Allard <renaud@allard.it>  Tue, 16 Dec 2025 00:00:00 +0000
+
 sniproxy (0.9.15) unstable; urgency=medium
 
   * Security: Binder helper validates AF_INET/AF_INET6/AF_UNIX socket requests

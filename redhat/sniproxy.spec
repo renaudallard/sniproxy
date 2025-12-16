@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.15
+Version: 0.9.16
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,14 @@ fi
 
 
 %changelog
+* Tue Dec 16 2025 Renaud Allard <renaud@allard.it> 0.9.16-1
+- IPC crypto: Protocol bumped to IPC2 with an authenticated generation field
+  so rekeys are deterministic, receivers auto-resync after missed epochs,
+  stale-generation frames are rejected to block replay-driven hangs, and
+  time-based rekeys keep working even with sparse traffic.
+- Tests: ipc_crypto debug/time-based rekey harnesses cover the IPC2 protocol
+  and auto-resync behavior.
+
 * Mon Dec 15 2025 Renaud Allard <renaud@allard.it> 0.9.15-1
 - Security: Binder requests are restricted to validated AF_INET/AF_INET6/AF_UNIX
   stream sockets under the listener allowlist, and seccomp profiles are
