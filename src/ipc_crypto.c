@@ -68,6 +68,13 @@ static uint64_t host_to_be64(uint64_t host) {
  * the counter threshold is never reached. */
 #define IPC_CRYPTO_REKEY_INTERVAL (7 * 24 * 60 * 60)  /* 7 days in seconds */
 
+/* Maximum allowed generation gap between sender and receiver.
+ * This limits DoS attacks where an attacker sends a message with a
+ * very large generation number, forcing the receiver to perform
+ * billions of rekey operations. A gap of 16 allows for reasonable
+ * message reordering and recovery scenarios while preventing abuse. */
+#define IPC_CRYPTO_MAX_GENERATION_GAP 16
+
 /* HKDF-SHA256 key derivation function.
  * This replaces raw SHA256 hashing with proper HKDF as per RFC 5869.
  * salt: optional salt value (can be NULL)
@@ -636,6 +643,19 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         free(output);
         warn("IPC replay attack: msg_generation=%u < recv_generation=%u",
                 msg_generation, state->recv_generation);
+        ipc_crypto_mask_failure(payload_len);
+        errno = EBADMSG;
+        return -1;
+    }
+
+    /* Reject excessive generation gap to prevent DoS via forced rekey loop */
+    if (msg_generation - state->recv_generation > IPC_CRYPTO_MAX_GENERATION_GAP) {
+        EVP_CIPHER_CTX_free(ctx);
+        OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
+        free(output);
+        warn("IPC generation gap too large: msg_generation=%u, recv_generation=%u, gap=%u",
+                msg_generation, state->recv_generation,
+                msg_generation - state->recv_generation);
         ipc_crypto_mask_failure(payload_len);
         errno = EBADMSG;
         return -1;
