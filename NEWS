@@ -1,3 +1,13 @@
+sniproxy 0.9.17 (2025-12-19)
+===============================
+
+* Security: IPC crypto rejects frames with generation jumps greater than 16,
+  preventing attacker-crafted UINT32_MAX generations from forcing billions of
+  rekey loops.
+* Packaging/CI: release-packages workflow downloads autoconf 2.71 from GNU and
+  kernel mirrors before falling back to ftp.gnu.org, reducing timeout failures
+  when building release artifacts.
+
 sniproxy 0.9.16 (2025-12-16)
 ===============================
 

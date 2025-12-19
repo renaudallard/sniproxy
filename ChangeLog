@@ -1,3 +1,11 @@
+2025-12-19  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.17
+	- Security: Limit IPC generation gaps to 16 so forged UINT32_MAX generations
+	  cannot force billions of rekeys and DoS ipc_crypto receivers.
+	- Build/CI: release-packages workflow downloads autoconf 2.71 from GNU and
+	  kernel mirrors before ftp.gnu.org to avoid bootstrap timeouts.
+
 2025-12-16  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.16

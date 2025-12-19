@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.16
+Version: 0.9.17
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,12 @@ fi
 
 
 %changelog
+* Fri Dec 19 2025 Renaud Allard <renaud@allard.it> 0.9.17-1
+- Security: Limit IPC generation gaps to 16 so forged UINT32_MAX generations
+  cannot force billions of rekeys and DoS ipc_crypto receivers.
+- Packaging/CI: release-packages workflow downloads autoconf 2.71 from GNU and
+  kernel mirrors before ftp.gnu.org to avoid bootstrap timeouts.
+
 * Tue Dec 16 2025 Renaud Allard <renaud@allard.it> 0.9.16-1
 - IPC crypto: Protocol bumped to IPC2 with an authenticated generation field
   so rekeys are deterministic, receivers auto-resync after missed epochs,
