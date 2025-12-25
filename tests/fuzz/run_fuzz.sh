@@ -77,6 +77,7 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/tls" \
     "$CORPUS_ROOT/http2" \
     "$CORPUS_ROOT/http" \
+    "$CORPUS_ROOT/xmpp" \
     "$CORPUS_ROOT/hostname" \
     "$CORPUS_ROOT/cfg_tokenizer" \
     "$CORPUS_ROOT/ipc_crypto" \
@@ -145,6 +146,11 @@ build_fuzzer listener_acl_fuzz \
     "$ROOT_DIR/src/address.c" \
     "$ROOT_DIR/src/backend.c" \
     "$ROOT_DIR/src/table.c" \
+    "$ROOT_DIR/src/tls.c" \
+    "$ROOT_DIR/src/http.c" \
+    "$ROOT_DIR/src/http2.c" \
+    "$ROOT_DIR/src/http2_huffman.c" \
+    "$ROOT_DIR/src/xmpp.c" \
     -I"$ROOT_DIR/tests/include"
 
 build_fuzzer resolver_response_fuzz \
@@ -175,6 +181,7 @@ build_fuzzer config_fuzz \
     "$ROOT_DIR/src/http.c" \
     "$ROOT_DIR/src/http2.c" \
     "$ROOT_DIR/src/http2_huffman.c" \
+    "$ROOT_DIR/src/xmpp.c" \
     "$ROOT_DIR/src/seccomp.c" \
     -lev -lssl -lcrypto -lcares -lseccomp
 
@@ -200,6 +207,10 @@ build_fuzzer tls_fuzz \
     "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
     "$ROOT_DIR/src/tls.c"
 
+build_fuzzer xmpp_fuzz \
+    "$ROOT_DIR/tests/fuzz/xmpp_fuzz.c" \
+    "$ROOT_DIR/src/xmpp.c"
+
 vlog "Fuzzers built successfully."
 
 if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
@@ -218,6 +229,7 @@ FUZZ_TARGETS=(
     "config_fuzz:config"
     "http2_fuzz:http2"
     "http_fuzz:http"
+    "xmpp_fuzz:xmpp"
     "hostname_fuzz:hostname"
     "cfg_tokenizer_fuzz:cfg_tokenizer"
     "tls_fuzz:tls"

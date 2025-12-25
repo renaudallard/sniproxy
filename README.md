@@ -15,8 +15,8 @@ Features
 ### Core Functionality
 + **Name-based proxying** of HTTPS without decrypting traffic - no keys or
   certificates required on the proxy
-+ **Protocol support**: TLS (SNI extraction), HTTP/1.x (Host header), and
-  HTTP/2 (HPACK :authority pseudo-header)
++ **Protocol support**: TLS (SNI extraction), HTTP/1.x (Host header),
+  HTTP/2 (HPACK :authority pseudo-header), and XMPP (stream `to` attribute)
 + **Pattern matching**: Exact hostname matching and PCRE2 regular expressions
 + **Wildcard backends**: Route to dynamically resolved hostnames
 + **Fallback routing**: Default backend for requests without valid hostnames
@@ -363,6 +363,47 @@ nameserver dot://dns.quad9.net
 
 Setting `io_collect_interval` and `timeout_collect_interval` lets libev batch I/O readiness notifications and timer recalculations, which reduces system call pressure on busy instances. The defaults (0.0005s and 0.005s respectively) favor throughput; set the values to 0 if you need the absolute lowest latency.
 
+### XMPP Configuration
+
+SNIProxy supports proxying XMPP connections by extracting the target domain from
+the `to` attribute in the initial `<stream:stream>` opening. This enables
+routing of XMPP traffic including STARTTLS negotiation without terminating the
+TLS connection on the proxy.
+
+    listener 0.0.0.0:5222 {
+        protocol xmpp
+        table XMPPServers
+
+        # Fallback for connections without a valid 'to' attribute
+        fallback 192.0.2.50:5222
+    }
+
+    table XMPPServers {
+        # Route XMPP domains to their respective servers
+        example.com      192.0.2.10:5222
+        chat.example.org 192.0.2.11:5222
+
+        # Wildcard for dynamic XMPP hosting
+        .*\\.xmpp\\.net  *:5222
+    }
+
+XMPP clients send an initial stream opening like:
+
+    <?xml version='1.0'?>
+    <stream:stream to="example.com" xmlns="jabber:client" ...>
+
+SNIProxy extracts the `to` attribute value and routes to the appropriate
+backend. The STARTTLS negotiation happens after the connection is established
+and is transparent to the proxy.
+
+**Security notes**:
+- Hostnames are validated and sanitized (only alphanumeric, dots, hyphens,
+  underscores, and bracketed IPv6 allowed)
+- Control characters, path traversal attempts, and injection characters are
+  rejected
+- Maximum hostname length is 255 characters
+- Maximum header size is 4096 bytes
+
 Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly list the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs. Only one policy style may appear in the configuration; mixing `allow_except` and `deny_except` blocks causes SNIProxy to exit during parsing.
 
 
@@ -405,11 +446,11 @@ SNIProxy includes extensive security hardening:
 
 The project includes comprehensive testing:
 
-- **Unit tests**: All major components (buffer, TLS, HTTP, HTTP/2, tables, etc.)
-- **Fuzz testing**: Dedicated fuzzers for TLS ClientHello and HTTP/2 HEADERS
-  parsing in `tests/fuzz/`
+- **Unit tests**: All major components (buffer, TLS, HTTP, HTTP/2, XMPP, tables, etc.)
+- **Fuzz testing**: Dedicated fuzzers for TLS ClientHello, HTTP/2 HEADERS,
+  and XMPP stream parsing in `tests/fuzz/`
 - **Integration tests**: End-to-end listener and routing validation
-- **Protocol conformance**: Tests for TLS 1.0-1.3, HTTP/1.x, and HTTP/2
+- **Protocol conformance**: Tests for TLS 1.0-1.3, HTTP/1.x, HTTP/2, and XMPP
 
 Run tests with: `make check`
 
@@ -514,6 +555,8 @@ SNIProxy is production-ready and commonly used for:
 - **Multi-tenant hosting**: Route multiple domains to different backend
   infrastructure
 - **CDN origins**: Route traffic to appropriate origin servers by hostname
+- **XMPP federation**: Route federated XMPP traffic to appropriate servers
+  based on the stream's target domain, including STARTTLS support
 - **Development proxies**: Local HTTPS routing for development environments
 - **IoT/embedded systems**: Lightweight SNI routing with minimal resource usage
 

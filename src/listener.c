@@ -48,6 +48,7 @@
 #include "protocol.h"
 #include "tls.h"
 #include "http.h"
+#include "xmpp.h"
 #include "fd_util.h"
 
 #define LISTENER_ACCEPT_MAX_BATCH 64
@@ -455,6 +456,8 @@ int
 accept_listener_protocol(struct Listener *listener, const char *protocol) {
     if (strncasecmp(protocol, http_protocol->name, strlen(protocol)) == 0)
         listener->protocol = http_protocol;
+    else if (strncasecmp(protocol, xmpp_protocol->name, strlen(protocol)) == 0)
+        listener->protocol = xmpp_protocol;
     else
         listener->protocol = tls_protocol;
 

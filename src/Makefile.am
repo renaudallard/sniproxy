@@ -45,7 +45,9 @@ sniproxy_common_sources = address.c \
                           table.c \
                           table.h \
                           tls.c \
-                          tls.h
+                          tls.h \
+                          xmpp.c \
+                          xmpp.h
 
 sniproxy_SOURCES = sniproxy.c \
                    $(sniproxy_common_sources)

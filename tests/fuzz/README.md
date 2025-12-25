@@ -10,6 +10,7 @@ with AddressSanitizer and UndefinedBehaviorSanitizer.
 | `tls_fuzz` | src/tls.c | TLS ClientHello parsing and SNI extraction |
 | `http2_fuzz` | src/http2.c | HTTP/2 HPACK header parsing |
 | `http_fuzz` | src/http.c | HTTP/1.x request parsing and Host header extraction |
+| `xmpp_fuzz` | src/xmpp.c | XMPP stream parsing and `to` attribute extraction |
 | `hostname_fuzz` | src/hostname_sanitize.h | Hostname validation and sanitization |
 | `cfg_tokenizer_fuzz` | src/cfg_tokenizer.c | Configuration file tokenization |
 | `address_fuzz` | src/address.c | Address parsing/formatting logic |
@@ -61,6 +62,14 @@ with a seed corpus directory.
 clang -fsanitize=fuzzer,address,undefined -Isrc \
     tests/fuzz/http_fuzz.c \
     src/http.c
+```
+
+### XMPP fuzzer
+
+```bash
+clang -fsanitize=fuzzer,address,undefined -Isrc \
+    tests/fuzz/xmpp_fuzz.c \
+    src/xmpp.c
 ```
 
 ### Hostname fuzzer

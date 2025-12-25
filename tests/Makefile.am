@@ -10,6 +10,7 @@ TESTS = address_test \
         table_test \
         http_test \
         tls_test \
+        xmpp_test \
         binder_test \
         seccomp_test
 
@@ -31,6 +32,7 @@ TESTS += config_test \
 
 check_PROGRAMS = http_test \
                  tls_test \
+                 xmpp_test \
                  table_test \
                  binder_test \
                  buffer_test \
@@ -52,6 +54,9 @@ tls_test_SOURCES = tls_test.c \
                    ../src/seccomp.c
 
 tls_test_LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
+
+xmpp_test_SOURCES = xmpp_test.c \
+                    ../src/xmpp.c
 
 binder_test_SOURCES = binder_test.c \
                       ../src/binder.c \
@@ -91,6 +96,7 @@ config_test_SOURCES = config_test.c \
                       ../src/http.c \
                       ../src/http2.c \
                       ../src/http2_huffman.c \
+                      ../src/xmpp.c \
                       ../src/seccomp.c
 
 config_test_LDADD = $(LIBEV_LIBS) $(PCRE2_LIBS) -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
