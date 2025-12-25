@@ -34,8 +34,10 @@ static const struct Protocol tls_protocol_impl = {
     .abort_message_len = sizeof(tls_abort_message) - 1,
 };
 
-const struct Protocol *const http_protocol = &http_protocol_impl;
-const struct Protocol *const tls_protocol = &tls_protocol_impl;
+/* Mark stub protocol pointers weak so real implementations can override them
+ * when linked in, avoiding multiple definition errors. */
+const struct Protocol *const http_protocol __attribute__((weak)) = &http_protocol_impl;
+const struct Protocol *const tls_protocol __attribute__((weak)) = &tls_protocol_impl;
 
 static void swallow_log(const char *fmt __attribute__((unused)),
         va_list ap __attribute__((unused))) {}
