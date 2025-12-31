@@ -650,7 +650,8 @@ valid_listener(const struct Listener *listener) {
             return 0;
     }
 
-    if (listener->protocol != tls_protocol && listener->protocol != http_protocol) {
+    if (listener->protocol != tls_protocol && listener->protocol != http_protocol &&
+            listener->protocol != xmpp_protocol) {
         err("Invalid protocol");
         return 0;
     }
