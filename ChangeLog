@@ -1,3 +1,13 @@
+2026-01-02  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.18
+	- XMPP: Add protocol handler and listener support that extracts the stream 'to'
+	  attribute so XMPP (including STARTTLS) can be proxied by hostname; includes
+	  dedicated parser tests and a fuzz harness.
+	- Fuzzing: Disable ASan ODR indicators in fuzz builds and mark stub HTTP/TLS
+	  protocol pointers weak in the listener ACL harness to avoid
+	  multiple-definition link errors.
+
 2025-12-19  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.17

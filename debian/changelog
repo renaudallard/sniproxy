@@ -1,3 +1,14 @@
+sniproxy (0.9.18) unstable; urgency=medium
+
+  * XMPP: Add `protocol = xmpp` listener support that parses the stream `to`
+    attribute to route XMPP (including STARTTLS) connections; adds dedicated
+    parser tests and a fuzz harness.
+  * Fuzzing: Disable ASan ODR indicators in libFuzzer builds and mark the stub
+    HTTP/TLS protocol pointers in the listener ACL fuzzer as weak to stop
+    multiple-definition link errors when linking the real implementations.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 02 Jan 2026 00:00:00 +0000
+
 sniproxy (0.9.17) unstable; urgency=medium
 
   * Security: Limit IPC generation gaps to 16 so forged UINT32_MAX generations

@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.17
+Version: 0.9.18
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,14 @@ fi
 
 
 %changelog
+* Fri Jan 02 2026 Renaud Allard <renaud@allard.it> 0.9.18-1
+- XMPP: Add protocol = xmpp support that parses the stream 'to' attribute to
+  route XMPP (including STARTTLS) connections by hostname; includes parser tests
+  and a fuzz harness.
+- Fuzzing: Disable ASan ODR indicators in fuzz builds and mark stub HTTP/TLS
+  protocol pointers weak in the listener ACL harness to avoid
+  multiple-definition link errors when linking the real implementations.
+
 * Fri Dec 19 2025 Renaud Allard <renaud@allard.it> 0.9.17-1
 - Security: Limit IPC generation gaps to 16 so forged UINT32_MAX generations
   cannot force billions of rekeys and DoS ipc_crypto receivers.

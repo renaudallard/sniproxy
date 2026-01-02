@@ -1,3 +1,13 @@
+sniproxy 0.9.18 (2026-01-02)
+===============================
+
+* XMPP: Added `protocol = xmpp` listener support that parses the stream `to`
+  attribute to route XMPP (including STARTTLS) connections by hostname; includes
+  dedicated parser tests and a fuzz harness.
+* Fuzzing: libFuzzer builds disable ASan ODR indicators and stub HTTP/TLS
+  protocol pointers in the listener ACL fuzzer are weak so the real
+  implementations can link without multiple-definition errors.
+
 sniproxy 0.9.17 (2025-12-19)
 ===============================
 
