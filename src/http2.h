@@ -67,6 +67,14 @@
  */
 #define HTTP2_MAX_FRAME_SIZE (16 * 1024)
 
+/*
+ * Limit the number of headers decoded per HEADERS block to prevent CPU
+ * exhaustion from clients sending many small headers.
+ */
+#define HTTP2_DEFAULT_MAX_HEADERS 100
+
 int parse_http2_header(const unsigned char *data, size_t data_len, char **hostname);
+void http2_set_max_headers(size_t max_headers);
+size_t http2_get_max_headers(void);
 
 #endif

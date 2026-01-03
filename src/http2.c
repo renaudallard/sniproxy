@@ -37,6 +37,20 @@
 #define SERVER_NAME_LEN 256
 #define HTTP2_DEFAULT_DYNAMIC_TABLE_SIZE 4096
 
+static size_t http2_max_headers = HTTP2_DEFAULT_MAX_HEADERS;
+
+size_t
+http2_get_max_headers(void) {
+    return http2_max_headers;
+}
+
+void
+http2_set_max_headers(size_t max_headers) {
+    if (max_headers == 0)
+        max_headers = 1;
+    http2_max_headers = max_headers;
+}
+
 struct hpack_entry {
     char *name;
     size_t name_len;
@@ -537,9 +551,16 @@ decode_header_block(struct hpack_decoder *decoder,
         struct host_accumulator *hosts) {
     size_t pos = 0;
     size_t decoded_budget = HTTP2_MAX_HEADER_BLOCK_SIZE;
+    size_t header_count = 0;
 
     while (pos < len) {
         unsigned char byte = data[pos];
+
+        /* Dynamic table size updates don't count as headers */
+        if ((byte & 0xE0) != 0x20) {
+            if (++header_count > http2_max_headers)
+                return -4;
+        }
 
         if (byte & 0x80) { /* Indexed header field */
             size_t index;
