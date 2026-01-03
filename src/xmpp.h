@@ -28,6 +28,10 @@
 
 #include "protocol.h"
 
+#define XMPP_DEFAULT_MAX_HEADER_LEN 4096
+
 extern const struct Protocol *const xmpp_protocol;
+void xmpp_set_max_header_len(size_t max_len);
+size_t xmpp_get_max_header_len(void);
 
 #endif

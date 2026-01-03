@@ -42,7 +42,20 @@
 #include "hostname_sanitize.h"
 
 #define SERVER_NAME_LEN 256
-#define XMPP_MAX_HEADER_LEN 4096
+
+static size_t xmpp_max_header_len = XMPP_DEFAULT_MAX_HEADER_LEN;
+
+size_t
+xmpp_get_max_header_len(void) {
+    return xmpp_max_header_len;
+}
+
+void
+xmpp_set_max_header_len(size_t max_len) {
+    if (max_len == 0)
+        max_len = 1;
+    xmpp_max_header_len = max_len;
+}
 
 static int parse_xmpp_stream(const char *, size_t, char **);
 static const char *find_stream_tag(const char *, size_t, size_t *);
@@ -87,7 +100,7 @@ parse_xmpp_stream(const char *data, size_t data_len, char **hostname) {
     if (data_len == 0)
         return -1;
 
-    if (data_len > XMPP_MAX_HEADER_LEN)
+    if (data_len > xmpp_max_header_len)
         return -5;
 
     stream_tag = find_stream_tag(data, data_len, &tag_len);
