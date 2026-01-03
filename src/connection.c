@@ -71,8 +71,9 @@
 #define SERVER_BUFFER_MIN_SIZE 32768
 #define SERVER_BUFFER_MAX_SIZE (1U << 20)
 #define BUFFER_SHRINK_IDLE_SECONDS 1.0
-#define CONNECTION_IDLE_TIMEOUT 60.0
-#define CONNECTION_HEADER_TIMEOUT 5.0
+
+static double connection_idle_timeout = CONNECTION_DEFAULT_IDLE_TIMEOUT;
+static double connection_header_timeout = CONNECTION_DEFAULT_HEADER_TIMEOUT;
 #define CONNECTION_MEMORY_PRESSURE_LIMIT (64U * 1024 * 1024)
 #define CONNECTION_MEMORY_PRESSURE_COOLDOWN 0.25
 #define DNS_CLIENT_BUCKET_BITS 10
@@ -918,17 +919,17 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w,
 
 static void
 reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstamp now) {
-    if (CONNECTION_IDLE_TIMEOUT <= 0.0)
+    if (connection_idle_timeout <= 0.0)
         return;
 
     if (ev_is_active(&con->idle_timer)) {
         double remaining = con->idle_timer.at - now;
-        if (remaining > CONNECTION_IDLE_TIMEOUT * 0.5)
+        if (remaining > connection_idle_timeout * 0.5)
             return;
         ev_timer_stop(loop, &con->idle_timer);
     }
 
-    ev_timer_set(&con->idle_timer, CONNECTION_IDLE_TIMEOUT, 0.0);
+    ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
     ev_timer_start(loop, &con->idle_timer);
 }
 
@@ -949,10 +950,10 @@ stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
 
 static void
 start_header_timer(struct Connection *con, struct ev_loop *loop) {
-    if (CONNECTION_HEADER_TIMEOUT <= 0.0)
+    if (connection_header_timeout <= 0.0)
         return;
 
-    ev_timer_set(&con->header_timer, CONNECTION_HEADER_TIMEOUT, 0.0);
+    ev_timer_set(&con->header_timer, connection_header_timeout, 0.0);
     if (!ev_is_active(&con->header_timer))
         ev_timer_start(loop, &con->header_timer);
 }
@@ -1417,6 +1418,30 @@ connections_set_global_limit(size_t limit) {
     max_global_connections = limit;
 }
 
+void
+connections_set_header_timeout(double timeout) {
+    if (timeout < 0.0)
+        timeout = 0.0;
+    connection_header_timeout = timeout;
+}
+
+double
+connections_get_header_timeout(void) {
+    return connection_header_timeout;
+}
+
+void
+connections_set_idle_timeout(double timeout) {
+    if (timeout < 0.0)
+        timeout = 0.0;
+    connection_idle_timeout = timeout;
+}
+
+double
+connections_get_idle_timeout(void) {
+    return connection_idle_timeout;
+}
+
 static void
 connection_memory_adjust(ssize_t delta) {
     if (delta >= 0) {
@@ -1480,7 +1505,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
 
     warn("Closing idle connection from %s after %.0f seconds without activity",
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
-            CONNECTION_IDLE_TIMEOUT);
+            connection_idle_timeout);
 
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
@@ -1501,7 +1526,7 @@ connection_header_timeout_cb(struct ev_loop *loop, struct ev_timer *w,
 
     warn("Closing connection from %s after %.0f seconds without initial request data",
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
-            CONNECTION_HEADER_TIMEOUT);
+            connection_header_timeout);
 
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
