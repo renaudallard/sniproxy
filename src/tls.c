@@ -45,8 +45,33 @@
 #define TLS_HANDSHAKE_CONTENT_TYPE 0x16
 #define TLS_HANDSHAKE_TYPE_CLIENT_HELLO 0x01
 #define CLIENT_HELLO_VERSION_RANDOM_LEN 34
-#define TLS_MAX_EXTENSIONS 64
-#define TLS_MAX_EXTENSION_LENGTH 4096
+
+static size_t tls_max_extensions = TLS_DEFAULT_MAX_EXTENSIONS;
+static size_t tls_max_extension_length = TLS_DEFAULT_MAX_EXTENSION_LENGTH;
+
+size_t
+tls_get_max_extensions(void) {
+    return tls_max_extensions;
+}
+
+void
+tls_set_max_extensions(size_t max_extensions) {
+    if (max_extensions == 0)
+        max_extensions = 1;
+    tls_max_extensions = max_extensions;
+}
+
+size_t
+tls_get_max_extension_length(void) {
+    return tls_max_extension_length;
+}
+
+void
+tls_set_max_extension_length(size_t max_length) {
+    if (max_length == 0)
+        max_length = 1;
+    tls_max_extension_length = max_length;
+}
 
 #ifndef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -265,15 +290,15 @@ parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
     size_t ext_count = 0;
     size_t probe = 0;
     while (probe + 4 <= data_len) {
-        if (ext_count++ >= TLS_MAX_EXTENSIONS) {
-            debug("TLS ClientHello exceeded maximum extension count (%d)", TLS_MAX_EXTENSIONS);
+        if (ext_count++ >= tls_max_extensions) {
+            debug("TLS ClientHello exceeded maximum extension count (%zu)", tls_max_extensions);
             return -5;
         }
         size_t ext_len = ((size_t)data[probe + 2] << 8) + (size_t)data[probe + 3];
         if (ext_len > data_len - probe - 4)
             return -5;
         /* Cap individual extension length to avoid pathological scanning */
-        if (ext_len > TLS_MAX_EXTENSION_LENGTH)
+        if (ext_len > tls_max_extension_length)
             return -5;
         probe += 4 + ext_len;
     }

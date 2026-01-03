@@ -34,6 +34,15 @@ extern const struct Protocol *const tls_protocol;
 
 void tls_set_min_client_hello_version(uint8_t major, uint8_t minor);
 
+#define TLS_DEFAULT_MAX_EXTENSIONS 64
+#define TLS_DEFAULT_MAX_EXTENSION_LENGTH 4096
+
+void tls_set_max_extensions(size_t max_extensions);
+size_t tls_get_max_extensions(void);
+
+void tls_set_max_extension_length(size_t max_length);
+size_t tls_get_max_extension_length(void);
+
 #define TLS_ERR_CLIENT_RENEGOTIATION (-6)
 #define TLS_ERR_UNSUPPORTED_CLIENT_HELLO (-7)
 #define TLS_ERR_INVALID_CLIENT_HELLO (-8)
