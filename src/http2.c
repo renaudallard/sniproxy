@@ -38,6 +38,9 @@
 #define HTTP2_DEFAULT_DYNAMIC_TABLE_SIZE 4096
 
 static size_t http2_max_headers = HTTP2_DEFAULT_MAX_HEADERS;
+static size_t http2_max_frame_size = HTTP2_DEFAULT_MAX_FRAME_SIZE;
+static size_t http2_max_frames_per_connection = HTTP2_DEFAULT_MAX_FRAMES_PER_CONNECTION;
+static size_t http2_max_continuation_frames = HTTP2_DEFAULT_MAX_CONTINUATION_FRAMES;
 
 size_t
 http2_get_max_headers(void) {
@@ -49,6 +52,42 @@ http2_set_max_headers(size_t max_headers) {
     if (max_headers == 0)
         max_headers = 1;
     http2_max_headers = max_headers;
+}
+
+size_t
+http2_get_max_frame_size(void) {
+    return http2_max_frame_size;
+}
+
+void
+http2_set_max_frame_size(size_t max_size) {
+    if (max_size == 0)
+        max_size = 1;
+    http2_max_frame_size = max_size;
+}
+
+size_t
+http2_get_max_frames_per_connection(void) {
+    return http2_max_frames_per_connection;
+}
+
+void
+http2_set_max_frames_per_connection(size_t max_frames) {
+    if (max_frames == 0)
+        max_frames = 1;
+    http2_max_frames_per_connection = max_frames;
+}
+
+size_t
+http2_get_max_continuation_frames(void) {
+    return http2_max_continuation_frames;
+}
+
+void
+http2_set_max_continuation_frames(size_t max_frames) {
+    if (max_frames == 0)
+        max_frames = 1;
+    http2_max_continuation_frames = max_frames;
 }
 
 struct hpack_entry {
@@ -385,7 +424,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
         if (remaining < 9)
             break;
 
-        if (++frame_count > HTTP2_MAX_FRAMES_PER_CONNECTION) {
+        if (++frame_count > http2_max_frames_per_connection) {
             result = -4;
             goto done;
         }
@@ -401,7 +440,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                              data[pos + 8];
         pos += 9;
 
-        if (length > HTTP2_MAX_FRAME_SIZE) {
+        if (length > http2_max_frame_size) {
             result = -4;
             goto done;
         }
@@ -478,7 +517,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                     result = -4;
                     goto done;
                 }
-                if (++block.continuation_count > HTTP2_MAX_CONTINUATION_FRAMES) {
+                if (++block.continuation_count > http2_max_continuation_frames) {
                     result = -4;
                     goto done;
                 }

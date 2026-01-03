@@ -52,20 +52,20 @@
  * Limit total frames parsed per connection to prevent CPU exhaustion from
  * clients sending millions of tiny frames (e.g., empty PING, SETTINGS).
  */
-#define HTTP2_MAX_FRAMES_PER_CONNECTION 1000
+#define HTTP2_DEFAULT_MAX_FRAMES_PER_CONNECTION 1000
 
 /*
  * Limit consecutive CONTINUATION frames to prevent attackers from sending
  * HEADERS followed by thousands of 1-byte CONTINUATION frames.
  */
-#define HTTP2_MAX_CONTINUATION_FRAMES 32
+#define HTTP2_DEFAULT_MAX_CONTINUATION_FRAMES 32
 
 /*
  * Maximum frame payload size. RFC 7540 allows up to 16MB but we limit to
  * 16KB by default to prevent memory exhaustion. Clients can request larger
  * via SETTINGS but we reject frames exceeding this limit.
  */
-#define HTTP2_MAX_FRAME_SIZE (16 * 1024)
+#define HTTP2_DEFAULT_MAX_FRAME_SIZE (16 * 1024)
 
 /*
  * Limit the number of headers decoded per HEADERS block to prevent CPU
@@ -74,7 +74,17 @@
 #define HTTP2_DEFAULT_MAX_HEADERS 100
 
 int parse_http2_header(const unsigned char *data, size_t data_len, char **hostname);
+
 void http2_set_max_headers(size_t max_headers);
 size_t http2_get_max_headers(void);
+
+void http2_set_max_frame_size(size_t max_size);
+size_t http2_get_max_frame_size(void);
+
+void http2_set_max_frames_per_connection(size_t max_frames);
+size_t http2_get_max_frames_per_connection(void);
+
+void http2_set_max_continuation_frames(size_t max_frames);
+size_t http2_get_max_continuation_frames(void);
 
 #endif
