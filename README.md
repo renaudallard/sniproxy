@@ -32,7 +32,7 @@ Features
 + **Dynamic ring buffers** with automatic growth/shrinking
 + **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
 + **Per-connection buffer caps**: configurable `connection_buffer_limit` (or per-side overrides) prevent slow clients from pinning unbounded RAM
-+ **Zero-copy operations** where supported (splice on Linux)
++ **Zero-copy forwarding** via SO_SPLICE on OpenBSD for kernel-level data movement
 + **Bounded shrink queues**: 4096-entry shrink candidate lists with automatic
   trimming prevent idle buffer bookkeeping from exhausting memory under churn.
 
@@ -480,7 +480,16 @@ SNIProxy is designed for high performance and low resource usage:
 - **Minimal per-connection overhead**: Dynamic buffers start small and grow only
   as needed, then shrink when idle
 - **Efficient buffered I/O**: Ring buffers and vectored writes minimize copies
-  while remaining portable (no splice/sendfile dependency)
+  while remaining portable
+- **SO_SPLICE zero-copy**: On OpenBSD, after the initial handshake is parsed the
+  kernel splices data directly between client and server sockets, eliminating
+  user-space copies for the bulk of proxied traffic
+- **TCP_NODELAY**: Nagle's algorithm is disabled on both client and server
+  sockets to avoid coalescing delays on forwarded data
+- **JIT-compiled regex**: PCRE2 JIT compilation is used when available, giving
+  2-10x faster backend pattern matching
+- **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1) via ring buffer
+  indexing, eliminating per-header memmove overhead
 - **SO_REUSEPORT support**: Run multiple SNIProxy instances on the same port for
   kernel-level load balancing across CPU cores
 - **Compiled regex patterns**: Pattern matching happens once at config load,
