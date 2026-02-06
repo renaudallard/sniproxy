@@ -272,7 +272,8 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
         table_ref_put(iter);
     }
     /* Remove elements following first used element */
-    SLIST_FOREACH(iter, tables, entries) {
+    iter = SLIST_FIRST(tables);
+    while (iter != NULL) {
         if (SLIST_NEXT(iter, entries) != NULL &&
                 table_lookup(new_tables,
                         SLIST_NEXT(iter, entries)->name) == NULL) {
@@ -280,6 +281,8 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
             /* SLIST remove next */
             SLIST_NEXT(iter, entries) = SLIST_NEXT(temp, entries);
             table_ref_put(temp);
+        } else {
+            iter = SLIST_NEXT(iter, entries);
         }
     }
 
