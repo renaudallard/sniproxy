@@ -33,6 +33,7 @@ Features
 + **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
 + **Per-connection buffer caps**: configurable `connection_buffer_limit` (or per-side overrides) prevent slow clients from pinning unbounded RAM
 + **Zero-copy forwarding** via SO_SPLICE on OpenBSD for kernel-level data movement
+  with explicit unsplice on idle timeout and logged cleanup failures
 + **Bounded shrink queues**: 4096-entry shrink candidate lists with automatic
   trimming prevent idle buffer bookkeeping from exhausting memory under churn.
 
@@ -47,6 +48,7 @@ Features
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
 + **Request guardrails**: Caps of 100 HTTP headers and 64 TLS extensions stop
   CPU exhaustion attempts before parsers process attacker-controlled blobs.
+  Extension counting is enforced consistently across all TLS parsing paths.
 + **Rate limiter collision defense**: arc4random()-seeded buckets use FNV-1a
   hashing and short-chain cutoffs so hash spraying cannot bypass per-IP token
   buckets.
