@@ -49,11 +49,6 @@ struct Backend {
     /* Runtime fields */
     pcre2_code *pattern_re;
     pcre2_match_data *pattern_match_data;
-    char *last_lookup_name;
-    size_t last_lookup_len;
-    size_t last_lookup_capacity;
-    int last_lookup_result;
-    int last_lookup_valid;
     STAILQ_ENTRY(Backend) entries;
 };
 
