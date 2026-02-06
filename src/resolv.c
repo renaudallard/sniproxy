@@ -850,13 +850,14 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             if (errno == EINTR)
                 continue;
 
-            err("resolver recv failed: %s", strerror(errno));
+            int saved_errno = errno;
+            err("resolver recv failed: %s", strerror(saved_errno));
             /* Trigger restart on recv failures indicating dead child */
             pthread_mutex_lock(&resolver_restart_lock);
             int restarting = resolver_restart_in_progress;
             pthread_mutex_unlock(&resolver_restart_lock);
             if (!restarting &&
-                    (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)) {
+                    (saved_errno == ECONNRESET || saved_errno == ENOTCONN || saved_errno == EPIPE)) {
                 if (resolver_restart() < 0)
                     err("resolver restart failed");
             }
