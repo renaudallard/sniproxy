@@ -340,11 +340,15 @@ extensions_have_required_version(const uint8_t *data, size_t data_len,
         uint8_t required_major, uint8_t required_minor) {
     size_t pos = 0;
     size_t len;
+    size_t ext_count = 0;
 
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 4)
             break;
+
+        if (ext_count++ >= tls_max_extensions)
+            return -5;
 
         len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
