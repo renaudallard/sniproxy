@@ -906,7 +906,7 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w,
     if (ev_is_active(w)) {
         if (events == 0)
             ev_io_stop(loop, w);
-        else if (events != w->events) {
+        else if (events != (w->events & (EV_READ | EV_WRITE))) {
             ev_io_stop(loop, w);
             ev_io_set(w, w->fd, events);
             ev_io_start(loop, w);
