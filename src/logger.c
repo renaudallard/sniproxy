@@ -1733,7 +1733,9 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
 
     if (payload != NULL)
         free(payload);
-    if (received_fd >= 0 && header->type != LOGGER_CMD_NEW_SINK && header->type != LOGGER_CMD_REOPEN)
+    if (received_fd >= 0 && header->type != LOGGER_CMD_NEW_SINK &&
+            header->type != LOGGER_CMD_REOPEN &&
+            header->type != LOGGER_CMD_DROP)
         close(received_fd);
 }
 
