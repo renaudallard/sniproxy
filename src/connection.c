@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h> /* getaddrinfo */
 #include <fcntl.h>
 #include <arpa/inet.h>
@@ -309,6 +310,11 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     int flags = fcntl(sockfd, F_GETFL, 0);
     fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 #endif
+
+    {
+        int on = 1;
+        setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+    }
 
     if (!listener_acl_allows(listener, &con->client.addr)) {
         char addrbuf[INET6_ADDRSTRLEN];
@@ -2156,6 +2162,11 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
     int flags = fcntl(sockfd, F_GETFL, 0);
     fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 #endif
+
+    {
+        int on = 1;
+        setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+    }
 
     if (con->listener->transparent_proxy &&
             con->client.addr.ss_family == con->server.addr.ss_family) {
