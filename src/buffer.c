@@ -124,8 +124,8 @@ buffer_pool_acquire(size_t size, int *pooled) {
         cls->head = next;
         if (cls->cached > 0)
             cls->cached--;
-        /* Use secure zeroing to prevent information disclosure */
-        secure_memzero(mem, cls->size);
+        /* Buffer was already zeroed on release; just clear pool metadata */
+        memset(mem, 0, sizeof(struct BufferPoolNode));
         if (pooled != NULL)
             *pooled = 1;
         return mem;
