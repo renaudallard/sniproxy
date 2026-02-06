@@ -2599,7 +2599,8 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     sp.sp_fd = client_fd;
     if (setsockopt(server_fd, SOL_SOCKET, SO_SPLICE, &sp, sizeof(sp)) < 0) {
         /* Undo first splice */
-        setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+        if (setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0)
+            warn("failed to unsplice client socket: %s", strerror(errno));
         return 0;
     }
 
@@ -2635,8 +2636,10 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
     struct Connection *con = (struct Connection *)w->data;
 
     /* Unsplice both directions */
-    setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
-    setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+    if (setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0)
+        warn("failed to unsplice client socket: %s", strerror(errno));
+    if (setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0)
+        warn("failed to unsplice server socket: %s", strerror(errno));
 
     /* Stop splice watchers */
     ev_io_stop(loop, &con->client.watcher);
