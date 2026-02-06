@@ -848,23 +848,19 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
         memcpy(&fd_received, CMSG_DATA(cmsg), sizeof(int));
     }
 
+    if (ipc_crypto_open(state, cipher, frame_len, max_payload_len,
+                plaintext, plaintext_len) < 0) {
+        free(cipher);
+        if (fd_received >= 0)
+            close(fd_received);
+        errno = EBADMSG;
+        return -1;
+    }
+
     if (received_fd != NULL)
         *received_fd = fd_received;
     else if (fd_received >= 0)
         close(fd_received);
-
-    if (ipc_crypto_open(state, cipher, frame_len, max_payload_len,
-                plaintext, plaintext_len) < 0) {
-        free(cipher);
-        if (received_fd != NULL && fd_received >= 0) {
-            close(fd_received);
-            *received_fd = -1;
-        } else if (received_fd == NULL && fd_received >= 0) {
-            close(fd_received);
-        }
-        errno = EBADMSG;
-        return -1;
-    }
 
     free(cipher);
     return 1;
