@@ -903,7 +903,7 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
 
     entry->name = malloc(name_len + 1);
     entry->value = malloc(value_len + 1);
-    if ((name_len && entry->name == NULL) || (value_len && entry->value == NULL)) {
+    if (entry->name == NULL || entry->value == NULL) {
         free(entry->name);
         free(entry->value);
         memmove(&decoder->dynamic_entries[0], &decoder->dynamic_entries[1], decoder->dynamic_count * sizeof(struct hpack_entry));
