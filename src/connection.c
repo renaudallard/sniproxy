@@ -1084,21 +1084,6 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
     }
 }
 
-/* Constant-time memory comparison to prevent timing side-channel attacks.
- * Returns 1 if equal, 0 if not equal.
- * Execution time is independent of where differences occur. */
-static inline int
-constant_time_memcmp(const void *a, const void *b, size_t len) {
-    const unsigned char *pa = (const unsigned char *)a;
-    const unsigned char *pb = (const unsigned char *)b;
-    unsigned char diff = 0;
-
-    for (size_t i = 0; i < len; i++)
-        diff |= pa[i] ^ pb[i];
-
-    return diff == 0;
-}
-
 static int
 sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storage *b) {
     if (a == b)
@@ -1109,9 +1094,7 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
     if (a->ss_family == AF_INET) {
         const struct sockaddr_in *in_a = (const struct sockaddr_in *)a;
         const struct sockaddr_in *in_b = (const struct sockaddr_in *)b;
-        /* SECURITY: Use constant-time comparison to prevent timing attacks
-         * that could leak information about rate-limited IP addresses */
-        return constant_time_memcmp(&in_a->sin_addr, &in_b->sin_addr, sizeof(struct in_addr));
+        return memcmp(&in_a->sin_addr, &in_b->sin_addr, sizeof(struct in_addr)) == 0;
     } else if (a->ss_family == AF_INET6) {
         const struct sockaddr_in6 *in_a = (const struct sockaddr_in6 *)a;
         const struct sockaddr_in6 *in_b = (const struct sockaddr_in6 *)b;
@@ -1119,8 +1102,7 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
         if (in_a->sin6_scope_id != in_b->sin6_scope_id)
             return 0;
 
-        /* SECURITY: Use constant-time comparison to prevent timing attacks */
-        return constant_time_memcmp(&in_a->sin6_addr, &in_b->sin6_addr, sizeof(struct in6_addr));
+        return memcmp(&in_a->sin6_addr, &in_b->sin6_addr, sizeof(struct in6_addr)) == 0;
     }
 
     return 0;
