@@ -224,6 +224,9 @@ init_backend(struct Backend *backend) {
             return 0;
         }
 
+        pcre2_jit_compile(backend->pattern_re, PCRE2_JIT_COMPLETE);
+        /* JIT failure is non-fatal; pcre2_match falls back to interpreter */
+
         char address[ADDRESS_BUFFER_SIZE];
         debug("Parsed %s %s",
                 backend->pattern,
