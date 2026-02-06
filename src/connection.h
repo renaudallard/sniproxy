@@ -44,8 +44,8 @@ struct Connection {
         RESOLVING,      /* DNS query in progress */
         RESOLVED,       /* Server socket address resolved */
         CONNECTED,      /* Connected to server */
-        SERVER_CLOSED,  /* Client closed socket */
-        CLIENT_CLOSED,  /* Server closed socket */
+        SERVER_CLOSED,  /* Server socket closed */
+        CLIENT_CLOSED,  /* Client socket closed */
         CLOSED          /* Both sockets closed */
     } state;
 
