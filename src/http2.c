@@ -102,6 +102,7 @@ struct hpack_decoder {
     struct hpack_entry *dynamic_entries;
     size_t dynamic_count;
     size_t dynamic_capacity;
+    size_t dynamic_head;      /* ring buffer start index */
     size_t dynamic_size;
     size_t max_dynamic_size;
 };
@@ -367,7 +368,8 @@ hpack_drop_last_entry(struct hpack_decoder *decoder) {
     if (decoder == NULL || decoder->dynamic_count == 0)
         return;
 
-    struct hpack_entry *entry = &decoder->dynamic_entries[decoder->dynamic_count - 1];
+    size_t tail = (decoder->dynamic_head + decoder->dynamic_count - 1) % decoder->dynamic_capacity;
+    struct hpack_entry *entry = &decoder->dynamic_entries[tail];
 
     if (decoder->dynamic_size >= entry->total_size)
         decoder->dynamic_size -= entry->total_size;
@@ -813,6 +815,7 @@ hpack_decoder_init(struct hpack_decoder *decoder) {
     decoder->dynamic_entries = NULL;
     decoder->dynamic_count = 0;
     decoder->dynamic_capacity = 0;
+    decoder->dynamic_head = 0;
     decoder->dynamic_size = 0;
     decoder->max_dynamic_size = HTTP2_DEFAULT_DYNAMIC_TABLE_SIZE;
 }
@@ -828,6 +831,7 @@ hpack_decoder_free(struct hpack_decoder *decoder) {
     free(decoder->dynamic_entries);
     decoder->dynamic_entries = NULL;
     decoder->dynamic_capacity = 0;
+    decoder->dynamic_head = 0;
     decoder->dynamic_size = 0;
 }
 
@@ -857,7 +861,6 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
 
     size_t entry_size = combined_len + 32;
     assert(entry_size >= combined_len && entry_size >= 32);
-    int reserved = 0;
 
     if (entry_size > decoder->max_dynamic_size) {
         while (decoder->dynamic_count > 0)
@@ -880,43 +883,50 @@ hpack_add_entry(struct hpack_decoder *decoder, const char *name, size_t name_len
             return 0;
 
         size_t alloc_size = new_cap * sizeof(struct hpack_entry);
-        struct hpack_entry *tmp = realloc(decoder->dynamic_entries, alloc_size);
+        struct hpack_entry *tmp = malloc(alloc_size);
         if (tmp == NULL)
             return 0;
+
+        /* Linearize ring buffer into new allocation */
+        for (size_t i = 0; i < decoder->dynamic_count; i++) {
+            size_t src = (decoder->dynamic_head + i) % decoder->dynamic_capacity;
+            tmp[i] = decoder->dynamic_entries[src];
+        }
+        free(decoder->dynamic_entries);
         decoder->dynamic_entries = tmp;
+        decoder->dynamic_head = 0;
         decoder->dynamic_capacity = new_cap;
     }
 
+    if (name_len > SIZE_MAX - 1 || value_len > SIZE_MAX - 1)
+        return 0;
+
     if (!hpack_global_try_reserve(entry_size))
         return 0;
-    reserved = 1;
 
-    memmove(&decoder->dynamic_entries[1], &decoder->dynamic_entries[0], decoder->dynamic_count * sizeof(struct hpack_entry));
-
-    struct hpack_entry *entry = &decoder->dynamic_entries[0];
-    if (name_len > SIZE_MAX - 1 || value_len > SIZE_MAX - 1) {
-        memmove(&decoder->dynamic_entries[0], &decoder->dynamic_entries[1], decoder->dynamic_count * sizeof(struct hpack_entry));
-        if (reserved)
-            hpack_global_release(entry_size);
+    char *new_name = malloc(name_len + 1);
+    char *new_value = malloc(value_len + 1);
+    if (new_name == NULL || new_value == NULL) {
+        free(new_name);
+        free(new_value);
+        hpack_global_release(entry_size);
         return 0;
     }
 
-    entry->name = malloc(name_len + 1);
-    entry->value = malloc(value_len + 1);
-    if (entry->name == NULL || entry->value == NULL) {
-        free(entry->name);
-        free(entry->value);
-        memmove(&decoder->dynamic_entries[0], &decoder->dynamic_entries[1], decoder->dynamic_count * sizeof(struct hpack_entry));
-        if (reserved)
-            hpack_global_release(entry_size);
-        return 0;
-    }
+    memcpy(new_name, name, name_len);
+    new_name[name_len] = '\0';
+    memcpy(new_value, value, value_len);
+    new_value[value_len] = '\0';
 
-    memcpy(entry->name, name, name_len);
-    entry->name[name_len] = '\0';
+    /* Insert at front of ring buffer */
+    decoder->dynamic_head = decoder->dynamic_head == 0
+        ? decoder->dynamic_capacity - 1
+        : decoder->dynamic_head - 1;
+
+    struct hpack_entry *entry = &decoder->dynamic_entries[decoder->dynamic_head];
+    entry->name = new_name;
     entry->name_len = name_len;
-    memcpy(entry->value, value, value_len);
-    entry->value[value_len] = '\0';
+    entry->value = new_value;
     entry->value_len = value_len;
     entry->total_size = entry_size;
 
@@ -950,7 +960,8 @@ hpack_get_indexed(const struct hpack_decoder *decoder, size_t index,
     if (dynamic_index >= decoder->dynamic_count)
         return 0;
 
-    const struct hpack_entry *entry = &decoder->dynamic_entries[dynamic_index];
+    size_t ring_index = (decoder->dynamic_head + dynamic_index) % decoder->dynamic_capacity;
+    const struct hpack_entry *entry = &decoder->dynamic_entries[ring_index];
     if (name != NULL) {
         *name = entry->name;
         *name_len = entry->name_len;
