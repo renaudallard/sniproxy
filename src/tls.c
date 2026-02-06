@@ -286,37 +286,26 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
 
 static int
 parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
-    /* Enforce extension count before parsing to prevent resource abuse. */
-    size_t ext_count = 0;
-    size_t probe = 0;
-    while (probe + 4 <= data_len) {
-        if (ext_count++ >= tls_max_extensions) {
-            debug("TLS ClientHello exceeded maximum extension count (%zu)", tls_max_extensions);
-            return -5;
-        }
-        size_t ext_len = ((size_t)data[probe + 2] << 8) + (size_t)data[probe + 3];
-        if (ext_len > data_len - probe - 4)
-            return -5;
-        /* Cap individual extension length to avoid pathological scanning */
-        if (ext_len > tls_max_extension_length)
-            return -5;
-        probe += 4 + ext_len;
-    }
-    if (probe != data_len)
-        return -5;
-
     size_t pos = 0;
-    size_t len;
+    size_t ext_count = 0;
 
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 4)
             break;
 
-        len = ((size_t)data[pos + 2] << 8) +
+        if (ext_count++ >= tls_max_extensions) {
+            debug("TLS ClientHello exceeded maximum extension count (%zu)", tls_max_extensions);
+            return -5;
+        }
+
+        size_t len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
 
         if (len > remaining - 4)
+            return -5;
+
+        if (len > tls_max_extension_length)
             return -5;
 
         if (data[pos] == 0x00 && data[pos + 1] == 0x00)
