@@ -290,7 +290,12 @@ listeners_reload(struct Listener_head *existing_listeners,
              * config */
             SLIST_REMOVE(new_listeners, new_listener, Listener, entries);
             add_listener(existing_listeners, new_listener);
-            init_listener(new_listener, tables, loop);
+            if (init_listener(new_listener, tables, loop) < 0) {
+                err("Failed to initialize listener %s",
+                        display_address(new_listener->address,
+                                address, sizeof(address)));
+                remove_listener(existing_listeners, new_listener, loop);
+            }
 
             /* -1 for removing from new_listeners */
             listener_ref_put(new_listener);
