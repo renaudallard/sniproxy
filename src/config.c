@@ -1600,10 +1600,8 @@ accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
     if (mode == NULL || *mode == '\0')
         return -1;
 
-    size_t mode_len = strlen(mode);
-
     for (size_t i = 0; i < sizeof(resolver_mode_names) / sizeof(resolver_mode_names[0]); i++)
-        if (strncasecmp(resolver_mode_names[i], mode, mode_len) == 0) {
+        if (strcasecmp(resolver_mode_names[i], mode) == 0) {
             resolver->mode = i;
             return 1;
         }
