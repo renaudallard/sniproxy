@@ -150,6 +150,10 @@ static void shrink_candidate_update(struct Connection *, struct ev_loop *, ev_ts
 static void shrink_candidate_remove(struct Connection *);
 static void shrink_candidate_insert(struct Connection *);
 static ev_tstamp connection_last_activity(const struct Connection *);
+#ifdef SO_SPLICE
+static int try_splice(struct Connection *, struct ev_loop *);
+static void splice_cb(struct ev_loop *, struct ev_io *, int);
+#endif
 
 #define RATE_LIMIT_TABLE_SIZE 1024
 #define RATE_LIMIT_IDLE_TTL 300.0
@@ -834,6 +838,16 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         initiate_server_connect(con, loop);
         server_open = server_socket_open(con);
     }
+
+#ifdef SO_SPLICE
+    /* Attempt kernel-level splice once both buffers have been flushed */
+    if (con->state == CONNECTED && !con->spliced &&
+            buffer_len(con->client.buffer) == 0 &&
+            buffer_len(con->server.buffer) == 0) {
+        if (try_splice(con, loop))
+            return;
+    }
+#endif
 
     /* Close other socket if we have flushed corresponding buffer */
     if (con->state == SERVER_CLOSED && buffer_len(con->server.buffer) == 0) {
@@ -2553,3 +2567,93 @@ print_connection(FILE *file, const struct Connection *con) {
             break;
     }
 }
+
+#ifdef SO_SPLICE
+/*
+ * Attempt to splice two connected sockets in the kernel.
+ * Returns 1 if splice was set up successfully (caller should return),
+ * or 0 if splice failed and user-space forwarding should continue.
+ */
+static int
+try_splice(struct Connection *con, struct ev_loop *loop) {
+    int client_fd = con->client.watcher.fd;
+    int server_fd = con->server.watcher.fd;
+
+    /* Set up splice with idle timeout matching the connection timeout */
+    struct splice sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.sp_max = 0;  /* unlimited */
+
+    if (connection_idle_timeout > 0.0) {
+        sp.sp_idle.tv_sec = (time_t)connection_idle_timeout;
+        sp.sp_idle.tv_usec = (suseconds_t)
+            ((connection_idle_timeout - (double)sp.sp_idle.tv_sec) * 1e6);
+    }
+
+    /* Splice client → server */
+    sp.sp_fd = server_fd;
+    if (setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, &sp, sizeof(sp)) < 0)
+        return 0;
+
+    /* Splice server → client */
+    sp.sp_fd = client_fd;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_SPLICE, &sp, sizeof(sp)) < 0) {
+        /* Undo first splice */
+        setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+        return 0;
+    }
+
+    con->spliced = 1;
+
+    /* Stop normal read/write watchers — kernel handles forwarding */
+    ev_io_stop(loop, &con->client.watcher);
+    ev_io_stop(loop, &con->server.watcher);
+
+    /* Watch both sockets for readability: when a splice ends (peer close,
+     * error, or idle timeout), the source socket becomes readable with 0
+     * bytes or an error. */
+    ev_io_init(&con->client.watcher, splice_cb, client_fd, EV_READ);
+    con->client.watcher.data = con;
+    ev_io_start(loop, &con->client.watcher);
+
+    ev_io_init(&con->server.watcher, splice_cb, server_fd, EV_READ);
+    con->server.watcher.data = con;
+    ev_io_start(loop, &con->server.watcher);
+
+    /* Keep the idle timer running as a safety net */
+    reset_idle_timer_with_now(con, loop, loop_now(loop));
+
+    return 1;
+}
+
+/*
+ * Callback for spliced connections.  Fires when splice terminates
+ * (peer close, error, or idle timeout).
+ */
+static void
+splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unused))) {
+    struct Connection *con = (struct Connection *)w->data;
+
+    /* Unsplice both directions */
+    setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+    setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+
+    /* Stop splice watchers */
+    ev_io_stop(loop, &con->client.watcher);
+    ev_io_stop(loop, &con->server.watcher);
+
+    /* Close the connection — after splice we don't attempt to
+     * fall back to user-space forwarding since both directions
+     * are effectively finished. */
+    close_connection(con, loop);
+
+    TAILQ_REMOVE(&connections, con, entries);
+    connection_account_remove();
+
+    if (con->listener->access_log)
+        log_connection(con);
+
+    free_connection(con);
+    maybe_stop_buffer_shrink_timer(loop);
+}
+#endif
