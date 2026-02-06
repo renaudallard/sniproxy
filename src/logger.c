@@ -701,10 +701,8 @@ lookup_syslog_facility(const char *facility) {
     if (facility == NULL || *facility == '\0')
         return LOG_USER;
 
-    size_t facility_len = strlen(facility);
-
     for (size_t i = 0; i < sizeof(facilities) / sizeof(facilities[0]); i++)
-        if (strncasecmp(facilities[i].name, facility, facility_len) == 0)
+        if (strcasecmp(facilities[i].name, facility) == 0)
             return facilities[i].number;
 
     /* fall back value */
