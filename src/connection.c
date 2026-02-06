@@ -2209,23 +2209,9 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         }
     }
 
-    const int max_connect_retries = 3;
-    int attempt = 0;
-    int result;
-
-    do {
-        result = connect(sockfd,
-                (struct sockaddr *)&con->server.addr,
-                con->server.addr_len);
-        if (result == 0 || errno == EINPROGRESS)
-            break;
-        if (errno != EADDRNOTAVAIL || attempt >= max_connect_retries)
-            break;
-        attempt++;
-        struct timespec ts = { .tv_sec = 0, .tv_nsec = 25000000 };
-        while (nanosleep(&ts, &ts) < 0 && errno == EINTR)
-            ;
-    } while (1);
+    int result = connect(sockfd,
+            (struct sockaddr *)&con->server.addr,
+            con->server.addr_len);
 
     if (result < 0 && errno != EINPROGRESS) {
         close(sockfd);
