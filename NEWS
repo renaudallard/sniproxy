@@ -1,3 +1,31 @@
+sniproxy 0.9.19 (2026-02-06)
+===============================
+
+* Performance: SO_SPLICE zero-copy forwarding on OpenBSD eliminates user-space
+  copies after the initial handshake; PCRE2 JIT compilation speeds backend regex
+  matching 2-10x; HPACK dynamic table uses a ring buffer for O(1) inserts;
+  TCP_NODELAY is set on both client and server sockets; table hostname cache
+  grows from 256 to 1024 entries; redundant ev_io stop/start cycles and buffer
+  zeroing on pool acquire are eliminated; TLS extension validation is merged
+  into a single pass; per-backend single-entry match cache removed in favor of
+  the table-level cache.
+* Security: TLS extension count limit is now enforced consistently across all
+  parsing paths including supported_versions; spliced connections are explicitly
+  unspliced before idle timeout close to avoid kernel-side data leaks; SO_SPLICE
+  cleanup failures are logged for debuggability.
+* Bug fixes: Fix data corruption in buffer_coalesce optimization path, double
+  close of file descriptors in ipc_crypto_recv_msg and logger LOGGER_CMD_DROP,
+  errno clobbered before restart check in resolver_ipc_cb, reload_tables
+  skipping consecutive table removals, accept_listener_arg returning success on
+  invalid argument, listeners_reload ignoring init_listener failure, ambiguous
+  prefix matching in accept_resolver_mode and lookup_syslog_facility, NULL
+  pointer dereference in hpack_add_entry on malloc failure, overlapping memcpy
+  in new_address port stripping, and blocking nanosleep retry loop in connect
+  path.
+* API: Getter/setter functions for connection header/idle timeouts, TLS
+  extension limits, HTTP/2 frame and header count limits, and XMPP max header
+  length allow programmatic tuning of protocol guardrails.
+
 sniproxy 0.9.18 (2026-01-02)
 ===============================
 

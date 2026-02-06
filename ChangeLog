@@ -1,3 +1,31 @@
+2026-02-06  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.19
+	- Performance: Add SO_SPLICE zero-copy forwarding on OpenBSD to eliminate
+	  user-space copies after the initial handshake is parsed.
+	- Performance: Enable PCRE2 JIT compilation for backend regex matching,
+	  set TCP_NODELAY on client and server sockets, convert HPACK dynamic
+	  table to a ring buffer for O(1) inserts, increase table hostname cache
+	  from 256 to 1024 entries, skip redundant ev_io stop/start when event
+	  mask is unchanged, remove redundant buffer zeroing on pool acquire,
+	  merge TLS extension validation into a single pass, and remove the
+	  per-backend single-entry match cache.
+	- Security: Enforce extension count limit across all TLS parsing paths
+	  including extensions_have_required_version, explicitly unsplice before
+	  closing idle spliced connections, and log SO_SPLICE cleanup failures.
+	- Bug fixes: Fix data corruption in buffer_coalesce optimization path,
+	  double close of FDs in ipc_crypto_recv_msg and logger LOGGER_CMD_DROP,
+	  errno clobbered before restart check in resolver_ipc_cb, reload_tables
+	  skipping consecutive table removals, accept_listener_arg returning
+	  success on invalid argument, listeners_reload ignoring init_listener
+	  failure, ambiguous prefix matching in accept_resolver_mode and
+	  lookup_syslog_facility, NULL pointer dereference in hpack_add_entry on
+	  malloc failure, overlapping memcpy in new_address port stripping, and
+	  blocking nanosleep retry loop in connect path.
+	- API: Add getter/setter functions for connection header/idle timeouts,
+	  TLS extension limits, HTTP/2 frame and header count limits, and XMPP
+	  max header length.
+
 2026-01-02  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.18

@@ -1,3 +1,25 @@
+sniproxy (0.9.19) unstable; urgency=medium
+
+  * Performance: SO_SPLICE zero-copy forwarding on OpenBSD, PCRE2 JIT regex
+    compilation, HPACK ring buffer for O(1) dynamic table inserts, TCP_NODELAY
+    on client and server sockets, table hostname cache increased to 1024
+    entries, redundant ev_io and buffer zeroing eliminated, TLS extension
+    parsing merged into a single pass.
+  * Security: Enforce TLS extension count limit across all parsing paths,
+    explicitly unsplice before closing idle spliced connections, and log
+    SO_SPLICE cleanup failures.
+  * Bug fixes: Fix data corruption in buffer_coalesce, double close of FDs in
+    ipc_crypto_recv_msg and logger, errno clobbered in resolver_ipc_cb,
+    reload_tables skipping consecutive removals, accept_listener_arg returning
+    success on invalid argument, listeners_reload ignoring init_listener
+    failure, ambiguous prefix matching in resolver mode and syslog facility
+    lookup, NULL dereference in hpack_add_entry on malloc failure, overlapping
+    memcpy in address port stripping, and blocking nanosleep in connect path.
+  * API: Getter/setter functions for connection timeouts, TLS extension limits,
+    HTTP/2 frame and header count limits, and XMPP max header length.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 06 Feb 2026 00:00:00 +0000
+
 sniproxy (0.9.18) unstable; urgency=medium
 
   * XMPP: Add `protocol = xmpp` listener support that parses the stream `to`

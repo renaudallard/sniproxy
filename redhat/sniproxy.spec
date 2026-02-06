@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.18
+Version: 0.9.19
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,25 @@ fi
 
 
 %changelog
+* Fri Feb 06 2026 Renaud Allard <renaud@allard.it> 0.9.19-1
+- Performance: SO_SPLICE zero-copy forwarding on OpenBSD, PCRE2 JIT regex
+  compilation, HPACK ring buffer for O(1) dynamic table inserts, TCP_NODELAY
+  on client and server sockets, table hostname cache increased to 1024 entries,
+  redundant ev_io and buffer zeroing eliminated, TLS extension parsing merged
+  into a single pass.
+- Security: Enforce TLS extension count limit across all parsing paths,
+  explicitly unsplice before closing idle spliced connections, and log SO_SPLICE
+  cleanup failures.
+- Bug fixes: Fix data corruption in buffer_coalesce, double close of FDs in
+  ipc_crypto_recv_msg and logger, errno clobbered in resolver_ipc_cb,
+  reload_tables skipping consecutive removals, accept_listener_arg returning
+  success on invalid argument, listeners_reload ignoring init_listener failure,
+  ambiguous prefix matching in resolver mode and syslog facility lookup, NULL
+  dereference in hpack_add_entry on malloc failure, overlapping memcpy in
+  address port stripping, and blocking nanosleep in connect path.
+- API: Getter/setter functions for connection timeouts, TLS extension limits,
+  HTTP/2 frame and header count limits, and XMPP max header length.
+
 * Fri Jan 02 2026 Renaud Allard <renaud@allard.it> 0.9.18-1
 - XMPP: Add protocol = xmpp support that parses the stream 'to' attribute to
   route XMPP (including STARTTLS) connections by hostname; includes parser tests
