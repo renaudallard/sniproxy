@@ -1509,6 +1509,13 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
             connection_idle_timeout);
 
+#ifdef SO_SPLICE
+    if (con->spliced) {
+        setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+        setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
+    }
+#endif
+
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
