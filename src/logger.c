@@ -55,6 +55,9 @@
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
 #endif
+#ifdef HAVE_BSD_UNISTD_H
+#include <bsd/unistd.h>
+#endif
 #include "logger.h"
 #include "fd_util.h"
 #include "ipc_crypto.h"

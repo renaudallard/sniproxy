@@ -50,6 +50,9 @@
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
 #endif
+#ifdef HAVE_BSD_UNISTD_H
+#include <bsd/unistd.h>
+#endif
 #ifdef __OpenBSD__
 #include <limits.h>
 #include <libgen.h>

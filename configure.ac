@@ -190,7 +190,7 @@ AC_CHECK_HEADERS([ares_dns.h], [],
 AC_CHECK_LIB([cares], [ares_library_init], [],
   [AC_MSG_ERROR([c-ares is required])])
 
-AC_CHECK_HEADERS([bsd/stdlib.h bsd/string.h])
+AC_CHECK_HEADERS([bsd/stdlib.h bsd/string.h bsd/unistd.h])
 AC_SEARCH_LIBS([arc4random], [bsd], [LIBBSD_LIBS="$ac_cv_search_arc4random"], [LIBBSD_LIBS=""])
 AS_IF([test "x$LIBBSD_LIBS" = "xnone required"], [LIBBSD_LIBS=""])
 AC_CHECK_FUNCS([arc4random], [],
