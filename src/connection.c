@@ -68,7 +68,7 @@
 #define CLIENT_BUFFER_INITIAL_SIZE 16384
 #define CLIENT_BUFFER_MIN_SIZE 8192
 #define CLIENT_BUFFER_MAX_SIZE (1U << 20)
-#define SERVER_BUFFER_INITIAL_SIZE 65536
+#define SERVER_BUFFER_INITIAL_SIZE 32768
 #define SERVER_BUFFER_MIN_SIZE 32768
 #define SERVER_BUFFER_MAX_SIZE (1U << 20)
 #define BUFFER_SHRINK_IDLE_SECONDS 1.0
@@ -175,7 +175,7 @@ static void rate_limit_bucket_release(struct RateLimitBucket *bucket);
 static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
 static struct RateLimitBucket *rate_limit_free_list;
 static size_t rate_limit_free_count;
-#define RATE_LIMIT_MAX_FREE 8192
+#define RATE_LIMIT_MAX_FREE 2048
 static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 static uint32_t rate_limit_hash_seed;
@@ -2617,8 +2617,8 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
      * never be used again — the kernel handles all forwarding.  Shrink them
      * to reclaim memory; only the Buffer struct metadata (timestamps, byte
      * counters) is kept for log_connection(). */
-    buffer_maybe_shrink(con->client.buffer);
-    buffer_maybe_shrink(con->server.buffer);
+    buffer_resize(con->client.buffer, 4096);
+    buffer_resize(con->server.buffer, 4096);
 
     /* Stop normal read/write watchers — kernel handles forwarding */
     ev_io_stop(loop, &con->client.watcher);

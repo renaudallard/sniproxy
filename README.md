@@ -479,14 +479,14 @@ SNIProxy is designed for high performance and low resource usage:
 
 - **Event-driven I/O**: Uses libev for efficient non-blocking I/O multiplexing,
   handling thousands of concurrent connections per process
-- **Minimal per-connection overhead**: Dynamic buffers start small and grow only
-  as needed, then shrink when idle
+- **Minimal per-connection overhead**: Dynamic buffers start small (16KB client,
+  32KB server) and grow only as needed, then shrink when idle
 - **Efficient buffered I/O**: Ring buffers and vectored writes minimize copies
   while remaining portable
 - **SO_SPLICE zero-copy**: On OpenBSD, after the initial handshake is parsed the
   kernel splices data directly between client and server sockets, eliminating
   user-space copies for the bulk of proxied traffic. User-space buffers are
-  shrunk once the splice is active to minimize per-connection memory, and idle
+  shrunk to 4KB once the splice is active to minimize per-connection memory, and idle
   detection is handled by the kernel splice timeout which properly resets on
   data flow
 - **TCP_NODELAY**: Nagle's algorithm is disabled on both client and server

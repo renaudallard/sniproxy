@@ -55,9 +55,9 @@ struct BufferPoolClass {
 };
 
 static struct BufferPoolClass buffer_pool_classes[] = {
-    { 8192, 512, 0, NULL },
-    { 16384, 256, 0, NULL },
-    { 65536, 64, 0, NULL },
+    { 8192, 256, 0, NULL },
+    { 16384, 128, 0, NULL },
+    { 32768, 64, 0, NULL },
 };
 
 static void *buffer_pool_acquire(size_t size, int *pooled);
