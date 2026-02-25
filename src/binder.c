@@ -46,6 +46,9 @@
 #include <sys/prctl.h>
 #endif
 #include <signal.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
 #include "binder.h"
 #include "logger.h"
 #include "fd_util.h"

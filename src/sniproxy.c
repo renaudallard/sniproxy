@@ -47,6 +47,9 @@
 #endif
 #include <errno.h>
 #include <stddef.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
 #ifdef __OpenBSD__
 #include <limits.h>
 #include <libgen.h>

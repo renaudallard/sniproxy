@@ -52,8 +52,8 @@
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
-#ifdef HAVE_SETPROCTITLE
-#include <stdlib.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
 #endif
 #include "logger.h"
 #include "fd_util.h"
