@@ -2642,10 +2642,13 @@ static void
 splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unused))) {
     struct Connection *con = (struct Connection *)w->data;
 
-    /* Unsplice both directions */
-    if (setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0)
+    /* Unsplice both directions.  EPROTO is expected: the kernel already
+     * tore down the splice (which is why this callback fired). */
+    if (setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0
+            && errno != EPROTO)
         warn("failed to unsplice client socket: %s", strerror(errno));
-    if (setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0)
+    if (setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0
+            && errno != EPROTO)
         warn("failed to unsplice server socket: %s", strerror(errno));
 
     /* Stop splice watchers */
