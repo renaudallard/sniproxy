@@ -2613,6 +2613,13 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
 
     con->spliced = 1;
 
+    /* Both buffers are empty (checked before calling try_splice) and will
+     * never be used again — the kernel handles all forwarding.  Shrink them
+     * to reclaim memory; only the Buffer struct metadata (timestamps, byte
+     * counters) is kept for log_connection(). */
+    buffer_maybe_shrink(con->client.buffer);
+    buffer_maybe_shrink(con->server.buffer);
+
     /* Stop normal read/write watchers — kernel handles forwarding */
     ev_io_stop(loop, &con->client.watcher);
     ev_io_stop(loop, &con->server.watcher);
