@@ -1,3 +1,18 @@
+2026-02-25  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.20
+	- Memory: Halve server buffer initial size from 64KB to 32KB, shrink
+	  spliced connection buffers to 4KB instead of min_size, reduce buffer
+	  pool max cached entries by half (worst-case pool 12MB to 6MB), lower
+	  rate limit free list cap from 8192 to 2048 entries (2.3MB to 576KB),
+	  and shrink table cache from 1024 to 256 slots (272KB to 68KB per
+	  table).
+	- SO_SPLICE: Reclaim user-space buffer memory when activating kernel
+	  splice and stop the libev idle timer since the kernel splice timeout
+	  handles idle detection.
+	- Reliability: Suppress expected EPROTO warnings when unsplicing
+	  connections that were already terminated by the peer.
+
 2026-02-06  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.19

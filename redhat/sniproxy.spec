@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.19
+Version: 0.9.20
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,16 @@ fi
 
 
 %changelog
+* Wed Feb 25 2026 Renaud Allard <renaud@allard.it> 0.9.20-1
+- Memory: Halve server buffer initial size (64KB to 32KB), shrink spliced
+  connection buffers to 4KB, reduce buffer pool max cache from 12MB to 6MB,
+  lower rate limit free list cap from 8192 to 2048 entries, and shrink table
+  cache from 1024 to 256 entries.
+- SO_SPLICE: Shrink user-space buffers when activating kernel splice and
+  stop the libev idle timer since the kernel manages its own idle timeout.
+- Reliability: Suppress expected EPROTO warnings when unsplicing connections
+  that were already terminated by the peer.
+
 * Fri Feb 06 2026 Renaud Allard <renaud@allard.it> 0.9.19-1
 - Performance: SO_SPLICE zero-copy forwarding on OpenBSD, PCRE2 JIT regex
   compilation, HPACK ring buffer for O(1) dynamic table inserts, TCP_NODELAY

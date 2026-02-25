@@ -1,3 +1,16 @@
+sniproxy (0.9.20) unstable; urgency=medium
+
+  * Memory: Halve server buffer initial size (64KB to 32KB), shrink spliced
+    connection buffers to 4KB, reduce buffer pool max cache from 12MB to 6MB,
+    lower rate limit free list cap from 8192 to 2048 entries, and shrink table
+    cache from 1024 to 256 entries.
+  * SO_SPLICE: Shrink user-space buffers when activating kernel splice and
+    stop the libev idle timer since the kernel manages its own idle timeout.
+  * Reliability: Suppress expected EPROTO warnings when unsplicing connections
+    that were already terminated by the peer.
+
+ -- Renaud Allard <renaud@allard.it>  Tue, 25 Feb 2026 00:00:00 +0000
+
 sniproxy (0.9.19) unstable; urgency=medium
 
   * Performance: SO_SPLICE zero-copy forwarding on OpenBSD, PCRE2 JIT regex

@@ -1,3 +1,17 @@
+sniproxy 0.9.20 (2026-02-25)
+===============================
+
+* Memory: Server buffers now start at 32KB (was 64KB) and grow on demand;
+  spliced connections shrink both buffers to 4KB since the kernel handles all
+  forwarding; buffer pool max cached entries halved (worst-case 6MB, was 12MB);
+  rate limit free list capped at 2048 entries (576KB, was 2.3MB); table hostname
+  cache reduced to 256 slots (68KB per table, was 272KB).
+* SO_SPLICE: User-space buffers are reclaimed when kernel splice activates, and
+  the libev idle timer is stopped since the kernel splice timeout handles idle
+  detection with proper reset on data flow.
+* Reliability: Suppress expected EPROTO warnings when unsplicing connections
+  that the peer already terminated.
+
 sniproxy 0.9.19 (2026-02-06)
 ===============================
 
