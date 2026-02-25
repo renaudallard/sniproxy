@@ -43,6 +43,7 @@ jobs:
       rocky_releases: ${{ steps.detect.outputs.rocky_releases }}
       opensuse_leap: ${{ steps.detect.outputs.opensuse_leap }}
       suse_bci: ${{ steps.detect.outputs.suse_bci }}
+      alpine_latest: ${{ steps.detect.outputs.alpine_latest }}
     steps:
       - name: Fetch latest Ubuntu/Debian versions
         id: detect
@@ -241,6 +242,23 @@ jobs:
                   pass
               return "15.6"
 
+          def latest_alpine():
+              try:
+                  data = fetch_text("https://hub.docker.com/v2/repositories/library/alpine/tags?page_size=100")
+                  tags = json.loads(data).get("results", [])
+                  versions = []
+                  for t in tags:
+                      name = t.get("name", "")
+                      parts = name.split(".")
+                      if len(parts) == 2 and all(p.isdigit() for p in parts):
+                          versions.append(name)
+                  if versions:
+                      versions.sort(key=lambda v: [int(x) for x in v.split(".")])
+                      return versions[-1]
+              except Exception:
+                  pass
+              return "latest"
+
           ubuntu_stable = latest_ubuntu_non_lts()
           ubuntu_lts = latest_ubuntu_lts()
           debian_stable = debian_codename("stable")
@@ -253,6 +271,7 @@ jobs:
           rocky_release = rocky_latest
           opensuse_leap = latest_opensuse_leap()
           suse_bci = latest_suse_bci()
+          alpine_latest = latest_alpine()
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"ubuntu_stable={ubuntu_stable}\n")
@@ -268,6 +287,7 @@ jobs:
               fh.write(f"rocky_releases={json.dumps(rocky_releases)}\n")
               fh.write(f"opensuse_leap={opensuse_leap}\n")
               fh.write(f"suse_bci={suse_bci}\n")
+              fh.write(f"alpine_latest={alpine_latest}\n")
           PY
 
   build-deb-ubuntu-stable:
@@ -967,6 +987,93 @@ jobs:
           path: artifacts/rpm/suse-${{ needs.detect-versions.outputs.suse_bci }}/
           if-no-files-found: error
 
+  build-apk-alpine:
+    name: Build APK Packages (Alpine ${{ needs.detect-versions.outputs.alpine_latest }})
+    runs-on: ubuntu-latest
+    needs:
+      - detect-versions
+    defaults:
+      run:
+        shell: sh
+    container:
+      image: alpine:${{ needs.detect-versions.outputs.alpine_latest }}
+    steps:
+      - name: Install required tooling
+        run: |
+          set -eu
+          apk add --no-cache \
+            git build-base abuild \
+            autoconf automake libtool pkgconf \
+            libev-dev pcre2-dev c-ares-dev \
+            openssl-dev libbsd-dev \
+            tar sudo
+
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Prepare source tarball
+        run: |
+          set -eu
+          ./autogen.sh
+          ./configure
+          make dist
+
+      - name: Build APK packages
+        run: |
+          set -eu
+          DIST_TARBALL=$(ls -1t sniproxy-*.tar.gz | head -n1)
+          TAR_VERSION=${DIST_TARBALL#sniproxy-}
+          TAR_VERSION=${TAR_VERSION%.tar.gz}
+
+          # Set up abuild
+          adduser -D builder
+          addgroup builder abuild
+          mkdir -p /var/cache/distfiles
+          chmod a+w /var/cache/distfiles
+
+          # Generate signing key
+          sudo -u builder abuild-keygen -a -n
+
+          # Prepare build directory
+          BUILD_DIR="/home/builder/aport"
+          mkdir -p "$BUILD_DIR"
+          cp alpine/APKBUILD "$BUILD_DIR/"
+          cp "$DIST_TARBALL" "$BUILD_DIR/"
+
+          # Patch APKBUILD with correct version and local source
+          sed -i "s/^pkgver=.*/pkgver=${TAR_VERSION}/" "$BUILD_DIR/APKBUILD"
+          sed -i "s|^source=.*|source=\"${DIST_TARBALL}\"|" "$BUILD_DIR/APKBUILD"
+
+          chown -R builder:builder "$BUILD_DIR"
+          cd "$BUILD_DIR"
+
+          # Generate checksums and build
+          sudo -u builder abuild checksum
+          sudo -u builder abuild -r
+
+      - name: Collect APK artifacts
+        run: |
+          set -eu
+          mkdir -p artifacts/apk/alpine-${{ needs.detect-versions.outputs.alpine_latest }}
+          find /home/builder/packages -name '*.apk' -print | while read -r pkg; do
+            base=$(basename "$pkg")
+            namever=${base%%.apk}
+            cp "$pkg" "artifacts/apk/alpine-${{ needs.detect-versions.outputs.alpine_latest }}/${namever}.alpine.${{ needs.detect-versions.outputs.alpine_latest }}.apk"
+          done
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-packages-alpine-${{ needs.detect-versions.outputs.alpine_latest }}
+          path: artifacts/apk/alpine-${{ needs.detect-versions.outputs.alpine_latest }}/
+          if-no-files-found: error
+
   publish:
     name: Upload Release Assets
     runs-on: ubuntu-latest
@@ -981,6 +1088,7 @@ jobs:
       - build-rpm-rocky-previous
       - build-rpm-opensuse
       - build-rpm-suse
+      - build-apk-alpine
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v4
@@ -996,6 +1104,13 @@ jobs:
           path: release-assets/rpm
           merge-multiple: true
 
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: apk-packages-*
+          path: release-assets/apk
+          merge-multiple: true
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
@@ -1003,3 +1118,4 @@ jobs:
           files: |
             release-assets/deb/*.deb
             release-assets/rpm/*.rpm
+            release-assets/apk/*.apk
