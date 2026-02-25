@@ -1037,8 +1037,9 @@ jobs:
           mkdir -p /var/cache/distfiles
           chmod a+w /var/cache/distfiles
 
-          # Generate signing key
+          # Generate signing key and trust it
           sudo -u builder abuild-keygen -a -n
+          cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
 
           # Prepare build directory
           BUILD_DIR="/home/builder/aport"
