@@ -2635,8 +2635,10 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     con->server.watcher.data = con;
     ev_io_start(loop, &con->server.watcher);
 
-    /* Keep the idle timer running as a safety net */
-    reset_idle_timer_with_now(con, loop, loop_now(loop));
+    /* The kernel splice has its own idle timeout (sp.sp_idle) that resets
+     * on data flow.  Stop the libev idle timer: it is not activity-aware
+     * and would kill active connections after a fixed delay. */
+    stop_idle_timer(con, loop);
 
     return 1;
 }
