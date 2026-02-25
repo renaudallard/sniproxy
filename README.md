@@ -33,7 +33,7 @@ Features
 + **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
 + **Per-connection buffer caps**: configurable `connection_buffer_limit` (or per-side overrides) prevent slow clients from pinning unbounded RAM
 + **Zero-copy forwarding** via SO_SPLICE on OpenBSD for kernel-level data movement
-  with explicit unsplice on idle timeout and logged cleanup failures
+  with automatic buffer reclamation and kernel-managed idle timeouts
 + **Bounded shrink queues**: 4096-entry shrink candidate lists with automatic
   trimming prevent idle buffer bookkeeping from exhausting memory under churn.
 
@@ -485,7 +485,10 @@ SNIProxy is designed for high performance and low resource usage:
   while remaining portable
 - **SO_SPLICE zero-copy**: On OpenBSD, after the initial handshake is parsed the
   kernel splices data directly between client and server sockets, eliminating
-  user-space copies for the bulk of proxied traffic
+  user-space copies for the bulk of proxied traffic. User-space buffers are
+  shrunk once the splice is active to minimize per-connection memory, and idle
+  detection is handled by the kernel splice timeout which properly resets on
+  data flow
 - **TCP_NODELAY**: Nagle's algorithm is disabled on both client and server
   sockets to avoid coalescing delays on forwarded data
 - **JIT-compiled regex**: PCRE2 JIT compilation is used when available, giving
