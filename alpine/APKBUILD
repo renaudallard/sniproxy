@@ -7,6 +7,7 @@ pkgdesc="Transparent TLS and HTTP layer 4 proxy with SNI support"
 url="https://github.com/renaudallard/sniproxy"
 arch="all"
 license="BSD-2-Clause"
+subpackages="$pkgname-doc"
 depends=""
 makedepends="
 	autoconf
