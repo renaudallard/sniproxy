@@ -135,7 +135,7 @@ Usage
 Installation
 ------------
 
-For Debian or Fedora based Linux distributions see building packages below.
+For Debian, Fedora, or Alpine based Linux distributions see building packages below.
 
 **Prerequisites**
 
@@ -163,6 +163,25 @@ This is the preferred installation method on recent Debian based distributions:
 
         sudo dpkg -i ../sniproxy_<version>_<arch>.deb
 
+**Building Alpine package**
+
+1. Install required packages
+
+        apk add build-base abuild autoconf automake libtool pkgconf libev-dev pcre2-dev c-ares-dev openssl-dev libbsd-dev
+
+2. Build a distribution tarball
+
+        ./autogen.sh && ./configure && make dist
+
+3. Build an APK package using the included APKBUILD
+
+        cp alpine/APKBUILD /tmp/aport/ && cp sniproxy-*.tar.gz /tmp/aport/
+        cd /tmp/aport && abuild checksum && abuild -r
+
+4. Install the resulting package
+
+        apk add --allow-untrusted ~/packages/<arch>/sniproxy-<version>.apk
+
 **Building Fedora/RedHat package**
 
 This is the preferred installation method for modern Fedora based distributions.
@@ -182,11 +201,6 @@ This is the preferred installation method for modern Fedora based distributions.
 4. Install resulting RPM
 
         sudo yum install ../sniproxy-<version>.<arch>.rpm
-
-I've used Scientific Linux 6 a fair amount, but I prefer Debian based
-distributions. RPM builds are tested in Travis-CI on Ubuntu, but not natively.
-This build process may not follow the current Fedora packaging standards, and
-may not even work.
 
 ***Building on OS X with Homebrew***
 
