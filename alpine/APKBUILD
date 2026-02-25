@@ -1,0 +1,44 @@
+# Maintainer: Renaud Allard <renaud@allard.it>
+pkgname=sniproxy
+# pkgver is set by the CI build
+pkgver=0.0.0
+pkgrel=0
+pkgdesc="Transparent TLS and HTTP layer 4 proxy with SNI support"
+url="https://github.com/renaudallard/sniproxy"
+arch="all"
+license="BSD-2-Clause"
+subpackages="$pkgname-doc"
+depends=""
+makedepends="
+	autoconf
+	automake
+	libtool
+	pkgconf
+	libev-dev
+	pcre2-dev
+	c-ares-dev
+	openssl-dev
+	libbsd-dev
+	"
+source="$pkgname-$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+
+build() {
+	./configure \
+		--build=$CBUILD \
+		--host=$CHOST \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--mandir=/usr/share/man
+	make
+}
+
+check() {
+	# Unit tests only. Integration tests require bash and runtime
+	# dependencies not available in the build environment.
+	make -C tests check TESTS="address_test buffer_test cfg_tokenizer_test table_test http_test tls_test xmpp_test"
+}
+
+package() {
+	make DESTDIR="$pkgdir" install
+}
