@@ -127,54 +127,28 @@ jobs:
                   pass
               return "39"
 
-          def rocky_mirrors():
-              try:
-                  listing = fetch_text("https://mirrors.rockylinux.org/mirrorlist?path=/pub/rocky")
-                  return [
-                      line.strip().rstrip("/") + "/"
-                      for line in listing.splitlines()
-                      if line.strip() and not line.startswith("#")
-                  ]
-              except Exception:
-                  return []
-
           def rocky_version_list():
-              # metadata.json disappeared from download.rockylinux.org; walk mirrors instead.
-              def extract_versions(html):
-                  found = []
+              # Scrape dl.rockylinux.org directly. The mirror list API and
+              # metadata.json are both gone, but the download server works.
+              try:
+                  html = fetch_text("https://dl.rockylinux.org/pub/rocky/")
+                  versions = []
                   for line in html.splitlines():
                       match = re.search(r'href="([0-9]+(?:\.[0-9]+)?)/"', line)
                       if match:
-                          found.append(match.group(1))
-                  return found
-
-              all_versions = []
-              for mirror in rocky_mirrors():
-                  try:
-                      versions = extract_versions(fetch_text(mirror))
-                      if versions:
-                          all_versions.extend(versions)
-                  except Exception:
-                      continue
-
-              # Fall back to the legacy path if mirrors fail completely.
-              try:
-                  data = fetch_text("https://download.rockylinux.org/pub/rocky/metadata.json")
-                  meta = json.loads(data)
-                  versions = []
-                  for rel in meta.get("releases", []):
-                      if rel.get("released") is True and rel.get("version"):
-                          versions.append(rel.get("version"))
+                          versions.append(match.group(1))
                   if versions:
-                      all_versions.extend(versions)
+                      return sorted(set(versions), key=lambda v: [int(x) for x in v.split(".")])
               except Exception:
                   pass
-              return sorted(set(all_versions), key=lambda v: [int(x) for x in v.split(".")])
+              return ["9", "10"]
 
           def rocky_container_tags(majors, count=2):
+              # Rocky images moved to quay.io. Docker Hub is stale at 9.3.
               try:
-                  data = fetch_text("https://hub.docker.com/v2/repositories/library/rockylinux/tags?page_size=100")
-                  tags = {t.get("name") for t in json.loads(data).get("results", []) if t.get("name")}
+                  data = fetch_text("https://quay.io/api/v1/repository/rockylinux/rockylinux/tag/?limit=100&page=1")
+                  tag_list = json.loads(data).get("tags", [])
+                  tags = {t.get("name") for t in tag_list if t.get("name")}
               except Exception:
                   tags = set()
 
@@ -589,7 +563,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: rockylinux:${{ needs.detect-versions.outputs.rocky_container_latest }}
+      image: quay.io/rockylinux/rockylinux:${{ needs.detect-versions.outputs.rocky_container_latest }}
     steps:
       - name: Install required tooling
         run: |
@@ -697,7 +671,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: rockylinux:${{ needs.detect-versions.outputs.rocky_container_previous }}
+      image: quay.io/rockylinux/rockylinux:${{ needs.detect-versions.outputs.rocky_container_previous }}
     steps:
       - name: Install required tooling
         run: |
