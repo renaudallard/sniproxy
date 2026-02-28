@@ -569,7 +569,8 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
         pos += length;
     }
 
-    result = -2;
+    if (frame_count > 0)
+        result = -2;
 
  done:
     if (result >= 0 && hosts.primary != NULL) {
