@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include "cfg_parser.h"
 
 #define DEFAULT_IO_COLLECT_INTERVAL 0.0005
@@ -1158,6 +1159,10 @@ accept_per_ip_connection_rate(struct Config *config, const char *value) {
         err("per_ip_connection_rate must be non-negative: %s", value);
         return 0;
     }
+    if (!isfinite(rate)) {
+        err("per_ip_connection_rate must be a finite number: %s", value);
+        return 0;
+    }
 
     config->per_ip_connection_rate = rate;
 
@@ -1200,6 +1205,10 @@ accept_io_collect_interval(struct Config *config, const char *value) {
         err("io_collect_interval must be non-negative: %s", value);
         return 0;
     }
+    if (!isfinite(interval)) {
+        err("io_collect_interval must be a finite number: %s", value);
+        return 0;
+    }
     if (interval > MAX_IO_COLLECT_INTERVAL) {
         warn("io_collect_interval %.6f exceeds safety limit %.3f; clamping",
                 interval, MAX_IO_COLLECT_INTERVAL);
@@ -1222,6 +1231,10 @@ accept_timeout_collect_interval(struct Config *config, const char *value) {
     }
     if (interval < 0.0) {
         err("timeout_collect_interval must be non-negative: %s", value);
+        return 0;
+    }
+    if (!isfinite(interval)) {
+        err("timeout_collect_interval must be a finite number: %s", value);
         return 0;
     }
     if (interval > MAX_TIMEOUT_COLLECT_INTERVAL) {
