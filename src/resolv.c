@@ -2011,9 +2011,10 @@ resolver_child_schedule_timeout(struct ev_loop *loop) {
     if (after < 0.0)
         after = 0.0;
 
+    if (ev_is_active(&child_dns_timeout_watcher))
+        ev_timer_stop(loop, &child_dns_timeout_watcher);
     ev_timer_set(&child_dns_timeout_watcher, after, 0.0);
-    if (!ev_is_active(&child_dns_timeout_watcher))
-        ev_timer_start(loop, &child_dns_timeout_watcher);
+    ev_timer_start(loop, &child_dns_timeout_watcher);
 }
 
 
