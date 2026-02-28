@@ -824,10 +824,12 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         goto error;
     }
 
-#ifndef HAVE_ACCEPT4
+    /* Always set nonblocking. When the binder provides a replacement
+     * socket, it does not have SOCK_NONBLOCK set even if the original
+     * socket did. A blocking listener socket would freeze the event
+     * loop when accept() has no pending connections. */
     int flags = fcntl(sockfd, F_GETFL, 0);
     fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
-#endif
 
     ev_io_init(&listener->watcher, accept_cb, sockfd, EV_READ);
     listener->watcher.data = listener;
