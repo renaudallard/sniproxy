@@ -506,6 +506,9 @@ main(int argc, char **argv) {
     free_connections(loop);
     resolv_shutdown(loop);
 
+    if (config->pidfile != NULL)
+        (void)remove(config->pidfile);
+
     free_config(config, loop);
 
     stop_binder();
