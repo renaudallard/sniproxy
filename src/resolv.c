@@ -1384,7 +1384,8 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     /* Install seccomp filter after all initialization is complete */
     if (seccomp_available()) {
         if (seccomp_install_filter(SECCOMP_PROCESS_RESOLVER) < 0) {
-            fatal("resolver: failed to install seccomp filter: %s", strerror(errno));
+            err("resolver: failed to install seccomp filter: %s", strerror(errno));
+            resolver_child_exit(EXIT_FAILURE);
         }
     }
 
