@@ -452,25 +452,6 @@ extract_counter_from_nonce(const uint8_t nonce[IPC_CRYPTO_NONCE_LEN]) {
 }
 
 
-static ssize_t
-recv_all(int fd, void *buf, size_t len) {
-    size_t received = 0;
-    uint8_t *ptr = buf;
-
-    while (received < len) {
-        ssize_t ret = recv(fd, ptr + received, len - received, 0);
-        if (ret == 0)
-            return 0;
-        if (ret < 0) {
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        received += (size_t)ret;
-    }
-
-    return (ssize_t)len;
-}
 static int
 seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         size_t plaintext_len, uint8_t *frame, size_t frame_len) {
@@ -786,21 +767,59 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
     if (state == NULL || plaintext == NULL || plaintext_len == NULL)
         return -1;
 
+    /* Read the 4-byte frame length prefix using recvmsg() so that any
+     * SCM_RIGHTS ancillary data sent alongside it is not discarded.
+     * The sender packs prefix + frame + fd into a single sendmsg(). */
     uint32_t frame_len_net;
-    ssize_t prefix = recv_all(sockfd, &frame_len_net, sizeof(frame_len_net));
-    if (prefix <= 0)
-        return (int)prefix;
+    int prefix_fd = -1;
+    {
+        struct iovec prefix_iov;
+        prefix_iov.iov_base = &frame_len_net;
+        prefix_iov.iov_len = sizeof(frame_len_net);
+
+        char prefix_control[CMSG_SPACE(sizeof(int))];
+        struct msghdr prefix_msg;
+        memset(&prefix_msg, 0, sizeof(prefix_msg));
+        prefix_msg.msg_iov = &prefix_iov;
+        prefix_msg.msg_iovlen = 1;
+        prefix_msg.msg_control = prefix_control;
+        prefix_msg.msg_controllen = sizeof(prefix_control);
+
+        ssize_t prefix_ret;
+        do {
+            prefix_ret = recvmsg(sockfd, &prefix_msg, MSG_WAITALL);
+        } while (prefix_ret < 0 && errno == EINTR);
+
+        if (prefix_ret <= 0)
+            return (int)prefix_ret;
+
+        if ((size_t)prefix_ret != sizeof(frame_len_net)) {
+            errno = EIO;
+            return -1;
+        }
+
+        struct cmsghdr *prefix_cmsg = CMSG_FIRSTHDR(&prefix_msg);
+        if (prefix_cmsg != NULL && prefix_cmsg->cmsg_level == SOL_SOCKET &&
+                prefix_cmsg->cmsg_type == SCM_RIGHTS) {
+            memcpy(&prefix_fd, CMSG_DATA(prefix_cmsg), sizeof(int));
+        }
+    }
 
     uint32_t frame_len = ntohl(frame_len_net);
     size_t max_frame = IPC_CRYPTO_HEADER_LEN + max_payload_len + IPC_CRYPTO_TAG_LEN;
     if (frame_len == 0 || frame_len > max_frame) {
+        if (prefix_fd >= 0)
+            close(prefix_fd);
         errno = EMSGSIZE;
         return -1;
     }
 
     uint8_t *cipher = malloc(frame_len);
-    if (cipher == NULL)
+    if (cipher == NULL) {
+        if (prefix_fd >= 0)
+            close(prefix_fd);
         return -1;
+    }
 
     struct iovec iov;
     iov.iov_base = cipher;
@@ -821,6 +840,8 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
 
     if (ret <= 0) {
         free(cipher);
+        if (prefix_fd >= 0)
+            close(prefix_fd);
         return (int)ret;
     }
 
@@ -828,24 +849,39 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
      * (e.g., partially received SCM_RIGHTS file descriptors). */
     if (msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) {
         free(cipher);
+        if (prefix_fd >= 0)
+            close(prefix_fd);
         errno = EMSGSIZE;
         return -1;
     }
 
     if ((size_t)ret != frame_len) {
         free(cipher);
+        if (prefix_fd >= 0)
+            close(prefix_fd);
         errno = EIO;
         return -1;
     }
 
+    /* Merge fd from prefix read and frame read. The fd typically arrives
+     * with the prefix since the sender uses a single sendmsg(). */
     int fd_received = -1;
     if (received_fd != NULL)
         *received_fd = -1;
 
+    int frame_fd = -1;
     struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
     if (cmsg != NULL && cmsg->cmsg_level == SOL_SOCKET &&
             cmsg->cmsg_type == SCM_RIGHTS) {
-        memcpy(&fd_received, CMSG_DATA(cmsg), sizeof(int));
+        memcpy(&frame_fd, CMSG_DATA(cmsg), sizeof(int));
+    }
+
+    if (prefix_fd >= 0) {
+        fd_received = prefix_fd;
+        if (frame_fd >= 0)
+            close(frame_fd);
+    } else {
+        fd_received = frame_fd;
     }
 
     if (ipc_crypto_open(state, cipher, frame_len, max_payload_len,
