@@ -745,13 +745,16 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
         memcpy(CMSG_DATA(cmsg), &fd_to_send, sizeof(int));
     }
 
-    ssize_t sent = sendmsg(sockfd, &msg,
+    ssize_t sent;
+    do {
+        sent = sendmsg(sockfd, &msg,
 #ifdef MSG_NOSIGNAL
-            MSG_NOSIGNAL
+                MSG_NOSIGNAL
 #else
-            0
+                0
 #endif
-            );
+                );
+    } while (sent < 0 && errno == EINTR);
     free(frame);
 
     if (sent < 0)
