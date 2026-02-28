@@ -1229,7 +1229,7 @@ resolver_restart(void) {
             resolver_saved_search, resolver_saved_mode,
             resolver_saved_dnssec_mode);
 
-    if (rc == 0)
+    if (rc >= 0)
         resolver_resubmit_pending_queries();
     else
         resolver_fail_pending_restart_list();
