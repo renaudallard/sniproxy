@@ -596,7 +596,7 @@ binder_main(int sockfd) {
 
 static int
 binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len) {
-    if (addr == NULL)
+    if (addr == NULL || addr_len < sizeof(sa_family_t))
         return 0;
 
     switch (addr->sa_family) {

@@ -87,9 +87,11 @@ test_binder(int port) {
         exit(1);
     }
 
-    /* Test error handling: */
-    fd = bind_socket((struct sockaddr *)&addr, sizeof(addr));
-    assert(fd == -1);
+    /* Test error handling: bind same port while still held */
+    int fd2 = bind_socket((struct sockaddr *)&addr, sizeof(addr));
+    assert(fd2 == -1);
+
+    close(fd);
 
     return 0;
 }
