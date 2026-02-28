@@ -482,9 +482,10 @@ main(int argc, char **argv) {
     ev_signal_start(loop, &sigint_watcher);
     ev_signal_start(loop, &sigterm_watcher);
 
-    resolv_init(loop, config->resolver.nameservers,
+    if (resolv_init(loop, config->resolver.nameservers,
             config->resolver.search, config->resolver.mode,
-            config->resolver.dnssec_validation_mode);
+            config->resolver.dnssec_validation_mode) < 0)
+        fatal("Failed to initialize resolver");
 
     init_connections();
 

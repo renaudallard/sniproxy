@@ -502,17 +502,26 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 #ifdef SOCK_NONBLOCK
             socket_type |= SOCK_NONBLOCK;
 #endif
-            if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0)
-                fatal("resolver socketpair failed: %s", strerror(errno));
+            if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0) {
+                err("resolver socketpair failed: %s", strerror(errno));
+                return -1;
+            }
         } else
 #endif
-            fatal("resolver socketpair failed: %s", strerror(errno));
+        {
+            err("resolver socketpair failed: %s", strerror(errno));
+            return -1;
+        }
     }
 
 #ifndef SOCK_CLOEXEC
-    if (set_cloexec(sockets[0]) < 0 || set_cloexec(sockets[1]) < 0)
-        fatal("Failed to set close-on-exec on resolver socket: %s",
+    if (set_cloexec(sockets[0]) < 0 || set_cloexec(sockets[1]) < 0) {
+        err("Failed to set close-on-exec on resolver socket: %s",
                 strerror(errno));
+        close(sockets[0]);
+        close(sockets[1]);
+        return -1;
+    }
 #endif
 
 #ifndef SOCK_NONBLOCK
@@ -526,7 +535,10 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 
     pid_t pid = fork();
     if (pid < 0) {
-        fatal("resolver fork failed: %s", strerror(errno));
+        err("resolver fork failed: %s", strerror(errno));
+        close(sockets[0]);
+        close(sockets[1]);
+        return -1;
     } else if (pid == 0) {
         close(sockets[0]);
         int child_fd = fd_preserve_only(sockets[1]);
