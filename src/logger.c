@@ -637,10 +637,16 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
 
 static void
 init_default_logger(void) {
+    static int initializing = 0;
     struct Logger *logger = NULL;
 
     if (default_logger != NULL)
         return;
+
+    if (initializing)
+        return;
+
+    initializing = 1;
 
     if (!ensure_logger_process())
         logger_process_enabled = 0;
@@ -650,6 +656,7 @@ init_default_logger(void) {
         logger->sink = obtain_stderr_sink();
         if (logger->sink == NULL) {
             free(logger);
+            initializing = 0;
             return;
         }
         logger->priority = LOG_DEBUG;
@@ -659,8 +666,10 @@ init_default_logger(void) {
         log_sink_ref_get(logger->sink);
     }
 
-    if (logger == NULL)
+    if (logger == NULL) {
+        initializing = 0;
         return;
+    }
 
     if (!logger_process_initialized) {
         atexit(free_at_exit);
@@ -668,6 +677,7 @@ init_default_logger(void) {
     }
 
     default_logger = logger_ref_get(logger);
+    initializing = 0;
 }
 
 static void
