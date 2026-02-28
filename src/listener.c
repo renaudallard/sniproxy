@@ -774,6 +774,41 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
             rc = -1;
             goto error;
         }
+
+        /* Re-apply socket options lost when the binder provided a new socket */
+        result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+        if (result < 0) {
+            err("setsockopt SO_KEEPALIVE failed on binder socket: %s", strerror(errno));
+            rc = result;
+            goto error;
+        }
+
+        if (listener->reuseport == 1) {
+#ifdef SO_REUSEPORT
+            result = setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
+#else
+            result = -ENOSYS;
+#endif
+            if (result < 0) {
+                err("setsockopt SO_REUSEPORT failed on binder socket: %s", strerror(errno));
+                rc = result;
+                goto error;
+            }
+        }
+
+        if (listener->ipv6_v6only == 1 &&
+                address_sa(listener->address)->sa_family == AF_INET6) {
+#ifdef IPV6_V6ONLY
+            result = setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
+#else
+            result = -ENOSYS;
+#endif
+            if (result < 0) {
+                err("setsockopt IPV6_V6ONLY failed on binder socket: %s", strerror(errno));
+                rc = result;
+                goto error;
+            }
+        }
     } else if (result < 0) {
         err("bind %s failed: %s",
             display_address(listener->address, address, sizeof(address)),
