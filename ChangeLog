@@ -1,3 +1,31 @@
+2026-02-28  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.21
+	- IPC: Fix fd loss in encrypted IPC receive path where the 4-byte
+	  frame length prefix was read with plain recv(), discarding any
+	  SCM_RIGHTS ancillary data sent alongside it.
+	- IPC: Retry sendmsg() on EINTR to match the receive side behavior.
+	- Resolver: Fix return value check after resolver restart so pending
+	  queries are resubmitted instead of failed.
+	- Resolver: Fix use-after-free when realloc relocates the nameserver
+	  list and the subsequent strdup fails.
+	- Resolver: Replace fatal() with graceful error handling in
+	  resolv_init() so a restart failure does not kill the process.
+	- Listener: Re-apply SO_KEEPALIVE, SO_REUSEPORT, and IPV6_V6ONLY on
+	  sockets obtained from the privileged binder.
+	- Config: Reject NaN and Infinity in floating-point config values
+	  (per_ip_connection_rate, io_collect_interval,
+	  timeout_collect_interval).
+	- Config: Reject configuration files with unclosed braces instead of
+	  silently accepting truncated input.
+	- Logger: Drain payload from socket on malloc failure to prevent IPC
+	  protocol desync and logger child crash.
+	- Logger: Prevent memory leak from recursive init_default_logger()
+	  calls triggered by err() during sink registration.
+	- HTTP/2: Return correct incomplete status when no frames have been
+	  parsed yet instead of reporting no hostname found.
+	- Shutdown: Remove pidfile on clean shutdown.
+
 2026-02-25  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.20

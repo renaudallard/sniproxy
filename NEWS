@@ -1,3 +1,23 @@
+sniproxy 0.9.21 (2026-02-28)
+===============================
+
+* IPC: Fix fd loss in encrypted IPC receive where the frame length prefix read
+  discarded SCM_RIGHTS ancillary data, breaking binder and logger fd passing.
+  Also retry sendmsg() on EINTR to match the receive side.
+* Resolver: Fix return value check after restart so pending queries are
+  resubmitted; fix use-after-free when realloc relocates the nameserver list
+  and strdup fails; replace fatal() with graceful error return so restart
+  failures do not kill the process.
+* Listener: Re-apply SO_KEEPALIVE, SO_REUSEPORT, and IPV6_V6ONLY on sockets
+  obtained from the privileged binder fallback path.
+* Config: Reject NaN and Infinity in floating-point config values; reject
+  configuration files with unclosed braces.
+* Logger: Drain payload on malloc failure to prevent IPC protocol desync; add
+  recursion guard in init_default_logger() to prevent a memory leak.
+* HTTP/2: Return correct incomplete status (-1) when no frames have been parsed
+  yet, instead of incorrectly reporting no hostname found (-2).
+* Shutdown: Remove pidfile on clean exit.
+
 sniproxy 0.9.20 (2026-02-25)
 ===============================
 

@@ -1,3 +1,19 @@
+sniproxy (0.9.21) unstable; urgency=medium
+
+  * IPC: Fix fd loss in encrypted IPC receive where the frame length prefix
+    read discarded SCM_RIGHTS ancillary data. Retry sendmsg() on EINTR.
+  * Resolver: Fix return value check after restart, use-after-free on
+    realloc+strdup failure, and replace fatal() with graceful error return.
+  * Listener: Re-apply socket options on binder fallback sockets.
+  * Config: Reject NaN/Infinity in floating-point values and reject files
+    with unclosed braces.
+  * Logger: Drain payload on malloc failure to prevent protocol desync and
+    add recursion guard in init_default_logger().
+  * HTTP/2: Fix incomplete frame status when no frames parsed yet.
+  * Shutdown: Remove pidfile on clean exit.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 28 Feb 2026 00:00:00 +0000
+
 sniproxy (0.9.20) unstable; urgency=medium
 
   * Memory: Halve server buffer initial size (64KB to 32KB), shrink spliced
