@@ -2097,12 +2097,12 @@ resolver_child_append_processed_nameserver(char ***list_ptr, size_t *count_ptr, 
         return -1;
 
     list = tmp;
+    *list_ptr = list;
     list[count] = strdup(entry);
     if (list[count] == NULL)
         return -1;
     list[count + 1] = NULL;
 
-    *list_ptr = list;
     *count_ptr = count + 1;
     return 0;
 }
