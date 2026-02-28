@@ -1785,6 +1785,12 @@ logger_child_main(int sockfd) {
             if (payload == NULL) {
                 if (received_fd >= 0)
                     close(received_fd);
+                /* Drain the payload to keep the IPC protocol in sync */
+                uint8_t *discard = NULL;
+                size_t discard_len = 0;
+                (void)ipc_crypto_recv_msg(&logger_crypto_child, sockfd,
+                        LOGGER_IPC_MAX_PAYLOAD, &discard, &discard_len, NULL);
+                free(discard);
                 continue;
             }
             if (read_logger_payload(sockfd, payload, header.payload_len) < 0) {
