@@ -165,6 +165,10 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                 return 1;
             case TOKEN_END:
                 cleanup_keyword_context(keyword, context, sub_context);
+                if (depth > 0) {
+                    err("unexpected end of configuration (missing closing brace)");
+                    return -1;
+                }
                 return 1;
         }
     }
