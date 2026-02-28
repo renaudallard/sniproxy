@@ -719,9 +719,14 @@ resolv_query(const char *hostname, int mode,
     pthread_mutex_unlock(&resolver_queries_lock);
 
     if (send_result < 0) {
+        int needs_restart = (send_result == -2);
         pthread_mutex_lock(&resolver_queries_lock);
         resolver_remove_pending(new_pending);
         pthread_mutex_unlock(&resolver_queries_lock);
+        if (needs_restart) {
+            if (resolver_restart() < 0)
+                err("resolver restart failed");
+        }
         if (client_cb != NULL)
             client_cb(NULL, client_cb_data);
         if (client_free_cb != NULL)
@@ -839,15 +844,15 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
     }
 
     err("resolver send failed: %s", strerror(send_errno));
-    pthread_mutex_lock(&resolver_restart_lock);
-    int restarting = resolver_restart_in_progress;
-    pthread_mutex_unlock(&resolver_restart_lock);
-    if (!restarting &&
-            (send_errno == EDESTADDRREQ || send_errno == ENOTCONN ||
-             send_errno == ECONNRESET || send_errno == EPIPE)) {
-        if (resolver_restart() < 0)
-            err("resolver restart failed");
-    }
+
+    /* Return -2 for connection-dead errors to signal the caller that a
+     * restart is needed. Do NOT call resolver_restart() here because
+     * callers may hold resolver_queries_lock, and resolver_restart() ->
+     * resolv_shutdown() -> resolver_detach_pending_queries() also acquires
+     * that lock, causing a deadlock. */
+    if (send_errno == EDESTADDRREQ || send_errno == ENOTCONN ||
+            send_errno == ECONNRESET || send_errno == EPIPE)
+        return -2;
     return -1;
 }
 
