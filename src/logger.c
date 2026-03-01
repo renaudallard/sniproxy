@@ -1384,6 +1384,7 @@ logger_send_privileges(uid_t uid, gid_t gid) {
         }
 
         disable_logger_process();
+        logger_process_failed = 0;
         if (!ensure_logger_process()) {
             errno = saved_errno;
             return -1;
