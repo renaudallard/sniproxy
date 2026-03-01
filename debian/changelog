@@ -1,3 +1,19 @@
+sniproxy (0.9.22) unstable; urgency=medium
+
+  * Resolver: Fix deadlock on send failure, fix timer rescheduling, and use
+    _exit() for seccomp failure in child.
+  * Binder: Reject invalid sockaddr with short length.
+  * Listener: Always set socket to nonblocking mode.
+  * Logger: Fix fd leak in NEW_SINK handler, use _exit() for seccomp failure
+    in child, and fix dead retry loop in logger_send_privileges.
+  * Config: Fix connection_buffer_limit, client_buffer_limit,
+    server_buffer_limit, and http_max_headers directives being non-functional.
+  * HTTP/2: Fix broken HPACK Huffman decoder (wrong bit extraction and
+    internal node/leaf confusion).
+  * Testing: Fix dead round-trip in ipc_crypto fuzz harness.
+
+ -- Renaud Allard <renaud@allard.it>  Sat, 01 Mar 2026 00:00:00 +0000
+
 sniproxy (0.9.21) unstable; urgency=medium
 
   * IPC: Fix fd loss in encrypted IPC receive where the frame length prefix

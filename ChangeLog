@@ -1,3 +1,33 @@
+2026-03-01  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.22
+	- Resolver: Fix deadlock when resolver send fails during query emit
+	  by deferring restart until after the mutex is released.
+	- Resolver: Fix DNS timeout timer not being rescheduled when already
+	  active by stopping the timer before reconfiguring it.
+	- Resolver: Use _exit() instead of exit() for seccomp failure in
+	  resolver child to avoid running parent atexit handlers.
+	- Binder: Reject sockaddr with length shorter than sa_family_t and
+	  fix fd leak in binder test.
+	- Listener: Always set listener socket to nonblocking mode, not just
+	  when HAVE_ACCEPT4 is undefined.
+	- Logger: Fix fd leak on allocation failure in NEW_SINK handler.
+	- Logger: Use _exit() instead of exit() for seccomp failure in
+	  logger child to avoid running parent atexit handlers.
+	- Logger: Fix dead retry loop in logger_send_privileges where
+	  logger_process_failed was not reset before restart attempt.
+	- Config: Fix connection_buffer_limit, client_buffer_limit,
+	  server_buffer_limit, and http_max_headers config directives
+	  returning wrong success value, making them silently reject any
+	  config file that used them.
+	- HTTP/2: Fix HPACK Huffman tree builder reading bits from the wrong
+	  end of left-justified code values, causing all codes to collide.
+	- HTTP/2: Fix Huffman tree internal nodes being treated as NUL byte
+	  leaves because calloc zero-initialization was indistinguishable
+	  from the NUL character value.
+	- IPC: Fix dead round-trip test in ipc_crypto fuzz harness by using
+	  separate parent/child states.
+
 2026-02-28  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.21

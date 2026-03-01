@@ -1,3 +1,24 @@
+sniproxy 0.9.22 (2026-03-01)
+===============================
+
+* Resolver: Fix deadlock when resolver send fails during query emit, fix DNS
+  timeout timer not rescheduled when already active, and use _exit() instead
+  of exit() for seccomp failure in resolver child.
+* Binder: Reject invalid sockaddr with length shorter than sa_family_t.
+* Listener: Always set listener socket to nonblocking mode regardless of
+  HAVE_ACCEPT4.
+* Logger: Fix fd leak on allocation failure in NEW_SINK handler, use _exit()
+  for seccomp failure in logger child, and fix dead retry loop where
+  logger_process_failed prevented restart.
+* Config: Fix connection_buffer_limit, client_buffer_limit,
+  server_buffer_limit, and http_max_headers directives silently rejecting any
+  config file that used them due to wrong success return value.
+* HTTP/2: Fix completely broken HPACK Huffman decoder. The tree builder read
+  bits from the wrong end of left-justified codes causing all symbols to
+  collide, and internal nodes were indistinguishable from NUL byte leaves.
+  Huffman-encoded headers from all major browsers now decode correctly.
+* Testing: Fix dead round-trip test in ipc_crypto fuzz harness.
+
 sniproxy 0.9.21 (2026-02-28)
 ===============================
 
