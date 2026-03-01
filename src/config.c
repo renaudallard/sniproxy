@@ -707,7 +707,7 @@ accept_connection_buffer_limit(struct Config *config, const char *value) {
 
     config->client_buffer_limit = bytes;
     config->server_buffer_limit = bytes;
-    return 0;
+    return 1;
 }
 
 static int
@@ -720,7 +720,7 @@ accept_client_buffer_limit(struct Config *config, const char *value) {
     }
 
     config->client_buffer_limit = bytes;
-    return 0;
+    return 1;
 }
 
 static int
@@ -733,7 +733,7 @@ accept_server_buffer_limit(struct Config *config, const char *value) {
     }
 
     config->server_buffer_limit = bytes;
-    return 0;
+    return 1;
 }
 
 static int
@@ -758,7 +758,7 @@ accept_http_max_headers(struct Config *config, const char *value) {
     }
 
     config->http_max_headers = (size_t)parsed;
-    return 0;
+    return 1;
 }
 
 static void *
