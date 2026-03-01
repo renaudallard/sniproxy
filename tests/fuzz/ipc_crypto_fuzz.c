@@ -90,23 +90,29 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     free(plaintext);
     plaintext = NULL;
 
-    /* Test 2: Encrypt the fuzzer input and then decrypt it (round-trip) */
-    uint8_t *frame = NULL;
-    size_t frame_len = 0;
+    /* Test 2: Encrypt the fuzzer input and then decrypt it (round-trip).
+     * Use a child state for decryption since parent and child have
+     * matching send/recv keys (parent sends with P2C, child receives
+     * with P2C). */
+    struct ipc_crypto_state child_state;
+    if (ipc_crypto_channel_init(&child_state, 0x54455354u /* 'TEST' */,
+                                IPC_CRYPTO_ROLE_CHILD) == 0) {
+        uint8_t *frame = NULL;
+        size_t frame_len = 0;
 
-    if (ipc_crypto_seal(&state, data, size, &frame, &frame_len) == 0) {
-        /* Successfully encrypted, now try to decrypt */
-        if (ipc_crypto_open(&state, frame, frame_len, size, &plaintext,
-                           &plaintext_len) == 0) {
-            /* Verify round-trip integrity */
-            if (plaintext_len == size &&
-                memcmp(plaintext, data, size) != 0) {
-                /* This should never happen - encryption/decryption mismatch! */
-                abort();
+        if (ipc_crypto_seal(&state, data, size, &frame, &frame_len) == 0) {
+            if (ipc_crypto_open(&child_state, frame, frame_len, size,
+                               &plaintext, &plaintext_len) == 0) {
+                /* Verify round-trip integrity */
+                if (plaintext_len == size &&
+                    memcmp(plaintext, data, size) != 0) {
+                    abort();
+                }
             }
+            free(plaintext);
+            free(frame);
         }
-        free(plaintext);
-        free(frame);
+        ipc_crypto_state_clear(&child_state);
     }
 
     /* Clean up */
