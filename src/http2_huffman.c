@@ -56,6 +56,8 @@ build_huffman_tree(void) {
     huffman_tree = calloc(huffman_tree_cap, sizeof(struct huffman_node));
     if (huffman_tree == NULL)
         return 0;
+    for (size_t j = 0; j < huffman_tree_cap; j++)
+        huffman_tree[j].value = -1;
     huffman_tree_size = 1;
 
     for (size_t i = 0; i < HPACK_HUFFMAN_TABLE_LENGTH; i++) {
@@ -82,6 +84,8 @@ build_huffman_tree(void) {
                         return 0;
                     }
                     memset(tmp + huffman_tree_cap, 0, (new_cap - huffman_tree_cap) * sizeof(struct huffman_node));
+                    for (size_t j = huffman_tree_cap; j < new_cap; j++)
+                        tmp[j].value = -1;
                     huffman_tree = tmp;
                     huffman_tree_cap = new_cap;
                 }
@@ -129,7 +133,7 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
                 return -1;
             }
             node = next;
-            if (huffman_tree[node].value >= 0) {
+            if (huffman_tree[node].value != -1) {
                 if (pos + 1 >= capacity) {
                     size_t new_cap = capacity * 2;
                     char *tmp = realloc(buf, new_cap);
