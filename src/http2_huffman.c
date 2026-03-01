@@ -65,7 +65,7 @@ build_huffman_tree(void) {
         int16_t node = 0;
 
         for (int bit = length - 1; bit >= 0; bit--) {
-            int direction = (code >> bit) & 0x1;
+            int direction = (code >> (32 - length + bit)) & 0x1;
             int16_t next = huffman_tree[node].child[direction];
             if (next == 0) {
                 if (huffman_tree_size == huffman_tree_cap) {
