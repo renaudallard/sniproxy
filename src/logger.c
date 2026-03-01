@@ -1595,8 +1595,11 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
     switch (header->type) {
         case LOGGER_CMD_NEW_SINK:
             sink = calloc(1, sizeof(*sink));
-            if (sink == NULL)
+            if (sink == NULL) {
+                if (received_fd >= 0)
+                    close(received_fd);
                 break;
+            }
             sink->id = header->sink_id;
             sink->type = (int)header->arg0;
             sink->file = NULL;
@@ -1605,6 +1608,8 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             if (payload != NULL) {
                 sink->filepath = strdup(payload);
                 if (sink->filepath == NULL) {
+                    if (received_fd >= 0)
+                        close(received_fd);
                     free(sink);
                     break;
                 }
