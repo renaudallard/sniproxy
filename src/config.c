@@ -46,6 +46,7 @@
 #include "config.h"
 #include "logger.h"
 #include "connection.h"
+#include "binder.h"
 
 
 struct LoggerBuilder {
@@ -581,6 +582,17 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->access_log = logger_ref_get(new_config->access_log);
 
     reload_tables(&config->tables, &new_config->tables);
+
+    /* Register new listener addresses with the binder before reload so
+     * that listeners on privileged ports can be bound successfully */
+    struct Listener *new_listener = SLIST_FIRST(&new_config->listeners);
+    while (new_listener != NULL) {
+        const struct sockaddr *sa = address_sa(new_listener->address);
+        socklen_t sa_len = address_sa_len(new_listener->address);
+        if (sa != NULL && sa_len > 0)
+            binder_register_allowed_address(sa, (size_t)sa_len);
+        new_listener = SLIST_NEXT(new_listener, entries);
+    }
 
     listeners_reload(&config->listeners, &new_config->listeners,
             &config->tables, loop);
