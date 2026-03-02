@@ -34,6 +34,8 @@
 #include <errno.h>
 #include <seccomp.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static const char *const common_syscalls[] = {
     "read", "write", "readv", "writev", "pwrite64", "pread64",
@@ -227,8 +229,11 @@ install_filter(enum seccomp_process_type type) {
 int
 seccomp_install_filter(enum seccomp_process_type type) {
     const char *disable_env = getenv("SNIPROXY_DISABLE_SECCOMP");
-    if (disable_env != NULL && disable_env[0] != '\0')
+    if (disable_env != NULL && disable_env[0] != '\0') {
+        fprintf(stderr, "WARNING: seccomp sandbox disabled via "
+                "SNIPROXY_DISABLE_SECCOMP environment variable\n");
         return 0;
+    }
 
     if (!seccomp_available()) {
         errno = ENOSYS;
