@@ -577,6 +577,16 @@ reload_config(struct Config *config, struct ev_loop *loop) {
         return;
     }
 
+    /* Warn if user or group changed since privileges cannot be re-dropped */
+    if (config->user != NULL && new_config->user != NULL &&
+            strcmp(config->user, new_config->user) != 0)
+        warn("ignoring changed user directive on reload "
+             "(privilege drop is irreversible)");
+    if (config->group != NULL && new_config->group != NULL &&
+            strcmp(config->group, new_config->group) != 0)
+        warn("ignoring changed group directive on reload "
+             "(privilege drop is irreversible)");
+
     /* update access_log */
     logger_ref_put(config->access_log);
     config->access_log = logger_ref_get(new_config->access_log);
