@@ -70,3 +70,12 @@ jobs:
           gh release create "$ver" \
             --title "sniproxy $ver" \
             --notes "${{ steps.notes.outputs.body }}"
+
+      - name: Trigger package builds
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          gh workflow run release-packages.yml \
+            -f ref="${{ steps.version.outputs.version }}" \
+            -f release_tag="${{ steps.version.outputs.version }}"
