@@ -578,12 +578,14 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     }
 
     /* Warn if user or group changed since privileges cannot be re-dropped */
-    if (config->user != NULL && new_config->user != NULL &&
-            strcmp(config->user, new_config->user) != 0)
+    if ((config->user == NULL) != (new_config->user == NULL) ||
+            (config->user != NULL && new_config->user != NULL &&
+             strcmp(config->user, new_config->user) != 0))
         warn("ignoring changed user directive on reload "
              "(privilege drop is irreversible)");
-    if (config->group != NULL && new_config->group != NULL &&
-            strcmp(config->group, new_config->group) != 0)
+    if ((config->group == NULL) != (new_config->group == NULL) ||
+            (config->group != NULL && new_config->group != NULL &&
+             strcmp(config->group, new_config->group) != 0))
         warn("ignoring changed group directive on reload "
              "(privilege drop is irreversible)");
 
