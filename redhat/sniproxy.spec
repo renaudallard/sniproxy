@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.9.22
+Version: 0.9.23
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -63,6 +63,31 @@ fi
 
 
 %changelog
+* Sun Mar 02 2026 Renaud Allard <renaud@allard.it> 0.9.23-1
+- Security: Normalize IPv4-mapped IPv6 addresses in rate limiter so the
+  same client gets one bucket regardless of address family.
+- Security: Log warning when SNIPROXY_DISABLE_SECCOMP environment variable
+  bypasses the seccomp sandbox.
+- Security: Verify privilege drop succeeded in logger child process with
+  getuid/geteuid/getgid/getegid checks.
+- Reliability: Register new listener addresses with the binder allowlist
+  on config reload so privileged port binding works after SIGHUP.
+- Reliability: Warn when user or group directive changes on config reload
+  since privilege drop is irreversible.
+
+* Sat Mar 01 2026 Renaud Allard <renaud@allard.it> 0.9.22-1
+- Resolver: Fix deadlock on send failure, fix timer rescheduling, and use
+  _exit() for seccomp failure in child.
+- Binder: Reject invalid sockaddr with short length.
+- Listener: Always set socket to nonblocking mode.
+- Logger: Fix fd leak in NEW_SINK handler, use _exit() for seccomp failure
+  in child, and fix dead retry loop in logger_send_privileges.
+- Config: Fix connection_buffer_limit, client_buffer_limit,
+  server_buffer_limit, and http_max_headers directives being non-functional.
+- HTTP/2: Fix broken HPACK Huffman decoder (wrong bit extraction and
+  internal node/leaf confusion).
+- Testing: Fix dead round-trip in ipc_crypto fuzz harness.
+
 * Wed Feb 25 2026 Renaud Allard <renaud@allard.it> 0.9.20-1
 - Memory: Halve server buffer initial size (64KB to 32KB), shrink spliced
   connection buffers to 4KB, reduce buffer pool max cache from 12MB to 6MB,

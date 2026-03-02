@@ -1,3 +1,13 @@
+sniproxy (0.9.23) unstable; urgency=medium
+
+  * Security: Normalize IPv4-mapped IPv6 in rate limiter.
+  * Security: Log warning when seccomp sandbox disabled via env var.
+  * Security: Verify privilege drop in logger child process.
+  * Reliability: Register new listener addresses with binder on reload.
+  * Reliability: Warn on user/group change during config reload.
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 02 Mar 2026 00:00:00 +0000
+
 sniproxy (0.9.22) unstable; urgency=medium
 
   * Resolver: Fix deadlock on send failure, fix timer rescheduling, and use

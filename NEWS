@@ -1,3 +1,20 @@
+sniproxy 0.9.23 (2026-03-02)
+===============================
+
+* Security: Normalize IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) to their
+  native IPv4 equivalents in the per-IP rate limiter so the same client gets a
+  single rate limit bucket regardless of address family.
+* Security: Log a warning to stderr when the SNIPROXY_DISABLE_SECCOMP
+  environment variable bypasses the seccomp sandbox, providing an audit trail.
+* Security: Verify privilege drop succeeded in the logger child process by
+  checking getuid/geteuid/getgid/getegid after setuid, matching the main
+  process verification.
+* Reliability: Register new listener addresses with the binder allowlist
+  during config reload (SIGHUP) so that listeners on privileged ports can be
+  bound after hot-adding them.
+* Reliability: Warn when user or group directives change on config reload
+  since privilege drop via setuid is irreversible and requires a restart.
+
 sniproxy 0.9.22 (2026-03-01)
 ===============================
 
