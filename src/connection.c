@@ -208,7 +208,7 @@ static void connection_account_remove(void);
 static inline double rate_limit_bucket_capacity(void);
 static void rate_limit_reset(void);
 static void rate_limit_cleanup(ev_tstamp);
-static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *, uint32_t *);
+static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *, uint32_t *, int *);
 static int sockaddr_equal_ip(const struct sockaddr_storage *,
         const struct sockaddr_storage *);
 static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
@@ -1078,13 +1078,18 @@ hash_ipv4(uint32_t value, uint32_t *out_v4) {
 }
 
 static uint32_t
-hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
+hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
+        int *out_is_v4) {
     if (out_v4 != NULL)
         *out_v4 = 0;
+    if (out_is_v4 != NULL)
+        *out_is_v4 = 0;
 
     switch (addr->ss_family) {
         case AF_INET: {
             const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+            if (out_is_v4 != NULL)
+                *out_is_v4 = 1;
             return hash_ipv4(ntohl(in->sin_addr.s_addr), out_v4);
         }
         case AF_INET6: {
@@ -1096,6 +1101,8 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
             if (IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
                 uint32_t v4;
                 memcpy(&v4, &in6->sin6_addr.s6_addr[12], sizeof(v4));
+                if (out_is_v4 != NULL)
+                    *out_is_v4 = 1;
                 return hash_ipv4(ntohl(v4), out_v4);
             }
 
@@ -1150,7 +1157,8 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
     rate_limit_cleanup(now);
 
     uint32_t addr_v4 = 0;
-    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4);
+    int is_v4 = 0;
+    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
     size_t bucket_index = hash % RATE_LIMIT_TABLE_SIZE;
     struct RateLimitBucket *bucket = rate_limit_table[bucket_index];
     struct RateLimitBucket *prev = NULL;
@@ -1174,11 +1182,9 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         }
 
         if (bucket->addr_hash == hash) {
-            /* addr_v4 is set for both AF_INET and IPv4-mapped AF_INET6 */
-            if (addr_v4 != 0 && bucket->addr_v4 == addr_v4)
+            if (is_v4 && bucket->addr_v4 == addr_v4)
                 break;
-            if (addr_v4 == 0 && addr->ss_family == AF_INET6 &&
-                    sockaddr_equal_ip(&bucket->addr, addr))
+            if (!is_v4 && sockaddr_equal_ip(&bucket->addr, addr))
                 break;
         }
         prev = bucket;
@@ -1272,7 +1278,7 @@ dns_client_increment(struct Connection *con) {
         return 1;
     }
 
-    uint32_t hash = hash_sockaddr_ip(&con->client.addr, NULL);
+    uint32_t hash = hash_sockaddr_ip(&con->client.addr, NULL, NULL);
     struct DnsClientUsageEntry *entry = dns_client_lookup_entry(&con->client.addr, hash);
 
     if (entry == NULL) {
