@@ -1713,6 +1713,13 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                             strerror(errno));
                     logger_child_exit(EXIT_FAILURE);
                 }
+                /* Verify privileges were actually dropped */
+                if (getuid() == 0 || geteuid() == 0 ||
+                        getgid() == 0 || getegid() == 0) {
+                    fprintf(stderr,
+                            "sniproxy logger: failed to drop privileges\n");
+                    logger_child_exit(EXIT_FAILURE);
+                }
             }
             break;
         case LOGGER_CMD_DROP:
