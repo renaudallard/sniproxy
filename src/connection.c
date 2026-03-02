@@ -1066,6 +1066,18 @@ rate_limit_cleanup(ev_tstamp now) {
 }
 
 static uint32_t
+hash_ipv4(uint32_t value, uint32_t *out_v4) {
+    if (out_v4 != NULL)
+        *out_v4 = value;
+    /* Mix with random seed to prevent hash prediction attacks */
+    value ^= rate_limit_hash_seed;
+    value ^= value >> 16;
+    value *= 0x85ebca6b;
+    value ^= value >> 13;
+    return value;
+}
+
+static uint32_t
 hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
     if (out_v4 != NULL)
         *out_v4 = 0;
@@ -1073,18 +1085,20 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4) {
     switch (addr->ss_family) {
         case AF_INET: {
             const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
-            uint32_t value = ntohl(in->sin_addr.s_addr);
-            if (out_v4 != NULL)
-                *out_v4 = value;
-            /* Mix with random seed to prevent hash prediction attacks */
-            value ^= rate_limit_hash_seed;
-            value ^= value >> 16;
-            value *= 0x85ebca6b;
-            value ^= value >> 13;
-            return value;
+            return hash_ipv4(ntohl(in->sin_addr.s_addr), out_v4);
         }
         case AF_INET6: {
             const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+
+            /* Normalize IPv4-mapped IPv6 (::ffff:x.x.x.x) to IPv4 so
+             * the same client hashes to the same rate limit bucket
+             * regardless of address family */
+            if (IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
+                uint32_t v4;
+                memcpy(&v4, &in6->sin6_addr.s6_addr[12], sizeof(v4));
+                return hash_ipv4(ntohl(v4), out_v4);
+            }
+
             uint32_t words[4];
             memcpy(words, &in6->sin6_addr, sizeof(words));
             uint64_t acc = ((uint64_t)rate_limit_hash_seed << 32) |
@@ -1160,9 +1174,11 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         }
 
         if (bucket->addr_hash == hash) {
-            if (addr->ss_family == AF_INET && bucket->addr_v4 == addr_v4)
+            /* addr_v4 is set for both AF_INET and IPv4-mapped AF_INET6 */
+            if (addr_v4 != 0 && bucket->addr_v4 == addr_v4)
                 break;
-            if (addr->ss_family == AF_INET6 && sockaddr_equal_ip(&bucket->addr, addr))
+            if (addr_v4 == 0 && addr->ss_family == AF_INET6 &&
+                    sockaddr_equal_ip(&bucket->addr, addr))
                 break;
         }
         prev = bucket;
