@@ -1,3 +1,16 @@
+sniproxy 0.9.24 (2026-03-04)
+===============================
+
+* Feature: Add -t flag to test configuration and exit without starting the
+  proxy, similar to nginx -t. Reports whether the config file is valid.
+* Feature: Add -g flag to allow group-read (0640) config file permissions.
+  After privilege drop the unprivileged process cannot re-read a root-owned
+  0600 config file, causing SIGHUP reload to fail. The -g flag relaxes the
+  permission check to accept 0640 while still rejecting group-write,
+  group-exec, and all other access. A security warning is logged at startup.
+* Improved config permission error messages to show the maximum allowed mode
+  and hint about the -g flag when applicable.
+
 sniproxy 0.9.23 (2026-03-02)
 ===============================
 
