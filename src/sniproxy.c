@@ -230,6 +230,7 @@ int
 main(int argc, char **argv) {
     const char *config_file = "/etc/sniproxy.conf";
     int background_flag = 1;
+    int test_config = 0;
     rlim_t max_nofiles = 65536;
     int opt;
     uint8_t min_tls_major = 3;
@@ -242,7 +243,7 @@ main(int argc, char **argv) {
         fatal("Unable to initialize IPC crypto");
     }
 
-    while ((opt = getopt(argc, argv, "fc:n:T:Vd")) != -1) {
+    while ((opt = getopt(argc, argv, "fc:n:tT:Vd")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -267,6 +268,9 @@ main(int argc, char **argv) {
                         value = RLIM_INFINITY;
                     max_nofiles = (rlim_t)value;
                 }
+                break;
+            case 't':
+                test_config = 1;
                 break;
             case 'V':
                 printf("sniproxy %s\n", sniproxy_version);
@@ -327,6 +331,13 @@ main(int argc, char **argv) {
         err("Unable to load %s", config_file);
         usage();
         return EXIT_FAILURE;
+    }
+
+    if (test_config) {
+        fprintf(stderr, "configuration file %s test is successful\n",
+                config_file);
+        free_config(config, loop);
+        return EXIT_SUCCESS;
     }
 
     apply_mainloop_settings(loop, config);
@@ -663,7 +674,8 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
+    fprintf(stderr, "       -t test configuration and exit\n");
     fprintf(stderr, "       -T <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)\n");
     fprintf(stderr, "       -d enable resolver debug logging\n");
 }

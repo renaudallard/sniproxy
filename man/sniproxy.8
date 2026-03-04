@@ -6,7 +6,7 @@ SNIProxy \- transparent session based TLS and HTTP proxy
 
 .SH SYNOPSIS
 
-\fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ]
+\fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ] [ -\fBt\fR ]
 [ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR \fImin-tls-version\fR ] [ -\fBd\fR ]
 
 .SH DESCRIPTION
@@ -32,6 +32,11 @@ Specify configuration file to use. The default is
 .TP
 -f
 Do not daemonize, and run in foreground\&.
+
+.TP
+-t
+Test configuration and exit\&. Parses the configuration file and reports
+whether it is valid without starting the proxy\&.
 
 .TP
 -n \fIfile-descriptor-limit\fR

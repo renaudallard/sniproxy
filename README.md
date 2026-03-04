@@ -123,9 +123,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
 Usage
 -----
 
-    Usage: sniproxy [-c <config>] [-f] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
+    Usage: sniproxy [-c <config>] [-f] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
         -c  configuration file, defaults to /etc/sniproxy.conf
         -f  run in foreground, do not drop privileges
+        -t  test configuration and exit
         -n  specify file descriptor limit
         -V  print the version of SNIProxy and exit
         -T  <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)
