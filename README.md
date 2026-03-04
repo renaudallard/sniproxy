@@ -123,9 +123,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
 Usage
 -----
 
-    Usage: sniproxy [-c <config>] [-f] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
+    Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
         -c  configuration file, defaults to /etc/sniproxy.conf
         -f  run in foreground, do not drop privileges
+        -g  allow group-read (0640) config permissions for SIGHUP reload
         -t  test configuration and exit
         -n  specify file descriptor limit
         -V  print the version of SNIProxy and exit

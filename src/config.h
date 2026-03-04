@@ -72,5 +72,7 @@ struct Config *init_config(const char *, struct ev_loop *, int);
 void reload_config(struct Config *, struct ev_loop *);
 void free_config(struct Config *, struct ev_loop *);
 void print_config(FILE *, struct Config *);
+void config_set_allow_group_read(int);
+int config_get_allow_group_read(void);
 
 #endif

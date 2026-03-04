@@ -71,6 +71,7 @@ enum GlobalACLPolicy {
 };
 
 static enum GlobalACLPolicy global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
+static int allow_group_read = 0;
 
 static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
@@ -480,22 +481,28 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         return NULL;
     }
 
-    /* Check permissions on opened file to prevent TOCTOU */
+    /* Check permissions on opened file to prevent TOCTOU.
+     * With -g flag, group-read (0640) is allowed for SIGHUP reload support.
+     * Without -g, only owner access (0600) is permitted. */
     struct stat config_st;
-    if (fstat(fileno(file), &config_st) == 0 && (config_st.st_mode & 0077)) {
+    mode_t perm_mask = allow_group_read ? 0037 : 0077;
+    if (fstat(fileno(file), &config_st) == 0 && (config_st.st_mode & perm_mask)) {
+        const char *perm_msg = allow_group_read
+            ? "must not be group-writable or world accessible (max 0640)"
+            : "must not be group/world accessible (max 0600, use -g for 0640)";
         if (fatal_on_perm_error) {
             /* Use original filename parameter to avoid use-after-free.
              * config->filename will be freed by free_config() below, so we
              * must not dereference it in the fatal() call. */
-            fprintf(stderr, "FATAL: Config file %s must not be group/world accessible (mode %04o)\n",
-                filename, config_st.st_mode & 0777);
+            fprintf(stderr, "FATAL: Config file %s %s (mode %04o)\n",
+                filename, perm_msg, config_st.st_mode & 0777);
             fclose(file);
             free_config(config, loop);
-            fatal("Config file %s must not be group/world accessible (mode %04o)",
-                filename, config_st.st_mode & 0777);
+            fatal("Config file %s %s (mode %04o)",
+                filename, perm_msg, config_st.st_mode & 0777);
         }
-        err("%s: Config file %s must not be group/world accessible (mode %04o)",
-            __func__, config->filename, config_st.st_mode & 0777);
+        err("%s: Config file %s %s (mode %04o)",
+            __func__, config->filename, perm_msg, config_st.st_mode & 0777);
         fclose(file);
         free_config(config, loop);
         return NULL;
@@ -1748,4 +1755,14 @@ print_resolver_config(FILE *file, struct ResolverConfig *resolver) {
             dnssec_validation_mode_names[resolver->dnssec_validation_mode]);
 
     fprintf(file, "}\n\n");
+}
+
+void
+config_set_allow_group_read(int enabled) {
+    allow_group_read = enabled;
+}
+
+int
+config_get_allow_group_read(void) {
+    return allow_group_read;
 }

@@ -6,7 +6,7 @@ SNIProxy \- transparent session based TLS and HTTP proxy
 
 .SH SYNOPSIS
 
-\fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ] [ -\fBt\fR ]
+\fBsniproxy\fR [ -\fBc\fR \fIconfig\fR ] [ -\fBf\fR ] [ -\fBg\fR ] [ -\fBt\fR ]
 [ -\fBn\fR \fIfile-descriptor-limit\fR ] [ -\fBV\fR ] [ -\fBT\fR \fImin-tls-version\fR ] [ -\fBd\fR ]
 
 .SH DESCRIPTION
@@ -32,6 +32,15 @@ Specify configuration file to use. The default is
 .TP
 -f
 Do not daemonize, and run in foreground\&.
+
+.TP
+-g
+Allow group-read (0640) permissions on the configuration file\&.
+By default sniproxy requires mode 0600\&. This flag relaxes the check
+to 0640 so the unprivileged process can re-read the config on SIGHUP
+reload\&. The config file should be owned by root with its group set to
+the sniproxy user group (e\&.g\&. root:_sniproxy)\&. A security warning is
+logged at startup when this flag is used\&.
 
 .TP
 -t

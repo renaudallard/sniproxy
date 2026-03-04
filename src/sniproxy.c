@@ -243,7 +243,7 @@ main(int argc, char **argv) {
         fatal("Unable to initialize IPC crypto");
     }
 
-    while ((opt = getopt(argc, argv, "fc:n:tT:Vd")) != -1) {
+    while ((opt = getopt(argc, argv, "fc:gn:tT:Vd")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -268,6 +268,9 @@ main(int argc, char **argv) {
                         value = RLIM_INFINITY;
                     max_nofiles = (rlim_t)value;
                 }
+                break;
+            case 'g':
+                config_set_allow_group_read(1);
                 break;
             case 't':
                 test_config = 1;
@@ -332,6 +335,12 @@ main(int argc, char **argv) {
         usage();
         return EXIT_FAILURE;
     }
+
+    if (config_get_allow_group_read())
+        warn("SECURITY WARNING: running with -g flag. "
+             "Config file group-read (0640) is permitted. "
+             "Ensure the config file group is restricted to "
+             "the sniproxy user group.");
 
     if (test_config) {
         fprintf(stderr, "configuration file %s test is successful\n",
@@ -674,7 +683,8 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
+    fprintf(stderr, "       -g allow group-read (0640) config permissions for SIGHUP reload\n");
     fprintf(stderr, "       -t test configuration and exit\n");
     fprintf(stderr, "       -T <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)\n");
     fprintf(stderr, "       -d enable resolver debug logging\n");
