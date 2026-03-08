@@ -372,11 +372,8 @@ nameserver dot://dns.quad9.net
     }
 
     table SecureHosts {
-        # Enable PROXY protocol for all backends in this table
-        use_proxy_header yes
-
-        # Backend-specific PROXY protocol override
-        secure.example.com 192.0.2.20:443 { use_proxy_header no }
+        # Per-backend PROXY protocol (appends HAProxy PROXY v1 header)
+        secure.example.com 192.0.2.20:443 proxy_protocol
     }
 
 Setting `io_collect_interval` and `timeout_collect_interval` lets libev batch I/O readiness notifications and timer recalculations, which reduces system call pressure on busy instances. The defaults (0.0005s and 0.005s respectively) favor throughput; set the values to 0 if you need the absolute lowest latency.
