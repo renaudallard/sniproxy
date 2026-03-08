@@ -2741,6 +2741,8 @@ resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int fla
             return -1;
     }
 
+    if (len > INT_MAX)
+        len = INT_MAX;
     int ret = SSL_read(sock->ssl, buffer, (int)len);
     if (ret > 0)
         return ret;
@@ -2784,6 +2786,11 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
 
     if (total == 0)
         return 0;
+
+    if (total > INT_MAX) {
+        errno = EMSGSIZE;
+        return -1;
+    }
 
     uint8_t stack_buf[512];
     uint8_t *buf = stack_buf;
