@@ -740,13 +740,8 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                             server, sizeof(server)),
                         buffer_size(input_buffer));
 
-                if (is_client) {
-                    close_client_socket(con, loop);
-                    client_open = 0;
-                } else {
-                    close_server_socket(con, loop);
-                    server_open = 0;
-                }
+                close_server_socket(con, loop);
+                server_open = 0;
                 return;
             }
         }
