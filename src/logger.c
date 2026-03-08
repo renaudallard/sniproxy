@@ -46,7 +46,7 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <grp.h>
 #include <ev.h>
 #ifdef __linux__
@@ -1881,15 +1881,12 @@ logger_check_pong(void) {
     if (!logger_process_enabled || logger_sock < 0 || !logger_ping_pending)
         return -1;
 
-    /* Use poll/select with timeout to check for response */
-    fd_set readfds;
-    struct timeval tv;
-    FD_ZERO(&readfds);
-    FD_SET(logger_sock, &readfds);
-    tv.tv_sec = 0;
-    tv.tv_usec = 100000; /* 100ms */
+    /* Use poll with timeout to check for response */
+    struct pollfd pfd;
+    pfd.fd = logger_sock;
+    pfd.events = POLLIN;
 
-    int ret = select(logger_sock + 1, &readfds, NULL, NULL, &tv);
+    int ret = poll(&pfd, 1, 100); /* 100ms */
     if (ret <= 0)
         return -1; /* No response or error */
 
