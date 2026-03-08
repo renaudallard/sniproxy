@@ -70,7 +70,7 @@ struct Table *new_table(void);
 int accept_table_arg(struct Table *, const char *);
 void add_table(struct Table_head *, struct Table *);
 struct Table *table_lookup(const struct Table_head *, const char *);
-struct LookupResult table_lookup_server_address(const struct Table *,
+struct LookupResult table_lookup_server_address(struct Table *,
                                                 const char *, size_t);
 void reload_tables(struct Table_head *, struct Table_head *);
 void print_table_config(FILE *, struct Table *);
@@ -79,7 +79,6 @@ void init_table(struct Table *);
 void table_ref_put(struct Table *);
 struct Table *table_ref_get(struct Table *);
 void cleanup_table(void *);
-void tables_reload(struct Table_head *, struct Table_head *);
 
 void free_tables(struct Table_head *);
 

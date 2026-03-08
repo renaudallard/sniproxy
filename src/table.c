@@ -229,13 +229,13 @@ remove_table(struct Table_head *tables, struct Table *table) {
 }
 
 struct LookupResult
-table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
+table_lookup_server_address(struct Table *table, const char *name, size_t name_len) {
     if (table == NULL)
         return (struct LookupResult){.address = NULL};
 
     struct Backend *backend = NULL;
     uint32_t hash = 0;
-    int cacheable = (table != NULL && name != NULL && name_len > 0 &&
+    int cacheable = (name != NULL && name_len > 0 &&
             name_len <= TABLE_CACHE_MAX_NAME_LEN);
 
     if (cacheable) {
@@ -253,7 +253,7 @@ table_lookup_server_address(const struct Table *table, const char *name, size_t 
             return (struct LookupResult){.address = NULL};
         }
         if (cacheable)
-            table_cache_store((struct Table *)table, name, name_len, hash, backend);
+            table_cache_store(table, name, name_len, hash, backend);
     }
 
     return (struct LookupResult){.address = backend->address,
