@@ -186,6 +186,8 @@ static uint32_t rate_limit_hash_seed;
 struct DnsClientUsageEntry {
     struct sockaddr_storage addr;
     uint32_t addr_hash;
+    uint32_t addr_v4;
+    int is_v4;
     size_t outstanding;
     struct DnsClientUsageEntry *next;
 };
@@ -1255,13 +1257,19 @@ dns_client_bucket_index(uint32_t hash) {
 }
 
 static struct DnsClientUsageEntry *
-dns_client_lookup_entry(const struct sockaddr_storage *addr, uint32_t hash) {
+dns_client_lookup_entry(const struct sockaddr_storage *addr, uint32_t hash,
+        uint32_t addr_v4, int is_v4) {
     size_t bucket = dns_client_bucket_index(hash);
     struct DnsClientUsageEntry *entry = dns_client_table[bucket];
 
     while (entry != NULL) {
-        if (entry->addr_hash == hash && sockaddr_equal_ip(&entry->addr, addr))
-            return entry;
+        if (entry->addr_hash == hash) {
+            if (is_v4 && entry->is_v4 && entry->addr_v4 == addr_v4)
+                return entry;
+            if (!is_v4 && !entry->is_v4 &&
+                    sockaddr_equal_ip(&entry->addr, addr))
+                return entry;
+        }
         entry = entry->next;
     }
 
@@ -1278,8 +1286,11 @@ dns_client_increment(struct Connection *con) {
         return 1;
     }
 
-    uint32_t hash = hash_sockaddr_ip(&con->client.addr, NULL, NULL);
-    struct DnsClientUsageEntry *entry = dns_client_lookup_entry(&con->client.addr, hash);
+    uint32_t addr_v4 = 0;
+    int is_v4 = 0;
+    uint32_t hash = hash_sockaddr_ip(&con->client.addr, &addr_v4, &is_v4);
+    struct DnsClientUsageEntry *entry = dns_client_lookup_entry(
+            &con->client.addr, hash, addr_v4, is_v4);
 
     if (entry == NULL) {
         entry = calloc(1, sizeof(*entry));
@@ -1289,6 +1300,8 @@ dns_client_increment(struct Connection *con) {
         }
         entry->addr = con->client.addr;
         entry->addr_hash = hash;
+        entry->addr_v4 = addr_v4;
+        entry->is_v4 = is_v4;
         size_t bucket = dns_client_bucket_index(hash);
         entry->next = dns_client_table[bucket];
         dns_client_table[bucket] = entry;
