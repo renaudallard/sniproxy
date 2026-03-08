@@ -63,13 +63,15 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          RELEASE_NOTES: ${{ steps.notes.outputs.body }}
         run: |
           ver="${{ steps.version.outputs.version }}"
           git tag "$ver"
           git push origin "$ver"
+          printf '%s\n' "$RELEASE_NOTES" > /tmp/release-notes.md
           gh release create "$ver" \
             --title "sniproxy $ver" \
-            --notes "${{ steps.notes.outputs.body }}"
+            --notes-file /tmp/release-notes.md
 
       - name: Trigger package builds
         if: steps.check.outputs.exists == 'false'
