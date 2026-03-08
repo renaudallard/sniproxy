@@ -1750,10 +1750,18 @@ shrink_idle_buffers(ev_tstamp now, int force) {
         if (shrink_candidates_count > 0)
             shrink_candidates_count--;
 
-        buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-        buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
-
-        shrink_candidate_update(con, buffer_shrink_loop, now);
+        if (force) {
+            /* Force-shrink ignoring idle time.  Do NOT re-insert via
+             * shrink_candidate_update to prevent an infinite loop when
+             * buffers are already at minimum size.  Connections will be
+             * re-added by future buffer activity if needed. */
+            buffer_maybe_shrink_idle(con->server.buffer, now, 0.0);
+            buffer_maybe_shrink_idle(con->client.buffer, now, 0.0);
+        } else {
+            buffer_maybe_shrink_idle(con->server.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+            buffer_maybe_shrink_idle(con->client.buffer, now, BUFFER_SHRINK_IDLE_SECONDS);
+            shrink_candidate_update(con, buffer_shrink_loop, now);
+        }
     }
 }
 
