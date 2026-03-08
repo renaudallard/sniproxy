@@ -2750,10 +2750,17 @@ resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int fla
         return -1;
     }
 
+    if (errcode == SSL_ERROR_ZERO_RETURN) {
+        /* Clean TLS shutdown by peer */
+        sock->failed = 1;
+        return 0;
+    }
+
     unsigned long ssl_err = ERR_get_error();
     char buf[256];
     ERR_error_string_n(ssl_err, buf, sizeof(buf));
     err("resolver child: DoT read failed: %s", buf);
+    ERR_clear_error();
     sock->failed = 1;
     errno = ECONNABORTED;
     return -1;
