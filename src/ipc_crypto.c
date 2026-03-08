@@ -430,6 +430,9 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
         return -1;
     }
 
+    state->send_buf = NULL;
+    state->send_buf_cap = 0;
+
     return ipc_crypto_set_directional_keys(state, role);
 }
 
@@ -725,16 +728,32 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
     if (state == NULL || (payload_len > 0 && payload == NULL))
         return -1;
 
-    uint8_t *frame = NULL;
-    size_t frame_len = 0;
-    if (ipc_crypto_seal(state, payload, payload_len, &frame, &frame_len) < 0)
+    if (payload_len > INT_MAX)
+        return -1;
+
+    size_t overhead = IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN;
+    if (payload_len > SIZE_MAX - overhead)
+        return -1;
+
+    size_t frame_len = overhead + payload_len;
+
+    if (frame_len > state->send_buf_cap) {
+        uint8_t *newbuf = realloc(state->send_buf, frame_len);
+        if (newbuf == NULL)
+            return -1;
+        state->send_buf = newbuf;
+        state->send_buf_cap = frame_len;
+    }
+
+    if (seal_internal(state, payload, payload_len,
+                state->send_buf, frame_len) < 0)
         return -1;
 
     uint32_t frame_len_net = htonl((uint32_t)frame_len);
     struct iovec iov[2];
     iov[0].iov_base = &frame_len_net;
     iov[0].iov_len = sizeof(frame_len_net);
-    iov[1].iov_base = frame;
+    iov[1].iov_base = state->send_buf;
     iov[1].iov_len = frame_len;
 
     struct msghdr msg;
@@ -763,7 +782,6 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
 #endif
                 );
     } while (sent < 0 && errno == EINTR);
-    free(frame);
 
     if (sent < 0)
         return -1;
@@ -927,7 +945,10 @@ ipc_crypto_state_clear(struct ipc_crypto_state *state) {
         return;
     EVP_CIPHER_CTX_free(state->seal_ctx);
     EVP_CIPHER_CTX_free(state->open_ctx);
+    free(state->send_buf);
     state->seal_ctx = NULL;
     state->open_ctx = NULL;
+    state->send_buf = NULL;
+    state->send_buf_cap = 0;
     secure_memzero(state, sizeof(*state));
 }

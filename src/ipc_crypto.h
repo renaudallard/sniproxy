@@ -60,6 +60,8 @@ struct ipc_crypto_state {
     enum ipc_crypto_role role;
     EVP_CIPHER_CTX *seal_ctx;    /* Cached context for seal operations */
     EVP_CIPHER_CTX *open_ctx;    /* Cached context for open operations */
+    uint8_t *send_buf;           /* Cached buffer for send operations */
+    size_t send_buf_cap;         /* Capacity of send_buf */
 };
 
 int ipc_crypto_system_init(void);
