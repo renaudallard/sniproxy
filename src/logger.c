@@ -1043,7 +1043,7 @@ logger_requires_payload(const struct Logger *logger) {
 
 static size_t
 format_log_payload(char *buffer, size_t buffer_len, const char *format, va_list args) {
-    if (buffer == NULL || buffer_len == 0)
+    if (buffer == NULL || buffer_len < 3)
         return 0;
 
     size_t len = timestamp(buffer, buffer_len);
