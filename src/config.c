@@ -1432,7 +1432,9 @@ end_error_logger_stanza(struct Config *config __attribute__ ((unused)), struct L
     else if (lb->syslog_facility != NULL && lb->filename == NULL)
         logger = new_syslog_logger(lb->syslog_facility);
     else
-        err("Logger can not be both file logger and syslog logger");
+        err(lb->filename != NULL ?
+                "Logger can not be both file logger and syslog logger" :
+                "Logger must specify either filename or syslog facility");
 
     if (logger == NULL)
         return -1;
@@ -1453,7 +1455,9 @@ end_global_access_logger_stanza(struct Config *config, struct LoggerBuilder *lb)
     else if (lb->syslog_facility != NULL && lb->filename == NULL)
         logger = new_syslog_logger(lb->syslog_facility);
     else
-        err("Logger can not be both file logger and syslog logger");
+        err(lb->filename != NULL ?
+                "Logger can not be both file logger and syslog logger" :
+                "Logger must specify either filename or syslog facility");
 
     if (logger == NULL)
         return -1;
@@ -1475,7 +1479,9 @@ end_listener_access_logger_stanza(struct Listener *listener, struct LoggerBuilde
     else if (lb->syslog_facility != NULL && lb->filename == NULL)
         logger = new_syslog_logger(lb->syslog_facility);
     else
-        err("Logger can not be both file logger and syslog logger");
+        err(lb->filename != NULL ?
+                "Logger can not be both file logger and syslog logger" :
+                "Logger must specify either filename or syslog facility");
 
     if (logger == NULL)
         return -1;
