@@ -235,16 +235,14 @@ static int ensure_logger_process(void);
 static void logger_process_shutdown(void);
 static void disable_logger_process(void);
 static void logger_child_main(int) __attribute__((noreturn));
-static int send_logger_header(const struct logger_ipc_header *, int);
-static int send_logger_payload(const void *, size_t);
+static int send_logger_message(const struct logger_ipc_header *, const void *,
+        size_t, int);
 static int send_logger_new_sink(struct LogSink *, int fd_to_send);
 static int send_logger_log(struct Logger *, int, const char *, size_t);
 static int send_logger_reopen(struct LogSink *, int fd_to_send);
 static int send_logger_drop(struct LogSink *);
 static int send_logger_privileges(uid_t, gid_t);
 static int logger_send_privileges(uid_t uid, gid_t gid);
-static int recv_logger_header(int, struct logger_ipc_header *, int *);
-static int read_logger_payload(int, void *, size_t);
 static void logger_child_handle_message(int, struct logger_ipc_header *, int, char *);
 static struct ChildSink *child_sink_lookup(struct ChildSink_head *, uint32_t);
 static void child_sink_free(struct ChildSink_head *, struct ChildSink *);
@@ -1216,7 +1214,7 @@ logger_process_shutdown(void) {
     };
 
     if (logger_sock >= 0) {
-        send_logger_header(&header, -1);
+        send_logger_message(&header, NULL, 0, -1);
         close(logger_sock);
         logger_sock = -1;
     }
@@ -1230,21 +1228,34 @@ logger_process_shutdown(void) {
 }
 
 static int
-send_logger_header(const struct logger_ipc_header *header, int fd_to_send) {
+send_logger_message(const struct logger_ipc_header *header,
+        const void *payload, size_t payload_len, int fd_to_send) {
     if (logger_sock < 0)
         return -1;
 
-    return ipc_crypto_send_msg(&logger_crypto_parent, logger_sock, header,
-            sizeof(*header), fd_to_send);
-}
+    size_t total = sizeof(*header) + payload_len;
+    uint8_t stack_buf[sizeof(*header) + 1024];
+    uint8_t *buf;
 
-static int
-send_logger_payload(const void *payload, size_t payload_len) {
-    if (payload_len == 0)
-        return 0;
+    if (total <= sizeof(stack_buf)) {
+        buf = stack_buf;
+    } else {
+        buf = malloc(total);
+        if (buf == NULL)
+            return -1;
+    }
 
-    return ipc_crypto_send_msg(&logger_crypto_parent, logger_sock, payload,
-            payload_len, -1);
+    memcpy(buf, header, sizeof(*header));
+    if (payload_len > 0 && payload != NULL)
+        memcpy(buf + sizeof(*header), payload, payload_len);
+
+    int rc = ipc_crypto_send_msg(&logger_crypto_parent, logger_sock,
+            buf, total, fd_to_send);
+
+    if (buf != stack_buf)
+        free(buf);
+
+    return rc;
 }
 
 static int
@@ -1264,23 +1275,13 @@ send_logger_new_sink(struct LogSink *sink, int fd_to_send) {
     if (payload != NULL)
         header.payload_len = (uint32_t)(strlen(payload) + 1);
 
-    if (send_logger_header(&header, fd_to_send) < 0) {
-        if (fd_to_send >= 0)
-            close(fd_to_send);
-        return -1;
-    }
-
-    if (payload != NULL) {
-        int rc = send_logger_payload(payload, header.payload_len);
-        if (fd_to_send >= 0)
-            close(fd_to_send);
-        return rc;
-    }
+    int rc = send_logger_message(&header, payload, header.payload_len,
+            fd_to_send);
 
     if (fd_to_send >= 0)
         close(fd_to_send);
 
-    return 0;
+    return rc;
 }
 
 static int
@@ -1297,10 +1298,7 @@ send_logger_log(struct Logger *logger, int priority, const char *message,
         .payload_len = (uint32_t)(len + 1),
     };
 
-    if (send_logger_header(&header, -1) < 0)
-        return -1;
-
-    return send_logger_payload(message, header.payload_len);
+    return send_logger_message(&header, message, header.payload_len, -1);
 }
 
 static int
@@ -1313,16 +1311,12 @@ send_logger_reopen(struct LogSink *sink, int fd_to_send) {
         .payload_len = 0,
     };
 
-    if (send_logger_header(&header, fd_to_send) < 0) {
-        if (fd_to_send >= 0)
-            close(fd_to_send);
-        return -1;
-    }
+    int rc = send_logger_message(&header, NULL, 0, fd_to_send);
 
     if (fd_to_send >= 0)
         close(fd_to_send);
 
-    return 0;
+    return rc;
 }
 
 static int
@@ -1335,7 +1329,7 @@ send_logger_drop(struct LogSink *sink) {
         .payload_len = 0,
     };
 
-    return send_logger_header(&header, -1);
+    return send_logger_message(&header, NULL, 0, -1);
 }
 
 static int
@@ -1358,13 +1352,7 @@ send_logger_privileges(uid_t uid, gid_t gid) {
         .payload_len = sizeof(payload),
     };
 
-    if (send_logger_header(&header, -1) < 0)
-        return -1;
-
-    if (send_logger_payload(&payload, sizeof(payload)) < 0)
-        return -1;
-
-    return 0;
+    return send_logger_message(&header, &payload, sizeof(payload), -1);
 }
 
 static int
@@ -1397,46 +1385,47 @@ logger_send_privileges(uid_t uid, gid_t gid) {
 }
 
 static int
-recv_logger_header(int fd, struct logger_ipc_header *header, int *received_fd) {
+recv_logger_message(int fd, struct logger_ipc_header *header,
+        char **payload, int *received_fd) {
     uint8_t *plain = NULL;
     size_t plain_len = 0;
     int rc = ipc_crypto_recv_msg(&logger_crypto_child, fd,
-            LOGGER_IPC_MAX_PAYLOAD, &plain, &plain_len, received_fd);
+            sizeof(*header) + LOGGER_IPC_MAX_PAYLOAD,
+            &plain, &plain_len, received_fd);
     if (rc <= 0)
         return rc;
 
-    if (plain_len != sizeof(*header)) {
+    if (plain_len < sizeof(*header)) {
         free(plain);
         return -1;
     }
 
     memcpy(header, plain, sizeof(*header));
+
+    size_t data_len = plain_len - sizeof(*header);
+    if (data_len != header->payload_len) {
+        free(plain);
+        return -1;
+    }
+
+    if (data_len > 0) {
+        *payload = malloc(data_len);
+        if (*payload == NULL) {
+            free(plain);
+            return -1;
+        }
+        memcpy(*payload, plain + sizeof(*header), data_len);
+
+        if (header->type == LOGGER_CMD_NEW_SINK ||
+                header->type == LOGGER_CMD_LOG) {
+            (*payload)[data_len - 1] = '\0';
+        }
+    } else {
+        *payload = NULL;
+    }
+
     free(plain);
     return 1;
-}
-
-static int
-read_logger_payload(int fd, void *buf, size_t len) {
-    if (len == 0)
-        return 0;
-
-    uint8_t *plain = NULL;
-    size_t plain_len = 0;
-    int rc = ipc_crypto_recv_msg(&logger_crypto_child, fd,
-            LOGGER_IPC_MAX_PAYLOAD, &plain, &plain_len, NULL);
-    if (rc <= 0) {
-        free(plain);
-        return -1;
-    }
-
-    if (plain_len != len) {
-        free(plain);
-        return -1;
-    }
-
-    memcpy(buf, plain, len);
-    free(plain);
-    return 0;
 }
 
 static struct ChildSink *
@@ -1799,35 +1788,13 @@ logger_child_main(int sockfd) {
 
     for (;;) {
         struct logger_ipc_header header;
-        int received_fd = -1;
-        int ret = recv_logger_header(sockfd, &header, &received_fd);
-        if (ret <= 0)
-            break;
-
         char *payload = NULL;
-        if (header.payload_len > 0) {
-            payload = malloc(header.payload_len);
-            if (payload == NULL) {
-                if (received_fd >= 0)
-                    close(received_fd);
-                /* Drain the payload to keep the IPC protocol in sync */
-                uint8_t *discard = NULL;
-                size_t discard_len = 0;
-                (void)ipc_crypto_recv_msg(&logger_crypto_child, sockfd,
-                        LOGGER_IPC_MAX_PAYLOAD, &discard, &discard_len, NULL);
-                free(discard);
-                continue;
-            }
-            if (read_logger_payload(sockfd, payload, header.payload_len) < 0) {
-                free(payload);
-                if (received_fd >= 0)
-                    close(received_fd);
-                continue;
-            }
-            if (header.type == LOGGER_CMD_NEW_SINK ||
-                    header.type == LOGGER_CMD_LOG) {
-                payload[header.payload_len - 1] = '\0';
-            }
+        int received_fd = -1;
+        int ret = recv_logger_message(sockfd, &header, &payload,
+                &received_fd);
+        if (ret <= 0) {
+            free(payload);
+            break;
         }
 
         logger_child_handle_message(sockfd, &header, received_fd, payload);
@@ -1869,7 +1836,7 @@ logger_send_ping(void) {
         .payload_len = 0,
     };
 
-    if (send_logger_header(&header, -1) < 0)
+    if (send_logger_message(&header, NULL, 0, -1) < 0)
         return -1;
 
     logger_ping_pending = 1;
