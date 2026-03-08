@@ -1,3 +1,17 @@
+sniproxy 0.9.26 (2026-03-08)
+===============================
+
+* Fix: Set logger IPC socket non-blocking to prevent up to 100ms mainloop
+  stall during health check ping/pong exchanges.
+* Performance: Combine logger IPC header and payload into a single sendmsg()
+  call, eliminating a second syscall per log message.
+* Performance: Cache EVP_CIPHER_CTX in IpcCryptoState so IPC encryption
+  avoids EVP_CIPHER_CTX_new/free on every message.
+* Performance: Use a cached send buffer in ipc_crypto_send_msg to avoid
+  per-message malloc/free overhead.
+* Build: Add missing limits.h include in resolv.c for INT_MAX.
+* CI: Fix autorelease glob expansion of release notes containing asterisks.
+
 sniproxy 0.9.25 (2026-03-08)
 ===============================
 

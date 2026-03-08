@@ -1,5 +1,15 @@
 2026-03-08  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.9.26
+	- Set logger IPC socket non-blocking to prevent mainloop stall
+	- Combine logger header and payload into a single IPC message
+	- Cache EVP_CIPHER_CTX in IpcCryptoState to avoid per-message allocation
+	- Use cached send buffer in ipc_crypto_send_msg to avoid per-message malloc
+	- Add missing limits.h include in resolv.c for INT_MAX
+	- Fix autorelease glob expansion of release notes containing asterisks
+
+2026-03-08  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.9.25
 	- Fix infinite loop in shrink_idle_buffers under memory pressure
 	- Fix DNS per-client tracking bypass for IPv4-mapped IPv6 addresses

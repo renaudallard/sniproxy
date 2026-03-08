@@ -1,3 +1,14 @@
+sniproxy (0.9.26) unstable; urgency=medium
+
+  * Set logger IPC socket non-blocking to prevent mainloop stall.
+  * Combine logger header and payload into a single IPC message.
+  * Cache EVP_CIPHER_CTX in IpcCryptoState to avoid per-message allocation.
+  * Use cached send buffer in ipc_crypto_send_msg to avoid per-message malloc.
+  * Add missing limits.h include in resolv.c for INT_MAX.
+  * Fix autorelease glob expansion of release notes containing asterisks.
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 08 Mar 2026 00:00:00 +0000
+
 sniproxy (0.9.25) unstable; urgency=medium
 
   * Fix infinite loop in shrink_idle_buffers under memory pressure.
