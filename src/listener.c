@@ -49,6 +49,7 @@
 #include "tls.h"
 #include "http.h"
 #include "xmpp.h"
+#include "minecraft.h"
 #include "fd_util.h"
 
 #define LISTENER_ACCEPT_MAX_BATCH 64
@@ -464,6 +465,8 @@ accept_listener_protocol(struct Listener *listener, const char *protocol) {
         listener->protocol = http_protocol;
     else if (strncasecmp(protocol, xmpp_protocol->name, strlen(protocol)) == 0)
         listener->protocol = xmpp_protocol;
+    else if (strncasecmp(protocol, minecraft_protocol->name, strlen(protocol)) == 0)
+        listener->protocol = minecraft_protocol;
     else
         listener->protocol = tls_protocol;
 
@@ -657,7 +660,8 @@ valid_listener(const struct Listener *listener) {
     }
 
     if (listener->protocol != tls_protocol && listener->protocol != http_protocol &&
-            listener->protocol != xmpp_protocol) {
+            listener->protocol != xmpp_protocol &&
+            listener->protocol != minecraft_protocol) {
         err("Invalid protocol");
         return 0;
     }

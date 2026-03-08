@@ -78,6 +78,7 @@ mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/http2" \
     "$CORPUS_ROOT/http" \
     "$CORPUS_ROOT/xmpp" \
+    "$CORPUS_ROOT/minecraft" \
     "$CORPUS_ROOT/hostname" \
     "$CORPUS_ROOT/cfg_tokenizer" \
     "$CORPUS_ROOT/ipc_crypto" \
@@ -151,6 +152,7 @@ build_fuzzer listener_acl_fuzz \
     "$ROOT_DIR/src/http2.c" \
     "$ROOT_DIR/src/http2_huffman.c" \
     "$ROOT_DIR/src/xmpp.c" \
+    "$ROOT_DIR/src/minecraft.c" \
     -I"$ROOT_DIR/tests/include"
 
 build_fuzzer resolver_response_fuzz \
@@ -182,6 +184,7 @@ build_fuzzer config_fuzz \
     "$ROOT_DIR/src/http2.c" \
     "$ROOT_DIR/src/http2_huffman.c" \
     "$ROOT_DIR/src/xmpp.c" \
+    "$ROOT_DIR/src/minecraft.c" \
     "$ROOT_DIR/src/seccomp.c" \
     -lev -lssl -lcrypto -lcares -lseccomp
 
@@ -211,6 +214,10 @@ build_fuzzer xmpp_fuzz \
     "$ROOT_DIR/tests/fuzz/xmpp_fuzz.c" \
     "$ROOT_DIR/src/xmpp.c"
 
+build_fuzzer minecraft_fuzz \
+    "$ROOT_DIR/tests/fuzz/minecraft_fuzz.c" \
+    "$ROOT_DIR/src/minecraft.c"
+
 vlog "Fuzzers built successfully."
 
 if [[ ${RUN_FUZZ:-1} -eq 0 ]]; then
@@ -230,6 +237,7 @@ FUZZ_TARGETS=(
     "http2_fuzz:http2"
     "http_fuzz:http"
     "xmpp_fuzz:xmpp"
+    "minecraft_fuzz:minecraft"
     "hostname_fuzz:hostname"
     "cfg_tokenizer_fuzz:cfg_tokenizer"
     "tls_fuzz:tls"

@@ -36,6 +36,8 @@ sniproxy_common_sources = address.c \
                           listener.c \
                           listener.h \
                           logger.c \
+                          minecraft.c \
+                          minecraft.h \
                           logger.h \
                           protocol.h \
                           resolv.c \

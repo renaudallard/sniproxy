@@ -269,7 +269,8 @@ number, an IPv6 literal followed by a TCP port number, a bare TCP port
 number, or a unix socket path prefixed with 'unix:'.
 
 Protocol defines how the client request should be parsed to obtain the
-requested hostname. Two protocols are supported: http and tls.
+requested hostname. Four protocols are supported: tls, http, xmpp, and
+minecraft. The minecraft protocol defaults to port 25565.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same
