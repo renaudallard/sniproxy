@@ -1191,6 +1191,12 @@ ensure_logger_process(void) {
 
     close(sockets[1]);
     logger_sock = sockets[0];
+
+    /* Set non-blocking to prevent mainloop stall under heavy logging */
+    int flags = fcntl(logger_sock, F_GETFL);
+    if (flags >= 0)
+        fcntl(logger_sock, F_SETFL, flags | O_NONBLOCK);
+
     ipc_crypto_channel_init(&logger_crypto_parent, LOGGER_IPC_CHANNEL_ID,
             IPC_CRYPTO_ROLE_PARENT);
     logger_pid = pid;
@@ -1909,6 +1915,10 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
 
     /* Send new ping */
     if (logger_send_ping() < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            /* Socket buffer full - logger is alive but busy, skip this round */
+            return;
+        }
         /* Failed to send ping - logger may be dead */
         ev_timer_stop(loop, &logger_health_timer);
         logger_health_check_active = 0;

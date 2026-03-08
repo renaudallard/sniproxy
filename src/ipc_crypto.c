@@ -786,6 +786,10 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
     if (sent < 0)
         return -1;
 
+    /* Detect partial write (unlikely for small AF_UNIX messages) */
+    if ((size_t)sent != sizeof(frame_len_net) + frame_len)
+        return -1;
+
     return 0;
 }
 
