@@ -38,6 +38,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <stdint.h>
+#include <limits.h>
 #include <sys/wait.h>
 #include <ev.h>
 #include <ctype.h>
