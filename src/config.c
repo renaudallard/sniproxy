@@ -1412,10 +1412,8 @@ accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
     if (priority == NULL || *priority == '\0')
         return -1;
 
-    size_t priority_len = strlen(priority);
-
     for (size_t i = 0; i < sizeof(priorities) / sizeof(priorities[0]); i++)
-        if (strncasecmp(priorities[i].name, priority, priority_len) == 0) {
+        if (strcasecmp(priorities[i].name, priority) == 0) {
             lb->priority = priorities[i].priority;
             return 1;
         }
