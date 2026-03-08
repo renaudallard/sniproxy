@@ -793,18 +793,26 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
             prefix_ret = recvmsg(sockfd, &prefix_msg, MSG_WAITALL);
         } while (prefix_ret < 0 && errno == EINTR);
 
-        if (prefix_ret <= 0)
-            return (int)prefix_ret;
-
-        if ((size_t)prefix_ret != sizeof(frame_len_net)) {
-            errno = EIO;
-            return -1;
-        }
-
+        /* Extract any fd from ancillary data before error checks.
+         * The kernel delivers SCM_RIGHTS with the first bytes, so
+         * even a short read may have transferred an fd to us. */
         struct cmsghdr *prefix_cmsg = CMSG_FIRSTHDR(&prefix_msg);
         if (prefix_cmsg != NULL && prefix_cmsg->cmsg_level == SOL_SOCKET &&
                 prefix_cmsg->cmsg_type == SCM_RIGHTS) {
             memcpy(&prefix_fd, CMSG_DATA(prefix_cmsg), sizeof(int));
+        }
+
+        if (prefix_ret <= 0) {
+            if (prefix_fd >= 0)
+                close(prefix_fd);
+            return (int)prefix_ret;
+        }
+
+        if ((size_t)prefix_ret != sizeof(frame_len_net)) {
+            if (prefix_fd >= 0)
+                close(prefix_fd);
+            errno = EIO;
+            return -1;
         }
     }
 
