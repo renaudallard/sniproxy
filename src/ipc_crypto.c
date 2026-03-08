@@ -419,6 +419,17 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
     state->channel_id = channel_id;
     state->send_counter = 0;
 
+    state->seal_ctx = EVP_CIPHER_CTX_new();
+    if (state->seal_ctx == NULL)
+        return -1;
+
+    state->open_ctx = EVP_CIPHER_CTX_new();
+    if (state->open_ctx == NULL) {
+        EVP_CIPHER_CTX_free(state->seal_ctx);
+        state->seal_ctx = NULL;
+        return -1;
+    }
+
     return ipc_crypto_set_directional_keys(state, role);
 }
 
@@ -486,9 +497,11 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
 
     memcpy(frame, &header, sizeof(header));
 
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    EVP_CIPHER_CTX *ctx = state->seal_ctx;
     if (ctx == NULL)
         return -1;
+
+    EVP_CIPHER_CTX_reset(ctx);
 
     int ok = 0;
     int len;
@@ -519,7 +532,6 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         ok = 1;
     } while (0);
 
-    EVP_CIPHER_CTX_free(ctx);
     return ok ? 0 : -1;
 }
 
@@ -606,7 +618,7 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         return -1;
     }
 
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    EVP_CIPHER_CTX *ctx = state->open_ctx;
     if (ctx == NULL) {
         free(output);
         ipc_crypto_mask_failure(payload_len);
@@ -619,7 +631,6 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     /* Handle generation mismatch - explicit rekey detection via protocol */
     if (msg_generation < state->recv_generation) {
         /* Message from old generation - replay attack */
-        EVP_CIPHER_CTX_free(ctx);
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
         warn("IPC replay attack: msg_generation=%u < recv_generation=%u",
@@ -631,7 +642,6 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     /* Reject excessive generation gap to prevent DoS via forced rekey loop */
     if (msg_generation - state->recv_generation > IPC_CRYPTO_MAX_GENERATION_GAP) {
-        EVP_CIPHER_CTX_free(ctx);
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
         warn("IPC generation gap too large: msg_generation=%u, recv_generation=%u, gap=%u",
@@ -645,7 +655,6 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     /* Advance recv_generation to match sender if needed */
     while (state->recv_generation < msg_generation) {
         if (ipc_crypto_rekey_recv(state) < 0) {
-            EVP_CIPHER_CTX_free(ctx);
             OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
             free(output);
             ipc_crypto_mask_failure(payload_len);
@@ -655,7 +664,6 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     /* Within same generation, enforce strictly monotonic counters */
     if (msg_counter <= state->recv_counter) {
-        EVP_CIPHER_CTX_free(ctx);
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
         warn("IPC replay attack: msg_counter=%llu <= recv_counter=%llu (generation=%u)",
@@ -666,6 +674,8 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         errno = EBADMSG;
         return -1;
     }
+
+    EVP_CIPHER_CTX_reset(ctx);
 
     do {
         if (EVP_DecryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) != 1)
@@ -692,8 +702,6 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
             break;
         ok = 1;
     } while (0);
-
-    EVP_CIPHER_CTX_free(ctx);
 
     if (!ok) {
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
@@ -917,5 +925,9 @@ void
 ipc_crypto_state_clear(struct ipc_crypto_state *state) {
     if (state == NULL)
         return;
+    EVP_CIPHER_CTX_free(state->seal_ctx);
+    EVP_CIPHER_CTX_free(state->open_ctx);
+    state->seal_ctx = NULL;
+    state->open_ctx = NULL;
     secure_memzero(state, sizeof(*state));
 }

@@ -30,6 +30,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
+#include <openssl/evp.h>
 
 enum ipc_crypto_role {
     IPC_CRYPTO_ROLE_PARENT = 0,
@@ -57,6 +58,8 @@ struct ipc_crypto_state {
     time_t send_key_timestamp;   /* Time when send_key was last derived */
     time_t recv_key_timestamp;   /* Time when recv_key was last derived */
     enum ipc_crypto_role role;
+    EVP_CIPHER_CTX *seal_ctx;    /* Cached context for seal operations */
+    EVP_CIPHER_CTX *open_ctx;    /* Cached context for open operations */
 };
 
 int ipc_crypto_system_init(void);
