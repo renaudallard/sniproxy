@@ -1,3 +1,25 @@
+2026-03-08  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.9.25
+	- Fix infinite loop in shrink_idle_buffers under memory pressure
+	- Fix DNS per-client tracking bypass for IPv4-mapped IPv6 addresses
+	- Fix fd leak on short prefix read in IPC crypto receive
+	- Fix HTTP/2 to HTTP/1.1 fallthrough on full preface match
+	- Fix ACL policy validation for implicit default mode
+	- Fix logger priority name accepting partial matches
+	- Replace select() with poll() in logger health check
+	- Handle SSL_ERROR_ZERO_RETURN in DNS-over-TLS read
+	- Drain OpenSSL error queue after DoT TLS errors
+	- Clamp SSL_read/SSL_write length to INT_MAX
+	- Cap IPC payload length to INT_MAX for OpenSSL API
+	- Add size validation to binder AF_UNIX sockaddr comparison
+	- Add NULL guard to copy_address
+	- Fix size_t to int narrowing in config tokenizer
+	- Fix misleading logger stanza error messages
+	- Remove incorrect const from table_lookup_server_address
+	- Remove dead code in connection_cb buffer reserve path
+	- Update mutex nesting documentation in resolver
+
 2026-03-04  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.24

@@ -1,3 +1,26 @@
+sniproxy (0.9.25) unstable; urgency=medium
+
+  * Fix infinite loop in shrink_idle_buffers under memory pressure.
+  * Fix DNS per-client tracking bypass for IPv4-mapped IPv6 addresses.
+  * Fix fd leak in IPC crypto receive on short prefix read.
+  * Fix HTTP/2 to HTTP/1.1 fallthrough on full preface match.
+  * Fix ACL policy validation for implicit default mode.
+  * Fix logger priority name accepting partial matches.
+  * Replace select() with poll() in logger health check.
+  * Handle SSL_ERROR_ZERO_RETURN in DNS-over-TLS read.
+  * Drain OpenSSL error queue after DoT TLS errors.
+  * Clamp SSL_read/SSL_write length to INT_MAX.
+  * Cap IPC payload length to INT_MAX for OpenSSL API.
+  * Add size validation to binder AF_UNIX sockaddr comparison.
+  * Add NULL guard to copy_address.
+  * Fix size_t to int narrowing in config tokenizer.
+  * Fix misleading logger stanza error messages.
+  * Remove incorrect const from table_lookup_server_address.
+  * Remove dead code in connection_cb buffer reserve path.
+  * Update mutex nesting documentation in resolver.
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 08 Mar 2026 00:00:00 +0000
+
 sniproxy (0.9.24) unstable; urgency=medium
 
   * Feature: Add -t flag to test configuration and exit.

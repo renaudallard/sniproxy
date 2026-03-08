@@ -1,3 +1,41 @@
+sniproxy 0.9.25 (2026-03-08)
+===============================
+
+* Fix: Infinite loop in shrink_idle_buffers under memory pressure when
+  buffers are already at minimum size and force-shrink is triggered.
+* Fix: DNS per-client tracking bypass where IPv4-mapped IPv6 addresses
+  (::ffff:x.x.x.x) were tracked separately from native IPv4, allowing
+  clients to double the per-IP DNS query limit on dual-stack listeners.
+* Fix: File descriptor leak in IPC crypto receive on short prefix read
+  when SCM_RIGHTS ancillary data was delivered with partial message.
+* Fix: HTTP/2 connection preface followed by incomplete SETTINGS frame
+  incorrectly falling through to HTTP/1.1 Host header parsing.
+* Fix: ACL policy validation allowing mixed allow_except and deny_except
+  stanzas when the first listener used the implicit default mode.
+* Fix: Logger priority name parser accepting prefix matches (e.g. "emer"
+  matching "emergency"). Now requires exact match.
+* Fix: Replace select()/FD_SET with poll() in logger health check to
+  avoid undefined behavior when logger socket fd exceeds FD_SETSIZE.
+* Fix: Handle SSL_ERROR_ZERO_RETURN (clean TLS shutdown) in DNS-over-TLS
+  read path instead of treating it as an error.
+* Fix: Drain OpenSSL error queue after DoT TLS error logging to prevent
+  stale errors from contaminating subsequent operations.
+* Fix: Clamp SSL_read and SSL_write length parameters to INT_MAX to
+  prevent silent truncation on the OpenSSL int API boundary.
+* Fix: Cap IPC payload length validation to INT_MAX in addition to the
+  per-channel maximum, matching the OpenSSL AEAD API constraint.
+* Fix: Add minimum size validation to binder AF_UNIX sockaddr comparison
+  to prevent size_t underflow on truncated addresses.
+* Fix: Add NULL guard to copy_address to prevent NULL dereference.
+* Fix: size_t to int narrowing in config tokenizer next_word function.
+* Fix: Misleading logger stanza error messages now distinguish between
+  "both file and syslog" and "neither file nor syslog" configurations.
+* Fix: Remove incorrect const qualifier from table_lookup_server_address
+  which was cast away internally to mutate the lookup cache.
+* Fix: Remove dead code in connection_cb buffer reserve failure path.
+* Doc: Update mutex nesting documentation in resolver to reflect actual
+  lock ordering (resolver_pending_lock -> resolver_queries_lock).
+
 sniproxy 0.9.24 (2026-03-04)
 ===============================
 
