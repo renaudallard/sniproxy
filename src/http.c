@@ -97,7 +97,7 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
         size_t cmp_len = data_len < preface_len ? data_len : preface_len;
         if (cmp_len > 0 && memcmp(data, http2_preface, cmp_len) == 0) {
             int h2_result = parse_http2_header((const unsigned char *)data, data_len, hostname);
-            if (h2_result != -4)
+            if (data_len >= preface_len || h2_result != -4)
                 return h2_result;
         }
     }
