@@ -529,7 +529,7 @@ ipc_crypto_seal(struct ipc_crypto_state *state, const uint8_t *plaintext,
     if (state == NULL || plaintext == NULL || frame == NULL || frame_len == NULL)
         return -1;
 
-    if (plaintext_len > UINT32_MAX)
+    if (plaintext_len > INT_MAX)
         return -1;
 
     size_t overhead = IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN;
@@ -582,8 +582,8 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     uint32_t payload_len = ntohl(header.length);
     uint32_t msg_generation = ntohl(header.generation);
 
-    /* Validate payload_len against maximum before allocation (defense-in-depth) */
-    if (payload_len > max_payload_len) {
+    /* Validate payload_len against maximum and INT_MAX (OpenSSL API limit) */
+    if (payload_len > max_payload_len || payload_len > INT_MAX) {
         ipc_crypto_mask_failure(payload_len);
         return -1;
     }
