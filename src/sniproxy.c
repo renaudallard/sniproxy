@@ -487,8 +487,8 @@ main(int argc, char **argv) {
     rename_main_process();
 
 #ifdef __OpenBSD__
-    /* Tighten pledge after dropping privileges - no longer need getpw */
-    if (pledge("stdio inet dns rpath proc id unix", NULL) == -1) {
+    /* Tighten pledge after dropping privileges - no longer need getpw or id */
+    if (pledge("stdio inet dns rpath proc unix", NULL) == -1) {
         fatal("main: pledge failed: %s", strerror(errno));
     }
 #endif

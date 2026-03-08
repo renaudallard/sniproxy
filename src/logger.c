@@ -1715,6 +1715,16 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                             "sniproxy logger: failed to drop privileges\n");
                     logger_child_exit(EXIT_FAILURE);
                 }
+#ifdef __OpenBSD__
+                /* Tighten pledge - no longer need id */
+                if (pledge("stdio rpath wpath cpath fattr unix",
+                            NULL) == -1) {
+                    fprintf(stderr,
+                            "logger: pledge tighten failed: %s\n",
+                            strerror(errno));
+                    logger_child_exit(EXIT_FAILURE);
+                }
+#endif
             }
             break;
         case LOGGER_CMD_DROP:
