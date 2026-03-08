@@ -29,8 +29,8 @@
 #include "cfg_tokenizer.h"
 
 static void chomp_line(FILE *);
-static int next_word(FILE *, char *, int);
-static int tokenizer_fail(char *, int, int);
+static int next_word(FILE *, char *, size_t);
+static int tokenizer_fail(char *, size_t, size_t);
 
 
 /*
@@ -87,13 +87,13 @@ chomp_line(FILE *file) {
 }
 
 static int
-next_word(FILE *file, char *buffer, int buffer_len) {
+next_word(FILE *file, char *buffer, size_t buffer_len) {
     int ch;
-    int len = 0;
+    size_t len = 0;
     int quoted = 0;
     int escaped = 0;
 
-    if (buffer_len <= 0)
+    if (buffer_len == 0)
         return -1;
 
     while ((ch = getc(file)) != EOF) {
@@ -128,7 +128,7 @@ next_word(FILE *file, char *buffer, int buffer_len) {
 
                     buffer[len] = '\0';
                     len++;
-                    return len;
+                    return (int)len;
                 }
                 /* fall through */
             default:
@@ -143,9 +143,9 @@ next_word(FILE *file, char *buffer, int buffer_len) {
 }
 
 static int
-tokenizer_fail(char *buffer, int buffer_len, int len) {
+tokenizer_fail(char *buffer, size_t buffer_len, size_t len) {
     if (buffer_len > 0) {
-        int idx = len;
+        size_t idx = len;
         if (idx >= buffer_len)
             idx = buffer_len - 1;
         buffer[idx] = '\0';
