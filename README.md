@@ -321,6 +321,9 @@ http_max_headers 200
         # Limit concurrent DNS queries to prevent resource exhaustion
         max_concurrent_queries 256
 
+        # Limit per-client concurrent DNS queries (default 16, 0 to disable)
+        max_concurrent_queries_per_client 16
+
         # DNSSEC policy (default relaxed): off | relaxed | strict
         dnssec_validation strict
     }

@@ -176,6 +176,7 @@ be used here as in error_log.
 resolver {
     nameserver 127.0.0.1
     mode ipv6_first
+    max_concurrent_queries_per_client 16
 }
 .fi
 .PP
@@ -217,6 +218,10 @@ The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
 may be in flight at once (default 256). Lower values cap resolver resource
 usage, while higher values increase throughput for configurations that rely on
 wildcard or hostname targets.
+
+The optional \fBmax_concurrent_queries_per_client\fR directive limits how many
+DNS lookups a single source IP may have in flight at once (default 16). Set to
+0 to disable the per-client guard.
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
 default is relaxed, which requests DNSSEC data but falls back to unsigned
