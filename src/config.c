@@ -1013,6 +1013,18 @@ end_listener_acl_stanza(struct Listener *listener, struct ListenerACLBuilder *bu
         return 0;
     }
 
+    /* Enforce mutual exclusivity even when the policy was implicit
+     * (defaulting to allow_except when no policy argument given). */
+    enum GlobalACLPolicy effective = (builder->mode == LISTENER_ACL_MODE_DENY_EXCEPT) ?
+            GLOBAL_ACL_POLICY_DENY : GLOBAL_ACL_POLICY_ALLOW;
+
+    if (global_acl_policy == GLOBAL_ACL_POLICY_UNSET) {
+        global_acl_policy = effective;
+    } else if (global_acl_policy != effective) {
+        err("acl allow_except and deny_except stanzas are mutually exclusive");
+        return 0;
+    }
+
     listener->acl_mode = builder->mode;
     listener->acl_rules = builder->rules;
     SLIST_INIT(&builder->rules);
