@@ -648,6 +648,9 @@ binder_sockaddr_equal(const struct sockaddr *a, size_t alen,
                 memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0;
         }
         case AF_UNIX: {
+            if (alen < offsetof(struct sockaddr_un, sun_path) + 1 ||
+                    blen < offsetof(struct sockaddr_un, sun_path) + 1)
+                return 0;
             const struct sockaddr_un *au = (const struct sockaddr_un *)a;
             const struct sockaddr_un *bu = (const struct sockaddr_un *)b;
             size_t a_max = alen - offsetof(struct sockaddr_un, sun_path);
