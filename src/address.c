@@ -228,6 +228,9 @@ new_address_sa(const struct sockaddr *sa, socklen_t sa_len) {
 
 struct Address *
 copy_address(const struct Address *addr) {
+    if (addr == NULL)
+        return NULL;
+
     size_t len = address_len(addr);
     struct Address *new_addr = malloc(len);
 
