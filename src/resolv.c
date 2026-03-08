@@ -2701,6 +2701,7 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
     char buf[256];
     ERR_error_string_n(ssl_err, buf, sizeof(buf));
     err("resolver child: DoT handshake failed: %s", buf);
+    ERR_clear_error();
     sock->failed = 1;
     errno = ECONNABORTED;
     return -1;
@@ -2817,6 +2818,7 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
     char errbuf[256];
     ERR_error_string_n(ssl_err, errbuf, sizeof(errbuf));
     err("resolver child: DoT write failed: %s", errbuf);
+    ERR_clear_error();
     sock->failed = 1;
     errno = ECONNABORTED;
     return -1;
