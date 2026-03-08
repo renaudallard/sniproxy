@@ -210,11 +210,14 @@ resolver_next_query_prng(void) {
 /* Resolver Concurrency Design
  * ===========================
  * The resolver uses three independent mutexes to coordinate concurrent DNS
- * queries and resolver restarts. These locks are NEVER nested to prevent
- * deadlock. When multiple locks are needed, they are acquired and released
- * sequentially.
+ * queries and resolver restarts.  These locks are generally not nested.
  *
- * Lock Hierarchy (acquire/release independently, never hold multiple):
+ * Lock ordering (to prevent deadlock):
+ *   resolver_pending_lock -> resolver_queries_lock
+ *
+ * This nesting occurs in resolv_shutdown() which holds resolver_pending_lock
+ * while calling resolver_detach_pending_queries() (acquires queries_lock).
+ * No code path acquires these locks in the reverse order.
  *
  * 1. resolver_queries_lock
  *    Protects: resolver_queries[] and resolver_hosts[] hash tables
