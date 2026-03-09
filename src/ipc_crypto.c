@@ -385,7 +385,7 @@ ipc_crypto_rekey_recv(struct ipc_crypto_state *state) {
     if (state->recv_generation == UINT32_MAX)
         return -1;
 
-    state->recv_generation++;
+    uint32_t new_generation = state->recv_generation + 1;
 
     const char *recv_label;
 
@@ -396,9 +396,12 @@ ipc_crypto_rekey_recv(struct ipc_crypto_state *state) {
     }
 
     /* Derive new recv key from base_key with rekey generation */
-    if (derive_rekey_key(state->base_key, state->recv_generation,
+    if (derive_rekey_key(state->base_key, new_generation,
                 recv_label, state->recv_key) < 0)
         return -1;
+
+    /* Commit generation only after successful key derivation */
+    state->recv_generation = new_generation;
 
     /* Reset recv counter and update timestamp for new key generation */
     state->recv_counter = 0;
