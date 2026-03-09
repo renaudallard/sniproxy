@@ -869,11 +869,16 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
 
         /* Extract any fd from ancillary data before error checks.
          * The kernel delivers SCM_RIGHTS with the first bytes, so
-         * even a short read may have transferred an fd to us. */
-        struct cmsghdr *prefix_cmsg = CMSG_FIRSTHDR(&prefix_msg);
-        if (prefix_cmsg != NULL && prefix_cmsg->cmsg_level == SOL_SOCKET &&
-                prefix_cmsg->cmsg_type == SCM_RIGHTS) {
-            memcpy(&prefix_fd, CMSG_DATA(prefix_cmsg), sizeof(int));
+         * even a short read may have transferred an fd to us.
+         * Only check on positive return: on error the kernel does
+         * not update the msghdr and the control buffer is garbage. */
+        if (prefix_ret > 0) {
+            struct cmsghdr *prefix_cmsg = CMSG_FIRSTHDR(&prefix_msg);
+            if (prefix_cmsg != NULL &&
+                    prefix_cmsg->cmsg_level == SOL_SOCKET &&
+                    prefix_cmsg->cmsg_type == SCM_RIGHTS) {
+                memcpy(&prefix_fd, CMSG_DATA(prefix_cmsg), sizeof(int));
+            }
         }
 
         if (prefix_ret <= 0) {
