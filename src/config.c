@@ -1217,6 +1217,11 @@ accept_max_connections(struct Config *config, const char *value) {
     if (value == NULL)
         return 0;
 
+    if (value[0] == '-') {
+        err("Invalid max_connections '%s'", value);
+        return 0;
+    }
+
     errno = 0;
     char *end = NULL;
     unsigned long long limit = strtoull(value, &end, 10);
@@ -1701,7 +1706,7 @@ accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *v
 
 static int
 accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) {
-    if (value == NULL || *value == '\0')
+    if (value == NULL || *value == '\0' || value[0] == '-')
         return -1;
 
     char *endptr = NULL;
@@ -1723,7 +1728,7 @@ accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) 
 
 static int
 accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const char *value) {
-    if (value == NULL || *value == '\0')
+    if (value == NULL || *value == '\0' || value[0] == '-')
         return -1;
 
     char *endptr = NULL;
