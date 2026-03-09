@@ -932,38 +932,23 @@ obtain_file_sink(const char *filepath) {
     }
 
     if (!logger_process_enabled && sink->fd == NULL) {
-        int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-        open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-        open_flags |= O_NOFOLLOW;
-#endif
-
-        int fd = open(filepath, open_flags, 0600);
-        if (fd < 0) {
-            int saved_errno = errno;
-            free((char *)sink->filepath);
-            free(sink);
-            errno = saved_errno;
-            err("Failed to open new log file %s: %s", filepath, strerror(saved_errno));
-            return NULL;
+        if (!logger_parent_fs_locked) {
+            FILE *file = open_log_file_checked(filepath);
+            if (file == NULL) {
+                int saved_errno = errno;
+                free((char *)sink->filepath);
+                free(sink);
+                errno = saved_errno;
+                err("Failed to open new log file %s: %s", filepath,
+                        strerror(saved_errno));
+                return NULL;
+            }
+            sink->fd = file;
+            sink->fd_owned = 1;
+        } else {
+            sink->fd = stderr;
+            sink->fd_owned = 0;
         }
-
-        FILE *file = fdopen(fd, "a");
-        if (file == NULL) {
-            int saved_errno = errno;
-            close(fd);
-            free((char *)sink->filepath);
-            free(sink);
-            errno = saved_errno;
-            err("Failed to associate stream with log file: %s", filepath);
-            return NULL;
-        }
-
-        setvbuf(file, NULL, _IOLBF, 0);
-        sink->fd = file;
-        sink->fd_owned = 1;
     }
 
     SLIST_INSERT_HEAD(&sinks, sink, entries);
