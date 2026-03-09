@@ -1116,8 +1116,11 @@ disable_logger_process(void) {
     }
 
     if (logger_pid > 0) {
-        if (waitpid(logger_pid, NULL, 0) < 0 && errno != ECHILD) {
-            /* ignore waitpid failures other than no-child */
+        /* Use WNOHANG to avoid blocking the mainloop if the child
+         * is stuck on filesystem I/O (e.g. hung NFS mount) */
+        if (waitpid(logger_pid, NULL, WNOHANG) == 0) {
+            kill(logger_pid, SIGKILL);
+            waitpid(logger_pid, NULL, 0);
         }
         logger_pid = -1;
     }
@@ -1229,8 +1232,14 @@ logger_process_shutdown(void) {
         logger_sock = -1;
     }
 
-    if (logger_pid > 0)
-        waitpid(logger_pid, NULL, 0);
+    if (logger_pid > 0) {
+        /* Use WNOHANG to avoid blocking if the child is stuck on
+         * filesystem I/O; SIGKILL ensures it terminates */
+        if (waitpid(logger_pid, NULL, WNOHANG) == 0) {
+            kill(logger_pid, SIGKILL);
+            waitpid(logger_pid, NULL, 0);
+        }
+    }
 
     logger_pid = -1;
     logger_process_enabled = 0;
