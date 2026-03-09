@@ -635,7 +635,7 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     }
 
     int ok = 0;
-    int len;
+    int len = 0;
 
     /* Handle generation mismatch - explicit rekey detection via protocol */
     if (msg_generation < state->recv_generation) {
