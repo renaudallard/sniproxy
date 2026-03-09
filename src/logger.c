@@ -1661,8 +1661,11 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             break;
         case LOGGER_CMD_REOPEN:
             sink = child_sink_lookup(&child_sink_head, header->sink_id);
-            if (sink == NULL)
+            if (sink == NULL) {
+                if (received_fd >= 0)
+                    close(received_fd);
                 break;
+            }
             if (sink->type == LOG_SINK_FILE) {
                 FILE *file = NULL;
                 if (received_fd >= 0) {
@@ -1681,8 +1684,13 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                     fclose(sink->file);
                 sink->file = file;
             } else if (sink->type == LOG_SINK_SYSLOG) {
+                if (received_fd >= 0)
+                    close(received_fd);
                 closelog();
                 openlog(PACKAGE_NAME, LOG_PID, 0);
+            } else {
+                if (received_fd >= 0)
+                    close(received_fd);
             }
             break;
         case LOGGER_CMD_PRIVILEGES:
