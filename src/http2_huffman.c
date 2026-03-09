@@ -119,6 +119,7 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
     int16_t node = 0;
     uint32_t bit_buffer = 0;
     unsigned int bit_count = 0;
+    unsigned int padding_bits = 0;
 
     for (size_t i = 0; i < len; i++) {
         bit_buffer = (bit_buffer << 8) | data[i];
@@ -127,6 +128,7 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
         while (bit_count > 0) {
             int bit = (bit_buffer >> (bit_count - 1)) & 0x1;
             bit_count--;
+            padding_bits++;
             int16_t next = huffman_tree[node].child[bit];
             if (next == 0) {
                 free(buf);
@@ -146,20 +148,23 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
                 }
                 buf[pos++] = (char)huffman_tree[node].value;
                 node = 0;
+                padding_bits = 0;
             }
         }
     }
 
-    uint32_t mask;
-    if (bit_count == 0)
-        mask = 0u;
-    else if (bit_count >= 32)
-        mask = UINT32_MAX;
-    else
-        mask = (1u << bit_count) - 1u;
-    if (bit_count > 0 && (bit_buffer & mask) != mask) {
+    /* RFC 7541 Section 5.2: padding must be at most 7 bits and must
+     * consist of the most significant bits of the EOS code (all 1s) */
+    if (padding_bits > 7) {
         free(buf);
         return -1;
+    }
+    if (padding_bits > 0) {
+        uint32_t mask = (1u << padding_bits) - 1u;
+        if ((bit_buffer & mask) != mask) {
+            free(buf);
+            return -1;
+        }
     }
 
     buf[pos] = '\0';
