@@ -1416,7 +1416,7 @@ recv_logger_message(int fd, struct logger_ipc_header *header,
 
     if (plain_len < sizeof(*header)) {
         free(plain);
-        return -1;
+        goto fail_close_fd;
     }
 
     memcpy(header, plain, sizeof(*header));
@@ -1424,14 +1424,14 @@ recv_logger_message(int fd, struct logger_ipc_header *header,
     size_t data_len = plain_len - sizeof(*header);
     if (data_len != header->payload_len) {
         free(plain);
-        return -1;
+        goto fail_close_fd;
     }
 
     if (data_len > 0) {
         *payload = malloc(data_len);
         if (*payload == NULL) {
             free(plain);
-            return -1;
+            goto fail_close_fd;
         }
         memcpy(*payload, plain + sizeof(*header), data_len);
 
@@ -1445,6 +1445,13 @@ recv_logger_message(int fd, struct logger_ipc_header *header,
 
     free(plain);
     return 1;
+
+fail_close_fd:
+    if (*received_fd >= 0) {
+        close(*received_fd);
+        *received_fd = -1;
+    }
+    return -1;
 }
 
 static struct ChildSink *
