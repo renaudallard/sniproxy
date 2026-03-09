@@ -545,10 +545,12 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
     if (temp_len > BUFFER_COALESCE_STACK_COPY) {
         temp = malloc(temp_len);
         if (temp == NULL) {
+            /* Return only the contiguous portion to avoid
+             * over-read past the end of the backing array */
             if (dst != NULL)
                 *dst = buffer->buffer + head;
 
-            return len;
+            return first_len;
         }
         temp_on_heap = 1;
     }
