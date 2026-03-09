@@ -253,6 +253,10 @@ main(int argc, char **argv) {
                 break;
             case 'n':
                 {
+                    if (optarg[0] == '-') {
+                        err("Invalid file descriptor limit '%s'", optarg);
+                        return EXIT_FAILURE;
+                    }
                     errno = 0;
                     char *endptr = NULL;
                     unsigned long value = strtoul(optarg, &endptr, 10);
