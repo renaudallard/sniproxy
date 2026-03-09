@@ -747,8 +747,11 @@ obtain_stderr_sink(void) {
 
         if (logger_process_enabled) {
             if (send_logger_new_sink(sink, -1) < 0) {
-                err("failed to register stderr sink with logger process: %s",
-                        strerror(errno));
+                /* Use fprintf instead of err() to avoid recursion:
+                 * err() -> init_default_logger() -> obtain_stderr_sink()
+                 * and default_logger is not yet set at this point */
+                fprintf(stderr, "failed to register stderr sink with "
+                        "logger process: %s\n", strerror(errno));
                 disable_logger_process();
             }
         }
