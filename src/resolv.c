@@ -466,8 +466,11 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 #endif
 
     resolver_loop_ref = loop;
-    ipc_crypto_channel_init(&resolver_ipc_crypto, RESOLVER_IPC_CHANNEL_ID,
-            IPC_CRYPTO_ROLE_PARENT);
+    if (ipc_crypto_channel_init(&resolver_ipc_crypto, RESOLVER_IPC_CHANNEL_ID,
+                IPC_CRYPTO_ROLE_PARENT) < 0) {
+        err("Failed to initialize resolver IPC crypto");
+        return -1;
+    }
     resolver_saved_nameservers = nameservers;
     resolver_saved_search = search;
     resolver_saved_mode = mode;

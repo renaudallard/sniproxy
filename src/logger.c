@@ -1197,8 +1197,13 @@ ensure_logger_process(void) {
     if (flags >= 0)
         fcntl(logger_sock, F_SETFL, flags | O_NONBLOCK);
 
-    ipc_crypto_channel_init(&logger_crypto_parent, LOGGER_IPC_CHANNEL_ID,
-            IPC_CRYPTO_ROLE_PARENT);
+    if (ipc_crypto_channel_init(&logger_crypto_parent, LOGGER_IPC_CHANNEL_ID,
+                IPC_CRYPTO_ROLE_PARENT) < 0) {
+        err("Failed to initialize logger IPC crypto");
+        close(logger_sock);
+        logger_sock = -1;
+        return -1;
+    }
     logger_pid = pid;
     logger_process_enabled = 1;
     logger_resend_sinks();

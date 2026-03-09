@@ -439,7 +439,15 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
     state->send_buf = NULL;
     state->send_buf_cap = 0;
 
-    return ipc_crypto_set_directional_keys(state, role);
+    if (ipc_crypto_set_directional_keys(state, role) < 0) {
+        EVP_CIPHER_CTX_free(state->open_ctx);
+        state->open_ctx = NULL;
+        EVP_CIPHER_CTX_free(state->seal_ctx);
+        state->seal_ctx = NULL;
+        return -1;
+    }
+
+    return 0;
 }
 
 int
