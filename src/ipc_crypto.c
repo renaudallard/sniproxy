@@ -669,9 +669,22 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         return -1;
     }
 
+    /* Save recv state before speculative rekey so we can roll back
+     * if AEAD verification fails (e.g. corrupted or forged message) */
+    uint8_t saved_recv_key[32];
+    uint32_t saved_recv_generation = state->recv_generation;
+    uint64_t saved_recv_counter = state->recv_counter;
+    time_t saved_recv_key_timestamp = state->recv_key_timestamp;
+    memcpy(saved_recv_key, state->recv_key, sizeof(saved_recv_key));
+
     /* Advance recv_generation to match sender if needed */
     while (state->recv_generation < msg_generation) {
         if (ipc_crypto_rekey_recv(state) < 0) {
+            state->recv_generation = saved_recv_generation;
+            state->recv_counter = saved_recv_counter;
+            state->recv_key_timestamp = saved_recv_key_timestamp;
+            memcpy(state->recv_key, saved_recv_key, sizeof(state->recv_key));
+            OPENSSL_cleanse(saved_recv_key, sizeof(saved_recv_key));
             OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
             free(output);
             ipc_crypto_mask_failure(payload_len);
@@ -681,6 +694,11 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 
     /* Within same generation, enforce strictly monotonic counters */
     if (msg_counter <= state->recv_counter) {
+        state->recv_generation = saved_recv_generation;
+        state->recv_counter = saved_recv_counter;
+        state->recv_key_timestamp = saved_recv_key_timestamp;
+        memcpy(state->recv_key, saved_recv_key, sizeof(state->recv_key));
+        OPENSSL_cleanse(saved_recv_key, sizeof(saved_recv_key));
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
         warn("IPC replay attack: msg_counter=%llu <= recv_counter=%llu (generation=%u)",
@@ -721,11 +739,19 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     } while (0);
 
     if (!ok) {
+        /* AEAD verification failed - restore recv state */
+        state->recv_generation = saved_recv_generation;
+        state->recv_counter = saved_recv_counter;
+        state->recv_key_timestamp = saved_recv_key_timestamp;
+        memcpy(state->recv_key, saved_recv_key, sizeof(state->recv_key));
+        OPENSSL_cleanse(saved_recv_key, sizeof(saved_recv_key));
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
         ipc_crypto_mask_failure(payload_len);
         return -1;
     }
+
+    OPENSSL_cleanse(saved_recv_key, sizeof(saved_recv_key));
 
     /* Update recv_counter to enforce monotonicity for next message */
     state->recv_counter = msg_counter;
