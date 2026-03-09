@@ -427,13 +427,13 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
 
     state->seal_ctx = EVP_CIPHER_CTX_new();
     if (state->seal_ctx == NULL)
-        return -1;
+        goto fail_wipe;
 
     state->open_ctx = EVP_CIPHER_CTX_new();
     if (state->open_ctx == NULL) {
         EVP_CIPHER_CTX_free(state->seal_ctx);
         state->seal_ctx = NULL;
-        return -1;
+        goto fail_wipe;
     }
 
     state->send_buf = NULL;
@@ -444,10 +444,14 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
         state->open_ctx = NULL;
         EVP_CIPHER_CTX_free(state->seal_ctx);
         state->seal_ctx = NULL;
-        return -1;
+        goto fail_wipe;
     }
 
     return 0;
+
+fail_wipe:
+    secure_memzero(state->base_key, sizeof(state->base_key));
+    return -1;
 }
 
 int
