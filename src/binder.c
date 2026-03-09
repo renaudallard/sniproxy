@@ -402,7 +402,8 @@ binder_main(int sockfd) {
     /* Install seccomp filter after initialization */
     if (seccomp_available()) {
         if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0) {
-            fatal("binder: failed to install seccomp filter: %s", strerror(errno));
+            err("binder: failed to install seccomp filter: %s", strerror(errno));
+            binder_child_exit(EXIT_FAILURE);
         }
     }
 
