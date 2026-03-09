@@ -1331,7 +1331,11 @@ static void
 resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_mode) {
     child_sock = sockfd;
     child_default_resolv_mode = default_mode;
-    ipc_crypto_channel_set_role(&resolver_ipc_crypto, IPC_CRYPTO_ROLE_CHILD);
+    if (ipc_crypto_channel_set_role(&resolver_ipc_crypto,
+                IPC_CRYPTO_ROLE_CHILD) < 0) {
+        fprintf(stderr, "resolver child: failed to set crypto role\n");
+        resolver_child_exit(EXIT_FAILURE);
+    }
 
     notice("resolver child starting (pid=%d)", getpid());
     debug_log("resolver child: debug logging ENABLED");
