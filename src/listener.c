@@ -833,7 +833,16 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
      * socket did. A blocking listener socket would freeze the event
      * loop when accept() has no pending connections. */
     int flags = fcntl(sockfd, F_GETFL, 0);
-    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0) {
+        err("fcntl F_GETFL failed: %s", strerror(errno));
+        rc = -1;
+        goto error;
+    }
+    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        err("fcntl F_SETFL O_NONBLOCK failed: %s", strerror(errno));
+        rc = -1;
+        goto error;
+    }
 
     ev_io_init(&listener->watcher, accept_cb, sockfd, EV_READ);
     listener->watcher.data = listener;
