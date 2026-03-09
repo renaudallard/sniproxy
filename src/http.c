@@ -251,8 +251,13 @@ next_header(const char **data, size_t *len) {
 
     const char *header_end = memchr(cursor, '\n', *len);
 
-    if (header_end == NULL)
+    if (header_end == NULL) {
+        /* Incomplete header line, consume remaining bytes so
+         * get_header sees data_len == 0 and returns incomplete */
+        *data = cursor + *len;
+        *len = 0;
         return 0;
+    }
 
     size_t header_len = (size_t)(header_end - cursor);
 
