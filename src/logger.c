@@ -626,6 +626,9 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
         disable_logger_process();
     }
 
+    if (logger->sink == NULL)
+        return;
+
     if (logger->sink->type == LOG_SINK_SYSLOG) {
         vsyslog(logger->facility | priority, format, args);
     } else if (logger->sink->fd != NULL && have_payload) {
