@@ -891,6 +891,36 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
     struct ev_io *client_watcher = &con->client.watcher;
     struct ev_io *server_watcher = &con->server.watcher;
 
+    /* Close other socket if we have flushed corresponding buffer.
+     * This handles protocols with no abort message (e.g. Minecraft)
+     * where abort_connection leaves the server buffer empty. Without
+     * this check, calls from outside connection_cb (e.g. resolv_cb)
+     * would leave the connection with no active watchers. */
+    if (con->state == SERVER_CLOSED && buffer_len(con->server.buffer) == 0
+            && client_open) {
+        close_client_socket(con, loop);
+        client_open = 0;
+    }
+    if (con->state == CLIENT_CLOSED && buffer_len(con->client.buffer) == 0
+            && server_open) {
+        close_server_socket(con, loop);
+        server_open = 0;
+    }
+
+    if (con->state == CLOSED) {
+        stop_idle_timer(con, loop);
+        stop_header_timer(con, loop);
+        TAILQ_REMOVE(&connections, con, entries);
+        connection_account_remove();
+
+        if (con->listener->access_log)
+            log_connection(con);
+
+        free_connection(con);
+        maybe_stop_buffer_shrink_timer(loop);
+        return;
+    }
+
     /* Reactivate watchers */
     if (client_open)
         reactivate_watcher(loop, client_watcher,
