@@ -1995,27 +1995,41 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             return;
         }
         cb_data->connection = con;
-        cb_data->address = result.address;
-        cb_data->cb_free_addr = result.caller_free_address;
         cb_data->loop = loop;
         con->use_proxy_header = result.use_proxy_header;
 
-        if (!ensure_proxy_header(con)) {
+        /* Always copy the address so the callback owns it.
+         * A borrowed pointer into a backend can be freed by
+         * reload_tables() during async DNS resolution. */
+        cb_data->address = copy_address(result.address);
+        if (cb_data->address == NULL) {
+            err("%s: copy_address", __func__);
+
             if (result.caller_free_address)
                 free((void *)result.address);
+
+            free(cb_data);
+            abort_connection(con, loop);
+            return;
+        }
+        cb_data->cb_free_addr = 1;
+
+        if (result.caller_free_address)
+            free((void *)result.address);
+
+        if (!ensure_proxy_header(con)) {
+            free((void *)cb_data->address);
             free(cb_data);
             abort_connection(con, loop);
             reactivate_watchers(con, loop);
             return;
         }
 
-        const char *hostname = address_hostname(result.address);
+        const char *hostname = address_hostname(cb_data->address);
         if (hostname == NULL || hostname[0] == '\0') {
             err("%s: hostname lookup returned empty result", __func__);
 
-            if (result.caller_free_address)
-                free((void *)result.address);
-
+            free((void *)cb_data->address);
             free(cb_data);
 
             abort_connection(con, loop);
@@ -2062,8 +2076,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                         max_dns_queries_per_client, client_ip);
             }
 
-            if (result.caller_free_address)
-                free((void *)result.address);
+            free((void *)cb_data->address);
             free(cb_data);
 
             abort_connection(con, loop);
