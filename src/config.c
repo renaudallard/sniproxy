@@ -691,6 +691,9 @@ parse_size_value(const char *value, size_t min, size_t max, size_t *out) {
     if (value == NULL || out == NULL)
         return -1;
 
+    if (strchr(value, '-') != NULL)
+        return -1;
+
     errno = 0;
     char *end = NULL;
     unsigned long long base = strtoull(value, &end, 10);
@@ -1217,7 +1220,7 @@ accept_max_connections(struct Config *config, const char *value) {
     if (value == NULL)
         return 0;
 
-    if (value[0] == '-') {
+    if (strchr(value, '-') != NULL) {
         err("Invalid max_connections '%s'", value);
         return 0;
     }
@@ -1706,7 +1709,7 @@ accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *v
 
 static int
 accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) {
-    if (value == NULL || *value == '\0' || value[0] == '-')
+    if (value == NULL || *value == '\0' || strchr(value, '-') != NULL)
         return -1;
 
     char *endptr = NULL;
@@ -1728,7 +1731,7 @@ accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) 
 
 static int
 accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const char *value) {
-    if (value == NULL || *value == '\0' || value[0] == '-')
+    if (value == NULL || *value == '\0' || strchr(value, '-') != NULL)
         return -1;
 
     char *endptr = NULL;
