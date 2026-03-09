@@ -8,14 +8,14 @@ GIT_DIR=${SOURCE_DIR}/.git
 cd ${SOURCE_DIR}
 
 if [ -d ${GIT_DIR} ]; then
-    GIT_VERSION=$(git describe --tags)
+    GIT_VERSION=$(git describe --tags 2>/dev/null)
     if [ "x" != "x${GIT_VERSION}" ]; then
         if echo ${GIT_VERSION} | grep -q '-'; then
-            VER=$(echo ${GIT_VERSION} | cut -d- -f1)
             REV=$(echo ${GIT_VERSION} | cut -d- -f2)
             REF=$(echo ${GIT_VERSION} | cut -d- -f3)
 
-            VERSION=${VER}+git.${REV}.${REF}
+            # Use the hardcoded VERSION as base, not the old tag
+            VERSION=${VERSION}+git.${REV}.${REF}
         else
             # Release version (e.g. 0.3.5)
             VERSION=${GIT_VERSION}
