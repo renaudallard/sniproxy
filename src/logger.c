@@ -1074,13 +1074,21 @@ timestamp(char *dst, size_t dst_len) {
     if (now != timestamp_cache.when) {
 #ifdef RFC3339_TIMESTAMP
         struct tm *tmp = gmtime(&now);
-        timestamp_cache.len = strftime(timestamp_cache.string,
-                sizeof(timestamp_cache.string), "%FT%TZ ", tmp);
 #else
         struct tm *tmp = localtime(&now);
-        timestamp_cache.len = strftime(timestamp_cache.string,
-                sizeof(timestamp_cache.string), "%F %T ", tmp);
 #endif
+        if (tmp == NULL) {
+            timestamp_cache.len = 0;
+            timestamp_cache.string[0] = '\0';
+        } else {
+#ifdef RFC3339_TIMESTAMP
+            timestamp_cache.len = strftime(timestamp_cache.string,
+                    sizeof(timestamp_cache.string), "%FT%TZ ", tmp);
+#else
+            timestamp_cache.len = strftime(timestamp_cache.string,
+                    sizeof(timestamp_cache.string), "%F %T ", tmp);
+#endif
+        }
 
         timestamp_cache.when = now;
     }
