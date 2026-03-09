@@ -354,7 +354,7 @@ ipc_crypto_rekey_send(struct ipc_crypto_state *state) {
         return -1;
     }
 
-    state->send_generation++;
+    uint32_t new_generation = state->send_generation + 1;
 
     const char *send_label;
 
@@ -365,9 +365,12 @@ ipc_crypto_rekey_send(struct ipc_crypto_state *state) {
     }
 
     /* Derive new send key from base_key with rekey generation */
-    if (derive_rekey_key(state->base_key, state->send_generation,
+    if (derive_rekey_key(state->base_key, new_generation,
                 send_label, state->send_key) < 0)
         return -1;
+
+    /* Commit generation only after successful key derivation */
+    state->send_generation = new_generation;
 
     /* Reset send counter and update timestamp for new key generation */
     state->send_counter = 0;
