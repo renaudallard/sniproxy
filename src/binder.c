@@ -236,14 +236,13 @@ binder_spawn_child(void) {
 
     close(sockets[1]);
     binder_sock = sockets[0];
+    binder_pid = pid;
     if (ipc_crypto_channel_init(&binder_crypto_parent, BINDER_IPC_CHANNEL_ID,
                 IPC_CRYPTO_ROLE_PARENT) < 0) {
         err("Failed to initialize binder IPC crypto");
-        close(binder_sock);
-        binder_sock = -1;
+        binder_cleanup_child(1);
         return -1;
     }
-    binder_pid = pid;
 
     return 0;
 }
