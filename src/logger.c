@@ -1198,6 +1198,7 @@ ensure_logger_process(void) {
 
     close(sockets[1]);
     logger_sock = sockets[0];
+    logger_pid = pid;
 
     /* Set non-blocking to prevent mainloop stall under heavy logging */
     int flags = fcntl(logger_sock, F_GETFL);
@@ -1206,12 +1207,12 @@ ensure_logger_process(void) {
 
     if (ipc_crypto_channel_init(&logger_crypto_parent, LOGGER_IPC_CHANNEL_ID,
                 IPC_CRYPTO_ROLE_PARENT) < 0) {
-        err("Failed to initialize logger IPC crypto");
-        close(logger_sock);
-        logger_sock = -1;
-        return -1;
+        /* Use fprintf instead of err() to avoid recursion:
+         * err() -> init_default_logger() -> ensure_logger_process() */
+        fprintf(stderr, "Failed to initialize logger IPC crypto\n");
+        disable_logger_process();
+        return 0;
     }
-    logger_pid = pid;
     logger_process_enabled = 1;
     logger_resend_sinks();
 
