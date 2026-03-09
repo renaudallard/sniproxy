@@ -145,7 +145,7 @@ parse_minecraft_handshake(const char *data_char, size_t data_len,
     if (addr_len == 0)
         return -2;
 
-    if (pos + addr_len > pkt_end)
+    if (addr_len > pkt_end - pos)
         return -5;
 
     /* Truncate at first NUL to strip FML/BungeeCord metadata */
