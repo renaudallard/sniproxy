@@ -136,6 +136,11 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
             }
             node = next;
             if (huffman_tree[node].value != -1) {
+                /* RFC 7541 Section 5.2: EOS in encoded data is an error */
+                if (huffman_tree[node].value == 256) {
+                    free(buf);
+                    return -1;
+                }
                 if (pos + 1 >= capacity) {
                     size_t new_cap = capacity * 2;
                     char *tmp = realloc(buf, new_cap);
