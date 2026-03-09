@@ -733,6 +733,8 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
             if (EVP_DecryptUpdate(ctx, output, &len, ciphertext,
                         (int)payload_len) != 1)
                 break;
+        } else {
+            len = 0;
         }
         if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG,
                     IPC_CRYPTO_TAG_LEN, (void *)tag) != 1)
