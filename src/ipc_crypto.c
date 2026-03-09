@@ -420,7 +420,7 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
         return -1;
 
     if (derive_base_key(channel_id, state->base_key) < 0)
-        return -1;
+        goto fail_wipe;
 
     state->channel_id = channel_id;
     state->send_counter = 0;
