@@ -1803,14 +1803,14 @@ logger_child_main(int sockfd) {
 #ifdef __OpenBSD__
     /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
     if (pledge("stdio rpath wpath cpath fattr id unix", NULL) == -1) {
-        err("logger: pledge failed: %s", strerror(errno));
+        fprintf(stderr, "logger: pledge failed: %s\n", strerror(errno));
         logger_child_exit(EXIT_FAILURE);
     }
 #endif
 
     if (ipc_crypto_channel_init(&logger_crypto_child, LOGGER_IPC_CHANNEL_ID,
             IPC_CRYPTO_ROLE_CHILD) < 0) {
-        err("logger child: failed to initialize crypto context");
+        fprintf(stderr, "logger child: failed to initialize crypto context\n");
         logger_child_exit(EXIT_FAILURE);
     }
 
