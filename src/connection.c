@@ -719,7 +719,8 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                         current);
 
                 close_server_socket(con, loop);
-                return;
+                server_open = 0;
+                revents = 0;
             }
             if (current > 0)
                 desired = current << 1;
@@ -742,7 +743,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
                 close_server_socket(con, loop);
                 server_open = 0;
-                return;
+                revents = 0;
             }
         }
     }
