@@ -1694,24 +1694,32 @@ resolver_child_submit_query(uint32_t id, int mode,
         return;
     }
 
-    if (query->resolv_mode != RESOLV_MODE_IPV6_ONLY) {
+    /* Set both pending flags before calling ares_getaddrinfo because
+     * c-ares may call the callback synchronously (e.g. on ARES_ENOMEM).
+     * If pending_v6 is still 0 when the v4 callback fires, the callback
+     * chain sees both flags as 0 and schedules the query for deferred
+     * free, causing use-after-free when the v6 query completes later. */
+    if (query->resolv_mode != RESOLV_MODE_IPV6_ONLY)
+        query->pending_v4 = 1;
+    if (query->resolv_mode != RESOLV_MODE_IPV4_ONLY)
+        query->pending_v6 = 1;
+
+    if (query->pending_v4) {
         struct ares_addrinfo_hints hints = {
             .ai_family = AF_INET,
             .ai_socktype = SOCK_STREAM,
             .ai_protocol = IPPROTO_TCP,
         };
-        query->pending_v4 = 1;
         ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v4_cb, query);
     }
 
-    if (query->resolv_mode != RESOLV_MODE_IPV4_ONLY) {
+    if (query->pending_v6) {
         struct ares_addrinfo_hints hints = {
             .ai_family = AF_INET6,
             .ai_socktype = SOCK_STREAM,
             .ai_protocol = IPPROTO_TCP,
         };
-        query->pending_v6 = 1;
         ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v6_cb, query);
     }
