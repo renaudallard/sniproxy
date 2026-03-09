@@ -163,6 +163,17 @@ static const char *bad[] = {
         "Host: duplicate.example\r\n"
         "Accept: */*\r\n"
         "\r\n",
+    /* Bare Host: with no value */
+    "GET / HTTP/1.1\r\n"
+        "Host:\r\n"
+        "Accept: */*\r\n"
+        "\r\n",
+    /* Bare Host: followed by a second Host header */
+    "GET / HTTP/1.1\r\n"
+        "Host:\r\n"
+        "Host: evil.com\r\n"
+        "Accept: */*\r\n"
+        "\r\n",
 };
 
 int main(void) {

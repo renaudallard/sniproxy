@@ -180,7 +180,7 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
         }
         header_count++;
 
-        if (len > header_len && strncasecmp(header, data, header_len) == 0) {
+        if (len >= header_len && strncasecmp(header, data, header_len) == 0) {
             size_t value_start = header_len;
 
             /* Eat leading whitespace */
