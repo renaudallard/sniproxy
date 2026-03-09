@@ -247,7 +247,7 @@ extract_to_attribute(const char *tag, size_t tag_len, char **hostname) {
             p++;
 
         if (p >= end)
-            return -1;
+            return -5; /* tag boundary already found, unclosed quote is malformed */
 
         size_t value_len = (size_t)(p - value_start);
         p++;

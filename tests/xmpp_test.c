@@ -175,6 +175,9 @@ static const char *bad[] = {
     /* Case-sensitive - uppercase should fail */
     "<STREAM:stream to=\"example.com\">",
     "<Stream:Stream to=\"example.com\">",
+    /* Unclosed quote in complete tag */
+    "<stream:stream to=\"example.com>",
+    "<stream:stream to='example.com xmlns=\"jabber:client\">",
 };
 
 int main(void) {
