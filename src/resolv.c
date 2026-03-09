@@ -1788,7 +1788,12 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
         return;
     }
 
-    if (send(child_sock, frame, frame_len, 0) < 0) {
+    ssize_t written;
+    do {
+        written = send(child_sock, frame, frame_len, 0);
+    } while (written < 0 && errno == EINTR);
+
+    if (written < 0) {
         err("resolver child send failed: %s (errno=%d)", strerror(errno), errno);
         if (errno == ECONNRESET || errno == EPIPE || errno == ENOTCONN) {
             notice("resolver child: parent socket dead, exiting");
