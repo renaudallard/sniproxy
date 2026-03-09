@@ -21,7 +21,7 @@ Features
 + **Pattern matching**: Exact hostname matching and PCRE2 regular expressions
 + **Wildcard backends**: Route to dynamically resolved hostnames
 + **Fallback routing**: Default backend for requests without valid hostnames
-+ **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1/v2)
++ **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1)
 
 ### Network & Performance
 + **IPv4, IPv6, and Unix domain sockets** for both listeners and backends
