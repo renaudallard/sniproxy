@@ -721,29 +721,30 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 close_server_socket(con, loop);
                 server_open = 0;
                 revents = 0;
-            }
-            if (current > 0)
-                desired = current << 1;
+            } else {
+                if (current > 0)
+                    desired = current << 1;
 
-            size_t load = buffer_len(input_buffer);
-            /* Avoid overflow in load threshold comparison */
-            if (current > 0) {
-                size_t threshold = current - (current / 4); /* 75% of current */
-                if (load < threshold)
-                    desired = current;
-            }
-            if (buffer_reserve(input_buffer, desired) < 0) {
-                char server[INET6_ADDRSTRLEN + 8];
+                size_t load = buffer_len(input_buffer);
+                /* Avoid overflow in load threshold comparison */
+                if (current > 0) {
+                    size_t threshold = current - (current / 4); /* 75% of current */
+                    if (load < threshold)
+                        desired = current;
+                }
+                if (buffer_reserve(input_buffer, desired) < 0) {
+                    char server[INET6_ADDRSTRLEN + 8];
 
-                warn("Response from %s exceeded %zu byte buffer size",
-                        display_sockaddr(&con->server.addr,
-                            con->server.addr_len,
-                            server, sizeof(server)),
-                        buffer_size(input_buffer));
+                    warn("Response from %s exceeded %zu byte buffer size",
+                            display_sockaddr(&con->server.addr,
+                                con->server.addr_len,
+                                server, sizeof(server)),
+                            buffer_size(input_buffer));
 
-                close_server_socket(con, loop);
-                server_open = 0;
-                revents = 0;
+                    close_server_socket(con, loop);
+                    server_open = 0;
+                    revents = 0;
+                }
             }
         }
     }
