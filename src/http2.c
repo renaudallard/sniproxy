@@ -489,13 +489,13 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                 }
                 fragment_len -= pad_length;
 
+                if (block.stream_id != 0 && block.stream_id != stream_id) {
+                    result = -4;
+                    goto done;
+                }
+                block.stream_id = stream_id;
+                block.continuation_count = 0;
                 if (fragment_len > 0) {
-                    if (block.stream_id != 0 && block.stream_id != stream_id) {
-                        result = -4;
-                        goto done;
-                    }
-                    block.stream_id = stream_id;
-                    block.continuation_count = 0;
                     if (!header_block_append(&block, payload + idx, fragment_len)) {
                         result = -4;
                         goto done;
