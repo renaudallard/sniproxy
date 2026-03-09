@@ -917,11 +917,10 @@ obtain_file_sink(const char *filepath) {
     }
 
     if (logger_process_enabled) {
+        /* send_logger_new_sink always closes fd_for_child */
         if (send_logger_new_sink(sink, fd_for_child) < 0) {
             err("Failed to register log file %s with logger process: %s", filepath,
                     strerror(errno));
-            if (fd_for_child >= 0)
-                close(fd_for_child);
             /* Fall back to in-process logging */
             disable_logger_process();
         }
