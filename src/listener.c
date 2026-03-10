@@ -590,8 +590,11 @@ accept_listener_source_address(struct Listener *listener, const char *source) {
 
 int
 accept_listener_bad_request_action(struct Listener *listener, const char *action) {
-    if (strncmp("log", action, strlen(action)) == 0) {
+    if (strcmp("log", action) == 0) {
         listener->log_bad_requests = 1;
+    } else {
+        err("unknown bad_requests action '%s'", action);
+        return -1;
     }
 
     return 1;
