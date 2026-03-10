@@ -268,8 +268,6 @@ main(int argc, char **argv) {
                         err("max file descriptor limit must be > 0");
                         return EXIT_FAILURE;
                     }
-                    if (value > RLIM_INFINITY)
-                        value = RLIM_INFINITY;
                     max_nofiles = (rlim_t)value;
                 }
                 break;
