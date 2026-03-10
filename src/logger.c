@@ -1187,9 +1187,17 @@ ensure_logger_process(void) {
         close(sockets[0]);
         int child_fd = fd_preserve_only(sockets[1]);
         if (child_fd < 0) {
-            fprintf(stderr, "logger child: failed to preserve IPC socket: %s\n",
-                    strerror(errno));
             _exit(EXIT_FAILURE);
+        }
+        /* Redirect stderr to /dev/null so that fprintf(stderr) in error
+         * paths does not accidentally write to a log file fd that reuses
+         * fd 2 after sink files are opened. */
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            if (devnull != STDERR_FILENO) {
+                (void)dup2(devnull, STDERR_FILENO);
+                close(devnull);
+            }
         }
         logger_child_main(child_fd);
     }
