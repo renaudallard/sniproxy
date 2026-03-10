@@ -709,7 +709,7 @@ effective_max_connections(const struct Config *cfg) {
     if (cfg->max_connections > 0)
         return cfg->max_connections;
 
-    if (configured_fd_limit <= 0)
+    if (configured_fd_limit == 0)
         return 0;
 
     size_t fd_budget = (size_t)configured_fd_limit;
