@@ -608,7 +608,7 @@ decode_header_block(struct hpack_decoder *decoder,
             size_t index;
             size_t consumed;
             if (decode_integer(data + pos, len - pos, 7, &index, &consumed) < 0)
-                return -1;
+                return -4;
 
             const char *name = NULL, *value = NULL;
             size_t name_len = 0, value_len = 0;
@@ -626,7 +626,7 @@ decode_header_block(struct hpack_decoder *decoder,
             size_t new_size;
             size_t consumed;
             if (decode_integer(data + pos, len - pos, 5, &new_size, &consumed) < 0)
-                return -1;
+                return -4;
             if (!hpack_set_dynamic_size(decoder, new_size))
                 return -4;
             pos += consumed;
@@ -638,7 +638,7 @@ decode_header_block(struct hpack_decoder *decoder,
         size_t name_index;
         size_t consumed;
         if (decode_integer(data + pos, len - pos, prefix, &name_index, &consumed) < 0)
-            return -1;
+            return -4;
         pos += consumed;
 
         char *name = NULL;
