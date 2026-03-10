@@ -138,7 +138,13 @@ next_word(FILE *file, char *buffer, size_t buffer_len) {
                 len++;
         }
     }
-    /* We reached the end of the file, or filled our buffer */
+    /* EOF: return the accumulated word if valid, otherwise fail
+     * (unterminated quote, trailing backslash, or buffer overflow) */
+    if (len > 0 && len < buffer_len && !quoted && !escaped) {
+        buffer[len] = '\0';
+        len++;
+        return (int)len;
+    }
     return tokenizer_fail(buffer, buffer_len, len);
 }
 
