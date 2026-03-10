@@ -1679,8 +1679,13 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             if (sink == NULL)
                 break;
             if (sink->type == LOG_SINK_SYSLOG) {
-                if (payload != NULL)
+                if (payload != NULL) {
+                    /* Strip trailing newline - syslog adds its own */
+                    size_t plen = header->payload_len;
+                    if (plen >= 2 && payload[plen - 2] == '\n')
+                        payload[plen - 2] = '\0';
                     syslog((int)header->arg1 | (int)header->arg0, "%s", payload);
+                }
             } else if (sink->file != NULL && payload != NULL &&
                     header->payload_len > 0) {
                 size_t write_len = header->payload_len - 1;
