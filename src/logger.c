@@ -221,7 +221,7 @@ static void free_logger(struct Logger *);
 static void init_default_logger(void);
 static void vlog_msg(struct Logger *, int, const char *, va_list);
 static int logger_requires_payload(const struct Logger *);
-static size_t format_log_payload(char *, size_t, const char *, va_list);
+static size_t format_log_payload(char *, size_t, const char *, va_list, int);
 static void free_at_exit(void);
 static int lookup_syslog_facility(const char *);
 static size_t timestamp(char *, size_t);
@@ -613,7 +613,10 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
     if (need_payload) {
         va_list args_copy;
         va_copy(args_copy, args);
-        payload_len = format_log_payload(buffer, sizeof(buffer), format, args_copy);
+        int with_timestamp = (logger->sink == NULL ||
+                logger->sink->type != LOG_SINK_SYSLOG);
+        payload_len = format_log_payload(buffer, sizeof(buffer), format,
+                args_copy, with_timestamp);
         va_end(args_copy);
         if (payload_len > 0)
             have_payload = 1;
@@ -1030,11 +1033,12 @@ logger_requires_payload(const struct Logger *logger) {
 }
 
 static size_t
-format_log_payload(char *buffer, size_t buffer_len, const char *format, va_list args) {
+format_log_payload(char *buffer, size_t buffer_len, const char *format,
+        va_list args, int with_timestamp) {
     if (buffer == NULL || buffer_len < 3)
         return 0;
 
-    size_t len = timestamp(buffer, buffer_len);
+    size_t len = with_timestamp ? timestamp(buffer, buffer_len) : 0;
     size_t remaining = buffer_len > len ? buffer_len - len : 0;
 
     int written = vsnprintf(buffer + len, remaining, format, args);

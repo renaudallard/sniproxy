@@ -1,3 +1,7 @@
+2026-03-10  Renaud Allard  <renaud@allard.it>
+
+	- Fix double timestamp in syslog messages when logger process is enabled
+
 2026-03-08  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.26
