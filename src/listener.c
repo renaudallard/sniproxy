@@ -461,14 +461,18 @@ accept_listener_table_name(struct Listener *listener, const char *table_name) {
 
 int
 accept_listener_protocol(struct Listener *listener, const char *protocol) {
-    if (strncasecmp(protocol, http_protocol->name, strlen(protocol)) == 0)
+    if (strcasecmp(protocol, http_protocol->name) == 0)
         listener->protocol = http_protocol;
-    else if (strncasecmp(protocol, xmpp_protocol->name, strlen(protocol)) == 0)
+    else if (strcasecmp(protocol, xmpp_protocol->name) == 0)
         listener->protocol = xmpp_protocol;
-    else if (strncasecmp(protocol, minecraft_protocol->name, strlen(protocol)) == 0)
+    else if (strcasecmp(protocol, minecraft_protocol->name) == 0)
         listener->protocol = minecraft_protocol;
-    else
+    else if (strcasecmp(protocol, "tls") == 0)
         listener->protocol = tls_protocol;
+    else {
+        err("unknown protocol '%s'", protocol);
+        return -1;
+    }
 
     if (address_port(listener->address) == 0)
         address_set_port(listener->address, listener->protocol->default_port);
