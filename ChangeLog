@@ -1,6 +1,7 @@
 2026-03-10  Renaud Allard  <renaud@allard.it>
 
 	- Fix double timestamp in syslog messages when logger process is enabled
+	- Clean up logger child sinks on abnormal parent exit
 
 2026-03-08  Renaud Allard  <renaud@allard.it>
 

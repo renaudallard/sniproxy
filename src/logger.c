@@ -1855,6 +1855,14 @@ logger_child_main(int sockfd) {
     }
 
     close(sockfd);
+
+    struct ChildSink *cs = SLIST_FIRST(&child_sink_head);
+    while (cs != NULL) {
+        struct ChildSink *next = SLIST_NEXT(cs, entries);
+        child_sink_free(&child_sink_head, cs);
+        cs = next;
+    }
+
     logger_child_exit(EXIT_SUCCESS);
 }
 
