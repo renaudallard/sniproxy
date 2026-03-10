@@ -635,6 +635,38 @@ buffer_push(struct Buffer *dst, const void *src, size_t len) {
 }
 
 /*
+ * Prepend data at the head of the buffer (before existing content).
+ * Returns the number of bytes prepended, or 0 on failure.
+ */
+size_t
+buffer_prepend(struct Buffer *dst, const void *src, size_t len) {
+    if (len == 0)
+        return 0;
+
+    /* For empty buffers, prepend is the same as push */
+    if (dst->len == 0)
+        return buffer_push(dst, src, len);
+
+    if (buffer_reserve(dst, len) < 0)
+        return 0;
+
+    const size_t size = buffer_size(dst);
+
+    /* Move head backward by len positions (wrapping via ring buffer) */
+    dst->head = (dst->head + size - len) & dst->size_mask;
+
+    /* Copy data at new head, handling ring wrap */
+    size_t first_len = MIN(len, size - dst->head);
+    memcpy(dst->buffer + dst->head, src, first_len);
+    if (len > first_len)
+        memcpy(dst->buffer, (const char *)src + first_len, len - first_len);
+
+    dst->len += len;
+
+    return len;
+}
+
+/*
  * Setup a struct iovec iov[2] for a write to a buffer.
  * struct iovec *iov MUST be at least length 2.
  * returns the number of entries setup

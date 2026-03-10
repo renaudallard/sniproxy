@@ -255,6 +255,103 @@ static void test_buffer_maybe_shrink(void) {
     free_buffer(buffer);
 }
 
+static void test_buffer_prepend(void) {
+    struct Buffer *buffer;
+    char header[] = "PROXY TCP4 1.2.3.4 5.6.7.8 1234 443\r\n";
+    char request[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+    char output[256];
+    size_t len;
+
+    buffer = new_buffer(256, test_loop);
+    assert(buffer != NULL);
+
+    /* Push request data first (simulates client data arriving) */
+    len = buffer_push(buffer, request, sizeof(request) - 1);
+    assert(len == sizeof(request) - 1);
+
+    /* Prepend header (simulates deferred PROXY header insertion) */
+    len = buffer_prepend(buffer, header, sizeof(header) - 1);
+    assert(len == sizeof(header) - 1);
+
+    /* Verify total length */
+    assert(buffer_len(buffer) == sizeof(header) - 1 + sizeof(request) - 1);
+
+    /* Pop and verify header comes first, then request */
+    len = buffer_pop(buffer, output, sizeof(header) - 1);
+    assert(len == sizeof(header) - 1);
+    assert(memcmp(output, header, sizeof(header) - 1) == 0);
+
+    len = buffer_pop(buffer, output, sizeof(request) - 1);
+    assert(len == sizeof(request) - 1);
+    assert(memcmp(output, request, sizeof(request) - 1) == 0);
+
+    assert(buffer_len(buffer) == 0);
+
+    free_buffer(buffer);
+}
+
+static void test_buffer_prepend_empty(void) {
+    struct Buffer *buffer;
+    char data[] = "hello";
+    char output[16];
+    size_t len;
+
+    buffer = new_buffer(64, test_loop);
+    assert(buffer != NULL);
+
+    /* Prepend to empty buffer */
+    len = buffer_prepend(buffer, data, sizeof(data) - 1);
+    assert(len == sizeof(data) - 1);
+    assert(buffer_len(buffer) == sizeof(data) - 1);
+
+    len = buffer_pop(buffer, output, sizeof(output));
+    assert(len == sizeof(data) - 1);
+    assert(memcmp(output, data, sizeof(data) - 1) == 0);
+
+    free_buffer(buffer);
+}
+
+static void test_buffer_prepend_wrap(void) {
+    struct Buffer *buffer;
+    char filler[200];
+    char data[] = "PREPEND";
+    char tail[] = "TAIL";
+    char output[256];
+    size_t len;
+
+    buffer = new_buffer(256, test_loop);
+    assert(buffer != NULL);
+
+    /* Fill and drain to move head forward near the end of the buffer */
+    memset(filler, 'A', sizeof(filler));
+    len = buffer_push(buffer, filler, sizeof(filler));
+    assert(len == sizeof(filler));
+    buffer_pop(buffer, NULL, sizeof(filler));
+    assert(buffer_len(buffer) == 0);
+
+    /* Push some data (head is now near end of buffer) */
+    len = buffer_push(buffer, tail, sizeof(tail) - 1);
+    assert(len == sizeof(tail) - 1);
+
+    /* Prepend forces head to wrap backward */
+    len = buffer_prepend(buffer, data, sizeof(data) - 1);
+    assert(len == sizeof(data) - 1);
+
+    /* Verify prepended data comes first */
+    size_t total = buffer_len(buffer);
+    assert(total == sizeof(data) - 1 + sizeof(tail) - 1);
+
+    len = buffer_pop(buffer, output, sizeof(data) - 1);
+    assert(len == sizeof(data) - 1);
+    assert(memcmp(output, data, sizeof(data) - 1) == 0);
+
+    len = buffer_pop(buffer, output, sizeof(tail) - 1);
+    assert(len == sizeof(tail) - 1);
+    assert(memcmp(output, tail, sizeof(tail) - 1) == 0);
+
+    free_buffer(buffer);
+}
+
 int main(void) {
     test_loop = ev_loop_new(0);
     assert(test_loop != NULL);
@@ -274,6 +371,12 @@ int main(void) {
     test_buffer_reserve_overflow();
 
     test_buffer_maybe_shrink();
+
+    test_buffer_prepend();
+
+    test_buffer_prepend_empty();
+
+    test_buffer_prepend_wrap();
 
     ev_loop_destroy(test_loop);
 }

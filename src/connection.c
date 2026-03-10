@@ -1838,10 +1838,10 @@ push_proxy_header(struct Connection *con, const char *header, size_t len) {
     if (con == NULL || header == NULL || len == 0)
         return 0;
 
-    size_t pushed = buffer_push(con->client.buffer, header, len);
+    size_t pushed = buffer_prepend(con->client.buffer, header, len);
     if (pushed != len) {
         char client[INET6_ADDRSTRLEN + 8];
-        warn("Failed to append PROXY header for %s: client buffer exhausted",
+        warn("Failed to prepend PROXY header for %s: client buffer exhausted",
                 display_sockaddr(&con->client.addr, con->client.addr_len,
                         client, sizeof(client)));
         return 0;
