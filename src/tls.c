@@ -289,7 +289,7 @@ parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
     size_t pos = 0;
     size_t ext_count = 0;
 
-    while (pos <= data_len) {
+    while (pos < data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 4)
             break;
@@ -342,7 +342,7 @@ extensions_have_required_version(const uint8_t *data, size_t data_len,
     size_t len;
     size_t ext_count = 0;
 
-    while (pos <= data_len) {
+    while (pos < data_len) {
         size_t remaining = data_len - pos;
         if (remaining < 4)
             break;
