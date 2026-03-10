@@ -316,8 +316,17 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     }
 
 #ifndef HAVE_ACCEPT4
-    int flags = fcntl(sockfd, F_GETFL, 0);
-    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    {
+        int flags = fcntl(sockfd, F_GETFL, 0);
+        if (flags < 0) {
+            warn("fcntl F_GETFL failed on accepted socket: %s", strerror(errno));
+            goto cleanup;
+        }
+        if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0) {
+            warn("fcntl F_SETFL O_NONBLOCK failed on accepted socket: %s", strerror(errno));
+            goto cleanup;
+        }
+    }
 #endif
 
     {
@@ -2237,8 +2246,21 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
     }
 
 #ifndef HAVE_ACCEPT4
-    int flags = fcntl(sockfd, F_GETFL, 0);
-    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    {
+        int flags = fcntl(sockfd, F_GETFL, 0);
+        if (flags < 0) {
+            warn("fcntl F_GETFL failed on server socket: %s", strerror(errno));
+            close(sockfd);
+            abort_connection(con, loop);
+            return;
+        }
+        if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0) {
+            warn("fcntl F_SETFL O_NONBLOCK failed on server socket: %s", strerror(errno));
+            close(sockfd);
+            abort_connection(con, loop);
+            return;
+        }
+    }
 #endif
 
     {
