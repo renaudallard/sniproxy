@@ -812,6 +812,8 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
         msg.msg_control = control_buf;
         msg.msg_controllen = sizeof(control_buf);
         struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+        if (cmsg == NULL)
+            return -1;
         cmsg->cmsg_level = SOL_SOCKET;
         cmsg->cmsg_type = SCM_RIGHTS;
         cmsg->cmsg_len = CMSG_LEN(sizeof(int));
