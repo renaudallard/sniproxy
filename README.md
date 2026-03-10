@@ -649,9 +649,15 @@ When developing, please use the memory sanitizers to catch bugs early:
 
 Current author: Renaud Allard <renaud@allard.it>
 
-Thanks to the original author: Dustin Lundquist <dustin@null-ptr.net>
+Original author: Dustin Lundquist <dustin@null-ptr.net>
 
-Contributors: Manuel Kasper and others
+Contributors: Chris Lundquist, Igor Novgorodov, Nikos Mavrogiannopoulos,
+Vit Herman, Remi Gacogne, Pieter Lexis, Oldrich Jedlicka, Nick Kugaevsky,
+Manuel Kasper, Lars Reemts, Bearnard Hibbins, Robin Balyan, Andrej Manduch,
+Andreas Loibl, Aaron Schrab, Zhang Sen, Udit Raikwar, Thomas Nordquist,
+Theophile Helleboid, Sebastian Wiedenroth, RickieL, Pierre-Olivier Mercier,
+Peter van Dijk, Naveen Nathan, Marc Haber, Kirill Ponomarev, John Wang,
+imlonghao, Christopher Galtenberg, Bram Gotink, Arni Birgisson
 
 ### Nota Bene
 
