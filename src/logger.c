@@ -1807,6 +1807,12 @@ logger_child_main(int sockfd) {
     logger_set_process_title_fallback("sniproxy-logger");
 #endif
 
+    /* The logger child is forked during init_config(), before main()
+     * sets signal(SIGPIPE, SIG_IGN).  On platforms without MSG_NOSIGNAL
+     * (e.g. macOS), writing to the IPC socket after the parent closes
+     * it would deliver SIGPIPE and kill the child. */
+    signal(SIGPIPE, SIG_IGN);
+
 #ifdef __OpenBSD__
     /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
     if (pledge("stdio rpath wpath cpath fattr id unix", NULL) == -1) {
