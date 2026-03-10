@@ -322,6 +322,9 @@ sub make_tls_config($) {
 user @{[test_user()]}
 group @{[test_group()]}
 
+# Disable per-IP rate limit so burst of test connections is not throttled
+per_ip_connection_rate 0
+
 listen 127.0.0.1 $proxy_port {
     proto tls
     bad_requests log
