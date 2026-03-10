@@ -1544,7 +1544,7 @@ append_to_string_vector(char ***vector_ptr, const char *string) {
     vector = realloc(vector, (len + 2) * sizeof(char *));
     if (vector == NULL) {
         err("%s: realloc", __func__);
-        return -errno;
+        return -1;
     }
 
     *vector_ptr = vector;
@@ -1552,7 +1552,7 @@ append_to_string_vector(char ***vector_ptr, const char *string) {
     vector[len] = strdup(string);
     if (vector[len] == NULL) {
         err("%s: strdup", __func__);
-        return -errno;
+        return -1;
     }
     vector[len + 1] = NULL;
 
@@ -1604,7 +1604,7 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
             dot_target_copy = malloc(addr_len + 1);
             if (dot_target_copy == NULL) {
                 err("%s: malloc", __func__);
-                return -errno;
+                return -1;
             }
             memcpy(dot_target_copy, value, addr_len);
             dot_target_copy[addr_len] = '\0';
