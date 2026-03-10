@@ -119,7 +119,7 @@ static void reactivate_watchers_with_state(struct Connection *, struct ev_loop *
 static int insert_proxy_v1_header(struct Connection *);
 static int ensure_proxy_header(struct Connection *);
 static void parse_client_request(struct Connection *, struct ev_loop *);
-static void resolve_server_address(struct Connection *, struct ev_loop *);
+static int resolve_server_address(struct Connection *, struct ev_loop *);
 static void initiate_server_connect(struct Connection *, struct ev_loop *);
 static void close_connection(struct Connection *, struct ev_loop *);
 static void close_client_socket(struct Connection *, struct ev_loop *);
@@ -834,8 +834,10 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
      * states during a single call */
     if (is_client && con->state == ACCEPTED)
         parse_client_request(con, loop);
-    if (is_client && con->state == PARSED)
-        resolve_server_address(con, loop);
+    if (is_client && con->state == PARSED) {
+        if (resolve_server_address(con, loop) < 0)
+            return;
+    }
     if (is_client && con->state == RESOLVED) {
         initiate_server_connect(con, loop);
         server_open = server_socket_open(con);
@@ -2005,7 +2007,7 @@ abort_connection(struct Connection *con, struct ev_loop *loop) {
     con->state = SERVER_CLOSED;
 }
 
-static void
+static int
 resolve_server_address(struct Connection *con, struct ev_loop *loop) {
     stop_header_timer(con, loop);
 
@@ -2014,7 +2016,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
     if (result.address == NULL) {
         abort_connection(con, loop);
-        return;
+        return 0;
     } else if (address_is_hostname(result.address)) {
         struct resolv_cb_data *cb_data = calloc(1, sizeof(struct resolv_cb_data));
         if (cb_data == NULL) {
@@ -2024,7 +2026,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                 free((void *)result.address);
 
             abort_connection(con, loop);
-            return;
+            return 0;
         }
         cb_data->connection = con;
         cb_data->loop = loop;
@@ -2042,7 +2044,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
             free(cb_data);
             abort_connection(con, loop);
-            return;
+            return 0;
         }
         cb_data->cb_free_addr = 1;
 
@@ -2053,8 +2055,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             free((void *)cb_data->address);
             free(cb_data);
             abort_connection(con, loop);
-            reactivate_watchers(con, loop);
-            return;
+            return 0;
         }
 
         const char *hostname = address_hostname(cb_data->address);
@@ -2065,9 +2066,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             free(cb_data);
 
             abort_connection(con, loop);
-            reactivate_watchers(con, loop);
-
-            return;
+            return 0;
         }
 
         char hostname_buf[ADDRESS_BUFFER_SIZE];
@@ -2112,9 +2111,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             free(cb_data);
 
             abort_connection(con, loop);
-            reactivate_watchers(con, loop);
-
-            return;
+            return 0;
         }
 
         con->dns_query_acquired = 1;
@@ -2124,20 +2121,11 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                 free_resolv_cb_data, cb_data);
 
         if (con->query_handle == NULL) {
-            if (con->dns_query_acquired) {
-                dns_query_release(con);
-                con->dns_query_acquired = 0;
-            }
-            if (con->state == RESOLVING) {
-                notice("unable to resolve %s, closing connection", hostname_buf);
-
-                abort_connection(con, loop);
-                reactivate_watchers(con, loop);
-            }
-
-            con->query_handle = NULL;
-
-            return;
+            /* resolv_query() failed synchronously and already invoked
+             * the callback which handled abort and cleanup.  The
+             * connection may have been freed (e.g. for protocols with
+             * no abort message like Minecraft), so do not touch con. */
+            return -1;
         }
     } else if (address_is_sockaddr(result.address)) {
         con->server.addr_len = address_sa_len(result.address);
@@ -2151,8 +2139,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             if (result.caller_free_address)
                 free((void *)result.address);
             abort_connection(con, loop);
-            reactivate_watchers(con, loop);
-            return;
+            return 0;
         }
 
         if (result.caller_free_address)
@@ -2163,6 +2150,8 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         /* invalid address type */
         assert(0);
     }
+
+    return 0;
 }
 
 static void
