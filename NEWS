@@ -1,3 +1,67 @@
+sniproxy 0.9.27 (2026-03-10)
+===============================
+
+* Feature: Add Minecraft Java Edition protocol support for routing
+  Minecraft connections by hostname without decrypting traffic.
+* Security: Fix use-after-free in resolve_server_address when DNS query
+  fails synchronously (resolver down, hostname too long, alloc failure).
+* Security: Fix use-after-free when c-ares calls callback synchronously
+  during DNS resolution.
+* Security: Fix use-after-free in resolver callback on config reload when
+  the resolver child is restarted while queries are in flight.
+* Security: Fix PROXY protocol header sent after client data instead of
+  before, violating the PROXY protocol specification.
+* Security: Fix HTTP Host header smuggling with bare "Host:" line
+  containing no value.
+* Security: Reject EOS symbol in HPACK Huffman decoder per RFC 7541.
+* Fix: HTTP/2 empty HEADERS frame blocking CONTINUATION frames.
+* Fix: HTTP parser returning wrong error for incomplete header lines.
+* Fix: Dead Huffman padding validation in HPACK decoder.
+* Fix: Double timestamp in syslog messages when logger process is enabled.
+  Syslog entries no longer contain a redundant embedded timestamp.
+* Fix: Clean up logger child sinks on abnormal parent exit, ensuring file
+  handles are flushed and closed.
+* Fix: Ignore SIGPIPE in logger child process to prevent silent death on
+  platforms without MSG_NOSIGNAL.
+* Fix: Blocking waitpid in logger that can stall the mainloop when the
+  logger child is stuck on filesystem I/O.
+* Fix: NULL dereference in err() during default logger initialization.
+* Fix: NULL dereference on logger->sink in vlog_msg and timestamp
+  formatting.
+* Fix: File descriptor leak in recv_logger_message on validation failure.
+* Fix: File descriptor leak in logger REOPEN handler.
+* Fix: Double-close of file descriptor in obtain_file_sink.
+* Fix: Recursive fork in logger child on pledge and crypto failure.
+* Fix: Zombie and repeated forks in logger on crypto init failure.
+* Fix: obtain_file_sink fallback ignoring logger_parent_fs_locked state.
+* Fix: Connection leak when server buffer expansion fails.
+* Fix: Assert and connection leak in reactivate_watchers for connections
+  with empty abort message.
+* Fix: Double close_server_socket regression in buffer overflow guard.
+* Fix: IPC crypto state corruption on AEAD verification failure, send
+  channel rekey derivation failure, and recv channel rekey derivation
+  failure.
+* Fix: Undefined behavior in ipc_crypto_open for zero-length payloads.
+* Fix: Reading uninitialized control buffer on recvmsg error.
+* Fix: Resource leak in ipc_crypto_channel_init; wipe base_key on
+  partial initialization failure.
+* Fix: Add defensive NULL check for CMSG_FIRSTHDR in ipc_crypto_send_msg.
+* Fix: Zombie process in binder on crypto initialization failure.
+* Fix: Use _exit in binder child on seccomp filter failure.
+* Fix: fatal() on config file permission change during SIGHUP reload.
+* Fix: Config parser now uses consistent -1 error returns, handles EOF
+  without trailing newline, uses exact match for protocol names and
+  bad_request action values, and rejects negative values in all numeric
+  directives.
+* Fix: Check fcntl return values when setting sockets nonblocking.
+* Fix: Check ipc_crypto_channel_set_role return in resolver child.
+* Fix: Retry resolver child send on EINTR.
+* Fix: Strict < in TLS extension parsing loop conditions.
+* Fix: XMPP parser returning incomplete for malformed unclosed quotes.
+* Fix: Integer overflow in Minecraft parser on 32-bit platforms.
+* Fix: Heap over-read in buffer_coalesce on malloc failure.
+* Hardening: Tighten OpenBSD pledge promises after privilege drop.
+
 sniproxy 0.9.26 (2026-03-08)
 ===============================
 

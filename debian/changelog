@@ -1,3 +1,38 @@
+sniproxy (0.9.27) unstable; urgency=medium
+
+  * Add Minecraft Java Edition protocol support.
+  * Fix use-after-free in resolve_server_address on synchronous DNS failure.
+  * Fix use-after-free when c-ares calls callback synchronously.
+  * Fix use-after-free in resolver callback on config reload.
+  * Fix PROXY protocol header sent after client data instead of before.
+  * Fix HTTP Host header smuggling with bare Host: line.
+  * Reject EOS symbol in HPACK Huffman decoder per RFC 7541.
+  * Fix HTTP/2 empty HEADERS frame blocking CONTINUATION frames.
+  * Fix HTTP parser returning wrong error for incomplete header lines.
+  * Fix dead Huffman padding validation in HPACK decoder.
+  * Fix double timestamp in syslog messages when logger process is enabled.
+  * Clean up logger child sinks on abnormal parent exit.
+  * Ignore SIGPIPE in logger child process.
+  * Fix blocking waitpid in logger that can stall the mainloop.
+  * Fix multiple NULL dereferences in logger initialization and formatting.
+  * Fix file descriptor leaks in logger message handling and REOPEN handler.
+  * Fix double-close of file descriptor in obtain_file_sink.
+  * Fix recursive fork and zombie processes in logger and binder children.
+  * Fix connection and resource leaks in buffer overflow and abort paths.
+  * Fix IPC crypto state corruption on AEAD and rekey failures.
+  * Fix undefined behavior in ipc_crypto_open for zero-length payloads.
+  * Fix resource leak and base_key wipe in ipc_crypto_channel_init.
+  * Fix fatal() on config file permission change during SIGHUP reload.
+  * Config parser hardening: exact match for protocol and action values,
+    reject negative values, handle EOF without trailing newline.
+  * Check fcntl return values when setting sockets nonblocking.
+  * Fix XMPP parser returning incomplete for malformed unclosed quotes.
+  * Fix integer overflow in Minecraft parser on 32-bit platforms.
+  * Fix heap over-read in buffer_coalesce on malloc failure.
+  * Tighten OpenBSD pledge promises after privilege drop.
+
+ -- Renaud Allard <renaud@allard.it>  Mon, 10 Mar 2026 00:00:00 +0000
+
 sniproxy (0.9.26) unstable; urgency=medium
 
   * Set logger IPC socket non-blocking to prevent mainloop stall.
