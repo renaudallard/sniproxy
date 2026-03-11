@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2014, Dustin Lundquist <dustin@null-ptr.net>
- * Copyright (c) 2025, Renaud Allard <renaud@allard.it>
+ * Copyright (c) 2026, Renaud Allard <renaud@allard.it>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,38 +23,13 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef RESOLV_H
-#define RESOLV_H
+#ifndef HEALTH_H
+#define HEALTH_H
 
-#include "address.h"
+#include "protocol.h"
 
-struct ev_loop;
+extern const struct Protocol *const health_protocol;
 
-struct ResolvQuery;
-
-int resolv_init(struct ev_loop *, char **, char **, int, int);
-int resolver_is_active(void);
-struct ResolvQuery *resolv_query(const char *, int, uint32_t,
-        void(*)(struct Address *, void *), void (*)(void *), void *);
-void resolv_cancel(struct ResolvQuery *);
-void resolv_shutdown(struct ev_loop *);
-
-enum resolv_mode {
-    RESOLV_MODE_DEFAULT = 0,
-    RESOLV_MODE_IPV4_ONLY = 1,
-    RESOLV_MODE_IPV6_ONLY = 2,
-    RESOLV_MODE_IPV4_FIRST = 3,
-    RESOLV_MODE_IPV6_FIRST = 4,
-};
-
-enum dnssec_validation_mode {
-    DNSSEC_VALIDATION_OFF = 0,
-    DNSSEC_VALIDATION_RELAXED = 1,
-    DNSSEC_VALIDATION_STRICT = 2,
-};
-
-#ifndef DEFAULT_DNSSEC_VALIDATION_MODE
-#define DEFAULT_DNSSEC_VALIDATION_MODE DNSSEC_VALIDATION_RELAXED
-#endif
+int health_check_ok(void);
 
 #endif

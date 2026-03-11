@@ -57,6 +57,7 @@
 #include "protocol.h"
 #include "logger.h"
 #include "tls.h"
+#include "health.h"
 #include "fd_util.h"
 
 #if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
@@ -2219,6 +2220,24 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
 
     payload += con->header_len;
     payload_len -= con->header_len;
+
+    /* Health check listener: respond immediately without proxying */
+    if (con->listener->protocol == health_protocol) {
+        stop_header_timer(con, loop);
+        if (health_check_ok()) {
+            static const char ok[] =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Length: 0\r\n"
+                "Connection: close\r\n\r\n";
+            buffer_push(con->server.buffer, ok, sizeof(ok) - 1);
+        } else {
+            buffer_push(con->server.buffer,
+                    con->listener->protocol->abort_message,
+                    con->listener->protocol->abort_message_len);
+        }
+        con->state = SERVER_CLOSED;
+        return;
+    }
 
     int result = con->listener->protocol->parse_packet(payload, payload_len, &hostname);
     if (result < 0) {

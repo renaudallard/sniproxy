@@ -1,6 +1,9 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Add `protocol health` listener type for load balancer health
+  probes. Returns HTTP 200 when resolver and logger child processes are
+  alive, HTTP 503 otherwise. No routing table is required.
 * Feature: Randomly select from multiple DNS results when resolving
   backend hostnames, distributing connections across DNS round-robin
   backends instead of always using the first record.

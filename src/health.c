@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2014, Dustin Lundquist <dustin@null-ptr.net>
- * Copyright (c) 2025, Renaud Allard <renaud@allard.it>
+ * Copyright (c) 2026, Renaud Allard <renaud@allard.it>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,38 +23,45 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef RESOLV_H
-#define RESOLV_H
+#include <stddef.h>
+#include "health.h"
+#include "resolv.h"
+#include "logger.h"
 
-#include "address.h"
+static int parse_health_request(const char *, size_t, char **);
 
-struct ev_loop;
+static const char health_503[] =
+    "HTTP/1.1 503 Service Unavailable\r\n"
+    "Content-Length: 0\r\n"
+    "Connection: close\r\n\r\n";
 
-struct ResolvQuery;
-
-int resolv_init(struct ev_loop *, char **, char **, int, int);
-int resolver_is_active(void);
-struct ResolvQuery *resolv_query(const char *, int, uint32_t,
-        void(*)(struct Address *, void *), void (*)(void *), void *);
-void resolv_cancel(struct ResolvQuery *);
-void resolv_shutdown(struct ev_loop *);
-
-enum resolv_mode {
-    RESOLV_MODE_DEFAULT = 0,
-    RESOLV_MODE_IPV4_ONLY = 1,
-    RESOLV_MODE_IPV6_ONLY = 2,
-    RESOLV_MODE_IPV4_FIRST = 3,
-    RESOLV_MODE_IPV6_FIRST = 4,
+const struct Protocol *const health_protocol = &(struct Protocol){
+    .name = "health",
+    .default_port = 0,
+    .parse_packet = &parse_health_request,
+    .abort_message = health_503,
+    .abort_message_len = sizeof(health_503) - 1,
 };
 
-enum dnssec_validation_mode {
-    DNSSEC_VALIDATION_OFF = 0,
-    DNSSEC_VALIDATION_RELAXED = 1,
-    DNSSEC_VALIDATION_STRICT = 2,
-};
+/*
+ * Health protocol parser: always returns -2 (no hostname) on any data.
+ * The actual health response is generated in connection.c.
+ */
+static int
+parse_health_request(const char *data, size_t len, char **hostname) {
+    (void)data;
+    (void)len;
+    (void)hostname;
+    return -2;
+}
 
-#ifndef DEFAULT_DNSSEC_VALIDATION_MODE
-#define DEFAULT_DNSSEC_VALIDATION_MODE DNSSEC_VALIDATION_RELAXED
-#endif
+int
+health_check_ok(void) {
+    if (!resolver_is_active())
+        return 0;
 
-#endif
+    if (!logger_is_healthy())
+        return 0;
+
+    return 1;
+}

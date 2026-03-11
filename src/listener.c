@@ -50,6 +50,7 @@
 #include "http.h"
 #include "xmpp.h"
 #include "minecraft.h"
+#include "health.h"
 #include "fd_util.h"
 
 #define LISTENER_ACCEPT_MAX_BATCH 64
@@ -470,6 +471,8 @@ accept_listener_protocol(struct Listener *listener, const char *protocol) {
         listener->protocol = minecraft_protocol;
     else if (strcasecmp(protocol, "tls") == 0)
         listener->protocol = tls_protocol;
+    else if (strcasecmp(protocol, health_protocol->name) == 0)
+        listener->protocol = health_protocol;
     else {
         err("unknown protocol '%s'", protocol);
         return -1;
@@ -700,7 +703,8 @@ valid_listener(const struct Listener *listener) {
 
     if (listener->protocol != tls_protocol && listener->protocol != http_protocol &&
             listener->protocol != xmpp_protocol &&
-            listener->protocol != minecraft_protocol) {
+            listener->protocol != minecraft_protocol &&
+            listener->protocol != health_protocol) {
         err("Invalid protocol");
         return 0;
     }
@@ -714,13 +718,18 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
     int sockfd = -1;
     int rc = -1;
     char address[ADDRESS_BUFFER_SIZE];
-    struct Table *table = table_lookup(tables, listener->table_name);
-    if (table == NULL) {
-        err("Table \"%s\" not defined", listener->table_name);
-        return -1;
+
+    if (listener->protocol == health_protocol) {
+        listener->table = NULL;
+    } else {
+        struct Table *table = table_lookup(tables, listener->table_name);
+        if (table == NULL) {
+            err("Table \"%s\" not defined", listener->table_name);
+            return -1;
+        }
+        init_table(table);
+        listener->table = table_ref_get(table);
     }
-    init_table(table);
-    listener->table = table_ref_get(table);
 
     /* If no port was specified on the fallback address, inherit the address
      * from the listening address */

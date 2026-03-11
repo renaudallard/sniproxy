@@ -457,6 +457,11 @@ resolver_fuzz_handle_addrinfo(struct ResolverChildQuery *query,
 #endif /* FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
 
 int
+resolver_is_active(void) {
+    return resolver_pid > 0 && resolver_sock >= 0;
+}
+
+int
 resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_mode) {
     int sockets[2];
     /* Use SOCK_SEQPACKET for message boundaries with reliable delivery.

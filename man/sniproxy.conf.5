@@ -269,8 +269,20 @@ number, an IPv6 literal followed by a TCP port number, a bare TCP port
 number, or a unix socket path prefixed with 'unix:'.
 
 Protocol defines how the client request should be parsed to obtain the
-requested hostname. Four protocols are supported: tls, http, xmpp, and
-minecraft. The minecraft protocol defaults to port 25565.
+requested hostname. Five protocols are supported: tls, http, xmpp,
+minecraft, and health. The minecraft protocol defaults to port 25565.
+
+The health protocol turns a listener into a health check endpoint.
+When a client sends any data, sniproxy verifies that the resolver
+and logger child processes are alive and responds with HTTP 200 OK
+or HTTP 503 Service Unavailable. No table directive is required for
+health listeners. This is useful for load balancer probes:
+
+.nf
+    listener 127.0.0.1:8080 {
+        protocol health
+    }
+.fi
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same

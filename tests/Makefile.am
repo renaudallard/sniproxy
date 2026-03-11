@@ -93,6 +93,7 @@ config_test_SOURCES = config_test.c \
                       ../src/listener.c \
                       ../src/connection.c \
                       ../src/buffer.c \
+                      ../src/health.c \
                       ../src/logger.c \
                       ../src/ipc_crypto.c \
                       ../src/resolv.c \

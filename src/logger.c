@@ -1900,6 +1900,13 @@ logger_process_is_active(void) {
     return logger_process_enabled;
 }
 
+int
+logger_is_healthy(void) {
+    if (!logger_process_enabled)
+        return 1; /* no child process, logging directly */
+    return logger_pid > 0 && logger_sock >= 0;
+}
+
 void
 logger_parent_notify_fs_locked(void) {
     logger_parent_fs_locked = 1;

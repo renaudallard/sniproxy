@@ -84,6 +84,8 @@ Features
 + **Concurrency limits** to prevent resource exhaustion
 
 ### Operations & Management
++ **Health check endpoint**: Dedicated `protocol health` listener that verifies
+  resolver and logger child processes are alive, returning HTTP 200 or 503
 + **Hot configuration reload** via SIGHUP without dropping connections
 + **Reference counting** ensures safe updates during reload
 + **Flexible logging**: Syslog and file-based logs with per-listener overrides
@@ -467,6 +469,21 @@ traffic (login, encryption, compression) passes through transparently.
 
 Forge Mod Loader (FML) markers and BungeeCord forwarding data appended to
 the server address after NUL bytes are automatically stripped before routing.
+
+### Health Check Configuration
+
+A `protocol health` listener responds with HTTP 200 OK when the resolver and
+logger child processes are alive, or HTTP 503 when any critical child is down.
+No table is required for health listeners. This is useful for load balancer
+health probes (AWS NLB, HAProxy, etc.):
+
+    listener 127.0.0.1:8080 {
+        protocol health
+    }
+
+TCP-only health checks (connect and disconnect without sending data) already
+succeed because the listener accepts the connection. The HTTP response is
+only generated when the client sends data (e.g. `GET /health HTTP/1.1`).
 
 Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly list the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs. Only one policy style may appear in the configuration; mixing `allow_except` and `deny_except` blocks causes SNIProxy to exit during parsing.
 
