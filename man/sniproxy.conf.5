@@ -353,9 +353,9 @@ The access log configuration may be overridden on each listener.
 .PP
 .nf
 table http_hosts {
-    ^example\\.com$ 192.0.2.101
-    ^example\\.net$ 192.0.2.102
-    ^example\\.org$ 192.0.2.103 proxy_protocol
+    example.com 192.0.2.101
+    example.net 192.0.2.102
+    example.org 192.0.2.103 proxy_protocol
 }
 .fi
 .PP
@@ -366,6 +366,15 @@ until a match is found and that server is used. The server address may
 be either an IP, an IP and port, a unix socket path, a hostname, or '*'.
 If no port is specified, the port of the listener that received the
 connection will be used.
+
+Table entries that contain no regex metacharacters (\fB\e * + ? [ ] ( ) { }
+^ $ |\fR) are treated as literal hostnames: dots are escaped and the
+pattern is anchored with \fB^\fR and \fB$\fR automatically. For example,
+\fBexample.com\fR is compiled as \fB^example\\.com$\fR and will only
+match the exact hostname "example.com", not "sub.example.com". When
+auto-anchoring is applied a notice-level log message is emitted showing
+the original and rewritten pattern. Entries that contain any regex
+metacharacter are compiled as-is, giving full PCRE2 regex control.
 
 The optional proxy_protocol option will prepend a HAProxy PROXY v1 (text)
 protocol header to the proxied connection, allowing supporting

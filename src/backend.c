@@ -44,6 +44,8 @@
 
 static const char *backend_config_options(const struct Backend *);
 static uint32_t backend_regex_match_limit_for_len(size_t len);
+static int pattern_has_regex_metachar(const char *);
+static char *anchor_literal_pattern(const char *);
 
 static uint32_t
 backend_regex_match_limit_for_len(size_t len) {
@@ -129,6 +131,58 @@ add_backend(struct Backend_head *backends, struct Backend *backend) {
     STAILQ_INSERT_TAIL(backends, backend, entries);
 }
 
+/*
+ * Return non-zero if the pattern contains any PCRE2 metacharacter other
+ * than the dot, which appears in every hostname.  When none of these
+ * characters are present we treat the pattern as a literal hostname and
+ * auto-anchor it so that "example.com" matches only "example.com", not
+ * "sub.example.com".
+ */
+static int
+pattern_has_regex_metachar(const char *p) {
+    for (; *p != '\0'; p++) {
+        switch (*p) {
+        case '\\': case '*': case '+': case '?':
+        case '[':  case ']': case '(': case ')':
+        case '{':  case '}': case '^': case '$':
+        case '|':
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Build "^<escaped>$" from a literal hostname: each '.' is escaped to
+ * '\.'.  Caller must free the returned string.  Returns NULL on malloc
+ * failure.
+ */
+static char *
+anchor_literal_pattern(const char *pattern) {
+    size_t len = strlen(pattern);
+    size_t dots = 0;
+
+    for (size_t i = 0; i < len; i++)
+        if (pattern[i] == '.')
+            dots++;
+
+    /* ^ + original chars + extra backslashes + $ + NUL */
+    char *buf = malloc(1 + len + dots + 1 + 1);
+    if (buf == NULL)
+        return NULL;
+
+    char *dst = buf;
+    *dst++ = '^';
+    for (size_t i = 0; i < len; i++) {
+        if (pattern[i] == '.')
+            *dst++ = '\\';
+        *dst++ = pattern[i];
+    }
+    *dst++ = '$';
+    *dst = '\0';
+    return buf;
+}
+
 int
 init_backend(struct Backend *backend) {
     if (backend == NULL || backend->pattern == NULL || backend->address == NULL) {
@@ -147,9 +201,21 @@ init_backend(struct Backend *backend) {
 
         int reerr;
         size_t reerroffset;
+        char *anchored = NULL;
+        const char *compile_pat = backend->pattern;
+
+        if (!pattern_has_regex_metachar(backend->pattern)) {
+            anchored = anchor_literal_pattern(backend->pattern);
+            if (anchored != NULL) {
+                compile_pat = anchored;
+                notice("Rewriting literal pattern \"%s\" as \"%s\"",
+                        backend->pattern, anchored);
+            }
+        }
 
         backend->pattern_re =
-            pcre2_compile((const uint8_t *)backend->pattern, PCRE2_ZERO_TERMINATED, 0, &reerr, &reerroffset, NULL);
+            pcre2_compile((const uint8_t *)compile_pat, PCRE2_ZERO_TERMINATED, 0, &reerr, &reerroffset, NULL);
+        free(anchored);
         if (backend->pattern_re == NULL) {
             err("Regex compilation of \"%s\" failed: %d, offset %zu",
                     backend->pattern, reerr, reerroffset);

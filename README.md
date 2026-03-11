@@ -295,7 +295,8 @@ http_max_headers 200
     }
 
     table TableName {
-        # Match exact request hostnames
+        # Bare hostnames are auto-anchored: example.com only matches
+        # "example.com", not "sub.example.com"
         example.com 192.0.2.10:4343
 
         # If port is not specified the listener port will be used

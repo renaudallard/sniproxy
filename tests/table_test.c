@@ -41,6 +41,7 @@ static void test_add_table(void);
 static void test_tables_reload(void);
 static int count_tables(const struct Table_head *);
 static void test_table_validation(void);
+static void test_literal_auto_anchor(void);
 
 
 int main(void) {
@@ -50,6 +51,7 @@ int main(void) {
     test_tables_reload();
     test_invalid_regex_backend_removed();
     test_table_validation();
+    test_literal_auto_anchor();
 }
 
 static void
@@ -242,6 +244,51 @@ test_invalid_regex_backend_removed(void) {
 
     const char *no_match = "other.example";
     result = table_lookup_server_address(table, no_match, strlen(no_match));
+    assert(result.address == NULL);
+
+    table_ref_put(table);
+}
+
+static void
+test_literal_auto_anchor(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+    table_ref_get(table);
+    accept_table_arg(table, "auto_anchor");
+
+    /* Bare hostname: should be auto-anchored to ^example\.com$ */
+    append_entry(table, "example.com", "192.0.2.10");
+
+    /* Regex pattern (has metacharacters): left as-is */
+    append_entry(table, ".*\\.example\\.net", "192.0.2.20");
+
+    init_table(table);
+
+    struct LookupResult result;
+
+    /* Exact match on literal entry */
+    result = table_lookup_server_address(table, "example.com",
+            strlen("example.com"));
+    assert(result.address != NULL);
+
+    /* Subdomain must NOT match the literal entry */
+    result = table_lookup_server_address(table, "sub.example.com",
+            strlen("sub.example.com"));
+    assert(result.address == NULL);
+
+    /* Unrelated name with "example.com" as substring must not match */
+    result = table_lookup_server_address(table, "myexample.com",
+            strlen("myexample.com"));
+    assert(result.address == NULL);
+
+    /* Regex entry still works for subdomain matches */
+    result = table_lookup_server_address(table, "foo.example.net",
+            strlen("foo.example.net"));
+    assert(result.address != NULL);
+
+    /* Regex entry: bare "example.net" should NOT match .*\. pattern */
+    result = table_lookup_server_address(table, "example.net",
+            strlen("example.net"));
     assert(result.address == NULL);
 
     table_ref_put(table);

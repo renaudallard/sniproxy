@@ -1,6 +1,11 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Auto-anchor literal hostname patterns in table entries.
+  Bare hostnames like `example.com` are now compiled as `^example\.com$`
+  so they match exactly, not as substrings of other hostnames. Patterns
+  containing regex metacharacters are left as-is. A notice-level log
+  message is emitted for each rewritten pattern.
 * Doc: Document HTTP/2 connection coalescing limitation and workarounds
   in README and man page.
 * Feature: Accept incoming PROXY protocol headers (v1 text and v2 binary
