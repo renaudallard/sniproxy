@@ -208,14 +208,14 @@ int main(void) {
     struct Listener listener = {0};
     listener.address = &listener_address;
     listener.fallback_address = &fallback_address;
-    listener.fallback_use_proxy_header = 1;
+    listener.fallback_use_proxy_header = PROXY_PROTOCOL_V1;
 
     backend_address.port = 0;
     backend_address.is_wildcard = 0;
     backend_address.is_sockaddr = 0;
 
     stub_lookup_result.address = &backend_address;
-    stub_lookup_result.use_proxy_header = 0;
+    stub_lookup_result.use_proxy_header = PROXY_PROTOCOL_NONE;
     stub_lookup_result.caller_free_address = 0;
 
     last_set_port = 0;
