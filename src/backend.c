@@ -83,7 +83,7 @@ new_backend(void) {
 
     backend->pattern = NULL;
     backend->address = NULL;
-    backend->use_proxy_header = 0;
+    backend->use_proxy_header = PROXY_PROTOCOL_NONE;
     backend->pattern_re = NULL;
     backend->pattern_match_data = NULL;
 
@@ -110,9 +110,12 @@ accept_backend_arg(struct Backend *backend, const char *arg) {
             err("Invalid port: %s", arg);
             return -1;
         }
-    } else if (backend->use_proxy_header == 0 &&
+    } else if (backend->use_proxy_header == PROXY_PROTOCOL_NONE &&
         strcasecmp(arg, "proxy_protocol") == 0) {
-        backend->use_proxy_header = 1;
+        backend->use_proxy_header = PROXY_PROTOCOL_V1;
+    } else if (backend->use_proxy_header == PROXY_PROTOCOL_NONE &&
+        strcasecmp(arg, "proxy_protocol_v2") == 0) {
+        backend->use_proxy_header = PROXY_PROTOCOL_V2;
     } else {
         err("Unexpected table backend argument: %s", arg);
         return -1;
@@ -248,10 +251,14 @@ static const char *
 backend_config_options(const struct Backend *backend) {
     assert(backend != NULL);
 
-    if (backend->use_proxy_header)
+    switch (backend->use_proxy_header) {
+    case PROXY_PROTOCOL_V1:
         return " proxy_protocol";
-    else
+    case PROXY_PROTOCOL_V2:
+        return " proxy_protocol_v2";
+    default:
         return "";
+    }
 }
 
 void

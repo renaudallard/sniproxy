@@ -50,7 +50,7 @@ struct TableCacheEntry {
 
 struct Table {
     char *name;
-    int use_proxy_header;
+    enum proxy_protocol_mode use_proxy_header;
 
     /* Runtime fields */
     int reference_count;
@@ -63,7 +63,7 @@ struct Table {
 struct LookupResult {
     const struct Address *address;
     int caller_free_address;
-    int use_proxy_header;
+    enum proxy_protocol_mode use_proxy_header;
 };
 
 struct Table *new_table(void);

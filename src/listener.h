@@ -60,7 +60,7 @@ struct Listener {
     char *table_name;
     struct Logger *access_log;
     int log_bad_requests, reuseport, transparent_proxy, ipv6_v6only;
-    int fallback_use_proxy_header;
+    enum proxy_protocol_mode fallback_use_proxy_header;
     enum ListenerACLMode acl_mode;
     struct ListenerACLRule_head acl_rules;
 

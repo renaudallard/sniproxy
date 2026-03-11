@@ -66,8 +66,8 @@ finalize_backend(struct Table *table, struct Backend **backend_ptr) {
 
     struct Backend *backend = *backend_ptr;
     if (valid_backend(backend) > 0) {
-        table->use_proxy_header =
-                table->use_proxy_header || backend->use_proxy_header;
+        if (backend->use_proxy_header > table->use_proxy_header)
+            table->use_proxy_header = backend->use_proxy_header;
         add_backend(&table->backends, backend);
     } else {
         free_backend(backend);

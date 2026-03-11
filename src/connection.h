@@ -65,7 +65,7 @@ struct Connection {
     int dns_query_acquired;
     struct DnsClientUsageEntry *dns_client_usage;
     ev_tstamp established_timestamp;
-    int use_proxy_header;
+    enum proxy_protocol_mode use_proxy_header;
 #ifdef SO_SPLICE
     int spliced;
 #endif

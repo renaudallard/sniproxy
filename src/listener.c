@@ -395,7 +395,7 @@ new_listener(void) {
     listener->reuseport = 0;
     listener->ipv6_v6only = 0;
     listener->transparent_proxy = 0;
-    listener->fallback_use_proxy_header = 0;
+    listener->fallback_use_proxy_header = PROXY_PROTOCOL_NONE;
     listener->acl_mode = LISTENER_ACL_MODE_DISABLED;
     SLIST_INIT(&listener->acl_rules);
     listener->reference_count = 0;
@@ -522,11 +522,24 @@ accept_listener_fallback_address(struct Listener *listener, const char *fallback
             err("fallback address must be specified before proxy_protocol");
             return 0;
         }
-        if (listener->fallback_use_proxy_header) {
+        if (listener->fallback_use_proxy_header != PROXY_PROTOCOL_NONE) {
             err("Unexpected fallback argument: %s", fallback);
             return 0;
         }
-        listener->fallback_use_proxy_header = 1;
+        listener->fallback_use_proxy_header = PROXY_PROTOCOL_V1;
+        return 1;
+    }
+
+    if (strcasecmp("proxy_protocol_v2", fallback) == 0) {
+        if (listener->fallback_address == NULL) {
+            err("fallback address must be specified before proxy_protocol_v2");
+            return 0;
+        }
+        if (listener->fallback_use_proxy_header != PROXY_PROTOCOL_NONE) {
+            err("Unexpected fallback argument: %s", fallback);
+            return 0;
+        }
+        listener->fallback_use_proxy_header = PROXY_PROTOCOL_V2;
         return 1;
     }
 
@@ -1013,17 +1026,16 @@ print_listener_config(FILE *file, const struct Listener *listener) {
     if (listener->table_name)
         fprintf(file, "\ttable %s\n", listener->table_name);
 
-    if (listener->fallback_address &&
-            !listener->fallback_use_proxy_header)
-        fprintf(file, "\tfallback %s\n",
+    if (listener->fallback_address) {
+        const char *pp = "";
+        if (listener->fallback_use_proxy_header == PROXY_PROTOCOL_V1)
+            pp = " proxy_protocol";
+        else if (listener->fallback_use_proxy_header == PROXY_PROTOCOL_V2)
+            pp = " proxy_protocol_v2";
+        fprintf(file, "\tfallback %s%s\n",
                 display_address(listener->fallback_address,
-                    address, sizeof(address)));
-
-    if (listener->fallback_address &&
-            listener->fallback_use_proxy_header)
-        fprintf(file, "\tfallback %s proxy_protocol\n",
-                display_address(listener->fallback_address,
-                    address, sizeof(address)));
+                    address, sizeof(address)), pp);
+    }
 
     if (listener->source_address)
         fprintf(file, "\tsource %s\n",

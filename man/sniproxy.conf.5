@@ -298,9 +298,10 @@ address and port or a unix socket path. When using TLS listeners the
 fallback still terminates the client TLS handshake and forwards the
 traffic unmodified to the configured destination. Issuing a second
 \fBfallback\fR directive with the literal argument \fBproxy_protocol\fR after the
-address instructs sniproxy to prepend an HAProxy PROXY protocol v1 header
-whenever the fallback path is taken, allowing the backend to recover the
-original client IP and port.
+address instructs sniproxy to prepend an HAProxy PROXY protocol v1 (text)
+header whenever the fallback path is taken, allowing the backend to recover
+the original client IP and port. Use \fBproxy_protocol_v2\fR instead to send
+the binary v2 format.
 
 The bad_requests directive allows logging the contents of the client
 request if it is not parsable. This is useful for debugging.
@@ -356,10 +357,11 @@ be either an IP, an IP and port, a unix socket path, a hostname, or '*'.
 If no port is specified, the port of the listener that received the
 connection will be used.
 
-The optional proxy_protocol option will prepend a HAProxy PROXY v1
+The optional proxy_protocol option will prepend a HAProxy PROXY v1 (text)
 protocol header to the proxied connection, allowing supporting
 webservers to obtain the source and destination IP and port of the
-original incoming TCP connection.
+original incoming TCP connection. Use proxy_protocol_v2 instead to send
+the binary v2 format.
 
 
 .SH "SEE ALSO"

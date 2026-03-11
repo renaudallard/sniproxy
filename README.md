@@ -370,14 +370,18 @@ nameserver dot://dns.quad9.net
         }
 
 
-        # Fallback with PROXY protocol header
+        # Fallback with PROXY protocol v1 header (text format)
         fallback 192.0.2.50:443
         fallback proxy_protocol
+
+        # Or use PROXY protocol v2 (binary format)
+        # fallback proxy_protocol_v2
     }
 
     table SecureHosts {
-        # Per-backend PROXY protocol (appends HAProxy PROXY v1 header)
+        # Per-backend PROXY protocol v1 (text) or v2 (binary)
         secure.example.com 192.0.2.20:443 proxy_protocol
+        other.example.com 192.0.2.21:443 proxy_protocol_v2
     }
 
 Setting `io_collect_interval` and `timeout_collect_interval` lets libev batch I/O readiness notifications and timer recalculations, which reduces system call pressure on busy instances. The defaults (0.0005s and 0.005s respectively) favor throughput; set the values to 0 if you need the absolute lowest latency.

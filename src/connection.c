@@ -1933,9 +1933,80 @@ insert_proxy_v1_header(struct Connection *con) {
     return push_proxy_header(con, proxy_unknown, sizeof(proxy_unknown) - 1);
 }
 
+static const uint8_t proxy_v2_sig[12] = {
+    0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A,
+    0x51, 0x55, 0x49, 0x54, 0x0A
+};
+
+static int
+insert_proxy_v2_header(struct Connection *con) {
+    uint8_t header[52]; /* max: 16 fixed + 36 IPv6 addrs */
+    size_t len;
+
+    memcpy(header, proxy_v2_sig, 12);
+    header[12] = 0x21; /* version 2, command PROXY */
+
+    switch (con->client.addr.ss_family) {
+        case AF_INET: {
+            const struct sockaddr_in *src =
+                    (const struct sockaddr_in *)&con->client.addr;
+            const struct sockaddr_in *dst =
+                    (const struct sockaddr_in *)&con->client.local_addr;
+
+            header[13] = 0x11; /* AF_INET, STREAM */
+            header[14] = 0;
+            header[15] = 12;   /* 2*4 addr + 2*2 port */
+            memcpy(&header[16], &src->sin_addr, 4);
+            memcpy(&header[20], &dst->sin_addr, 4);
+            memcpy(&header[24], &src->sin_port, 2);
+            memcpy(&header[26], &dst->sin_port, 2);
+            len = 28;
+            return push_proxy_header(con, (const char *)header, len);
+        }
+        case AF_INET6: {
+            const struct sockaddr_in6 *src6 =
+                    (const struct sockaddr_in6 *)&con->client.addr;
+            const struct sockaddr_in6 *dst6 =
+                    (const struct sockaddr_in6 *)&con->client.local_addr;
+
+            if (IN6_IS_ADDR_V4MAPPED(&src6->sin6_addr) &&
+                    IN6_IS_ADDR_V4MAPPED(&dst6->sin6_addr)) {
+                header[13] = 0x11; /* AF_INET, STREAM */
+                header[14] = 0;
+                header[15] = 12;
+                memcpy(&header[16], &src6->sin6_addr.s6_addr[12], 4);
+                memcpy(&header[20], &dst6->sin6_addr.s6_addr[12], 4);
+                memcpy(&header[24], &src6->sin6_port, 2);
+                memcpy(&header[26], &dst6->sin6_port, 2);
+                len = 28;
+                return push_proxy_header(con, (const char *)header, len);
+            }
+
+            header[13] = 0x21; /* AF_INET6, STREAM */
+            header[14] = 0;
+            header[15] = 36;   /* 2*16 addr + 2*2 port */
+            memcpy(&header[16], &src6->sin6_addr, 16);
+            memcpy(&header[32], &dst6->sin6_addr, 16);
+            memcpy(&header[48], &src6->sin6_port, 2);
+            memcpy(&header[50], &dst6->sin6_port, 2);
+            len = 52;
+            return push_proxy_header(con, (const char *)header, len);
+        }
+        default:
+            break;
+    }
+
+    /* Unknown address family: LOCAL command, no addresses */
+    header[12] = 0x20; /* version 2, command LOCAL */
+    header[13] = 0x00; /* AF_UNSPEC, UNSPEC */
+    header[14] = 0;
+    header[15] = 0;
+    return push_proxy_header(con, (const char *)header, 16);
+}
+
 static int
 ensure_proxy_header(struct Connection *con) {
-    if (con == NULL || !con->use_proxy_header)
+    if (con == NULL || con->use_proxy_header == PROXY_PROTOCOL_NONE)
         return 1;
 
     if (con->header_len != 0)
@@ -1946,6 +2017,9 @@ ensure_proxy_header(struct Connection *con) {
         warn("getsockname failed: %s", strerror(errno));
         return 0;
     }
+
+    if (con->use_proxy_header == PROXY_PROTOCOL_V2)
+        return insert_proxy_v2_header(con);
 
     return insert_proxy_v1_header(con);
 }
@@ -2371,7 +2445,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         return;
     }
 
-    if (con->header_len && !con->use_proxy_header) {
+    if (con->header_len && con->use_proxy_header == PROXY_PROTOCOL_NONE) {
         /* If we prepended the PROXY header and this backend isn't configured
          * to receive it, consume it now */
         buffer_pop(con->client.buffer, NULL, con->header_len);
@@ -2519,7 +2593,7 @@ new_connection(struct ev_loop *loop) {
     con->hostname_len = 0;
     con->header_len = 0;
     con->query_handle = NULL;
-    con->use_proxy_header = 0;
+    con->use_proxy_header = PROXY_PROTOCOL_NONE;
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
     con->idle_timer.data = con;
     ev_timer_init(&con->header_timer, connection_header_timeout_cb, 0.0, 0.0);

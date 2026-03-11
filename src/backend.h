@@ -39,12 +39,18 @@
 
 #include "address.h"
 
+enum proxy_protocol_mode {
+    PROXY_PROTOCOL_NONE = 0,
+    PROXY_PROTOCOL_V1   = 1,
+    PROXY_PROTOCOL_V2   = 2,
+};
+
 STAILQ_HEAD(Backend_head, Backend);
 
 struct Backend {
     char *pattern;
     struct Address *address;
-    int use_proxy_header;
+    enum proxy_protocol_mode use_proxy_header;
 
     /* Runtime fields */
     pcre2_code *pattern_re;
