@@ -2039,6 +2039,10 @@ parse_incoming_proxy_header(struct Connection *con) {
     if (len < 6)
         return -1; /* need at least enough to distinguish v1/v2 */
 
+    /* Check for partial v2 signature before attempting full parse */
+    if (len < 16 && len >= 6 && memcmp(data, proxy_v2_sig, len < 12 ? len : 12) == 0)
+        return -1; /* looks like v2, wait for full 16-byte header */
+
     /* PROXY protocol v2: 12-byte signature */
     if (len >= 16 && memcmp(data, proxy_v2_sig, 12) == 0) {
         uint8_t ver_cmd = (uint8_t)data[12];

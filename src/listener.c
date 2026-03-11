@@ -358,6 +358,7 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
     existing_listener->access_log = logger_ref_get(new_listener->access_log);
 
     existing_listener->log_bad_requests = new_listener->log_bad_requests;
+    existing_listener->accept_proxy_protocol = new_listener->accept_proxy_protocol;
     existing_listener->reuseport = new_listener->reuseport;
     existing_listener->ipv6_v6only = new_listener->ipv6_v6only;
 
