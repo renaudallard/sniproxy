@@ -1,6 +1,10 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Add `backend_acl` global directive to restrict which backend
+  addresses sniproxy may connect to after DNS resolution. Supports
+  `allow_except` and `deny_except` policies with CIDR ranges, preventing
+  abuse as an open proxy to reach internal hosts.
 * Feature: Randomly select from multiple DNS results when resolving
   backend hostnames, distributing connections across DNS round-robin
   backends instead of always using the first record.

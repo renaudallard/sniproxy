@@ -184,6 +184,10 @@ static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 static uint32_t rate_limit_hash_seed;
 
+static enum ListenerACLMode backend_acl_mode = LISTENER_ACL_MODE_DISABLED;
+static struct ListenerACLRule_head backend_acl_rules =
+    SLIST_HEAD_INITIALIZER(backend_acl_rules);
+
 struct DnsClientUsageEntry {
     struct sockaddr_storage addr;
     uint32_t addr_hash;
@@ -1498,6 +1502,116 @@ connections_set_global_limit(size_t limit) {
 }
 
 void
+connections_set_backend_acl(int mode, struct ListenerACLRule_head *rules) {
+    /* Free existing rules */
+    while (!SLIST_EMPTY(&backend_acl_rules)) {
+        struct ListenerACLRule *rule = SLIST_FIRST(&backend_acl_rules);
+        SLIST_REMOVE_HEAD(&backend_acl_rules, entries);
+        free(rule);
+    }
+
+    backend_acl_mode = (enum ListenerACLMode)mode;
+
+    if (rules == NULL)
+        return;
+
+    /* Move rules from config to global state */
+    while (!SLIST_EMPTY(rules)) {
+        struct ListenerACLRule *rule = SLIST_FIRST(rules);
+        SLIST_REMOVE_HEAD(rules, entries);
+        SLIST_INSERT_HEAD(&backend_acl_rules, rule, entries);
+    }
+}
+
+static int
+backend_acl_rule_match_v4(const struct ListenerACLRule *rule,
+        const struct in_addr *addr) {
+    if (rule->prefix_len == 0)
+        return 1;
+
+    uint32_t mask = rule->prefix_len == 32 ?
+        UINT32_MAX : (~0u << (32 - rule->prefix_len));
+    uint32_t addr_val = ntohl(addr->s_addr);
+    uint32_t net_val = ntohl(rule->network.in.s_addr);
+
+    return (addr_val & mask) == (net_val & mask);
+}
+
+static int
+backend_acl_rule_match_v6(const struct ListenerACLRule *rule,
+        const struct in6_addr *addr) {
+    if (rule->prefix_len == 0)
+        return 1;
+
+    unsigned full_bytes = rule->prefix_len / 8;
+    unsigned remaining_bits = rule->prefix_len % 8;
+
+    if (full_bytes > 0) {
+        if (memcmp(addr->s6_addr, rule->network.in6.s6_addr, full_bytes) != 0)
+            return 0;
+    }
+
+    if (remaining_bits > 0 && full_bytes < sizeof(rule->network.in6.s6_addr)) {
+        uint8_t mask = (uint8_t)(0xFF << (8 - remaining_bits));
+        if ((addr->s6_addr[full_bytes] & mask) !=
+                (rule->network.in6.s6_addr[full_bytes] & mask))
+            return 0;
+    }
+
+    return 1;
+}
+
+static int
+backend_acl_allows(const struct sockaddr_storage *addr) {
+    if (backend_acl_mode == LISTENER_ACL_MODE_DISABLED)
+        return 1;
+
+    const struct ListenerACLRule *rule;
+    int matched = 0;
+
+    if (addr->ss_family == AF_INET) {
+        const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
+        SLIST_FOREACH(rule, &backend_acl_rules, entries) {
+            if (rule->family == AF_INET &&
+                    backend_acl_rule_match_v4(rule, &sin->sin_addr)) {
+                matched = 1;
+                break;
+            }
+        }
+    } else if (addr->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)addr;
+        if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
+            struct in_addr v4;
+            memcpy(&v4.s_addr, &sin6->sin6_addr.s6_addr[12],
+                    sizeof(v4.s_addr));
+            SLIST_FOREACH(rule, &backend_acl_rules, entries) {
+                if (rule->family == AF_INET &&
+                        backend_acl_rule_match_v4(rule, &v4)) {
+                    matched = 1;
+                    break;
+                }
+            }
+        } else {
+            SLIST_FOREACH(rule, &backend_acl_rules, entries) {
+                if (rule->family == AF_INET6 &&
+                        backend_acl_rule_match_v6(rule, &sin6->sin6_addr)) {
+                    matched = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (backend_acl_mode == LISTENER_ACL_MODE_ALLOW_EXCEPT)
+        return matched ? 0 : 1;
+
+    if (backend_acl_mode == LISTENER_ACL_MODE_DENY_EXCEPT)
+        return matched ? 1 : 0;
+
+    return 1;
+}
+
+void
 connections_set_header_timeout(double timeout) {
     if (timeout < 0.0)
         timeout = 0.0;
@@ -2506,6 +2620,22 @@ free_resolv_cb_data(void *data) {
 
 static void
 initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
+    if (!backend_acl_allows(&con->server.addr)) {
+        char server[INET6_ADDRSTRLEN + 8];
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("backend ACL denied connection to %s for %.*s from %s",
+                display_sockaddr(&con->server.addr,
+                    con->server.addr_len,
+                    server, sizeof(server)),
+                (int)con->hostname_len,
+                con->hostname ? con->hostname : "",
+                display_sockaddr(&con->client.addr,
+                    con->client.addr_len,
+                    client, sizeof(client)));
+        abort_connection(con, loop);
+        return;
+    }
+
     int socket_type = SOCK_STREAM;
 #ifdef HAVE_ACCEPT4
     socket_type |= SOCK_NONBLOCK;

@@ -123,6 +123,31 @@ backends that return large responses relative to request size. Limits are
 applied to new connections immediately and propagated to existing
 connections during a configuration reload.
 
+.SS BACKEND_ACL
+
+.PP
+.nf
+backend_acl deny_except {
+    10.0.0.0/8
+    172.16.0.0/12
+    192.168.0.0/16
+}
+.fi
+.PP
+
+Restrict which backend addresses sniproxy is allowed to connect to after
+DNS resolution. The directive takes a policy of \fBallow_except\fR
+(allow all backends except those listed) or \fBdeny_except\fR (deny all
+backends except the listed ranges). When omitted all resolved addresses
+are permitted.
+
+This prevents abuse of sniproxy as an open proxy to reach arbitrary
+internal hosts. Only one backend_acl block may appear in the
+configuration. IPv4 and IPv6 ranges may be mixed freely, and
+IPv4-mapped IPv6 addresses are matched against IPv4 rules.
+Connections denied by the backend ACL are logged and closed immediately.
+The backend ACL is reloaded on SIGHUP.
+
 .SS MAINLOOP
 
 .PP

@@ -47,6 +47,7 @@ Features
 + **Buffer overflow protection**: Strict bounds checking in all protocol parsers
 + **NULL byte rejection**: Prevents hostname validation bypasses
 + **Listener ACLs**: CIDR-based allow/deny policies per listener to block or permit client ranges
++ **Backend ACLs**: CIDR-based restrictions on outbound connections prevent open proxy abuse
 + **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
 + **Request guardrails**: Caps of 100 HTTP headers and 64 TLS extensions stop
   CPU exhaustion attempts before parsers process attacker-controlled blobs.
@@ -260,6 +261,20 @@ against header-count DoS attempts:
 ```
 http_max_headers 200
 ```
+
+Restrict which backend addresses sniproxy may connect to, preventing abuse
+as an open proxy to reach internal hosts:
+
+```
+backend_acl deny_except {
+    10.0.0.0/8
+    172.16.0.0/12
+    192.168.0.0/16
+}
+```
+
+The policy is either `deny_except` (only allow listed ranges) or
+`allow_except` (allow everything except listed ranges).
 
 ### Basic Configuration
 

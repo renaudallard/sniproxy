@@ -1,5 +1,6 @@
 2026-03-11  Renaud Allard  <renaud@allard.it>
 
+	- Add backend_acl directive to restrict outbound connection subnets
 	- Randomly select from multiple DNS results for load distribution
 	- Add backend_affinity table directive for consistent backend selection
 	- Auto-anchor literal hostname patterns in table entries

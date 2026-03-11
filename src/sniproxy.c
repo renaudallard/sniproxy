@@ -480,6 +480,8 @@ main(int argc, char **argv) {
     connections_set_dns_query_limit(config->resolver.max_concurrent_queries);
     connections_set_buffer_limits(config->client_buffer_limit,
             config->server_buffer_limit);
+    connections_set_backend_acl(config->backend_acl_mode,
+            &config->backend_acl_rules);
     http_set_max_headers(config->http_max_headers);
 
     init_listeners(&config->listeners, &config->tables, loop);

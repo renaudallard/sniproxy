@@ -117,6 +117,8 @@ static void *new_listener_acl_builder(void);
 static int accept_listener_acl_policy(struct ListenerACLBuilder *, const char *);
 static int accept_listener_acl_cidr(struct ListenerACLBuilder *, const char *);
 static int end_listener_acl_stanza(struct Listener *, struct ListenerACLBuilder *);
+static int accept_backend_acl_policy(struct ListenerACLBuilder *, const char *);
+static int end_backend_acl_stanza(struct Config *, struct ListenerACLBuilder *);
 static struct ListenerACLRule *new_listener_acl_rule_from_cidr(const char *);
 static void *new_listener_acl_value(void);
 static int accept_listener_acl_value(struct ListenerACLRuleValue *, const char *);
@@ -171,6 +173,8 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_fallback_address, struct Listener)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_source_address, struct Listener)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_policy, struct ListenerACLBuilder)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_acl_stanza, struct Listener, struct ListenerACLBuilder)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_backend_acl_policy, struct ListenerACLBuilder)
+DEFINE_KEYWORD_FINALIZE_WRAPPER(end_backend_acl_stanza, struct Config, struct ListenerACLBuilder)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_access_logger_stanza, struct Listener, struct LoggerBuilder)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_bad_request_action, struct Listener)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_accept_proxy_protocol, struct Listener)
@@ -426,6 +430,14 @@ static struct Keyword global_grammar[] = {
         .cleanup=cleanup_listener,
     },
     {
+        .keyword="backend_acl",
+        .create=new_listener_acl_builder,
+        .parse_arg=kw_parse_accept_backend_acl_policy,
+        .block_grammar=listener_acl_stanza_grammar,
+        .finalize=kw_finalize_end_backend_acl_stanza,
+        .cleanup=cleanup_listener_acl_builder,
+    },
+    {
         .keyword="table",
         .create=kw_create_new_table,
         .parse_arg=kw_parse_accept_table_arg,
@@ -471,6 +483,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     SLIST_INIT(&config->listeners);
     SLIST_INIT(&config->tables);
+    SLIST_INIT(&config->backend_acl_rules);
 
     config->io_collect_interval = DEFAULT_IO_COLLECT_INTERVAL;
     config->timeout_collect_interval = DEFAULT_TIMEOUT_COLLECT_INTERVAL;
@@ -581,6 +594,12 @@ free_config(struct Config *config, struct ev_loop *loop) {
     free_listeners(&config->listeners, loop);
     free_tables(&config->tables);
 
+    while (!SLIST_EMPTY(&config->backend_acl_rules)) {
+        struct ListenerACLRule *rule = SLIST_FIRST(&config->backend_acl_rules);
+        SLIST_REMOVE_HEAD(&config->backend_acl_rules, entries);
+        free(rule);
+    }
+
     free(config);
 }
 
@@ -645,6 +664,10 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->http_max_headers = new_config->http_max_headers;
     http_set_max_headers(config->http_max_headers);
 
+    config->backend_acl_mode = new_config->backend_acl_mode;
+    connections_set_backend_acl(config->backend_acl_mode,
+            &new_config->backend_acl_rules);
+
     free_config(new_config, loop);
 }
 
@@ -684,6 +707,11 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->http_max_headers != HTTP_DEFAULT_MAX_HEADERS)
         fprintf(file, "http_max_headers %zu\n\n", config->http_max_headers);
+
+    if (config->backend_acl_mode == LISTENER_ACL_MODE_ALLOW_EXCEPT)
+        fprintf(file, "backend_acl allow_except { ... }\n\n");
+    else if (config->backend_acl_mode == LISTENER_ACL_MODE_DENY_EXCEPT)
+        fprintf(file, "backend_acl deny_except { ... }\n\n");
 
     print_resolver_config(file, &config->resolver);
 
@@ -1040,6 +1068,42 @@ end_listener_acl_stanza(struct Listener *listener, struct ListenerACLBuilder *bu
 
     listener->acl_mode = builder->mode;
     listener->acl_rules = builder->rules;
+    SLIST_INIT(&builder->rules);
+
+    free_listener_acl_builder(builder);
+    return 1;
+}
+
+static int
+accept_backend_acl_policy(struct ListenerACLBuilder *builder, const char *policy) {
+    if (builder == NULL || policy == NULL)
+        return 0;
+
+    if (strcasecmp(policy, "allow_except") == 0) {
+        builder->mode = LISTENER_ACL_MODE_ALLOW_EXCEPT;
+    } else if (strcasecmp(policy, "deny_except") == 0) {
+        builder->mode = LISTENER_ACL_MODE_DENY_EXCEPT;
+    } else {
+        err("Unknown backend_acl policy: %s", policy);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int
+end_backend_acl_stanza(struct Config *config, struct ListenerACLBuilder *builder) {
+    if (config == NULL || builder == NULL)
+        return 0;
+
+    if (config->backend_acl_mode != LISTENER_ACL_MODE_DISABLED ||
+            !SLIST_EMPTY(&config->backend_acl_rules)) {
+        err("Duplicate backend_acl definition");
+        return 0;
+    }
+
+    config->backend_acl_mode = builder->mode;
+    config->backend_acl_rules = builder->rules;
     SLIST_INIT(&builder->rules);
 
     free_listener_acl_builder(builder);

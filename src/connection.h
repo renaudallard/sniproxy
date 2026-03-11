@@ -94,6 +94,8 @@ void connections_set_dns_query_limit(size_t limit);
 void connections_set_dns_query_per_client_limit(size_t limit);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
 void connections_set_global_limit(size_t limit);
+void connections_set_backend_acl(int mode,
+        struct ListenerACLRule_head *rules);
 
 #define CONNECTION_DEFAULT_HEADER_TIMEOUT 5.0
 #define CONNECTION_DEFAULT_IDLE_TIMEOUT 60.0
