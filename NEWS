@@ -1,6 +1,9 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Randomly select from multiple DNS results when resolving
+  backend hostnames, distributing connections across DNS round-robin
+  backends instead of always using the first record.
 * Feature: Add `backend_affinity on` table directive for session
   persistence. When DNS returns multiple records for a backend, the
   client IP is hashed to consistently select the same backend.

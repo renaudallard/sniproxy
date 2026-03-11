@@ -2082,17 +2082,20 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
     else
         best_address = resolver_child_choose_any(query);
 
-    /* When backend affinity is enabled (seed != 0) and multiple
-     * addresses are available, sort responses by IP address for
-     * deterministic ordering (DNS servers may rotate record order),
-     * then select based on the seed hash.  Respect the address
-     * family preference from the resolv_mode. */
-    if (query->affinity_seed != 0 && query->response_count > 1) {
-        /* Sort responses so the same set of IPs always produces
-         * the same ordering regardless of DNS response order. */
-        qsort(query->responses, query->response_count,
-                sizeof(query->responses[0]),
-                resolver_child_compare_addresses);
+    /* When multiple addresses are available, select one instead of
+     * always returning the first result.  With backend affinity
+     * (seed != 0) the responses are sorted by IP for deterministic
+     * ordering, then indexed by seed.  Without affinity, a random
+     * index distributes connections across DNS round-robin backends.
+     * Both paths respect the address family preference. */
+    if (query->response_count > 1) {
+        if (query->affinity_seed != 0) {
+            /* Sort so the same set of IPs always produces the
+             * same ordering regardless of DNS response order. */
+            qsort(query->responses, query->response_count,
+                    sizeof(query->responses[0]),
+                    resolver_child_compare_addresses);
+        }
 
         int preferred_family = 0;
         if (query->resolv_mode == RESOLV_MODE_IPV4_FIRST ||
@@ -2116,7 +2119,12 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
         }
 
         if (candidate_count > 1) {
-            size_t pick = query->affinity_seed % candidate_count;
+            size_t pick;
+            if (query->affinity_seed != 0)
+                pick = query->affinity_seed % candidate_count;
+            else
+                pick = arc4random_uniform((uint32_t)candidate_count);
+
             size_t seen = 0;
             for (size_t i = 0; i < query->response_count; i++) {
                 if (query->responses[i] == NULL ||
