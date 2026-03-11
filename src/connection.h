@@ -61,6 +61,7 @@ struct Connection {
     const char *hostname; /* Requested hostname */
     size_t hostname_len;
     size_t header_len;
+    size_t incoming_proxy_len;
     struct ResolvQuery *query_handle;
     int dns_query_acquired;
     struct DnsClientUsageEntry *dns_client_usage;

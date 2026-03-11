@@ -306,6 +306,16 @@ the binary v2 format.
 The bad_requests directive allows logging the contents of the client
 request if it is not parsable. This is useful for debugging.
 
+The proxy_protocol directive enables acceptance of incoming HAProxy PROXY
+protocol headers (both v1 text and v2 binary formats are auto-detected).
+When enabled, sniproxy parses the PROXY header from the upstream proxy or
+load balancer, extracts the original client address, and uses it for
+access logging and any outgoing PROXY protocol headers to backends. This
+allows chaining sniproxy behind load balancers (e.g. AWS NLB, HAProxy)
+or other sniproxy instances while preserving the real client IP. Note
+that ACL and per-IP rate limiting are applied to the direct TCP peer
+(the upstream proxy), not the address from the PROXY header.
+
 The source directive allows specifying an address to bind to before
 connecting to the backend server. In most cases it is better to omit
 this option and allow the operating system to select the outgoing

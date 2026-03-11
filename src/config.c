@@ -173,6 +173,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_policy, struct ListenerACLBuild
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_acl_stanza, struct Listener, struct ListenerACLBuilder)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_access_logger_stanza, struct Listener, struct LoggerBuilder)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_bad_request_action, struct Listener)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_accept_proxy_protocol, struct Listener)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_arg, struct Listener)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_backend_arg, struct Backend)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_backend, struct Table, struct Backend)
@@ -307,6 +308,10 @@ static const struct Keyword listener_stanza_grammar[] = {
     {
         .keyword="bad_requests",
         .parse_arg=kw_parse_accept_listener_bad_request_action,
+    },
+    {
+        .keyword="proxy_protocol",
+        .parse_arg=kw_parse_accept_listener_accept_proxy_protocol,
     },
     {
         .keyword = NULL,

@@ -1,3 +1,11 @@
+2026-03-11  Renaud Allard  <renaud@allard.it>
+
+	- Accept incoming PROXY protocol v1/v2 headers on listeners
+	- Add PROXY protocol v2 (binary) output support
+	- Chown log files before dropping privileges for SIGHUP rotation
+	- Emit PROXY TCP4 for IPv4-mapped IPv6 addresses
+	- Unify fallback proxy_protocol naming with table backend syntax
+
 2026-03-10  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.9.27

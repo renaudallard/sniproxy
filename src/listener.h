@@ -59,7 +59,8 @@ struct Listener {
     const struct Protocol *protocol;
     char *table_name;
     struct Logger *access_log;
-    int log_bad_requests, reuseport, transparent_proxy, ipv6_v6only;
+    int log_bad_requests, reuseport, transparent_proxy, ipv6_v6only,
+        accept_proxy_protocol;
     enum proxy_protocol_mode fallback_use_proxy_header;
     enum ListenerACLMode acl_mode;
     struct ListenerACLRule_head acl_rules;
@@ -84,6 +85,7 @@ int accept_listener_protocol(struct Listener *, const char *);
 int accept_listener_reuseport(struct Listener *, const char *);
 int accept_listener_ipv6_v6only(struct Listener *, const char *);
 int accept_listener_bad_request_action(struct Listener *, const char *);
+int accept_listener_accept_proxy_protocol(struct Listener *, const char *);
 
 void add_listener(struct Listener_head *, struct Listener *);
 void init_listeners(struct Listener_head *, const struct Table_head *, struct ev_loop *);

@@ -118,6 +118,7 @@ static void reactivate_watchers(struct Connection *, struct ev_loop *);
 static void reactivate_watchers_with_state(struct Connection *, struct ev_loop *, int, int);
 static int insert_proxy_v1_header(struct Connection *);
 static int ensure_proxy_header(struct Connection *);
+static int parse_incoming_proxy_header(struct Connection *);
 static void parse_client_request(struct Connection *, struct ev_loop *);
 static int resolve_server_address(struct Connection *, struct ev_loop *);
 static void initiate_server_connect(struct Connection *, struct ev_loop *);
@@ -2024,11 +2025,189 @@ ensure_proxy_header(struct Connection *con) {
     return insert_proxy_v1_header(con);
 }
 
+/*
+ * Parse an incoming PROXY protocol v1 or v2 header from the client buffer.
+ * Returns the header length on success, -1 if incomplete, -2 on error.
+ * On success, overwrites con->client.addr and con->client.local_addr with
+ * the addresses from the header.
+ */
+static int
+parse_incoming_proxy_header(struct Connection *con) {
+    const char *data;
+    size_t len = buffer_coalesce(con->client.buffer, (const void **)&data);
+
+    if (len < 6)
+        return -1; /* need at least enough to distinguish v1/v2 */
+
+    /* PROXY protocol v2: 12-byte signature */
+    if (len >= 16 && memcmp(data, proxy_v2_sig, 12) == 0) {
+        uint8_t ver_cmd = (uint8_t)data[12];
+        uint8_t fam = (uint8_t)data[13];
+        uint16_t addr_len = ((uint8_t)data[14] << 8) | (uint8_t)data[15];
+
+        if ((ver_cmd & 0xF0) != 0x20)
+            return -2; /* not version 2 */
+
+        size_t total = 16 + (size_t)addr_len;
+        if (len < total)
+            return -1; /* incomplete */
+
+        uint8_t cmd = ver_cmd & 0x0F;
+        if (cmd == 0x01) { /* PROXY command */
+            uint8_t af = (fam >> 4) & 0x0F;
+            if (af == 0x01 && addr_len >= 12) {
+                /* AF_INET */
+                struct sockaddr_in *src =
+                        (struct sockaddr_in *)&con->client.addr;
+                struct sockaddr_in *dst =
+                        (struct sockaddr_in *)&con->client.local_addr;
+
+                memset(src, 0, sizeof(*src));
+                src->sin_family = AF_INET;
+                memcpy(&src->sin_addr, data + 16, 4);
+                memcpy(&src->sin_port, data + 24, 2);
+                con->client.addr_len = sizeof(*src);
+
+                memset(dst, 0, sizeof(*dst));
+                dst->sin_family = AF_INET;
+                memcpy(&dst->sin_addr, data + 20, 4);
+                memcpy(&dst->sin_port, data + 26, 2);
+                con->client.local_addr_len = sizeof(*dst);
+            } else if (af == 0x02 && addr_len >= 36) {
+                /* AF_INET6 */
+                struct sockaddr_in6 *src =
+                        (struct sockaddr_in6 *)&con->client.addr;
+                struct sockaddr_in6 *dst =
+                        (struct sockaddr_in6 *)&con->client.local_addr;
+
+                memset(src, 0, sizeof(*src));
+                src->sin6_family = AF_INET6;
+                memcpy(&src->sin6_addr, data + 16, 16);
+                memcpy(&src->sin6_port, data + 48, 2);
+                con->client.addr_len = sizeof(*src);
+
+                memset(dst, 0, sizeof(*dst));
+                dst->sin6_family = AF_INET6;
+                memcpy(&dst->sin6_addr, data + 32, 16);
+                memcpy(&dst->sin6_port, data + 50, 2);
+                con->client.local_addr_len = sizeof(*dst);
+            }
+            /* else: unknown family, keep real peer address */
+        }
+        /* cmd == 0x00 (LOCAL): health check, keep real peer address */
+
+        return (int)total;
+    }
+
+    /* PROXY protocol v1: text line "PROXY ...\r\n" */
+    if (len >= 6 && memcmp(data, "PROXY ", 6) == 0) {
+        /* Find the \r\n terminator */
+        const char *end = NULL;
+        size_t search_len = len > 107 ? 107 : len; /* v1 max is ~107 bytes */
+        for (size_t i = 6; i + 1 < search_len; i++) {
+            if (data[i] == '\r' && data[i + 1] == '\n') {
+                end = data + i;
+                break;
+            }
+        }
+        if (end == NULL) {
+            if (len >= 107)
+                return -2; /* too long for v1 */
+            return -1; /* incomplete */
+        }
+
+        size_t line_len = (size_t)(end - data);
+        size_t total = line_len + 2; /* include \r\n */
+
+        /* Parse: "PROXY TCP4|TCP6|UNKNOWN src dst sport dport" */
+        char line[108];
+        memcpy(line, data + 6, line_len - 6);
+        line[line_len - 6] = '\0';
+
+        char proto[8], src_str[46], dst_str[46];
+        unsigned int sport, dport;
+
+        if (sscanf(line, "%7s %45s %45s %u %u",
+                    proto, src_str, dst_str, &sport, &dport) == 5) {
+            if (sport > 65535 || dport > 65535)
+                return -2;
+
+            if (strcasecmp(proto, "TCP4") == 0) {
+                struct sockaddr_in *src =
+                        (struct sockaddr_in *)&con->client.addr;
+                struct sockaddr_in *dst =
+                        (struct sockaddr_in *)&con->client.local_addr;
+
+                memset(src, 0, sizeof(*src));
+                src->sin_family = AF_INET;
+                if (inet_pton(AF_INET, src_str, &src->sin_addr) != 1)
+                    return -2;
+                src->sin_port = htons((uint16_t)sport);
+                con->client.addr_len = sizeof(*src);
+
+                memset(dst, 0, sizeof(*dst));
+                dst->sin_family = AF_INET;
+                if (inet_pton(AF_INET, dst_str, &dst->sin_addr) != 1)
+                    return -2;
+                dst->sin_port = htons((uint16_t)dport);
+                con->client.local_addr_len = sizeof(*dst);
+            } else if (strcasecmp(proto, "TCP6") == 0) {
+                struct sockaddr_in6 *src =
+                        (struct sockaddr_in6 *)&con->client.addr;
+                struct sockaddr_in6 *dst =
+                        (struct sockaddr_in6 *)&con->client.local_addr;
+
+                memset(src, 0, sizeof(*src));
+                src->sin6_family = AF_INET6;
+                if (inet_pton(AF_INET6, src_str, &src->sin6_addr) != 1)
+                    return -2;
+                src->sin6_port = htons((uint16_t)sport);
+                con->client.addr_len = sizeof(*src);
+
+                memset(dst, 0, sizeof(*dst));
+                dst->sin6_family = AF_INET6;
+                if (inet_pton(AF_INET6, dst_str, &dst->sin6_addr) != 1)
+                    return -2;
+                dst->sin6_port = htons((uint16_t)dport);
+                con->client.local_addr_len = sizeof(*dst);
+            }
+            /* else UNKNOWN: keep real peer address */
+        }
+        /* else: parse failed but header is consumed (PROXY UNKNOWN\r\n) */
+
+        return (int)total;
+    }
+
+    /* No valid PROXY signature */
+    return -2;
+}
+
 static void
 parse_client_request(struct Connection *con, struct ev_loop *loop) {
     const char *payload;
     size_t payload_len = buffer_coalesce(con->client.buffer, (const void **)&payload);
     char *hostname = NULL;
+
+    /* Parse incoming PROXY protocol header if expected */
+    if (con->listener->accept_proxy_protocol && con->incoming_proxy_len == 0) {
+        int rc = parse_incoming_proxy_header(con);
+        if (rc == -1)
+            return; /* incomplete, wait for more data */
+        if (rc == -2) {
+            char client[INET6_ADDRSTRLEN + 8];
+            warn("Invalid PROXY protocol header from %s",
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
+            abort_connection(con, loop);
+            return;
+        }
+        con->incoming_proxy_len = (size_t)rc;
+        buffer_pop(con->client.buffer, NULL, con->incoming_proxy_len);
+
+        /* Re-coalesce after popping the header */
+        payload_len = buffer_coalesce(con->client.buffer, (const void **)&payload);
+    }
 
     /* Avoid payload_len underflow and empty request */
     if (payload_len <= con->header_len)
@@ -2592,6 +2771,7 @@ new_connection(struct ev_loop *loop) {
     con->hostname = NULL;
     con->hostname_len = 0;
     con->header_len = 0;
+    con->incoming_proxy_len = 0;
     con->query_handle = NULL;
     con->use_proxy_header = PROXY_PROTOCOL_NONE;
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);

@@ -21,7 +21,8 @@ Features
 + **Pattern matching**: Exact hostname matching and PCRE2 regular expressions
 + **Wildcard backends**: Route to dynamically resolved hostnames
 + **Fallback routing**: Default backend for requests without valid hostnames
-+ **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1)
++ **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1
+  and v2), and accept incoming PROXY headers from upstream proxies/load balancers
 
 ### Network & Performance
 + **IPv4, IPv6, and Unix domain sockets** for both listeners and backends
@@ -369,6 +370,10 @@ nameserver dot://dns.quad9.net
             2001:db8::/32
         }
 
+
+        # Accept incoming PROXY protocol headers (v1 and v2 auto-detected)
+        # from upstream proxies/load balancers
+        proxy_protocol on
 
         # Fallback with PROXY protocol v1 header (text format)
         fallback 192.0.2.50:443

@@ -623,6 +623,14 @@ accept_listener_bad_request_action(struct Listener *listener, const char *action
     return 1;
 }
 
+int
+accept_listener_accept_proxy_protocol(struct Listener *listener, const char *value) {
+    listener->accept_proxy_protocol = parse_boolean(value);
+    if (listener->accept_proxy_protocol == -1)
+        return 0;
+    return 1;
+}
+
 /*
  * Insert an additional listener in to the sorted list of listeners
  */
@@ -1041,6 +1049,9 @@ print_listener_config(FILE *file, const struct Listener *listener) {
         fprintf(file, "\tsource %s\n",
                 display_address(listener->source_address,
                     address, sizeof(address)));
+
+    if (listener->accept_proxy_protocol)
+        fprintf(file, "\tproxy_protocol on\n");
 
     if (listener->reuseport)
         fprintf(file, "\treuseport on\n");
