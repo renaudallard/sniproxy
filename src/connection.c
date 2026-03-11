@@ -1879,20 +1879,46 @@ insert_proxy_v1_header(struct Connection *con) {
             return push_proxy_header(con, header, len);
         }
         case AF_INET6: {
-            char src_ip[INET6_ADDRSTRLEN];
-            char dst_ip[INET6_ADDRSTRLEN];
-            const struct sockaddr_in6 *src =
+            const struct sockaddr_in6 *src6 =
                     (const struct sockaddr_in6 *)&con->client.addr;
-            const struct sockaddr_in6 *dst =
+            const struct sockaddr_in6 *dst6 =
                     (const struct sockaddr_in6 *)&con->client.local_addr;
 
-            if (inet_ntop(AF_INET6, &src->sin6_addr, src_ip, sizeof(src_ip)) == NULL ||
-                    inet_ntop(AF_INET6, &dst->sin6_addr, dst_ip, sizeof(dst_ip)) == NULL)
+            if (IN6_IS_ADDR_V4MAPPED(&src6->sin6_addr) &&
+                    IN6_IS_ADDR_V4MAPPED(&dst6->sin6_addr)) {
+                char src_ip[INET_ADDRSTRLEN];
+                char dst_ip[INET_ADDRSTRLEN];
+                const struct in_addr *src4 =
+                        (const struct in_addr *)&src6->sin6_addr.s6_addr[12];
+                const struct in_addr *dst4 =
+                        (const struct in_addr *)&dst6->sin6_addr.s6_addr[12];
+
+                if (inet_ntop(AF_INET, src4, src_ip, sizeof(src_ip)) == NULL ||
+                        inet_ntop(AF_INET, dst4, dst_ip, sizeof(dst_ip)) == NULL)
+                    break;
+
+                int n = snprintf(header, sizeof(header),
+                        "PROXY TCP4 %s %s %u %u\r\n",
+                        src_ip, dst_ip,
+                        ntohs(src6->sin6_port), ntohs(dst6->sin6_port));
+                if (n <= 0 || (size_t)n >= sizeof(header))
+                    break;
+
+                len = (size_t)n;
+                return push_proxy_header(con, header, len);
+            }
+
+            char src_ip[INET6_ADDRSTRLEN];
+            char dst_ip[INET6_ADDRSTRLEN];
+
+            if (inet_ntop(AF_INET6, &src6->sin6_addr, src_ip, sizeof(src_ip)) == NULL ||
+                    inet_ntop(AF_INET6, &dst6->sin6_addr, dst_ip, sizeof(dst_ip)) == NULL)
                 break;
 
             int n = snprintf(header, sizeof(header),
                     "PROXY TCP6 %s %s %u %u\r\n",
-                    src_ip, dst_ip, ntohs(src->sin6_port), ntohs(dst->sin6_port));
+                    src_ip, dst_ip,
+                    ntohs(src6->sin6_port), ntohs(dst6->sin6_port));
             if (n <= 0 || (size_t)n >= sizeof(header))
                 break;
 
