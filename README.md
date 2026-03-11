@@ -372,7 +372,7 @@ nameserver dot://dns.quad9.net
 
         # Fallback with PROXY protocol header
         fallback 192.0.2.50:443
-        fallback proxy
+        fallback proxy_protocol
     }
 
     table SecureHosts {

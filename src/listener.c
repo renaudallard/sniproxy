@@ -516,36 +516,46 @@ accept_listener_ipv6_v6only(struct Listener *listener, const char *ipv6_v6only) 
 
 int
 accept_listener_fallback_address(struct Listener *listener, const char *fallback) {
-    if (listener->fallback_address == NULL) {
-        struct Address *fallback_address = new_address(fallback);
-        if (fallback_address == NULL) {
-            err("Unable to parse fallback address: %s", fallback);
-            return 0;
-        } else if (address_is_sockaddr(fallback_address)) {
-            listener->fallback_address = fallback_address;
-            return 1;
-        } else if (address_is_hostname(fallback_address)) {
-            warn("Using hostname as fallback address is strongly discouraged");
-            listener->fallback_address = fallback_address;
-            return 1;
-        } else if (address_is_wildcard(fallback_address)) {
-            /* The wildcard functionality requires successfully parsing the
-             * hostname from the client's request, if we couldn't find the
-             * hostname and are using a fallback address it doesn't make
-             * much sense to configure it as a wildcard. */
-            err("Wildcard address prohibited as fallback address");
-            free(fallback_address);
-            return 0;
-        } else {
-            fatal("Unexpected fallback address type");
+    if (strcasecmp("proxy_protocol", fallback) == 0 ||
+            strcasecmp("proxy", fallback) == 0) {
+        if (listener->fallback_address == NULL) {
+            err("fallback address must be specified before proxy_protocol");
             return 0;
         }
-    } else if (strcasecmp("proxy", fallback) == 0 &&
-            listener->fallback_use_proxy_header == 0) {
+        if (listener->fallback_use_proxy_header) {
+            err("Unexpected fallback argument: %s", fallback);
+            return 0;
+        }
         listener->fallback_use_proxy_header = 1;
         return 1;
-    } else {
+    }
+
+    if (listener->fallback_address != NULL) {
         err("Unexpected fallback argument: %s", fallback);
+        return 0;
+    }
+
+    struct Address *fallback_address = new_address(fallback);
+    if (fallback_address == NULL) {
+        err("Unable to parse fallback address: %s", fallback);
+        return 0;
+    } else if (address_is_sockaddr(fallback_address)) {
+        listener->fallback_address = fallback_address;
+        return 1;
+    } else if (address_is_hostname(fallback_address)) {
+        warn("Using hostname as fallback address is strongly discouraged");
+        listener->fallback_address = fallback_address;
+        return 1;
+    } else if (address_is_wildcard(fallback_address)) {
+        /* The wildcard functionality requires successfully parsing the
+         * hostname from the client's request, if we couldn't find the
+         * hostname and are using a fallback address it doesn't make
+         * much sense to configure it as a wildcard. */
+        err("Wildcard address prohibited as fallback address");
+        free(fallback_address);
+        return 0;
+    } else {
+        fatal("Unexpected fallback address type");
         return 0;
     }
 }
@@ -1011,7 +1021,7 @@ print_listener_config(FILE *file, const struct Listener *listener) {
 
     if (listener->fallback_address &&
             listener->fallback_use_proxy_header)
-        fprintf(file, "\tfallback %s proxy\n",
+        fprintf(file, "\tfallback %s proxy_protocol\n",
                 display_address(listener->fallback_address,
                     address, sizeof(address)));
 

@@ -297,7 +297,7 @@ hostname, or the hostname cannot be resolved. This should be an IP
 address and port or a unix socket path. When using TLS listeners the
 fallback still terminates the client TLS handshake and forwards the
 traffic unmodified to the configured destination. Issuing a second
-\fBfallback\fR directive with the literal argument \fBproxy\fR after the
+\fBfallback\fR directive with the literal argument \fBproxy_protocol\fR after the
 address instructs sniproxy to prepend an HAProxy PROXY protocol v1 header
 whenever the fallback path is taken, allowing the backend to recover the
 original client IP and port.
