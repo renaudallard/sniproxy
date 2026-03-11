@@ -647,6 +647,9 @@ drop_perms(const char *username, const char *groupname) {
      * 4. Verify drop succeeded
      * 5. Then communicate with child processes */
 
+    /* Chown log files to the target user so SIGHUP can reopen them */
+    logger_chown_files(user->pw_uid, gid);
+
     /* drop any supplementary groups */
     if (setgroups(1, &gid) < 0)
         fatal("setgroups(): %s", strerror(errno));

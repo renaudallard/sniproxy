@@ -459,6 +459,22 @@ logger_for_each_file_sink(void (*callback)(const char *, void *), void *userdata
     }
 }
 
+void
+logger_chown_files(uid_t uid, gid_t gid) {
+    struct LogSink *sink;
+
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
+        if (sink->type == LOG_SINK_FILE && sink->fd != NULL && sink->fd_owned) {
+            int fd = fileno(sink->fd);
+            if (fd >= 0 && fchown(fd, uid, gid) < 0)
+                warn("Failed to chown log file %s: %s",
+                        sink->filepath, strerror(errno));
+        }
+        sink = SLIST_NEXT(sink, entries);
+    }
+}
+
 int
 logger_drop_privileges(uid_t uid, gid_t gid) {
     if (!logger_process_enabled)
