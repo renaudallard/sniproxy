@@ -51,7 +51,7 @@ static void query_cb(struct Address *result, void *data) {
 static void
 test_init_cb(struct ev_loop *loop __attribute__((unused)), struct ev_timer *w __attribute__((unused)), int revents) {
     if (revents & EV_TIMER)
-        resolv_query("localhost", RESOLV_MODE_DEFAULT, query_cb, NULL, &query_count);
+        resolv_query("localhost", RESOLV_MODE_DEFAULT, 0, query_cb, NULL, &query_count);
 }
 
 static void

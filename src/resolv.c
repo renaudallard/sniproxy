@@ -125,6 +125,7 @@ struct ResolvQuery {
 struct ResolverPending {
     uint32_t id;
     int resolv_mode;
+    uint32_t affinity_seed;
     char *hostname;
     size_t hostname_len;
     uint32_t host_hash;
@@ -304,7 +305,7 @@ static void resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
 static void resolver_child_shutdown_dns(struct ev_loop *loop);
 static void resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_submit_query(uint32_t id, int mode,
-        const char *hostname, size_t hostname_len);
+        uint32_t affinity_seed, const char *hostname, size_t hostname_len);
 static void resolver_child_cancel_query(uint32_t id);
 static void resolver_child_send_result(uint32_t id, const struct Address *address, int status);
 static void resolver_child_cancel_all(void);
@@ -322,6 +323,7 @@ static void resolver_child_maybe_process_callback(struct ResolverChildQuery *que
 static struct Address *resolver_child_choose_ipv4_first(struct ResolverChildQuery *query);
 static struct Address *resolver_child_choose_ipv6_first(struct ResolverChildQuery *query);
 static struct Address *resolver_child_choose_any(struct ResolverChildQuery *query);
+static int resolver_child_compare_addresses(const void *, const void *);
 static void resolver_child_dns_query_v4_cb(void *arg, int status, int timeouts, struct ares_addrinfo *result);
 static void resolver_child_dns_query_v6_cb(void *arg, int status, int timeouts, struct ares_addrinfo *result);
 static void resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, struct ares_addrinfo *result, int family);
@@ -370,6 +372,7 @@ static struct resolver_child_cares_io child_dns_watchers[ARES_GETSOCK_MAXNUM];
 struct ResolverChildQuery {
     uint32_t id;
     int resolv_mode;
+    uint32_t affinity_seed;
     size_t response_count;
     struct Address **responses;
     size_t ipv4_response_count;
@@ -618,7 +621,7 @@ resolv_shutdown(struct ev_loop *loop) {
 }
 
 struct ResolvQuery *
-resolv_query(const char *hostname, int mode,
+resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
         void (*client_cb)(struct Address *, void *),
         void (*client_free_cb)(void *), void *client_cb_data) {
     if (resolver_sock < 0 || hostname == NULL) {
@@ -695,6 +698,7 @@ resolv_query(const char *hostname, int mode,
 
     new_pending->hostname_len = hostname_len;
     new_pending->resolv_mode = requested_mode;
+    new_pending->affinity_seed = affinity_seed;
     new_pending->host_hash = host_hash;
     new_pending->id = resolver_next_query_prng();
     if (new_pending->id == 0)
@@ -1055,13 +1059,16 @@ resolver_emit_query(struct ResolverPending *pending) {
     if (hostname_len == 0 || hostname_len > RESOLVER_MAX_HOSTNAME_LEN)
         return -1;
 
-    uint8_t payload[sizeof(uint32_t) + RESOLVER_MAX_HOSTNAME_LEN];
+    uint8_t payload[2 * sizeof(uint32_t) + RESOLVER_MAX_HOSTNAME_LEN];
     uint32_t mode_net = htonl((uint32_t)pending->resolv_mode);
+    uint32_t seed_net = htonl(pending->affinity_seed);
     memcpy(payload, &mode_net, sizeof(mode_net));
-    memcpy(payload + sizeof(mode_net), pending->hostname, hostname_len);
+    memcpy(payload + sizeof(mode_net), &seed_net, sizeof(seed_net));
+    memcpy(payload + sizeof(mode_net) + sizeof(seed_net),
+            pending->hostname, hostname_len);
 
     return resolver_send_message(RESOLVER_CMD_QUERY, pending->id,
-            payload, sizeof(mode_net) + hostname_len);
+            payload, sizeof(mode_net) + sizeof(seed_net) + hostname_len);
 }
 
 
@@ -1627,15 +1634,19 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         switch (type) {
             case RESOLVER_CMD_QUERY:
-                if (payload_len < sizeof(uint32_t))
+                if (payload_len < 2 * sizeof(uint32_t))
                     break;
                 {
-                    uint32_t mode_net;
+                    uint32_t mode_net, seed_net;
                     memcpy(&mode_net, payload, sizeof(uint32_t));
+                    memcpy(&seed_net, payload + sizeof(uint32_t), sizeof(uint32_t));
                     int requested_mode = (int)ntohl(mode_net);
-                    size_t hostname_len = payload_len - sizeof(uint32_t);
+                    uint32_t affinity_seed = ntohl(seed_net);
+                    size_t hostname_len = payload_len - 2 * sizeof(uint32_t);
                     resolver_child_submit_query(id, requested_mode,
-                            (const char *)(payload + sizeof(uint32_t)), hostname_len);
+                            affinity_seed,
+                            (const char *)(payload + 2 * sizeof(uint32_t)),
+                            hostname_len);
                 }
                 break;
             case RESOLVER_CMD_CANCEL:
@@ -1654,7 +1665,7 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
 static void
 resolver_child_submit_query(uint32_t id, int mode,
-        const char *hostname, size_t hostname_len) {
+        uint32_t affinity_seed, const char *hostname, size_t hostname_len) {
     if (hostname_len == 0 || hostname_len > RESOLVER_MAX_HOSTNAME_LEN) {
         resolver_child_send_result(id, NULL, -1);
         return;
@@ -1678,6 +1689,7 @@ resolver_child_submit_query(uint32_t id, int mode,
     query->id = id;
     query->resolv_mode = mode != RESOLV_MODE_DEFAULT ?
             mode : child_default_resolv_mode;
+    query->affinity_seed = affinity_seed;
     query->hostname = hostname_copy;
     query->responses = NULL;
     query->response_count = 0;
@@ -2069,6 +2081,61 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
         best_address = resolver_child_choose_ipv6_first(query);
     else
         best_address = resolver_child_choose_any(query);
+
+    /* When backend affinity is enabled (seed != 0) and multiple
+     * addresses are available, sort responses by IP address for
+     * deterministic ordering (DNS servers may rotate record order),
+     * then select based on the seed hash.  Respect the address
+     * family preference from the resolv_mode. */
+    if (query->affinity_seed != 0 && query->response_count > 1) {
+        /* Sort responses so the same set of IPs always produces
+         * the same ordering regardless of DNS response order. */
+        qsort(query->responses, query->response_count,
+                sizeof(query->responses[0]),
+                resolver_child_compare_addresses);
+
+        int preferred_family = 0;
+        if (query->resolv_mode == RESOLV_MODE_IPV4_FIRST ||
+                query->resolv_mode == RESOLV_MODE_IPV4_ONLY)
+            preferred_family = AF_INET;
+        else if (query->resolv_mode == RESOLV_MODE_IPV6_FIRST ||
+                query->resolv_mode == RESOLV_MODE_IPV6_ONLY)
+            preferred_family = AF_INET6;
+
+        /* Count candidates matching the preferred family */
+        size_t candidate_count = 0;
+        for (size_t i = 0; i < query->response_count; i++) {
+            if (query->responses[i] == NULL ||
+                    !address_is_sockaddr(query->responses[i]))
+                continue;
+            const struct sockaddr *sa = address_sa(query->responses[i]);
+            if (sa == NULL)
+                continue;
+            if (preferred_family == 0 || sa->sa_family == preferred_family)
+                candidate_count++;
+        }
+
+        if (candidate_count > 1) {
+            size_t pick = query->affinity_seed % candidate_count;
+            size_t seen = 0;
+            for (size_t i = 0; i < query->response_count; i++) {
+                if (query->responses[i] == NULL ||
+                        !address_is_sockaddr(query->responses[i]))
+                    continue;
+                const struct sockaddr *sa = address_sa(query->responses[i]);
+                if (sa == NULL)
+                    continue;
+                if (preferred_family != 0 &&
+                        sa->sa_family != preferred_family)
+                    continue;
+                if (seen == pick) {
+                    best_address = query->responses[i];
+                    break;
+                }
+                seen++;
+            }
+        }
+    }
 
     /* During shutdown, keep queries in the list so cleanup can free them all.
      * During normal operation, remove from list so it can be freed when ready. */
@@ -2990,6 +3057,50 @@ resolver_child_choose_any(struct ResolverChildQuery *query) {
         return query->responses[0];
 
     return NULL;
+}
+
+/*
+ * Compare two Address pointers for qsort.  Orders by address family
+ * (AF_INET before AF_INET6), then by raw IP bytes.  NULL and non-sockaddr
+ * entries sort to the end.
+ */
+static int
+resolver_child_compare_addresses(const void *a, const void *b) {
+    const struct Address *addr_a = *(const struct Address *const *)a;
+    const struct Address *addr_b = *(const struct Address *const *)b;
+
+    /* Push NULLs and non-sockaddrs to the end */
+    int valid_a = (addr_a != NULL && address_is_sockaddr(addr_a));
+    int valid_b = (addr_b != NULL && address_is_sockaddr(addr_b));
+    if (!valid_a && !valid_b) return 0;
+    if (!valid_a) return 1;
+    if (!valid_b) return -1;
+
+    const struct sockaddr *sa_a = address_sa(addr_a);
+    const struct sockaddr *sa_b = address_sa(addr_b);
+    if (sa_a == NULL && sa_b == NULL) return 0;
+    if (sa_a == NULL) return 1;
+    if (sa_b == NULL) return -1;
+
+    /* Sort by family first */
+    if (sa_a->sa_family != sa_b->sa_family)
+        return (sa_a->sa_family < sa_b->sa_family) ? -1 : 1;
+
+    if (sa_a->sa_family == AF_INET) {
+        const struct sockaddr_in *in_a = (const struct sockaddr_in *)sa_a;
+        const struct sockaddr_in *in_b = (const struct sockaddr_in *)sa_b;
+        return memcmp(&in_a->sin_addr, &in_b->sin_addr,
+                sizeof(in_a->sin_addr));
+    }
+
+    if (sa_a->sa_family == AF_INET6) {
+        const struct sockaddr_in6 *in6_a = (const struct sockaddr_in6 *)sa_a;
+        const struct sockaddr_in6 *in6_b = (const struct sockaddr_in6 *)sa_b;
+        return memcmp(&in6_a->sin6_addr, &in6_b->sin6_addr,
+                sizeof(in6_a->sin6_addr));
+    }
+
+    return 0;
 }
 
 static void

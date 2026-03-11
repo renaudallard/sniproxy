@@ -382,6 +382,14 @@ webservers to obtain the source and destination IP and port of the
 original incoming TCP connection. Use proxy_protocol_v2 instead to send
 the binary v2 format.
 
+The \fBbackend_affinity\fR directive enables consistent backend
+selection based on the client's IP address. When a DNS lookup for a
+wildcard or hostname backend returns multiple A/AAAA records, the
+record is chosen by hashing the client IP so the same client always
+reaches the same backend. This is useful for session persistence with
+DNS round-robin backends. The default is off (first DNS result is
+always used).
+
 
 .SH CAVEATS
 

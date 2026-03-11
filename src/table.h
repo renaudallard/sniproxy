@@ -51,6 +51,7 @@ struct TableCacheEntry {
 struct Table {
     char *name;
     enum proxy_protocol_mode use_proxy_header;
+    int backend_affinity;
 
     /* Runtime fields */
     int reference_count;
@@ -68,6 +69,7 @@ struct LookupResult {
 
 struct Table *new_table(void);
 int accept_table_arg(struct Table *, const char *);
+int accept_table_backend_affinity(struct Table *, const char *);
 void add_table(struct Table_head *, struct Table *);
 struct Table *table_lookup(const struct Table_head *, const char *);
 struct LookupResult table_lookup_server_address(struct Table *,

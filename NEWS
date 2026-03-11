@@ -1,6 +1,9 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Add `backend_affinity on` table directive for session
+  persistence. When DNS returns multiple records for a backend, the
+  client IP is hashed to consistently select the same backend.
 * Feature: Auto-anchor literal hostname patterns in table entries.
   Bare hostnames like `example.com` are now compiled as `^example\.com$`
   so they match exactly, not as substrings of other hostnames. Patterns

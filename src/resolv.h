@@ -34,7 +34,7 @@ struct ev_loop;
 struct ResolvQuery;
 
 int resolv_init(struct ev_loop *, char **, char **, int, int);
-struct ResolvQuery *resolv_query(const char *, int,
+struct ResolvQuery *resolv_query(const char *, int, uint32_t,
         void(*)(struct Address *, void *), void (*)(void *), void *);
 void resolv_cancel(struct ResolvQuery *);
 void resolv_shutdown(struct ev_loop *);

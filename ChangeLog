@@ -1,5 +1,6 @@
 2026-03-11  Renaud Allard  <renaud@allard.it>
 
+	- Add backend_affinity table directive for consistent backend selection
 	- Auto-anchor literal hostname patterns in table entries
 	- Document HTTP/2 connection coalescing limitation
 	- Accept incoming PROXY protocol v1/v2 headers on listeners

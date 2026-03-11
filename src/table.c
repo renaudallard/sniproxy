@@ -136,6 +136,21 @@ accept_table_arg(struct Table *table, const char *arg) {
     return 1;
 }
 
+int
+accept_table_backend_affinity(struct Table *table, const char *value) {
+    if (strcasecmp(value, "on") == 0 || strcasecmp(value, "yes") == 0 ||
+            strcasecmp(value, "true") == 0) {
+        table->backend_affinity = 1;
+    } else if (strcasecmp(value, "off") == 0 || strcasecmp(value, "no") == 0 ||
+            strcasecmp(value, "false") == 0) {
+        table->backend_affinity = 0;
+    } else {
+        err("Unable to parse '%s' as a boolean value", value);
+        return 0;
+    }
+    return 1;
+}
+
 
 void
 add_table(struct Table_head *tables, struct Table *table) {
@@ -299,6 +314,7 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
             struct Backend_head temp = existing->backends;
             existing->backends = iter->backends;
             iter->backends = temp;
+            existing->backend_affinity = iter->backend_affinity;
             table_cache_clear(existing);
         } else {
             add_table(tables, iter);
@@ -324,6 +340,9 @@ print_table_config(FILE *file, struct Table *table) {
         fprintf(file, "table {\n");
     else
         fprintf(file, "table %s {\n", table->name);
+
+    if (table->backend_affinity)
+        fprintf(file, "\tbackend_affinity on\n");
 
     while (backend != NULL) {
         print_backend_config(file, backend);

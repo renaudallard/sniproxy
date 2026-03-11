@@ -2408,8 +2408,17 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
         con->dns_query_acquired = 1;
         con->state = RESOLVING;
+
+        uint32_t affinity_seed = 0;
+        if (con->listener->table != NULL &&
+                con->listener->table->backend_affinity) {
+            affinity_seed = hash_sockaddr_ip(&con->client.addr,
+                    NULL, NULL);
+            affinity_seed |= 1; /* ensure non-zero */
+        }
+
         con->query_handle = resolv_query(hostname,
-                resolv_mode, resolv_cb,
+                resolv_mode, affinity_seed, resolv_cb,
                 free_resolv_cb_data, cb_data);
 
         if (con->query_handle == NULL) {

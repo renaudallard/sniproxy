@@ -388,6 +388,11 @@ nameserver dot://dns.quad9.net
         # Per-backend PROXY protocol v1 (text) or v2 (binary)
         secure.example.com 192.0.2.20:443 proxy_protocol
         other.example.com 192.0.2.21:443 proxy_protocol_v2
+
+        # Consistent backend selection: same client IP always
+        # reaches the same backend when DNS returns multiple records
+        backend_affinity on
+        .*\.cdn\.example\.com *:443
     }
 
 Setting `io_collect_interval` and `timeout_collect_interval` lets libev batch I/O readiness notifications and timer recalculations, which reduces system call pressure on busy instances. The defaults (0.0005s and 0.005s respectively) favor throughput; set the values to 0 if you need the absolute lowest latency.

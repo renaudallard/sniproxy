@@ -179,6 +179,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_backend_arg, struct Backend)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_backend, struct Table, struct Backend)
 DEFINE_KEYWORD_CLEANUP_WRAPPER(free_backend, struct Backend)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_table_arg, struct Table)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_table_backend_affinity, struct Table)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_table_stanza, struct Config, struct Table)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_username, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_groupname, struct Config)
@@ -319,6 +320,10 @@ static const struct Keyword listener_stanza_grammar[] = {
 };
 
 static struct Keyword table_stanza_grammar[] = {
+    {
+        .keyword="backend_affinity",
+        .parse_arg=kw_parse_accept_table_backend_affinity,
+    },
     {
         .create=kw_create_new_backend,
         .parse_arg=kw_parse_accept_backend_arg,
