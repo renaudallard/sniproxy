@@ -1,6 +1,8 @@
 Post 0.9.27 changes
 ====================
 
+* Doc: Document HTTP/2 connection coalescing limitation and workarounds
+  in README and man page.
 * Feature: Accept incoming PROXY protocol headers (v1 text and v2 binary
   auto-detected) on listeners via `proxy_protocol on` directive.
 * Feature: Add PROXY protocol v2 (binary) output support for table backends

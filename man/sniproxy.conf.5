@@ -374,6 +374,36 @@ original incoming TCP connection. Use proxy_protocol_v2 instead to send
 the binary v2 format.
 
 
+.SH CAVEATS
+
+.SS HTTP/2 CONNECTION COALESCING
+
+HTTP/2 clients may reuse an existing TLS connection for a different hostname
+when both names resolve to the same IP and the server certificate covers both
+(e.g.\& a wildcard certificate).
+Since all proxied hostnames point at the sniproxy address, the IP condition
+is always satisfied.
+When the backend presents a shared certificate the browser multiplexes
+requests for several hostnames over a single TCP connection.
+Because sniproxy routes once per connection based on the SNI in the TLS
+ClientHello and cannot inspect encrypted HTTP/2 frames, those extra
+hostnames are silently delivered to the wrong backend.
+
+Symptoms include 404 errors, CORS failures, or content served from the
+wrong origin.
+
+.PP
+Workarounds:
+.IP \(bu 2
+Use per-domain certificates instead of wildcard or multi-SAN certificates.
+.IP \(bu 2
+Assign a separate IP address to each proxied hostname.
+.IP \(bu 2
+Disable HTTP/2 on the backend by removing \fBh2\fR from ALPN negotiation.
+.IP \(bu 2
+Configure backends to return HTTP 421 (Misdirected Request) for hostnames
+they do not serve (RFC\ 9110).
+
 .SH "SEE ALSO"
 .PP
 \fBsniproxy\fR(8)

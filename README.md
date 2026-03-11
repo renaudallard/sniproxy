@@ -592,6 +592,37 @@ Troubleshooting
 - Verify log file directories are writable by the configured user
 - On OpenBSD, ensure all paths exist before starting (for unveil)
 
+**HTTP/2 connection coalescing causes wrong backend routing**
+
+HTTP/2 clients (browsers) reuse an existing TLS connection for a different
+hostname when two conditions are met: (1) both hostnames resolve to the same
+IP, and (2) the TLS certificate is valid for both (e.g. a wildcard cert
+`*.example.com`). Since all proxied hostnames resolve to the sniproxy IP,
+condition (1) is always true. If the backend presents a shared certificate,
+the browser multiplexes requests for multiple hostnames over a single
+connection. SNIProxy routes once per TCP connection based on the SNI in the
+ClientHello and cannot inspect encrypted HTTP/2 frames, so subsequent
+hostnames are silently sent to the wrong backend.
+
+Symptoms include 404 errors, CORS failures, "Access denied" responses, or
+content from the wrong site. The problem resolves temporarily when the browser
+is restarted or connections are cleared.
+
+Workarounds (pick the most practical for your setup):
+- **Use per-domain certificates** instead of wildcard certs. Let's Encrypt
+  makes this easy. This is the most effective fix when you control the backends.
+- **Assign separate IPs per backend** so the browser's IP-match check fails.
+  IPv6 makes this practical.
+- **Disable HTTP/2 on backends** by removing `h2` from ALPN negotiation.
+  Loses HTTP/2 performance benefits but eliminates coalescing entirely.
+- **Configure backends to return HTTP 421** (Misdirected Request) for
+  hostnames they do not serve. RFC 9110 defines this status code; compliant
+  browsers retry on a fresh connection.
+
+When proxying third-party services (e.g. CDNs) where you control neither the
+certificate nor the backend, there is no workaround within sniproxy. Use a
+TLS-terminating reverse proxy instead for those services.
+
 ### Debug Mode
 
 Run in foreground with resolver debug logging enabled:
