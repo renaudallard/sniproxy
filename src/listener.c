@@ -338,6 +338,12 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
         existing_listener->fallback_address = new_listener->fallback_address;
         new_listener->fallback_address = NULL;
     }
+    /* If no port was specified on the fallback address, inherit from the
+     * listening address (same logic as init_listener) */
+    if (existing_listener->fallback_address &&
+            address_port(existing_listener->fallback_address) == 0)
+        address_set_port(existing_listener->fallback_address,
+                address_port(existing_listener->address));
     existing_listener->fallback_use_proxy_header =
             new_listener->fallback_use_proxy_header;
 
