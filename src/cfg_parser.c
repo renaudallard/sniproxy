@@ -155,6 +155,11 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
 
                 break;
             case TOKEN_CBRACE:
+                if (depth == 0) {
+                    err("unexpected closing brace at top level");
+                    cleanup_keyword_context(keyword, context, sub_context);
+                    return -1;
+                }
                 if (keyword && sub_context && keyword->finalize) {
                     result = keyword->finalize(context, sub_context);
                     if (result <= 0) {
