@@ -37,6 +37,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <math.h>
+#include <netinet/tcp.h>
 #include "cfg_parser.h"
 
 #define DEFAULT_IO_COLLECT_INTERVAL 0.0005
@@ -84,6 +85,7 @@ static int accept_connection_buffer_limit(struct Config *, const char *);
 static int accept_client_buffer_limit(struct Config *, const char *);
 static int accept_server_buffer_limit(struct Config *, const char *);
 static int accept_http_max_headers(struct Config *, const char *);
+static int accept_tcp_fastopen(struct Config *, const char *);
 static int parse_size_value(const char *value, size_t min, size_t max, size_t *out);
 static int end_listener_stanza(struct Config *, struct Listener *);
 static int end_table_stanza(struct Config *, struct Table *);
@@ -196,6 +198,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_connection_buffer_limit, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_client_buffer_limit, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_server_buffer_limit, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_http_max_headers, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_tcp_fastopen, struct Config)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_resolver_stanza, struct Config, struct ResolverConfig)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_error_logger_stanza, struct Config, struct LoggerBuilder)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_global_access_logger_stanza, struct Config, struct LoggerBuilder)
@@ -391,6 +394,10 @@ static struct Keyword global_grammar[] = {
     {
         .keyword="http_max_headers",
         .parse_arg=kw_parse_accept_http_max_headers,
+    },
+    {
+        .keyword="tcp_fastopen",
+        .parse_arg=kw_parse_accept_tcp_fastopen,
     },
     {
         .keyword="resolver",
@@ -642,6 +649,8 @@ reload_config(struct Config *config, struct ev_loop *loop) {
         new_listener = SLIST_NEXT(new_listener, entries);
     }
 
+    listeners_set_tcp_fastopen(new_config->tcp_fastopen);
+
     listeners_reload(&config->listeners, &new_config->listeners,
             &config->tables, loop);
 
@@ -667,6 +676,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->backend_acl_mode = new_config->backend_acl_mode;
     connections_set_backend_acl(config->backend_acl_mode,
             &new_config->backend_acl_rules);
+
+    config->tcp_fastopen = new_config->tcp_fastopen;
+    connections_set_tcp_fastopen(config->tcp_fastopen);
 
     free_config(new_config, loop);
 }
@@ -707,6 +719,9 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->http_max_headers != HTTP_DEFAULT_MAX_HEADERS)
         fprintf(file, "http_max_headers %zu\n\n", config->http_max_headers);
+
+    if (config->tcp_fastopen)
+        fprintf(file, "tcp_fastopen on\n\n");
 
     if (config->backend_acl_mode == LISTENER_ACL_MODE_ALLOW_EXCEPT)
         fprintf(file, "backend_acl allow_except { ... }\n\n");
@@ -830,6 +845,30 @@ accept_http_max_headers(struct Config *config, const char *value) {
     }
 
     config->http_max_headers = (size_t)parsed;
+    return 1;
+}
+
+static int
+accept_tcp_fastopen(struct Config *config, const char *value) {
+    if (value == NULL)
+        return 0;
+
+    if (strcasecmp(value, "on") == 0 || strcasecmp(value, "yes") == 0) {
+        config->tcp_fastopen = 1;
+    } else if (strcasecmp(value, "off") == 0 || strcasecmp(value, "no") == 0) {
+        config->tcp_fastopen = 0;
+    } else {
+        err("Invalid tcp_fastopen value '%s' (expected on/off)", value);
+        return 0;
+    }
+
+#if !defined(TCP_FASTOPEN)
+    if (config->tcp_fastopen) {
+        err("TCP Fast Open not supported on this platform");
+        return 0;
+    }
+#endif
+
     return 1;
 }
 

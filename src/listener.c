@@ -41,6 +41,7 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include "address.h"
 #include "listener.h"
 #include "logger.h"
@@ -66,6 +67,7 @@ static int parse_boolean(const char *);
 
 
 static void listener_acl_clear(struct Listener *);
+static int listener_tcp_fastopen;
 static void listener_acl_move(struct Listener *, struct Listener *);
 static int listener_acl_contains(const struct Listener *, const struct sockaddr_storage *);
 static int listener_acl_rule_match_v4(const struct ListenerACLRule *, const struct in_addr *);
@@ -867,6 +869,14 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         goto error;
     }
 
+#ifdef TCP_FASTOPEN
+    if (listener_tcp_fastopen) {
+        int tfo_qlen = 256;
+        setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN,
+                &tfo_qlen, sizeof(tfo_qlen));
+    }
+#endif
+
     /* Always set nonblocking. When the binder provides a replacement
      * socket, it does not have SOCK_NONBLOCK set even if the original
      * socket did. A blocking listener socket would freeze the event
@@ -1103,6 +1113,11 @@ free_listener(struct Listener *listener) {
     listener->access_log = NULL;
 
     free(listener);
+}
+
+void
+listeners_set_tcp_fastopen(int enabled) {
+    listener_tcp_fastopen = enabled;
 }
 
 void

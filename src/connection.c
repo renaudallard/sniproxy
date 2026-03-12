@@ -187,6 +187,7 @@ static uint32_t rate_limit_hash_seed;
 static enum ListenerACLMode backend_acl_mode = LISTENER_ACL_MODE_DISABLED;
 static struct ListenerACLRule_head backend_acl_rules =
     SLIST_HEAD_INITIALIZER(backend_acl_rules);
+static int tcp_fastopen_enabled;
 
 struct DnsClientUsageEntry {
     struct sockaddr_storage addr;
@@ -1612,6 +1613,11 @@ backend_acl_allows(const struct sockaddr_storage *addr) {
 }
 
 void
+connections_set_tcp_fastopen(int enabled) {
+    tcp_fastopen_enabled = enabled;
+}
+
+void
 connections_set_header_timeout(double timeout) {
     if (timeout < 0.0)
         timeout = 0.0;
@@ -2689,6 +2695,13 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         int on = 1;
         setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
     }
+
+#ifdef TCP_FASTOPEN_CONNECT
+    if (tcp_fastopen_enabled) {
+        int on = 1;
+        setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &on, sizeof(on));
+    }
+#endif
 
     if (con->listener->transparent_proxy &&
             con->client.addr.ss_family == con->server.addr.ss_family) {

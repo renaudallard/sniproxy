@@ -64,6 +64,7 @@ struct Config {
     size_t client_buffer_limit;
     size_t server_buffer_limit;
     size_t http_max_headers;
+    int tcp_fastopen;
     enum ListenerACLMode backend_acl_mode;
     struct ListenerACLRule_head backend_acl_rules;
     struct Listener_head listeners;

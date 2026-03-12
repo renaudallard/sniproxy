@@ -276,6 +276,13 @@ backend_acl deny_except {
 The policy is either `deny_except` (only allow listed ranges) or
 `allow_except` (allow everything except listed ranges).
 
+Enable TCP Fast Open on both listener and backend sockets for reduced
+connection latency (Linux 3.7+/4.11+, FreeBSD 12+):
+
+```
+tcp_fastopen on
+```
+
 ### Basic Configuration
 
     user daemon

@@ -1,6 +1,10 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Add `tcp_fastopen on` global directive to enable TCP Fast Open
+  on listener sockets (server side, Linux/FreeBSD) and backend connect
+  sockets (client side, Linux 4.11+). Reduces connection latency for
+  clients and backends that support TFO.
 * Feature: Add `backend_acl` global directive to restrict which backend
   addresses sniproxy may connect to after DNS resolution. Supports
   `allow_except` and `deny_except` policies with CIDR ranges, preventing

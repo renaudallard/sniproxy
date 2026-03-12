@@ -148,6 +148,22 @@ IPv4-mapped IPv6 addresses are matched against IPv4 rules.
 Connections denied by the backend ACL are logged and closed immediately.
 The backend ACL is reloaded on SIGHUP.
 
+.SS TCP_FASTOPEN
+
+.PP
+.nf
+tcp_fastopen on
+.fi
+.PP
+
+Enable TCP Fast Open on listener sockets (server side) and backend
+connect sockets (client side). When enabled, clients that support TFO
+can establish connections with reduced latency, and sniproxy can connect
+to backends faster on subsequent connections to the same host. Requires
+Linux 3.7+ for server-side TFO and Linux 4.11+ for client-side TFO.
+FreeBSD 12+ supports server-side TFO. Disabled by default. Silently
+ignored on platforms without TFO support.
+
 .SS MAINLOOP
 
 .PP

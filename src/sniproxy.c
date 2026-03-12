@@ -482,6 +482,8 @@ main(int argc, char **argv) {
             config->server_buffer_limit);
     connections_set_backend_acl(config->backend_acl_mode,
             &config->backend_acl_rules);
+    connections_set_tcp_fastopen(config->tcp_fastopen);
+    listeners_set_tcp_fastopen(config->tcp_fastopen);
     http_set_max_headers(config->http_max_headers);
 
     init_listeners(&config->listeners, &config->tables, loop);
