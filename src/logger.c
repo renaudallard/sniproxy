@@ -642,6 +642,13 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
         if (send_logger_log(logger, priority, buffer, payload_len) == 0)
             return;
 
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            /* Socket buffer temporarily full under heavy logging.
+             * Drop this message rather than permanently killing the
+             * logger child process. */
+            return;
+        }
+
         disable_logger_process();
     }
 

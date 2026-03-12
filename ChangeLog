@@ -5,6 +5,7 @@
 	- Fix fallback address losing port on SIGHUP reload
 	- Reject stray closing brace at config top level instead of silently
 	  truncating the rest of the configuration
+	- Fix EAGAIN on logger IPC permanently killing logger child process
 	- Add per_ip_max_connections directive to limit concurrent connections per IP
 
 2026-03-11  Renaud Allard  <renaud@allard.it>
