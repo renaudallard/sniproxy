@@ -25,8 +25,10 @@
  */
 #include <stddef.h>
 #include "health.h"
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 #include "resolv.h"
 #include "logger.h"
+#endif
 
 static int parse_health_request(const char *, size_t, char **);
 
@@ -57,6 +59,9 @@ parse_health_request(const char *data, size_t len, char **hostname) {
 
 int
 health_check_ok(void) {
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    return 1;
+#else
     if (!resolver_is_active())
         return 0;
 
@@ -64,4 +69,5 @@ health_check_ok(void) {
         return 0;
 
     return 1;
+#endif
 }
