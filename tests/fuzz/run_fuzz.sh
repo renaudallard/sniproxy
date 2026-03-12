@@ -153,6 +153,7 @@ build_fuzzer listener_acl_fuzz \
     "$ROOT_DIR/src/http2_huffman.c" \
     "$ROOT_DIR/src/xmpp.c" \
     "$ROOT_DIR/src/minecraft.c" \
+    "$ROOT_DIR/src/health.c" \
     -I"$ROOT_DIR/tests/include"
 
 build_fuzzer resolver_response_fuzz \
@@ -185,6 +186,7 @@ build_fuzzer config_fuzz \
     "$ROOT_DIR/src/http2_huffman.c" \
     "$ROOT_DIR/src/xmpp.c" \
     "$ROOT_DIR/src/minecraft.c" \
+    "$ROOT_DIR/src/health.c" \
     "$ROOT_DIR/src/seccomp.c" \
     -lev -lssl -lcrypto -lcares -lseccomp
 
