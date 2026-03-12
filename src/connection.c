@@ -189,6 +189,24 @@ static struct ListenerACLRule_head backend_acl_rules =
     SLIST_HEAD_INITIALIZER(backend_acl_rules);
 static int tcp_fastopen_enabled;
 
+#define CONN_COUNT_TABLE_SIZE 1024
+#define CONN_COUNT_MAX_CHAIN_LENGTH 32
+
+struct ConnCountBucket {
+    struct sockaddr_storage addr;
+    size_t count;
+    struct ConnCountBucket *next;
+    uint32_t addr_hash;
+    uint32_t addr_v4;
+    int is_v4;
+};
+
+static struct ConnCountBucket *conn_count_table[CONN_COUNT_TABLE_SIZE];
+static struct ConnCountBucket *conn_count_free_list;
+static size_t conn_count_free_count;
+#define CONN_COUNT_MAX_FREE 2048
+static size_t per_ip_max_connections_limit;
+
 struct DnsClientUsageEntry {
     struct sockaddr_storage addr;
     uint32_t addr_hash;
@@ -217,6 +235,10 @@ static inline double rate_limit_bucket_capacity(void);
 static void rate_limit_reset(void);
 static void rate_limit_cleanup(ev_tstamp);
 static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *, uint32_t *, int *);
+static int conn_count_allow(const struct sockaddr_storage *);
+static void conn_count_increment(const struct sockaddr_storage *);
+static void conn_count_decrement(const struct sockaddr_storage *);
+static void conn_count_bucket_release(struct ConnCountBucket *);
 static int sockaddr_equal_ip(const struct sockaddr_storage *,
         const struct sockaddr_storage *);
 static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
@@ -363,6 +385,17 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         goto cleanup;
     }
 
+    if (!conn_count_allow(&con->client.addr)) {
+        char addrbuf[INET6_ADDRSTRLEN];
+        const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
+
+        info("Per-IP max connections (%zu) exceeded for %s",
+                per_ip_max_connections_limit,
+                ip != NULL ? ip : "(unknown)");
+        rc = 1;
+        goto cleanup;
+    }
+
     if (max_global_connections > 0 &&
             connection_active_count >= max_global_connections) {
         if (now - max_connections_log_throttle >= 1.0) {
@@ -389,6 +422,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     TAILQ_INSERT_HEAD(&connections, con, entries);
     connection_account_add();
+    conn_count_increment(&con->client.addr);
     start_buffer_shrink_timer(loop);
 
     ev_io_start(loop, client_watcher);
@@ -414,6 +448,7 @@ free_connections(struct ev_loop *loop) {
     while ((iter = TAILQ_FIRST(&connections)) != NULL) {
         TAILQ_REMOVE(&connections, iter, entries);
         connection_account_remove();
+        conn_count_decrement(&iter->client.addr);
         close_connection(iter, loop);
         free_connection(iter);
     }
@@ -883,6 +918,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         stop_header_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
         connection_account_remove();
+        conn_count_decrement(&con->client.addr);
 
         if (con->listener->access_log)
             log_connection(con);
@@ -929,6 +965,7 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
         stop_header_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
         connection_account_remove();
+        conn_count_decrement(&con->client.addr);
 
         if (con->listener->access_log)
             log_connection(con);
@@ -1439,6 +1476,164 @@ connections_set_per_ip_connection_rate(double rate) {
     rate_limit_reset();
 }
 
+void
+connections_set_per_ip_max_connections(size_t limit) {
+    if (limit == 0 && per_ip_max_connections_limit != 0) {
+        for (size_t i = 0; i < CONN_COUNT_TABLE_SIZE; i++) {
+            struct ConnCountBucket *b = conn_count_table[i];
+            while (b != NULL) {
+                struct ConnCountBucket *next = b->next;
+                conn_count_bucket_release(b);
+                b = next;
+            }
+            conn_count_table[i] = NULL;
+        }
+    }
+    per_ip_max_connections_limit = limit;
+}
+
+static struct ConnCountBucket *
+conn_count_bucket_acquire(void) {
+    struct ConnCountBucket *b = conn_count_free_list;
+    if (b != NULL) {
+        conn_count_free_list = b->next;
+        conn_count_free_count--;
+        return b;
+    }
+    return calloc(1, sizeof(*b));
+}
+
+static void
+conn_count_bucket_release(struct ConnCountBucket *b) {
+    if (conn_count_free_count >= CONN_COUNT_MAX_FREE) {
+        free(b);
+        return;
+    }
+    b->next = conn_count_free_list;
+    conn_count_free_list = b;
+    conn_count_free_count++;
+}
+
+static int
+conn_count_allow(const struct sockaddr_storage *addr) {
+    if (per_ip_max_connections_limit == 0)
+        return 1;
+
+    if (addr->ss_family != AF_INET && addr->ss_family != AF_INET6)
+        return 1;
+
+    uint32_t addr_v4 = 0;
+    int is_v4 = 0;
+    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
+    size_t bucket_index = hash % CONN_COUNT_TABLE_SIZE;
+    struct ConnCountBucket *b = conn_count_table[bucket_index];
+
+    while (b != NULL) {
+        if (b->addr_hash == hash) {
+            if (is_v4 && b->is_v4 && b->addr_v4 == addr_v4)
+                return b->count < per_ip_max_connections_limit;
+            if (!is_v4 && !b->is_v4 &&
+                    sockaddr_equal_ip(&b->addr, addr))
+                return b->count < per_ip_max_connections_limit;
+        }
+        b = b->next;
+    }
+
+    return 1;
+}
+
+static void
+conn_count_increment(const struct sockaddr_storage *addr) {
+    if (per_ip_max_connections_limit == 0)
+        return;
+
+    if (addr->ss_family != AF_INET && addr->ss_family != AF_INET6)
+        return;
+
+    uint32_t addr_v4 = 0;
+    int is_v4 = 0;
+    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
+    size_t bucket_index = hash % CONN_COUNT_TABLE_SIZE;
+    struct ConnCountBucket *b = conn_count_table[bucket_index];
+    size_t chain_length = 0;
+
+    while (b != NULL) {
+        chain_length++;
+        if (b->addr_hash == hash) {
+            if (is_v4 && b->is_v4 && b->addr_v4 == addr_v4) {
+                b->count++;
+                return;
+            }
+            if (!is_v4 && !b->is_v4 &&
+                    sockaddr_equal_ip(&b->addr, addr)) {
+                b->count++;
+                return;
+            }
+        }
+        b = b->next;
+    }
+
+    if (chain_length >= CONN_COUNT_MAX_CHAIN_LENGTH) {
+        warn("Per-IP connection count hash chain too long (bucket %zu)",
+                bucket_index);
+        return;
+    }
+
+    b = conn_count_bucket_acquire();
+    if (b == NULL)
+        return;
+
+    b->addr = *addr;
+    b->addr_hash = hash;
+    b->addr_v4 = addr_v4;
+    b->is_v4 = is_v4;
+    b->count = 1;
+    b->next = conn_count_table[bucket_index];
+    conn_count_table[bucket_index] = b;
+}
+
+static void
+conn_count_decrement(const struct sockaddr_storage *addr) {
+    if (per_ip_max_connections_limit == 0)
+        return;
+
+    if (addr->ss_family != AF_INET && addr->ss_family != AF_INET6)
+        return;
+
+    uint32_t addr_v4 = 0;
+    int is_v4 = 0;
+    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
+    size_t bucket_index = hash % CONN_COUNT_TABLE_SIZE;
+    struct ConnCountBucket *b = conn_count_table[bucket_index];
+    struct ConnCountBucket *prev = NULL;
+
+    while (b != NULL) {
+        if (b->addr_hash == hash) {
+            int match = 0;
+            if (is_v4 && b->is_v4 && b->addr_v4 == addr_v4)
+                match = 1;
+            else if (!is_v4 && !b->is_v4 &&
+                    sockaddr_equal_ip(&b->addr, addr))
+                match = 1;
+
+            if (match) {
+                if (b->count > 0)
+                    b->count--;
+                if (b->count == 0) {
+                    if (prev != NULL)
+                        prev->next = b->next;
+                    else
+                        conn_count_table[bucket_index] = b->next;
+                    conn_count_bucket_release(b);
+                }
+                return;
+            }
+        }
+        prev = b;
+        b = b->next;
+    }
+}
+
 static size_t max_concurrent_dns_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
 static size_t active_dns_queries;
 
@@ -1716,6 +1911,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
+    conn_count_decrement(&con->client.addr);
 
     if (con->listener->access_log)
         log_connection(con);
@@ -1737,6 +1933,7 @@ connection_header_timeout_cb(struct ev_loop *loop, struct ev_timer *w,
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
+    conn_count_decrement(&con->client.addr);
     free_connection(con);
     maybe_stop_buffer_shrink_timer(loop);
 }
@@ -3204,6 +3401,7 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
 
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
+    conn_count_decrement(&con->client.addr);
 
     if (con->listener->access_log)
         log_connection(con);

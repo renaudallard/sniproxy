@@ -31,6 +31,7 @@
 #define DEFAULT_CLIENT_BUFFER_LIMIT (1U << 20)
 #define DEFAULT_SERVER_BUFFER_LIMIT (1U << 20)
 #define DEFAULT_MAX_CONNECTIONS 0
+#define DEFAULT_PER_IP_MAX_CONNECTIONS 0
 #define DEFAULT_PER_IP_CONNECTION_RATE 30.0
 #define MIN_CONNECTION_BUFFER_LIMIT (8U * 1024)
 #define MAX_CONNECTION_BUFFER_LIMIT (1024U * 1024 * 1024U)
@@ -58,6 +59,7 @@ struct Config {
     } resolver;
     struct Logger *access_log;
     double per_ip_connection_rate;
+    size_t per_ip_max_connections;
     size_t max_connections;
     double io_collect_interval;
     double timeout_collect_interval;

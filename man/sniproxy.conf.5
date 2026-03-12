@@ -83,6 +83,23 @@ allows short bursts up to the configured rate. The default is 30
 connections per second. Set the value to 0 to disable per-IP rate
 limiting entirely.
 
+.SS PER_IP_MAX_CONNECTIONS
+
+.PP
+.nf
+per_ip_max_connections 100
+.fi
+.PP
+
+Limit the maximum number of simultaneously active connections from a
+single source IP address. When an IP reaches the limit, new connections
+from that address are closed immediately until existing ones complete.
+The default value of 0 disables the per-IP connection cap.
+
+This is distinct from \fBper_ip_connection_rate\fR, which limits the rate
+of new connections per second. \fBper_ip_max_connections\fR limits how
+many connections may be open at the same time.
+
 .SS CONNECTION_BUFFER_LIMIT
 
 .PP

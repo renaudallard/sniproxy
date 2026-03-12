@@ -90,6 +90,7 @@ size_t connections_peak_count(void);
 #define DEFAULT_DNS_QUERIES_PER_CLIENT 16
 
 void connections_set_per_ip_connection_rate(double rate);
+void connections_set_per_ip_max_connections(size_t limit);
 void connections_set_dns_query_limit(size_t limit);
 void connections_set_dns_query_per_client_limit(size_t limit);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);

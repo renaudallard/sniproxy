@@ -1,6 +1,11 @@
 Post 0.9.27 changes
 ====================
 
+* Feature: Add `per_ip_max_connections` global directive to limit the
+  number of simultaneously active connections from a single source IP.
+  Prevents a single client from exhausting all connection slots. The
+  default is 0 (disabled). Distinct from `per_ip_connection_rate` which
+  limits the rate of new connections.
 * Feature: Add `tcp_fastopen on` global directive to enable TCP Fast Open
   on listener sockets (server side, Linux/FreeBSD) and backend connect
   sockets (client side, Linux 4.11+). Reduces connection latency for

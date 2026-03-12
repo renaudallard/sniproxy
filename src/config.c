@@ -78,6 +78,7 @@ static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
 static int accept_pidfile(struct Config *, const char *);
 static int accept_per_ip_connection_rate(struct Config *, const char *);
+static int accept_per_ip_max_connections(struct Config *, const char *);
 static int accept_max_connections(struct Config *, const char *);
 static int accept_io_collect_interval(struct Config *, const char *);
 static int accept_timeout_collect_interval(struct Config *, const char *);
@@ -191,6 +192,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_username, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_groupname, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_pidfile, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_per_ip_connection_rate, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_per_ip_max_connections, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_max_connections, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_io_collect_interval, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_timeout_collect_interval, struct Config)
@@ -368,6 +370,10 @@ static struct Keyword global_grammar[] = {
         .parse_arg=kw_parse_accept_per_ip_connection_rate,
     },
     {
+        .keyword="per_ip_max_connections",
+        .parse_arg=kw_parse_accept_per_ip_max_connections,
+    },
+    {
         .keyword="max_connections",
         .parse_arg=kw_parse_accept_max_connections,
     },
@@ -483,6 +489,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
     config->resolver.max_queries_per_client = DEFAULT_DNS_QUERIES_PER_CLIENT;
     config->per_ip_connection_rate = DEFAULT_PER_IP_CONNECTION_RATE;
+    config->per_ip_max_connections = DEFAULT_PER_IP_MAX_CONNECTIONS;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
     config->http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
@@ -657,6 +664,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->per_ip_connection_rate = new_config->per_ip_connection_rate;
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
 
+    config->per_ip_max_connections = new_config->per_ip_max_connections;
+    connections_set_per_ip_max_connections(config->per_ip_max_connections);
+
     config->max_connections = new_config->max_connections;
 
     config->io_collect_interval = new_config->io_collect_interval;
@@ -699,6 +709,9 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->per_ip_connection_rate > 0.0)
         fprintf(file, "per_ip_connection_rate %.3f\n\n", config->per_ip_connection_rate);
+
+    if (config->per_ip_max_connections > 0)
+        fprintf(file, "per_ip_max_connections %zu\n\n", config->per_ip_max_connections);
 
     if (config->max_connections > 0)
         fprintf(file, "max_connections %zu\n\n", config->max_connections);
@@ -1325,6 +1338,34 @@ accept_per_ip_connection_rate(struct Config *config, const char *value) {
 
     config->per_ip_connection_rate = rate;
 
+    return 1;
+}
+
+static int
+accept_per_ip_max_connections(struct Config *config, const char *value) {
+    if (value == NULL)
+        return 0;
+
+    if (strchr(value, '-') != NULL) {
+        err("Invalid per_ip_max_connections '%s'", value);
+        return 0;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long long limit = strtoull(value, &end, 10);
+    if (errno != 0 || end == value || (end != NULL && *end != '\0')) {
+        err("Unable to parse per_ip_max_connections '%s'", value);
+        return 0;
+    }
+
+    if (limit > SIZE_MAX) {
+        warn("per_ip_max_connections %llu exceeds platform limit, clamping to %zu",
+                limit, SIZE_MAX);
+        limit = SIZE_MAX;
+    }
+
+    config->per_ip_max_connections = (size_t)limit;
     return 1;
 }
 

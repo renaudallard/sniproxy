@@ -233,10 +233,12 @@ you can keep abusive clients in check with a global per-IP rate limiter:
 
 ```
 per_ip_connection_rate 50   # allow 50 new connections per second per source IP
+per_ip_max_connections 100  # max 100 simultaneous connections per source IP
 ```
 
-The default is 30 connections per second. Set the value to `0` to disable the
-limiter entirely.
+`per_ip_connection_rate` limits the rate of new connections (default 30/s).
+`per_ip_max_connections` limits how many connections may be open concurrently
+from a single IP (default 0, disabled). Set either value to `0` to disable.
 
 To guard against descriptor exhaustion during floods, cap the number of
 concurrent connections (set `0` to auto-derive ~80% of the file descriptor
