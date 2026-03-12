@@ -215,18 +215,21 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
         return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
-    if (client_hello_version_major < min_client_hello_version_major ||
-            (client_hello_version_major == min_client_hello_version_major &&
-             client_hello_version_minor < min_client_hello_version_minor)) {
-        debug("Client hello TLS version %" PRIu8 ".%" PRIu8 " is not supported.",
-              client_hello_version_major, client_hello_version_minor);
-        /* Treat version-too-low as an unsupported ClientHello so the caller
-         * rejects the connection even if a fallback backend is configured. */
-        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
-    }
-
+    /* TLS 1.3+ clients set legacy_version to 0x0303 (TLS 1.2) per RFC 8446
+     * and advertise the real version via the supported_versions extension.
+     * Only enforce the legacy version field when the minimum is TLS 1.2 or
+     * below; for TLS 1.3+ minimums, rely on the supported_versions check. */
     int require_supported_versions = (min_client_hello_version_major > 3) ||
         (min_client_hello_version_major == 3 && min_client_hello_version_minor >= 4);
+
+    if (!require_supported_versions &&
+            (client_hello_version_major < min_client_hello_version_major ||
+            (client_hello_version_major == min_client_hello_version_major &&
+             client_hello_version_minor < min_client_hello_version_minor))) {
+        debug("Client hello TLS version %" PRIu8 ".%" PRIu8 " is not supported.",
+              client_hello_version_major, client_hello_version_minor);
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+    }
     body += CLIENT_HELLO_VERSION_RANDOM_LEN;
 
     /* Session ID */

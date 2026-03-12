@@ -1,5 +1,7 @@
 2026-03-12  Renaud Allard  <renaud@allard.it>
 
+	- Fix -T 1.3 rejecting all TLS connections (legacy_version check
+	  blocked before supported_versions extension was examined)
 	- Add per_ip_max_connections directive to limit concurrent connections per IP
 
 2026-03-11  Renaud Allard  <renaud@allard.it>
