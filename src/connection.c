@@ -2734,17 +2734,18 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             affinity_seed |= 1; /* ensure non-zero */
         }
 
-        con->query_handle = resolv_query(hostname,
+        struct ResolvQuery *qh = resolv_query(hostname,
                 resolv_mode, affinity_seed, resolv_cb,
                 free_resolv_cb_data, cb_data);
 
-        if (con->query_handle == NULL) {
+        if (qh == NULL) {
             /* resolv_query() failed synchronously and already invoked
              * the callback which handled abort and cleanup.  The
              * connection may have been freed (e.g. for protocols with
              * no abort message like Minecraft), so do not touch con. */
             return -1;
         }
+        con->query_handle = qh;
     } else if (address_is_sockaddr(result.address)) {
         con->server.addr_len = address_sa_len(result.address);
         assert(con->server.addr_len <= sizeof(con->server.addr));
