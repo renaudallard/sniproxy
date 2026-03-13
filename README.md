@@ -145,7 +145,9 @@ For Debian, Fedora, or Alpine based Linux distributions see building packages be
 **Prerequisites**
 
 + Autotools (autoconf, automake, gettext and libtool)
-+ libev4, libpcre2 and c-ares development headers
++ libev4, libpcre2, c-ares, OpenSSL (or LibreSSL) and libbsd development headers
++ libbsd is not required on systems that provide arc4random and strlcpy natively
+  (OpenBSD, FreeBSD, macOS)
 + Perl and cURL for test suite
 
 **Install**
@@ -158,7 +160,7 @@ This is the preferred installation method on recent Debian based distributions:
 
 1. Install required packages
 
-        sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev gettext libev-dev libpcre2-dev libc-ares-dev pkg-config fakeroot devscripts
+        sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev gettext libev-dev libpcre2-dev libc-ares-dev libssl-dev libbsd-dev pkg-config fakeroot devscripts
 
 2. Build a Debian package
 
@@ -193,7 +195,7 @@ This is the preferred installation method for modern Fedora based distributions.
 
 1. Install required packages
 
-        sudo yum install autoconf automake curl gettext-devel libev-devel pcre2-devel perl pkgconfig rpm-build c-ares-devel
+        sudo yum install autoconf automake curl gettext-devel libev-devel pcre2-devel pkgconfig rpm-build c-ares-devel openssl-devel libbsd-devel
 
 2. Build a distribution tarball:
 
@@ -211,7 +213,7 @@ This is the preferred installation method for modern Fedora based distributions.
 
 1. install dependencies.
 
-        brew install libev pcre2 c-ares autoconf automake gettext libtool
+        brew install libev pcre2 c-ares openssl autoconf automake gettext libtool
 
 2. Read the warning about gettext and force link it so autogen.sh works. We need the GNU gettext for the macro `AC_LIB_HAVE_LINKFLAGS` which isn't present in the default OS X package.
 
