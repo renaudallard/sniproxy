@@ -237,11 +237,6 @@ table_lookup(const struct Table_head *tables, const char *name) {
     return NULL;
 }
 
-void
-remove_table(struct Table_head *tables, struct Table *table) {
-    SLIST_REMOVE(tables, table, Table, entries);
-    table_ref_put(table);
-}
 
 struct LookupResult
 table_lookup_server_address(struct Table *table, const char *name, size_t name_len) {
