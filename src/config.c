@@ -704,6 +704,9 @@ print_config(FILE *file, struct Config *config) {
     if (config->user)
         fprintf(file, "username %s\n\n", config->user);
 
+    if (config->group)
+        fprintf(file, "groupname %s\n\n", config->group);
+
     if (config->pidfile)
         fprintf(file, "pidfile %s\n\n", config->pidfile);
 
