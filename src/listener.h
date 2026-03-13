@@ -90,7 +90,6 @@ int accept_listener_accept_proxy_protocol(struct Listener *, const char *);
 void add_listener(struct Listener_head *, struct Listener *);
 void init_listeners(struct Listener_head *, const struct Table_head *, struct ev_loop *);
 void listeners_reload(struct Listener_head *, struct Listener_head *, const struct Table_head *, struct ev_loop *);
-void remove_listener(struct Listener_head *, struct Listener *, struct ev_loop *);
 void free_listeners(struct Listener_head *, struct ev_loop *);
 void listeners_set_tcp_fastopen(int enabled);
 

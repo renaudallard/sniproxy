@@ -63,6 +63,7 @@ static void backoff_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static int init_listener(struct Listener *, const struct Table_head *, struct ev_loop *);
 static void listener_update(struct Listener *, struct Listener *,  const struct Table_head *);
 static void free_listener(struct Listener *);
+static void remove_listener(struct Listener_head *, struct Listener *, struct ev_loop *);
 static int parse_boolean(const char *);
 
 
@@ -665,7 +666,7 @@ add_listener(struct Listener_head *listeners, struct Listener *listener) {
     }
 }
 
-void
+static void
 remove_listener(struct Listener_head *listeners, struct Listener *listener, struct ev_loop *loop) {
     close_listener(loop, listener);
     SLIST_REMOVE(listeners, listener, Listener, entries);
