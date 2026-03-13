@@ -419,7 +419,7 @@ binder_main(int sockfd) {
             char errbuf[128];
             snprintf(errbuf, sizeof(errbuf), "recv(): %s", strerror(errno));
             ipc_crypto_send_msg(&binder_crypto_child, sockfd,
-                    errbuf, strnlen(errbuf, sizeof(errbuf)), -1);
+                    errbuf, strlen(errbuf), -1);
             continue;
         }
 
