@@ -498,9 +498,10 @@ display_sockaddr(const void *sa_ptr, socklen_t sa_len, char *buffer, size_t buff
             if (sa_len < (socklen_t)sizeof(struct sockaddr_in))
                 break;
 
-            inet_ntop(AF_INET,
+            if (inet_ntop(AF_INET,
                       &((const struct sockaddr_in *)sa)->sin_addr,
-                      ip, sizeof(ip));
+                      ip, sizeof(ip)) == NULL)
+                break;
 
             if (((const struct sockaddr_in *)sa)->sin_port != 0)
                 snprintf(buffer, buffer_len, "%s:%" PRIu16, ip,
@@ -513,9 +514,10 @@ display_sockaddr(const void *sa_ptr, socklen_t sa_len, char *buffer, size_t buff
             if (sa_len < (socklen_t)sizeof(struct sockaddr_in6))
                 break;
 
-            inet_ntop(AF_INET6,
+            if (inet_ntop(AF_INET6,
                       &((const struct sockaddr_in6 *)sa)->sin6_addr,
-                      ip, sizeof(ip));
+                      ip, sizeof(ip)) == NULL)
+                break;
 
             if (((const struct sockaddr_in6 *)sa)->sin6_port != 0)
                 snprintf(buffer, buffer_len, "[%s]:%" PRIu16, ip,
