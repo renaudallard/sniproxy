@@ -30,7 +30,6 @@
 #include <netinet/in.h>
 #include <stdint.h>
 #include <ev.h>
-#include "address.h"
 #include "table.h"
 
 SLIST_HEAD(Listener_head, Listener);
