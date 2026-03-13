@@ -1,6 +1,7 @@
 2026-03-13  Renaud Allard  <renaud@allard.it>
 
 	- Fix server buffer growing 4x instead of 2x on resize
+	- Fix IPC crypto context leak in resolver init on socketpair/fork failure
 
 2026-03-12  Renaud Allard  <renaud@allard.it>
 

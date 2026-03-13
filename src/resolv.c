@@ -514,13 +514,13 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 #endif
             if (socketpair(AF_UNIX, socket_type, 0, sockets) < 0) {
                 err("resolver socketpair failed: %s", strerror(errno));
-                return -1;
+                goto fail_crypto;
             }
         } else
 #endif
         {
             err("resolver socketpair failed: %s", strerror(errno));
-            return -1;
+            goto fail_crypto;
         }
     }
 
@@ -530,7 +530,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
                 strerror(errno));
         close(sockets[0]);
         close(sockets[1]);
-        return -1;
+        goto fail_crypto;
     }
 #endif
 
@@ -548,7 +548,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
         err("resolver fork failed: %s", strerror(errno));
         close(sockets[0]);
         close(sockets[1]);
-        return -1;
+        goto fail_crypto;
     } else if (pid == 0) {
         close(sockets[0]);
         int child_fd = fd_preserve_only(sockets[1]);
@@ -570,6 +570,10 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     ev_io_start(loop, &resolver_ipc_watcher);
 
     return resolver_sock;
+
+fail_crypto:
+    ipc_crypto_state_clear(&resolver_ipc_crypto);
+    return -1;
 }
 
 void
