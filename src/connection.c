@@ -433,9 +433,13 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     return 1;
 
 cleanup:
-    if (sockfd >= 0)
-        close(sockfd);
-    free_connection(con);
+    {
+        int saved_errno = errno;
+        if (sockfd >= 0)
+            close(sockfd);
+        free_connection(con);
+        errno = saved_errno;
+    }
     return rc;
 }
 
