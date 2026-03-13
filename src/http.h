@@ -27,7 +27,6 @@
 #ifndef HTTP_H
 #define HTTP_H
 
-#include <stdio.h>
 #include <stddef.h>
 #include "protocol.h"
 
