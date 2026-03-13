@@ -50,9 +50,7 @@ static size_t tls_max_extensions = TLS_DEFAULT_MAX_EXTENSIONS;
 static size_t tls_max_extension_length = TLS_DEFAULT_MAX_EXTENSION_LENGTH;
 
 
-#ifndef MIN
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#endif
+#include "util.h"
 
 
 static int parse_tls_header(const char *, size_t, char **);

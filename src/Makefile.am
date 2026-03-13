@@ -48,6 +48,7 @@ sniproxy_common_sources = address.c \
                           table.h \
                           tls.c \
                           tls.h \
+                          util.h \
                           xmpp.c \
                           xmpp.h
 

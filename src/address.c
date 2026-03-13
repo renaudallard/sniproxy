@@ -39,6 +39,7 @@
 #include <bsd/string.h>
 #endif
 #include "address.h"
+#include "util.h"
 
 
 struct Address {
@@ -61,9 +62,6 @@ struct Address {
 
 static const char valid_label_bytes[] =
 "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
-
-
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
 
 static int valid_hostname(const char *);
