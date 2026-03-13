@@ -782,7 +782,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                     if (load < threshold)
                         desired = current;
                 }
-                if (buffer_reserve(input_buffer, desired) < 0) {
+                if (buffer_resize(input_buffer, desired) < 0) {
                     char server[INET6_ADDRSTRLEN + 8];
 
                     warn("Response from %s exceeded %zu byte buffer size",
