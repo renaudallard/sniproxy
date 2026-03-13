@@ -134,6 +134,10 @@ static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(void *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static void connection_header_timeout_cb(struct ev_loop *, struct ev_timer *, int);
+static size_t connections_memory_usage_bytes(void);
+static size_t connections_memory_peak_bytes(void);
+static size_t connections_active_count(void);
+static size_t connections_peak_count(void);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer_with_now(struct Connection *, struct ev_loop *, ev_tstamp);
 #if defined(DEBUG)
@@ -1845,22 +1849,22 @@ connection_account_remove(void) {
         connection_active_count--;
 }
 
-size_t
+static size_t
 connections_memory_usage_bytes(void) {
     return connection_memory_in_use;
 }
 
-size_t
+static size_t
 connections_memory_peak_bytes(void) {
     return connection_memory_peak;
 }
 
-size_t
+static size_t
 connections_active_count(void) {
     return connection_active_count;
 }
 
-size_t
+static size_t
 connections_peak_count(void) {
     return connection_peak_count;
 }
