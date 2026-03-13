@@ -24,6 +24,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
 
 #include "http2_huffman.h"
 
@@ -75,7 +78,7 @@ build_huffman_tree(void) {
                         return 0;
 
                     size_t new_cap = huffman_tree_cap * 2;
-                    struct huffman_node *tmp = realloc(huffman_tree, new_cap * sizeof(struct huffman_node));
+                    struct huffman_node *tmp = reallocarray(huffman_tree, new_cap, sizeof(struct huffman_node));
                     if (tmp == NULL) {
                         free(huffman_tree);
                         huffman_tree = NULL;
@@ -142,6 +145,10 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
                     return -1;
                 }
                 if (pos + 1 >= capacity) {
+                    if (capacity > SIZE_MAX / 2) {
+                        free(buf);
+                        return -1;
+                    }
                     size_t new_cap = capacity * 2;
                     char *tmp = realloc(buf, new_cap);
                     if (tmp == NULL) {

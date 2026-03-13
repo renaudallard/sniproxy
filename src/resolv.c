@@ -2212,7 +2212,7 @@ resolver_child_append_processed_nameserver(char ***list_ptr, size_t *count_ptr, 
 
     char **list = *list_ptr;
     size_t count = *count_ptr;
-    char **tmp = realloc(list, (count + 2) * sizeof(char *));
+    char **tmp = reallocarray(list, count + 2, sizeof(char *));
     if (tmp == NULL)
         return -1;
 
@@ -2506,8 +2506,15 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
     server.min_tls_version = min_tls_version;
 
     if (child_dot_server_count == child_dot_server_capacity) {
-        size_t new_cap = child_dot_server_capacity == 0 ? 4 : child_dot_server_capacity * 2;
-        struct ResolverDotServer *tmp = realloc(child_dot_servers, new_cap * sizeof(*tmp));
+        size_t new_cap;
+        if (child_dot_server_capacity == 0)
+            new_cap = 4;
+        else if (child_dot_server_capacity > SIZE_MAX / 2) {
+            free(server.sni_hostname);
+            return -1;
+        } else
+            new_cap = child_dot_server_capacity * 2;
+        struct ResolverDotServer *tmp = reallocarray(child_dot_servers, new_cap, sizeof(*tmp));
         if (tmp == NULL) {
             free(server.sni_hostname);
             return -1;
@@ -3177,8 +3184,8 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
                 break;
             }
 
-            struct Address **tmp = realloc(query->responses,
-                    (query->response_count + 1) * sizeof(struct Address *));
+            struct Address **tmp = reallocarray(query->responses,
+                    query->response_count + 1, sizeof(struct Address *));
             if (tmp == NULL) {
                 err("resolver child: failed to expand DNS response list");
                 free(response);

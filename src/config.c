@@ -26,6 +26,9 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
 #include <limits.h>
 #include <sys/types.h>
 #include <stdint.h>
@@ -1698,7 +1701,7 @@ append_to_string_vector(char ***vector_ptr, const char *string) {
     char **vector = *vector_ptr;
 
     size_t len = string_vector_len(vector);
-    vector = realloc(vector, (len + 2) * sizeof(char *));
+    vector = reallocarray(vector, len + 2, sizeof(char *));
     if (vector == NULL) {
         err("%s: realloc", __func__);
         return -1;
