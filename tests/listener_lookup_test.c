@@ -198,7 +198,7 @@ int bind_socket(const struct sockaddr *addr, size_t len) {
 
 static struct LookupResult stub_lookup_result;
 
-struct LookupResult table_lookup_server_address(const struct Table *table, const char *name, size_t name_len) {
+struct LookupResult table_lookup_server_address(struct Table *table, const char *name, size_t name_len) {
     assert(table != NULL);
     (void)name;
     (void)name_len;
