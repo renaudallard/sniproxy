@@ -206,6 +206,8 @@ AC_SEARCH_LIBS([strlcpy], [bsd], [
 ], [
   AC_MSG_ERROR([strlcpy() is required; install libbsd-dev])
 ])
+AC_CHECK_FUNCS([reallocarray], [],
+  [AC_MSG_ERROR([reallocarray() is required; install libbsd-dev or use glibc >= 2.26])])
 AC_SUBST([LIBBSD_LIBS])
 
 AC_CHECK_HEADERS([openssl/evp.h openssl/rand.h openssl/sha.h], [],
