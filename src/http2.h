@@ -75,16 +75,4 @@
 
 int parse_http2_header(const unsigned char *data, size_t data_len, char **hostname);
 
-void http2_set_max_headers(size_t max_headers);
-size_t http2_get_max_headers(void);
-
-void http2_set_max_frame_size(size_t max_size);
-size_t http2_get_max_frame_size(void);
-
-void http2_set_max_frames_per_connection(size_t max_frames);
-size_t http2_get_max_frames_per_connection(void);
-
-void http2_set_max_continuation_frames(size_t max_frames);
-size_t http2_get_max_continuation_frames(void);
-
 #endif
