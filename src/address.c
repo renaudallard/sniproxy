@@ -110,7 +110,7 @@ new_address(const char *hostname_or_ip) {
         /* Unix socket */
         memset(&s, 0, sizeof(s));
         if (strncmp("unix:", input, 5) == 0) {
-            /* XXX: only supporting pathname unix sockets */
+            /* Only pathname unix sockets are supported */
             s.un.sun_family = AF_UNIX;
             if (strlcpy(s.un.sun_path, input + 5, sizeof(s.un.sun_path))
                 >= sizeof(s.un.sun_path))

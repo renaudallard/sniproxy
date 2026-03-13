@@ -2908,8 +2908,8 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         int result = setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on));
 #else
         int result = -EPERM;
-        /* XXX error: not implemented would be better, but this shouldn't be
-         * reached since it is prohibited in the configuration parser. */
+        /* This path should not be reached since the configuration
+         * parser prohibits transparent_proxy without IP_TRANSPARENT. */
 #endif
         if (result < 0) {
             err("setsockopt IP_TRANSPARENT failed: %s", strerror(errno));

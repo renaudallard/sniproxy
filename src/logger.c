@@ -1087,7 +1087,8 @@ format_log_payload(char *buffer, size_t buffer_len, const char *format,
 
 static size_t
 timestamp(char *dst, size_t dst_len) {
-    /* TODO change to ev_now() */
+    /* Uses time() because the ev_loop is not available in the
+     * logger formatting path without a significant refactor. */
     time_t now = time(NULL);
     static struct {
         time_t when;
