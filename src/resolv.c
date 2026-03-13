@@ -534,11 +534,19 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 
 #ifndef SOCK_NONBLOCK
     int flags = fcntl(sockets[0], F_GETFL, 0);
-    if (flags >= 0)
-        fcntl(sockets[0], F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0 || fcntl(sockets[0], F_SETFL, flags | O_NONBLOCK) < 0) {
+        err("fcntl O_NONBLOCK on resolver socket failed: %s", strerror(errno));
+        close(sockets[0]);
+        close(sockets[1]);
+        goto fail_crypto;
+    }
     flags = fcntl(sockets[1], F_GETFL, 0);
-    if (flags >= 0)
-        fcntl(sockets[1], F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0 || fcntl(sockets[1], F_SETFL, flags | O_NONBLOCK) < 0) {
+        err("fcntl O_NONBLOCK on resolver socket failed: %s", strerror(errno));
+        close(sockets[0]);
+        close(sockets[1]);
+        goto fail_crypto;
+    }
 #endif
 
     pid_t pid = fork();
@@ -1373,8 +1381,9 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 #endif
 #ifndef SOCK_NONBLOCK
     int flags = fcntl(child_sock, F_GETFL, 0);
-    if (flags >= 0)
-        fcntl(child_sock, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0 || fcntl(child_sock, F_SETFL, flags | O_NONBLOCK) < 0)
+        err("fcntl O_NONBLOCK on resolver child socket failed: %s",
+                strerror(errno));
 #endif
 
     child_loop = ev_loop_new(EVFLAG_AUTO);
