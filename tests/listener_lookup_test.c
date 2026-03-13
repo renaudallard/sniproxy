@@ -122,8 +122,9 @@ const char *display_address(const struct Address *addr, char *buffer, size_t buf
     return NULL;
 }
 
-const char *display_sockaddr(const void *sa, char *buffer, size_t buffer_len) {
+const char *display_sockaddr(const void *sa, socklen_t sa_len, char *buffer, size_t buffer_len) {
     (void)sa;
+    (void)sa_len;
     (void)buffer;
     (void)buffer_len;
     return NULL;
