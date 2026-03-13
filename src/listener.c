@@ -878,8 +878,9 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 #ifdef TCP_FASTOPEN
     if (listener_tcp_fastopen) {
         int tfo_qlen = 256;
-        setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN,
-                &tfo_qlen, sizeof(tfo_qlen));
+        if (setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN,
+                &tfo_qlen, sizeof(tfo_qlen)) < 0)
+            info("setsockopt TCP_FASTOPEN failed: %s", strerror(errno));
     }
 #endif
 

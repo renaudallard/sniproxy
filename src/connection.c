@@ -364,7 +364,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     {
         int on = 1;
-        setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+        if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0)
+            warn("setsockopt TCP_NODELAY failed: %s", strerror(errno));
     }
 
     if (!listener_acl_allows(listener, &con->client.addr)) {
@@ -2869,13 +2870,15 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
 
     {
         int on = 1;
-        setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+        if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0)
+            warn("setsockopt TCP_NODELAY failed: %s", strerror(errno));
     }
 
 #ifdef TCP_FASTOPEN_CONNECT
     if (tcp_fastopen_enabled) {
         int on = 1;
-        setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &on, sizeof(on));
+        if (setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &on, sizeof(on)) < 0)
+            info("setsockopt TCP_FASTOPEN_CONNECT failed: %s", strerror(errno));
     }
 #endif
 
