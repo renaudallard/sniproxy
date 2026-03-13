@@ -4,9 +4,12 @@ buffer_test
 cfg_tokenizer_test
 config_test
 http_test
+minecraft_test
 resolv_test
+seccomp_test
 table_test
 tls_test
+xmpp_test
 *.log
 *.trs
 *.pcap
