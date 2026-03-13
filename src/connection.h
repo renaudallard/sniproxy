@@ -104,9 +104,4 @@ void connections_set_tcp_fastopen(int enabled);
 #define CONNECTION_DEFAULT_HEADER_TIMEOUT 5.0
 #define CONNECTION_DEFAULT_IDLE_TIMEOUT 60.0
 
-void connections_set_header_timeout(double timeout);
-double connections_get_header_timeout(void);
-void connections_set_idle_timeout(double timeout);
-double connections_get_idle_timeout(void);
-
 #endif

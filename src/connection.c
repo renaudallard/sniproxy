@@ -1809,30 +1809,6 @@ connections_set_tcp_fastopen(int enabled) {
     tcp_fastopen_enabled = enabled;
 }
 
-void
-connections_set_header_timeout(double timeout) {
-    if (timeout < 0.0)
-        timeout = 0.0;
-    connection_header_timeout = timeout;
-}
-
-double
-connections_get_header_timeout(void) {
-    return connection_header_timeout;
-}
-
-void
-connections_set_idle_timeout(double timeout) {
-    if (timeout < 0.0)
-        timeout = 0.0;
-    connection_idle_timeout = timeout;
-}
-
-double
-connections_get_idle_timeout(void) {
-    return connection_idle_timeout;
-}
-
 static void
 connection_memory_adjust(ssize_t delta) {
     if (delta >= 0) {
