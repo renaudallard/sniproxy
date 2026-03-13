@@ -46,6 +46,7 @@
 #define MAX_TIMEOUT_COLLECT_INTERVAL 0.5
 #include "config.h"
 #include "http.h"
+#include "resolv.h"
 #include "logger.h"
 #include "connection.h"
 #include "binder.h"

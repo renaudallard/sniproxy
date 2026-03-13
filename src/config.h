@@ -40,7 +40,6 @@
 #include <stdio.h>
 #include "table.h"
 #include "listener.h"
-#include "resolv.h"
 
 struct Config {
     char *filename;
