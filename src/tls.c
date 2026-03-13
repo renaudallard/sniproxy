@@ -49,29 +49,6 @@
 static size_t tls_max_extensions = TLS_DEFAULT_MAX_EXTENSIONS;
 static size_t tls_max_extension_length = TLS_DEFAULT_MAX_EXTENSION_LENGTH;
 
-size_t
-tls_get_max_extensions(void) {
-    return tls_max_extensions;
-}
-
-void
-tls_set_max_extensions(size_t max_extensions) {
-    if (max_extensions == 0)
-        max_extensions = 1;
-    tls_max_extensions = max_extensions;
-}
-
-size_t
-tls_get_max_extension_length(void) {
-    return tls_max_extension_length;
-}
-
-void
-tls_set_max_extension_length(size_t max_length) {
-    if (max_length == 0)
-        max_length = 1;
-    tls_max_extension_length = max_length;
-}
 
 #ifndef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
