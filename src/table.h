@@ -33,7 +33,6 @@
 #include "backend.h"
 #include "address.h"
 
-#define TABLE_NAME_LEN 20
 #define TABLE_CACHE_MAX_NAME_LEN 255
 #define TABLE_CACHE_BITS 8
 #define TABLE_CACHE_SIZE (1u << TABLE_CACHE_BITS)
