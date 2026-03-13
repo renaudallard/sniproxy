@@ -31,7 +31,6 @@
 #include <stdint.h>
 #include <sys/queue.h>
 #include "backend.h"
-#include "address.h"
 
 #define TABLE_CACHE_MAX_NAME_LEN 255
 #define TABLE_CACHE_BITS 8
