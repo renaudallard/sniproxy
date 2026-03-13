@@ -775,13 +775,6 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 if (current > 0)
                     desired = current << 1;
 
-                size_t load = buffer_len(input_buffer);
-                /* Avoid overflow in load threshold comparison */
-                if (current > 0) {
-                    size_t threshold = current - (current / 4); /* 75% of current */
-                    if (load < threshold)
-                        desired = current;
-                }
                 if (buffer_resize(input_buffer, desired) < 0) {
                     char server[INET6_ADDRSTRLEN + 8];
 
