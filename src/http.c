@@ -39,11 +39,6 @@
 
 static size_t http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
 
-size_t
-http_get_max_headers(void) {
-    return http_max_headers;
-}
-
 void
 http_set_max_headers(size_t max_headers) {
     if (max_headers == 0)

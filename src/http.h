@@ -35,6 +35,5 @@
 
 extern const struct Protocol *const http_protocol;
 void http_set_max_headers(size_t max_headers);
-size_t http_get_max_headers(void);
 
 #endif
