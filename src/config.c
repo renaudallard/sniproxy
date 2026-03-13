@@ -1493,8 +1493,6 @@ end_backend(struct Table *table, struct Backend *backend) {
         return -1;
     }
 
-    if (backend->use_proxy_header > table->use_proxy_header)
-        table->use_proxy_header = backend->use_proxy_header;
     add_backend(&table->backends, backend);
 
     return 1;

@@ -50,7 +50,6 @@ struct TableCacheEntry {
 
 struct Table {
     char *name;
-    enum proxy_protocol_mode use_proxy_header;
     int backend_affinity;
 
     /* Runtime fields */
