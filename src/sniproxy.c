@@ -42,6 +42,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <signal.h>
+#include <sys/wait.h>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -78,6 +79,7 @@ static void set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
+static void sigchld_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
 static size_t effective_max_connections(const struct Config *);
@@ -106,6 +108,7 @@ static struct ev_signal sighup_watcher;
 static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
+static struct ev_signal sigchld_watcher;
 
 
 #ifdef __OpenBSD__
@@ -504,10 +507,12 @@ main(int argc, char **argv) {
     ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
     ev_signal_init(&sigint_watcher, signal_cb, SIGINT);
     ev_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
+    ev_signal_init(&sigchld_watcher, sigchld_cb, SIGCHLD);
     ev_signal_start(loop, &sighup_watcher);
     ev_signal_start(loop, &sigusr1_watcher);
     ev_signal_start(loop, &sigint_watcher);
     ev_signal_start(loop, &sigterm_watcher);
+    ev_signal_start(loop, &sigchld_watcher);
 
     if (resolv_init(loop, config->resolver.nameservers,
             config->resolver.search, config->resolver.mode,
@@ -872,4 +877,14 @@ signal_cb(struct ev_loop *loop, struct ev_signal *w, int revents) {
                 ev_unloop(loop, EVUNLOOP_ALL);
         }
     }
+}
+
+static void
+sigchld_cb(struct ev_loop *loop __attribute__((unused)),
+        struct ev_signal *w __attribute__((unused)),
+        int revents __attribute__((unused))) {
+    /* Reap zombie children promptly.  Subsystem-specific waitpid() calls
+     * in logger, resolver, and binder already handle ECHILD gracefully. */
+    while (waitpid(-1, NULL, WNOHANG) > 0)
+        ;
 }
