@@ -44,7 +44,6 @@
 #include <ev.h>
 #include <assert.h>
 #include <sys/stat.h>
-#include <stdatomic.h>
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
 #endif
@@ -3012,23 +3011,15 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         /* State machine validation: verify DNS query state consistency */
         assert(con->query_handle != NULL || !con->dns_query_acquired);
 
-        /* SECURITY: Prevent race condition with resolver callback.
-         * Save query_handle locally and clear it atomically BEFORE calling
-         * resolv_cancel(). This prevents the callback from firing and
-         * accessing a handle that we're in the process of canceling.
-         * Without this, there's a TOCTOU window where:
-         * 1. We check con->query_handle != NULL
-         * 2. Callback fires and sets con->query_handle = NULL
-         * 3. We call resolv_cancel() with stale pointer -> use-after-free */
+        /* Save query_handle locally and clear before calling
+         * resolv_cancel() to maintain consistent state. */
         void *local_query_handle = con->query_handle;
         int local_dns_query_acquired = con->dns_query_acquired;
 
-        /* Clear state atomically before any cancellation */
         con->query_handle = NULL;
         con->dns_query_acquired = 0;
-        atomic_thread_fence(memory_order_seq_cst);
 
-        /* Now safely clean up using local copies */
+        /* Clean up using local copies */
         if (local_query_handle != NULL && local_dns_query_acquired) {
             /* Valid state: active query with acquired slot */
             resolv_cancel(local_query_handle);
