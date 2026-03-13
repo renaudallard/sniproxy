@@ -309,6 +309,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         return 0;
     }
     con->listener = listener_ref_get(listener);
+    con->protocol = listener->protocol;
 
 #ifdef HAVE_ACCEPT4
     int accept_flags = SOCK_NONBLOCK;
@@ -2534,7 +2535,7 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
     payload += con->header_len;
     payload_len -= con->header_len;
 
-    int result = con->listener->protocol->parse_packet(payload, payload_len, &hostname);
+    int result = con->protocol->parse_packet(payload, payload_len, &hostname);
     if (result < 0) {
         char client[INET6_ADDRSTRLEN + 8];
         int fatal_parse_error = 0;
@@ -2607,8 +2608,8 @@ abort_connection(struct Connection *con, struct ev_loop *loop) {
 
     stop_header_timer(con, loop);
     buffer_push(con->server.buffer,
-            con->listener->protocol->abort_message,
-            con->listener->protocol->abort_message_len);
+            con->protocol->abort_message,
+            con->protocol->abort_message_len);
 
     con->state = SERVER_CLOSED;
 }

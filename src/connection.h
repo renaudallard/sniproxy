@@ -32,6 +32,7 @@
 #include <sys/queue.h>
 #include <ev.h>
 #include "listener.h"
+#include "protocol.h"
 #include "buffer.h"
 
 struct DnsClientUsageEntry;
@@ -58,6 +59,7 @@ struct Connection {
     struct ev_timer idle_timer;
     struct ev_timer header_timer;
     struct Listener *listener;
+    const struct Protocol *protocol; /* Snapshot at accept time */
     const char *hostname; /* Requested hostname */
     size_t hostname_len;
     size_t header_len;
