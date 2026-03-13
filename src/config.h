@@ -38,7 +38,6 @@
 #define MAX_HTTP_MAX_HEADERS 4096
 
 #include <stdio.h>
-#include "http.h"
 #include "table.h"
 #include "listener.h"
 #include "resolv.h"
