@@ -27,6 +27,7 @@
 #define PROTOCOL_H
 
 #include <inttypes.h>
+#include <stddef.h>
 
 struct Protocol {
     const char *const name;
