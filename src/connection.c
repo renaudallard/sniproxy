@@ -51,6 +51,7 @@
 #include <bsd/unistd.h>
 #endif
 #include "connection.h"
+#include "buffer.h"
 #include "resolv.h"
 #include "address.h"
 #include "protocol.h"

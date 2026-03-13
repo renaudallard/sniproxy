@@ -32,10 +32,10 @@
 #include <sys/queue.h>
 #include <ev.h>
 #include "listener.h"
-#include "protocol.h"
-#include "buffer.h"
 
+struct Buffer;
 struct DnsClientUsageEntry;
+struct Protocol;
 
 struct Connection {
     enum State {
