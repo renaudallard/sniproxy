@@ -206,11 +206,14 @@ init_backend(struct Backend *backend) {
 
         if (!pattern_has_regex_metachar(backend->pattern)) {
             anchored = anchor_literal_pattern(backend->pattern);
-            if (anchored != NULL) {
-                compile_pat = anchored;
-                notice("Rewriting literal pattern \"%s\" as \"%s\"",
-                        backend->pattern, anchored);
+            if (anchored == NULL) {
+                err("Failed to anchor literal pattern \"%s\": malloc failure",
+                        backend->pattern);
+                return 0;
             }
+            compile_pat = anchored;
+            notice("Rewriting literal pattern \"%s\" as \"%s\"",
+                    backend->pattern, anchored);
         }
 
         backend->pattern_re =
