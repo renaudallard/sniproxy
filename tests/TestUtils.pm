@@ -13,15 +13,21 @@ our $VERSION = '0.01';
 $SIG{CHLD} = \&REAPER;
 
 my %children;
+my %early_exits; # status of children that exited before start_child registered them
 
 sub REAPER {
     my $stiff;
     while (($stiff = waitpid(-1, &WNOHANG)) > 0) {
-        # do something with $stiff if you want
-        $children{$stiff}->{'running'} = undef;
-        $children{$stiff}->{'exit_code'} = $? >> 8;
-        $children{$stiff}->{'signal'} = $? & 127;
-        $children{$stiff}->{'core_dumped'} = $? & 128;
+        my $status = $?;
+        if (exists $children{$stiff}) {
+            $children{$stiff}->{'running'} = undef;
+            $children{$stiff}->{'exit_code'} = $status >> 8;
+            $children{$stiff}->{'signal'} = $status & 127;
+            $children{$stiff}->{'core_dumped'} = $status & 128;
+        } else {
+            # Child exited before start_child added it to %children
+            $early_exits{$stiff} = $status;
+        }
     }
     $SIG{CHLD} = \&REAPER; # install *after* calling waitpid
 }
@@ -51,13 +57,29 @@ sub start_child {
         exit_core => undef,
     };
 
+    # Handle race: child may have exited before we registered it
+    if (exists $early_exits{$pid}) {
+        my $status = delete $early_exits{$pid};
+        $children{$pid}->{'running'} = undef;
+        $children{$pid}->{'exit_code'} = $status >> 8;
+        $children{$pid}->{'signal'} = $status & 127;
+        $children{$pid}->{'core_dumped'} = $status & 128;
+    }
+
     return $pid;
 }
 
 sub reap_children {
+    my $attempts = 0;
     while (my @hit_list = grep($children{$_}->{'running'}, keys %children)) {
-        kill 15, @hit_list;
+        if ($attempts >= 3) {
+            kill 9, @hit_list;
+        } else {
+            kill 15, @hit_list;
+        }
         sleep 1;
+        REAPER(); # actively reap in case SIGCHLD was lost
+        $attempts++;
     }
 
     # Check that all our children exited cleanly
@@ -83,6 +105,7 @@ sub wait_for_type($) {
 
     while (grep($children{$_}->{'running'} && $children{$_}->{'type'} eq $type, keys %children) > 0) {
         sleep 1;
+        REAPER(); # actively reap in case SIGCHLD was lost
     }
 }
 
