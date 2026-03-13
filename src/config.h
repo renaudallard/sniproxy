@@ -27,7 +27,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <stddef.h>
 #define DEFAULT_CLIENT_BUFFER_LIMIT (1U << 20)
 #define DEFAULT_SERVER_BUFFER_LIMIT (1U << 20)
 #define DEFAULT_MAX_CONNECTIONS 0
