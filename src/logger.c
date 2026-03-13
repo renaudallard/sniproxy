@@ -37,7 +37,6 @@
 #include <string.h>
 #include <syslog.h>
 #include <time.h>
-#include <assert.h>
 #include <limits.h>
 #include <sys/queue.h>
 #include <fcntl.h>
@@ -487,15 +486,18 @@ void
 set_default_logger(struct Logger *new_logger) {
     struct Logger *old_default_logger = default_logger;
 
-    assert(new_logger != NULL);
+    if (new_logger == NULL)
+        return;
     default_logger = logger_ref_get(new_logger);
     logger_ref_put(old_default_logger);
 }
 
 void
 set_logger_priority(struct Logger *logger, int priority) {
-    assert(logger != NULL);
-    assert(priority >= LOG_EMERG && priority <= LOG_DEBUG);
+    if (logger == NULL)
+        return;
+    if (priority < LOG_EMERG || priority > LOG_DEBUG)
+        return;
     logger->priority = priority;
 }
 
@@ -504,7 +506,8 @@ logger_ref_put(struct Logger *logger) {
     if (logger == NULL)
         return;
 
-    assert(logger->reference_count > 0);
+    if (logger->reference_count <= 0)
+        return;
     logger->reference_count--;
     if (logger->reference_count == 0)
         free_logger(logger);
@@ -616,7 +619,8 @@ debug(const char *format, ...) {
 
 static void
 vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) {
-    assert(logger != NULL);
+    if (logger == NULL)
+        return;
 
     if (priority > logger->priority)
         return;
@@ -1004,7 +1008,8 @@ log_sink_ref_put(struct LogSink *sink) {
     if (sink == NULL)
         return;
 
-    assert(sink->reference_count > 0);
+    if (sink->reference_count <= 0)
+        return;
     sink->reference_count--;
     if (sink->reference_count == 0)
         free_sink(sink);
@@ -1039,7 +1044,8 @@ free_sink(struct LogSink *sink) {
             sink->filepath = NULL;
             break;
         default:
-            assert(0);
+            err("unknown log sink type: %d", sink->type);
+            break;
     }
 
     free(sink);

@@ -37,7 +37,6 @@
 #include <sys/stat.h>
 #include <strings.h>
 #include <errno.h>
-#include <assert.h>
 #include <ctype.h>
 #include <math.h>
 #include <netinet/tcp.h>
@@ -1531,7 +1530,8 @@ cleanup_logger_builder(void *lb_ptr) {
 
 static int
 accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
-    assert(lb != NULL);
+    if (lb == NULL)
+        return 0;
 
     char *normalized = NULL;
     if (!validate_config_path("logger filename", filename, &normalized))
@@ -1545,7 +1545,8 @@ accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
 
 static int
 accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
-    assert(lb != NULL);
+    if (lb == NULL)
+        return 0;
 
     char *new_facility = strdup(facility);
     if (new_facility == NULL) {
@@ -1561,7 +1562,8 @@ accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
 
 static int
 accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
-    assert(lb != NULL);
+    if (lb == NULL)
+        return 0;
 
     const struct {
         const char *name;

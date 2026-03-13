@@ -31,7 +31,6 @@
 #include <stdint.h>
 #include <limits.h>
 #include <sys/queue.h>
-#include <assert.h>
 #include "backend.h"
 #include "address.h"
 #include "logger.h"
@@ -306,7 +305,8 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
 
 void
 print_backend_config(FILE *file, const struct Backend *backend) {
-    assert(backend != NULL);
+    if (backend == NULL)
+        return;
 
     char address[ADDRESS_BUFFER_SIZE];
 
@@ -318,7 +318,8 @@ print_backend_config(FILE *file, const struct Backend *backend) {
 
 static const char *
 backend_config_options(const struct Backend *backend) {
-    assert(backend != NULL);
+    if (backend == NULL)
+        return "";
 
     switch (backend->use_proxy_header) {
     case PROXY_PROTOCOL_V1:

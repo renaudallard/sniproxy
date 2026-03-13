@@ -33,7 +33,6 @@
 #include <time.h>
 #include <errno.h>
 #include <unistd.h>
-#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <ev.h>
@@ -240,7 +239,8 @@ new_buffer(size_t size, struct ev_loop *loop) {
 
 ssize_t
 buffer_resize(struct Buffer *buf, size_t new_size) {
-    assert(buf != NULL);
+    if (buf == NULL)
+        return -1;
 
     if (NOT_POWER_OF_2(new_size))
         return -4;
@@ -330,10 +330,7 @@ buffer_reserve(struct Buffer *buf, size_t min_room) {
     if (buf->len >= buf->max_size || min_room > buf->max_size - buf->len)
         return -1;
 
-    /* Defensive assertion: The overflow check above guarantees this addition
-     * is safe, but we assert the invariant for defense-in-depth. */
     size_t required = buf->len + min_room;
-    assert(required >= buf->len && required >= min_room);
     size_t current_size = buffer_size(buf);
     size_t new_size = next_power_of_two(required);
 
@@ -424,7 +421,8 @@ free_buffer(struct Buffer *buf) {
 
 ssize_t
 buffer_recv(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) {
-    assert(buffer != NULL);
+    if (buffer == NULL)
+        return -1;
 
     /* coalesce when reading into an empty buffer */
     if (buffer->len == 0)
@@ -448,7 +446,8 @@ buffer_recv(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) 
 
 ssize_t
 buffer_send(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) {
-    assert(buffer != NULL);
+    if (buffer == NULL)
+        return -1;
 
     struct iovec iov[2];
     struct msghdr msg = {
@@ -471,7 +470,8 @@ buffer_send(struct Buffer *buffer, int sockfd, int flags, struct ev_loop *loop) 
  */
 ssize_t
 buffer_read(struct Buffer *buffer, int fd) {
-    assert(buffer != NULL);
+    if (buffer == NULL)
+        return -1;
 
     /* coalesce when reading into an empty buffer */
     if (buffer->len == 0)
@@ -492,7 +492,8 @@ buffer_read(struct Buffer *buffer, int fd) {
  */
 ssize_t
 buffer_write(struct Buffer *buffer, int fd) {
-    assert(buffer != NULL);
+    if (buffer == NULL)
+        return -1;
 
     struct iovec iov[2];
     size_t iov_len = setup_read_iov(buffer, iov, 0);
@@ -512,7 +513,8 @@ buffer_write(struct Buffer *buffer, int fd) {
  */
 size_t
 buffer_coalesce(struct Buffer *buffer, const void **dst) {
-    assert(buffer != NULL);
+    if (buffer == NULL)
+        return 0;
 
     size_t len = buffer->len;
     size_t head = buffer->head;
@@ -691,25 +693,12 @@ setup_write_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
         iov[0].iov_base = buffer->buffer + start;
         iov[0].iov_len = write_len;
 
-        /* assert iov are within bounds, non-zero length and non-overlapping */
-        assert(iov[0].iov_len > 0);
-        assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
-
         return 1;
     } else {
         iov[0].iov_base = buffer->buffer + start;
         iov[0].iov_len = size - start;
         iov[1].iov_base = buffer->buffer;
         iov[1].iov_len = write_len - iov[0].iov_len;
-
-        /* assert iov are within bounds, non-zero length and non-overlapping */
-        assert(iov[0].iov_len > 0);
-        assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
-        assert(iov[1].iov_len > 0);
-        assert((char *)iov[1].iov_base >= buffer->buffer);
-        assert((char *)iov[1].iov_base + iov[1].iov_len <= (char *)iov[0].iov_base);
 
         return 2;
     }
@@ -729,25 +718,12 @@ setup_read_iov(const struct Buffer *buffer, struct iovec *iov, size_t len) {
         iov[0].iov_base = buffer->buffer + buffer->head;
         iov[0].iov_len = read_len;
 
-        /* assert iov are within bounds, non-zero length and non-overlapping */
-        assert(iov[0].iov_len > 0);
-        assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
-
         return 1;
     } else {
         iov[0].iov_base = buffer->buffer + buffer->head;
         iov[0].iov_len = size - buffer->head;
         iov[1].iov_base = buffer->buffer;
         iov[1].iov_len = read_len - iov[0].iov_len;
-
-        /* assert iov are within bounds, non-zero length and non-overlapping */
-        assert(iov[0].iov_len > 0);
-        assert((char *)iov[0].iov_base >= buffer->buffer);
-        assert((char *)iov[0].iov_base + iov[0].iov_len <= buffer->buffer + size);
-        assert(iov[1].iov_len > 0);
-        assert((char *)iov[1].iov_base >= buffer->buffer);
-        assert((char *)iov[1].iov_base + iov[1].iov_len <= (char *)iov[0].iov_base);
 
         return 2;
     }
@@ -773,14 +749,20 @@ next_power_of_two(size_t value) {
 
 static inline void
 advance_write_position(struct Buffer *buffer, size_t offset) {
-    assert(buffer->len + offset <= buffer_size(buffer));
+    if (buffer->len + offset > buffer_size(buffer)) {
+        err("buffer write position overflow");
+        return;
+    }
     buffer->len += offset;
     buffer->rx_bytes += offset;
 }
 
 static inline void
 advance_read_position(struct Buffer *buffer, size_t offset) {
-    assert(offset <= buffer->len);
+    if (offset > buffer->len) {
+        err("buffer read position overflow");
+        return;
+    }
     buffer->head = (buffer->head + offset) & buffer->size_mask;
     buffer->len -= offset;
     buffer->tx_bytes += offset;

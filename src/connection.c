@@ -42,7 +42,6 @@
 #include <time.h>
 #include <sys/time.h>
 #include <ev.h>
-#include <assert.h>
 #include <sys/stat.h>
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
@@ -987,15 +986,19 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
         reactivate_watcher(loop, server_watcher,
                 con->server.buffer, con->client.buffer);
 
-    /* Neither watcher is active when the corresponding socket is closed */
-    assert(client_open || !ev_is_active(client_watcher));
-    assert(server_open || !ev_is_active(server_watcher));
+    /* Validate watcher state consistency */
+    if ((!client_open && ev_is_active(client_watcher)) ||
+            (!server_open && ev_is_active(server_watcher))) {
+        warn("watcher active on closed socket");
+        return;
+    }
 
-    /* At least one watcher is still active for this connection,
-     * or DNS callback active */
-    assert((ev_is_active(client_watcher) && con->client.watcher.events) ||
-           (ev_is_active(server_watcher) && con->server.watcher.events) ||
-           con->state == RESOLVING);
+    if (!(ev_is_active(client_watcher) && con->client.watcher.events) &&
+            !(ev_is_active(server_watcher) && con->server.watcher.events) &&
+            con->state != RESOLVING) {
+        warn("no active watcher and not resolving");
+        return;
+    }
 
     shrink_candidate_update(con, loop, 0.0);
 }
@@ -1934,7 +1937,10 @@ start_buffer_shrink_timer(struct ev_loop *loop) {
     if (buffer_shrink_loop == NULL)
         buffer_shrink_loop = loop;
 
-    assert(buffer_shrink_loop == loop);
+    if (buffer_shrink_loop != loop) {
+        warn("buffer_shrink_loop mismatch");
+        return;
+    }
 
     if (!ev_is_active(&buffer_shrink_timer))
         ev_timer_start(loop, &buffer_shrink_timer);
@@ -2585,7 +2591,8 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
 
 static void
 abort_connection(struct Connection *con, struct ev_loop *loop) {
-    assert(client_socket_open(con));
+    if (!client_socket_open(con))
+        return;
 
     stop_header_timer(con, loop);
     buffer_push(con->server.buffer,
@@ -2727,7 +2734,13 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         con->query_handle = qh;
     } else if (address_is_sockaddr(result.address)) {
         con->server.addr_len = address_sa_len(result.address);
-        assert(con->server.addr_len <= sizeof(con->server.addr));
+        if (con->server.addr_len > sizeof(con->server.addr)) {
+            err("server address length exceeds storage");
+            if (result.caller_free_address)
+                free((void *)result.address);
+            abort_connection(con, loop);
+            return 0;
+        }
         copy_sockaddr_to_storage(&con->server.addr,
                 address_sa(result.address),
                 (socklen_t)con->server.addr_len);
@@ -2745,8 +2758,9 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
 
         con->state = RESOLVED;
     } else {
-        /* invalid address type */
-        assert(0);
+        err("invalid address type in backend lookup");
+        abort_connection(con, loop);
+        return 0;
     }
 
     return 0;
@@ -2774,19 +2788,24 @@ resolv_cb(struct Address *result, void *data) {
                 hostname != NULL ? hostname : "(unknown)");
         abort_connection(con, loop);
     } else {
-        assert(address_is_sockaddr(result));
+        if (!address_is_sockaddr(result)) {
+            err("resolver returned non-sockaddr address");
+            abort_connection(con, loop);
+        } else if (address_sa_len(result) > sizeof(con->server.addr)) {
+            err("resolved address length exceeds storage");
+            abort_connection(con, loop);
+        } else {
+            /* copy port from server_address */
+            address_set_port(result, address_port(cb_data->address));
 
-        /* copy port from server_address */
-        address_set_port(result, address_port(cb_data->address));
+            con->server.addr_len = address_sa_len(result);
+            copy_sockaddr_to_storage(&con->server.addr, address_sa(result),
+                    (socklen_t)con->server.addr_len);
 
-        con->server.addr_len = address_sa_len(result);
-        assert(con->server.addr_len <= sizeof(con->server.addr));
-        copy_sockaddr_to_storage(&con->server.addr, address_sa(result),
-                (socklen_t)con->server.addr_len);
+            con->state = RESOLVED;
 
-        con->state = RESOLVED;
-
-        initiate_server_connect(con, loop);
+            initiate_server_connect(con, loop);
+        }
     }
 
     con->query_handle = NULL;
@@ -2978,8 +2997,10 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
  */
 static void
 close_client_socket(struct Connection *con, struct ev_loop *loop) {
-    assert(con->state != CLOSED
-            && con->state != CLIENT_CLOSED);
+    if (con->state == CLOSED || con->state == CLIENT_CLOSED) {
+        warn("close_client_socket called in invalid state");
+        return;
+    }
 
     if (con->listener->access_log &&
             con->client.local_addr.ss_family == AF_UNSPEC &&
@@ -2992,8 +3013,8 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         warn("close failed: %s", strerror(errno));
 
     if (con->state == RESOLVING) {
-        /* State machine validation: verify DNS query state consistency */
-        assert(con->query_handle != NULL || !con->dns_query_acquired);
+        if (con->query_handle == NULL && con->dns_query_acquired)
+            warn("inconsistent DNS state: query_handle=NULL but dns_query_acquired=1");
 
         /* Save query_handle locally and clear before calling
          * resolv_cancel() to maintain consistent state. */
@@ -3038,8 +3059,10 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
  */
 static void
 close_server_socket(struct Connection *con, struct ev_loop *loop) {
-    assert(con->state != CLOSED
-            && con->state != SERVER_CLOSED);
+    if (con->state == CLOSED || con->state == SERVER_CLOSED) {
+        warn("close_server_socket called in invalid state");
+        return;
+    }
 
     ev_io_stop(loop, &con->server.watcher);
 
@@ -3055,7 +3078,10 @@ close_server_socket(struct Connection *con, struct ev_loop *loop) {
 
 static void
 close_connection(struct Connection *con, struct ev_loop *loop) {
-    assert(con->state != NEW); /* only used during initialization */
+    if (con->state == NEW) {
+        warn("close_connection called on NEW connection");
+        return;
+    }
 
     shrink_candidate_remove(con);
     stop_idle_timer(con, loop);
@@ -3064,17 +3090,11 @@ close_connection(struct Connection *con, struct ev_loop *loop) {
     if (server_socket_open(con))
         close_server_socket(con, loop);
 
-    assert(con->state == ACCEPTED
-            || con->state == PARSED
-            || con->state == RESOLVING
-            || con->state == RESOLVED
-            || con->state == SERVER_CLOSED
-            || con->state == CLOSED);
-
     if (client_socket_open(con))
         close_client_socket(con, loop);
 
-    assert(con->state == CLOSED);
+    if (con->state != CLOSED)
+        warn("connection state not CLOSED after close_connection");
 }
 
 /*

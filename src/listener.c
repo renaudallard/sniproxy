@@ -34,7 +34,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <assert.h>
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -330,9 +329,10 @@ listeners_reload(struct Listener_head *existing_listeners,
  */
 static void
 listener_update(struct Listener *existing_listener, struct Listener *new_listener, const struct Table_head *tables) {
-    assert(existing_listener != NULL);
-    assert(new_listener != NULL);
-    assert(address_compare(existing_listener->address, new_listener->address) == 0);
+    if (existing_listener == NULL || new_listener == NULL)
+        return;
+    if (address_compare(existing_listener->address, new_listener->address) != 0)
+        return;
 
     if (existing_listener->fallback_address != new_listener->fallback_address) {
         free(existing_listener->fallback_address);
@@ -645,9 +645,8 @@ accept_listener_accept_proxy_protocol(struct Listener *listener, const char *val
  */
 void
 add_listener(struct Listener_head *listeners, struct Listener *listener) {
-    assert(listeners != NULL);
-    assert(listener != NULL);
-    assert(listener->address != NULL);
+    if (listeners == NULL || listener == NULL || listener->address == NULL)
+        return;
     listener_ref_get(listener);
 
     if (SLIST_FIRST(listeners) == NULL ||
@@ -1039,7 +1038,8 @@ listener_acl_allows(const struct Listener *listener,
 
 void
 print_listener_config(FILE *file, const struct Listener *listener) {
-    assert(listener != NULL);
+    if (listener == NULL)
+        return;
 
     char address[ADDRESS_BUFFER_SIZE];
     const struct ListenerACLRule *rule;
@@ -1163,7 +1163,8 @@ listener_ref_put(struct Listener *listener) {
 
 struct Listener *
 listener_ref_get(struct Listener *listener) {
-    assert(listener != NULL);
+    if (listener == NULL)
+        return NULL;
 
     if (listener->reference_count == INT_MAX) {
         err("%s: reference_count overflow", __func__);
