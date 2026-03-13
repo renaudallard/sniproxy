@@ -41,7 +41,7 @@
 #include "logger.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define NOT_POWER_OF_2(x) (x == 0 || (x & (x - 1)))
+#define NOT_POWER_OF_2(x) ((x) == 0 || ((x) & ((x) - 1)))
 
 
 #define BUFFER_COALESCE_STACK_COPY 4096
