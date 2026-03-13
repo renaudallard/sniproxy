@@ -234,7 +234,7 @@ case "$host_os" in
 esac
 AC_SUBST([LIBSECCOMP_LIBS])
 
-AC_CHECK_FUNCS([accept4 daemon setproctitle mkostemp])
+AC_CHECK_FUNCS([accept4 closefrom daemon setproctitle mkostemp])
 
 # Enable large file support (so we can log more than 2GB)
 AC_SYS_LARGEFILE
