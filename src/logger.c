@@ -1656,7 +1656,6 @@ logger_resend_sinks(void) {
 static void
 logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
         int received_fd, char *payload) {
-    (void)sockfd;
     struct ChildSink *sink;
 
     switch (header->type) {
