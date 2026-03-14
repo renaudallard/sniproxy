@@ -2898,8 +2898,13 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
     }
 
     size_t total = 0;
-    for (int i = 0; i < iovcnt; i++)
+    for (int i = 0; i < iovcnt; i++) {
+        if (total > SIZE_MAX - iov[i].iov_len) {
+            errno = EMSGSIZE;
+            return -1;
+        }
         total += iov[i].iov_len;
+    }
 
     if (total == 0)
         return 0;
