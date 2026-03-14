@@ -56,6 +56,7 @@ struct Connection {
         struct ev_io watcher;
         struct Buffer *buffer;
     } client, server;
+    struct sockaddr_storage peer_addr; /* Original peer address for conn_count */
     struct ev_timer idle_timer;
     struct ev_timer header_timer;
     struct Listener *listener;

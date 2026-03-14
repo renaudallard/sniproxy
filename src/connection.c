@@ -425,9 +425,11 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     con->state = ACCEPTED;
     con->established_timestamp = now;
 
+    con->peer_addr = con->client.addr;
+
     TAILQ_INSERT_HEAD(&connections, con, entries);
     connection_account_add();
-    conn_count_increment(&con->client.addr);
+    conn_count_increment(&con->peer_addr);
     start_buffer_shrink_timer(loop);
 
     ev_io_start(loop, client_watcher);
@@ -457,7 +459,7 @@ free_connections(struct ev_loop *loop) {
     while ((iter = TAILQ_FIRST(&connections)) != NULL) {
         TAILQ_REMOVE(&connections, iter, entries);
         connection_account_remove();
-        conn_count_decrement(&iter->client.addr);
+        conn_count_decrement(&iter->peer_addr);
         close_connection(iter, loop);
         free_connection(iter);
     }
@@ -920,7 +922,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         stop_header_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
         connection_account_remove();
-        conn_count_decrement(&con->client.addr);
+        conn_count_decrement(&con->peer_addr);
 
         if (con->listener->access_log)
             log_connection(con);
@@ -967,7 +969,7 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
         stop_header_timer(con, loop);
         TAILQ_REMOVE(&connections, con, entries);
         connection_account_remove();
-        conn_count_decrement(&con->client.addr);
+        conn_count_decrement(&con->peer_addr);
 
         if (con->listener->access_log)
             log_connection(con);
@@ -1893,7 +1895,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
-    conn_count_decrement(&con->client.addr);
+    conn_count_decrement(&con->peer_addr);
 
     if (con->listener->access_log)
         log_connection(con);
@@ -1915,7 +1917,7 @@ connection_header_timeout_cb(struct ev_loop *loop, struct ev_timer *w,
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
-    conn_count_decrement(&con->client.addr);
+    conn_count_decrement(&con->peer_addr);
     free_connection(con);
     maybe_stop_buffer_shrink_timer(loop);
 }
@@ -3395,7 +3397,7 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
 
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
-    conn_count_decrement(&con->client.addr);
+    conn_count_decrement(&con->peer_addr);
 
     if (con->listener->access_log)
         log_connection(con);
