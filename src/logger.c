@@ -1706,9 +1706,20 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                     break;
                 }
             } else if (sink->type == LOG_SINK_STDERR) {
+                if (received_fd >= 0)
+                    close(received_fd);
                 sink->file = stderr;
             } else if (sink->type == LOG_SINK_SYSLOG) {
+                if (received_fd >= 0)
+                    close(received_fd);
                 openlog(PACKAGE_NAME, LOG_PID, 0);
+            } else {
+                /* Unknown sink type */
+                if (received_fd >= 0)
+                    close(received_fd);
+                free(sink->filepath);
+                free(sink);
+                break;
             }
 
             SLIST_INSERT_HEAD(&child_sink_head, sink, entries);
