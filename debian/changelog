@@ -1,3 +1,31 @@
+sniproxy (0.10.0) unstable; urgency=medium
+
+  * Add per_ip_max_connections, tcp_fastopen, backend_acl, backend_affinity
+    directives and random DNS result selection.
+  * Accept incoming PROXY protocol v1/v2 headers on listeners.
+  * Add PROXY protocol v2 (binary) output support.
+  * Add Minecraft Java Edition protocol support.
+  * Auto-anchor literal hostname patterns in table entries.
+  * Fix broken binary search and host header detection in HPACK decoder.
+  * Enforce RFC 7541 dynamic table size update limits in HPACK decoder.
+  * Add missing recvfd pledge promise in logger child on OpenBSD.
+  * Restart logger child on health check failure instead of fatal exit.
+  * Use non-blocking poll in logger health check.
+  * Fix use-after-free in resolve_server_address on sync DNS failure.
+  * Fix per-IP conn_count mismatch with PROXY protocol.
+  * Fix -T 1.3 rejecting all TLS connections.
+  * Fix fallback address losing port on SIGHUP reload.
+  * Fix EAGAIN on logger IPC permanently killing logger child.
+  * Fix server buffer growing 4x instead of intended 2x on resize.
+  * Fix IPC crypto context leak in resolver init on socketpair/fork failure.
+  * Resolve relative config path before daemonize for SIGHUP reload.
+  * Snapshot protocol at accept time to prevent mismatch during reload.
+  * Use reallocarray() for overflow-safe allocation throughout.
+  * Replace assert() with proper runtime error handling.
+  * Clean up unused functions, dead code, and redundant includes.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 14 Mar 2026 00:00:00 +0000
+
 sniproxy (0.9.27) unstable; urgency=medium
 
   * Add Minecraft Java Edition protocol support.

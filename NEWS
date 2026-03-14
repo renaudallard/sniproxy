@@ -1,5 +1,5 @@
-Post 0.9.27 changes
-====================
+sniproxy 0.10.0 (2026-03-14)
+===============================
 
 * Feature: Add `per_ip_max_connections` global directive to limit the
   number of simultaneously active connections from a single source IP.
@@ -23,18 +23,62 @@ Post 0.9.27 changes
 * Feature: Auto-anchor literal hostname patterns in table entries.
   Bare hostnames like `example.com` are now compiled as `^example\.com$`
   so they match exactly, not as substrings of other hostnames. Patterns
-  containing regex metacharacters are left as-is. A notice-level log
-  message is emitted for each rewritten pattern.
-* Doc: Document HTTP/2 connection coalescing limitation and workarounds
-  in README and man page.
+  containing regex metacharacters are left as-is.
 * Feature: Accept incoming PROXY protocol headers (v1 text and v2 binary
   auto-detected) on listeners via `proxy_protocol on` directive.
 * Feature: Add PROXY protocol v2 (binary) output support for table backends
   and fallback addresses via `proxy_protocol_v2` keyword.
-* Fix: Chown log files to the target user before dropping privileges so
-  SIGHUP-triggered log rotation can reopen the files.
+* Feature: Add Minecraft Java Edition protocol support for routing
+  Minecraft connections by hostname without decrypting traffic.
+* Feature: Add SIGCHLD handler to reap zombie child processes.
+* Doc: Document HTTP/2 connection coalescing limitation and workarounds.
+* Security: Fix broken binary search and missing host header detection
+  in HPACK decoder. The static name index was sorted incorrectly for the
+  binary search comparator, and literal Host headers were only detected
+  by pointer comparison instead of string comparison.
+* Security: Add missing `recvfd` pledge promise in logger child on
+  OpenBSD. Without this, the kernel kills the logger child with SIGABRT
+  when it receives file descriptors via SCM_RIGHTS.
+* Security: Fix use-after-free in resolve_server_address on synchronous
+  DNS failure.
+* Security: Fix per-IP conn_count mismatch when PROXY protocol is used
+  (connections were counted under the proxy address, not the real client).
+* Fix: Enforce RFC 7541 dynamic table size update limits in HPACK decoder.
+* Fix: Restart logger child on health check failure instead of fatal exit.
+* Fix: Use non-blocking poll in logger health check to avoid stalling the
+  event loop for up to 100ms every 30 seconds.
+* Fix: Close unexpected file descriptors in logger child NEW_SINK handler.
+* Fix: Handle ECHILD when killing logger child after daemonize.
+* Fix: Fix stderr log messages silently lost when routed via logger child.
+* Fix: Resolve relative config path before daemonize so SIGHUP reload
+  works after chdir("/").
+* Fix: Check pidfile write for errors.
+* Fix: Fix -T 1.3 rejecting all TLS connections (legacy_version check
+  blocked before supported_versions extension was examined).
+* Fix: Fix fallback address losing port number on SIGHUP reload.
+* Fix: Reject stray closing brace at config top level.
+* Fix: Fix EAGAIN on logger IPC permanently killing logger child.
+* Fix: Fix server buffer growing 4x instead of intended 2x on resize.
+* Fix: Fix IPC crypto context leak in resolver init on socketpair/fork
+  failure.
+* Fix: Preserve errno across accept cleanup so EMFILE backoff triggers.
+* Fix: Fix resolver IPC max payload length to include header.
+* Fix: Use TOCTOU-safe directory validation for /var/run/sniproxy.
+* Fix: Wipe all derived keys on IPC channel init failure.
+* Fix: Fix resource leak on strdup failure in DoT server registration.
+* Fix: Add overflow check to iovec total length in DoT send path.
+* Fix: Snapshot protocol at accept time to prevent mismatch during reload.
+* Fix: Fail backend init when literal pattern anchoring malloc fails.
+* Fix: Fix ensure_logger_process return value after resend failure.
+* Fix: Chown log files before dropping privileges so SIGHUP log rotation
+  works.
 * Fix: Emit PROXY TCP4 instead of TCP6 for IPv4-mapped IPv6 addresses.
-* Fix: Unify fallback proxy_protocol naming with table backend syntax.
+* Hardening: Use reallocarray() for overflow-safe allocation throughout.
+* Hardening: Replace assert() with proper runtime error handling.
+* Hardening: Check setsockopt, fcntl, and inet_ntop return values.
+* Hardening: Add closefrom to AC_CHECK_FUNCS for efficient fd cleanup.
+* Build: Add missing OpenSSL and libbsd build dependencies.
+* Build: Clean up unused functions, dead code, and redundant includes.
 
 sniproxy 0.9.27 (2026-03-10)
 ===============================
