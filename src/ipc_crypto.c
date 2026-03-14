@@ -450,6 +450,8 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
     return 0;
 
 fail_wipe:
+    secure_memzero(state->send_key, sizeof(state->send_key));
+    secure_memzero(state->recv_key, sizeof(state->recv_key));
     secure_memzero(state->base_key, sizeof(state->base_key));
     return -1;
 }
