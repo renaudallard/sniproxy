@@ -492,6 +492,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     config->resolver.max_concurrent_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
     config->resolver.max_queries_per_client = DEFAULT_DNS_QUERIES_PER_CLIENT;
+    config->resolver.dnssec_validation_mode = DEFAULT_DNSSEC_VALIDATION_MODE;
     config->per_ip_connection_rate = DEFAULT_PER_IP_CONNECTION_RATE;
     config->per_ip_max_connections = DEFAULT_PER_IP_MAX_CONNECTIONS;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
