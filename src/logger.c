@@ -1153,9 +1153,13 @@ disable_logger_process(void) {
     if (logger_pid > 0) {
         /* Use WNOHANG to avoid blocking the mainloop if the child
          * is stuck on filesystem I/O (e.g. hung NFS mount) */
-        if (waitpid(logger_pid, NULL, WNOHANG) == 0) {
+        int wr = waitpid(logger_pid, NULL, WNOHANG);
+        if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);
+        } else if (wr == -1 && errno == ECHILD) {
+            /* Not our child (reparented after daemonize) */
+            kill(logger_pid, SIGKILL);
         }
         logger_pid = -1;
     }
@@ -1278,9 +1282,13 @@ logger_process_shutdown(void) {
     if (logger_pid > 0) {
         /* Use WNOHANG to avoid blocking if the child is stuck on
          * filesystem I/O; SIGKILL ensures it terminates */
-        if (waitpid(logger_pid, NULL, WNOHANG) == 0) {
+        int wr = waitpid(logger_pid, NULL, WNOHANG);
+        if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);
+        } else if (wr == -1 && errno == ECHILD) {
+            /* Not our child (reparented after daemonize) */
+            kill(logger_pid, SIGKILL);
         }
     }
 
