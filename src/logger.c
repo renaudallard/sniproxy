@@ -642,7 +642,8 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
             have_payload = 1;
     }
 
-    if (logger_process_enabled && logger->sink != NULL && have_payload) {
+    if (logger_process_enabled && logger->sink != NULL && have_payload &&
+            logger->sink->type != LOG_SINK_STDERR) {
         if (send_logger_log(logger, priority, buffer, payload_len) == 0)
             return;
 
