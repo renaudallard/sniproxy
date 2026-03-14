@@ -2532,15 +2532,16 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         child_dot_server_capacity = new_cap;
     }
 
-    child_dot_servers[child_dot_server_count] = server;
-    struct ResolverDotServer *slot = &child_dot_servers[child_dot_server_count];
-    child_dot_server_count++;
-
     char buffer[ADDRESS_BUFFER_SIZE];
-    display_sockaddr(&slot->addr, slot->addr_len, buffer, sizeof(buffer));
+    display_sockaddr(&server.addr, server.addr_len, buffer, sizeof(buffer));
     *converted = strdup(buffer);
-    if (*converted == NULL)
+    if (*converted == NULL) {
+        free(server.sni_hostname);
         return -1;
+    }
+
+    child_dot_servers[child_dot_server_count] = server;
+    child_dot_server_count++;
 
     return 0;
 }
