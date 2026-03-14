@@ -912,8 +912,10 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
 
     uint8_t *cipher = malloc(frame_len);
     if (cipher == NULL) {
+        int saved_errno = errno;
         if (prefix_fd >= 0)
             close(prefix_fd);
+        errno = saved_errno;
         return -1;
     }
 
