@@ -933,9 +933,11 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
     } while (ret < 0 && errno == EINTR);
 
     if (ret <= 0) {
+        int saved_errno = errno;
         free(cipher);
         if (prefix_fd >= 0)
             close(prefix_fd);
+        errno = saved_errno;
         return (int)ret;
     }
 
