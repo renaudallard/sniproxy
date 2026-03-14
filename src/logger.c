@@ -1257,7 +1257,7 @@ ensure_logger_process(void) {
     logger_process_enabled = 1;
     logger_resend_sinks();
 
-    return 1;
+    return logger_process_enabled;
 }
 
 static void
