@@ -786,66 +786,57 @@ write_pidfile(const char *path, pid_t pid) {
 
     fd = open(path, open_flags, 0600);
     if (fd < 0) {
-        if (errno == EEXIST) {
-            fprintf(stderr, "PID file %s already exists (possible race or stale file)\n", path);
-        } else {
-            perror("open");
-        }
+        if (errno == EEXIST)
+            err("PID file %s already exists (possible race or stale file)", path);
+        else
+            err("open PID file %s: %s", path, strerror(errno));
         return;
     }
 
     struct stat st;
     if (fstat(fd, &st) != 0) {
-        int saved_errno = errno;
-        perror("fstat");
+        err("fstat PID file: %s", strerror(errno));
         close(fd);
-        errno = saved_errno;
         return;
     }
 
     /* Validate file type and attributes for security */
     if (!S_ISREG(st.st_mode)) {
-        fprintf(stderr, "PID file is not a regular file\n");
-        errno = EINVAL;
+        err("PID file is not a regular file");
         close(fd);
         return;
     }
 
     /* Defense-in-depth: verify file was just created and we own it */
     if (st.st_nlink != 1) {
-        fprintf(stderr, "PID file has unexpected link count: %lu\n",
+        err("PID file has unexpected link count: %lu",
                 (unsigned long)st.st_nlink);
-        errno = EINVAL;
         close(fd);
         return;
     }
 
     if (st.st_uid != getuid()) {
-        fprintf(stderr, "PID file owned by unexpected UID: %u (expected %u)\n",
+        err("PID file owned by unexpected UID: %u (expected %u)",
                 (unsigned int)st.st_uid, (unsigned int)getuid());
-        errno = EPERM;
         close(fd);
         return;
     }
 
     if (st.st_size != 0) {
-        fprintf(stderr, "PID file has unexpected size: %lld\n",
+        err("PID file has unexpected size: %lld",
                 (long long)st.st_size);
-        errno = EINVAL;
         close(fd);
         return;
     }
 
     if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
         if (fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH)) != 0)
-            perror("fchmod");
+            warn("fchmod PID file: %s", strerror(errno));
     }
 
     fp = fdopen(fd, "w");
     if (fp == NULL) {
-        int saved_errno = errno;
-        perror("fdopen");
-        errno = saved_errno;
+        err("fdopen PID file: %s", strerror(errno));
         goto cleanup;
     }
 
