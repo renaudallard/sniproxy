@@ -1811,7 +1811,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 }
 #ifdef __OpenBSD__
                 /* Tighten pledge - no longer need id */
-                if (pledge("stdio rpath wpath cpath fattr unix",
+                if (pledge("stdio rpath wpath cpath fattr unix recvfd",
                             NULL) == -1) {
                     fprintf(stderr,
                             "logger: pledge tighten failed: %s\n",
@@ -1881,7 +1881,7 @@ logger_child_main(int sockfd) {
 
 #ifdef __OpenBSD__
     /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
-    if (pledge("stdio rpath wpath cpath fattr id unix", NULL) == -1) {
+    if (pledge("stdio rpath wpath cpath fattr id unix recvfd", NULL) == -1) {
         fprintf(stderr, "logger: pledge failed: %s\n", strerror(errno));
         logger_child_exit(EXIT_FAILURE);
     }
