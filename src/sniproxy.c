@@ -306,6 +306,14 @@ main(int argc, char **argv) {
         }
     }
 
+    /* Resolve config path to absolute before daemonize() calls chdir("/"),
+     * otherwise SIGHUP reload would fail with a relative path. */
+    char config_path_buf[PATH_MAX];
+    if (config_file[0] != '/') {
+        if (realpath(config_file, config_path_buf) != NULL)
+            config_file = config_path_buf;
+    }
+
 #ifdef __OpenBSD__
     openbsd_unveil_path(config_file, "r", 0);
 #endif
@@ -840,7 +848,8 @@ write_pidfile(const char *path, pid_t pid) {
         goto cleanup;
     }
 
-    fprintf(fp, "%d\n", pid);
+    if (fprintf(fp, "%d\n", pid) < 0 || fflush(fp) != 0)
+        err("write PID file %s: %s", path, strerror(errno));
 
 cleanup:
     if (fp != NULL)
