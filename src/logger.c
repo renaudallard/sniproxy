@@ -1972,12 +1972,14 @@ logger_check_pong(void) {
     if (!logger_process_enabled || logger_sock < 0 || !logger_ping_pending)
         return -1;
 
-    /* Use poll with timeout to check for response */
+    /* Non-blocking check: the parent socket is already O_NONBLOCK
+     * and the child had 30 seconds to respond since the ping was sent.
+     * Using poll(0) avoids blocking the event loop. */
     struct pollfd pfd;
     pfd.fd = logger_sock;
     pfd.events = POLLIN;
 
-    int ret = poll(&pfd, 1, 100); /* 100ms */
+    int ret = poll(&pfd, 1, 0);
     if (ret <= 0)
         return -1; /* No response or error */
 
