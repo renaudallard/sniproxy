@@ -541,12 +541,26 @@ fallback:
         struct stat st;
 
     if (mkdir(fallback_dir, 0700) == 0 || errno == EEXIST) {
-        if (lstat(fallback_dir, &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode) &&
-            st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
-            if (snprintf(temp_dir, sizeof(temp_dir), "%s", fallback_dir)
-                < (int)sizeof(temp_dir)) {
-                initialized = 1;
-                return temp_dir;
+        int dir_fd = open(fallback_dir, O_RDONLY | O_DIRECTORY
+#ifdef O_NOFOLLOW
+            | O_NOFOLLOW
+#endif
+#ifdef O_CLOEXEC
+            | O_CLOEXEC
+#endif
+            , 0);
+        if (dir_fd >= 0) {
+            if (fstat(dir_fd, &st) == 0 && S_ISDIR(st.st_mode) &&
+                st.st_uid == getuid() &&
+                (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
+                close(dir_fd);
+                if (snprintf(temp_dir, sizeof(temp_dir), "%s",
+                        fallback_dir) < (int)sizeof(temp_dir)) {
+                    initialized = 1;
+                    return temp_dir;
+                }
+            } else {
+                close(dir_fd);
             }
         }
     }
