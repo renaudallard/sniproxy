@@ -2008,13 +2008,19 @@ logger_check_pong(void) {
     return 0;
 }
 
+static int
+logger_restart_child(void) {
+    disable_logger_process();
+    logger_process_failed = 0;
+    return ensure_logger_process();
+}
+
 static void
 logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
     (void)w;
     (void)revents;
 
     if (!logger_process_enabled) {
-        /* Logger not running, stop health checks */
         ev_timer_stop(loop, &logger_health_timer);
         logger_health_check_active = 0;
         return;
@@ -2022,25 +2028,31 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
 
     /* Check if previous ping got a response */
     if (logger_ping_pending) {
-        /* Try one more time to get the response */
         if (logger_check_pong() < 0) {
-            /* Logger failed to respond - this is fatal */
+            logger_ping_pending = 0;
+            err("Logger health check: no response to ping, restarting");
+            if (logger_restart_child()) {
+                /* Restart succeeded, continue health checks */
+                return;
+            }
+            err("Logger restart failed, falling back to in-process logging");
             ev_timer_stop(loop, &logger_health_timer);
             logger_health_check_active = 0;
-            fatal("Logger process health check failed: no response to ping");
+            return;
         }
     }
 
     /* Send new ping */
     if (logger_send_ping() < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            /* Socket buffer full - logger is alive but busy, skip this round */
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return;
+        err("Logger health check: unable to send ping, restarting");
+        if (logger_restart_child()) {
             return;
         }
-        /* Failed to send ping - logger may be dead */
+        err("Logger restart failed, falling back to in-process logging");
         ev_timer_stop(loop, &logger_health_timer);
         logger_health_check_active = 0;
-        fatal("Logger process health check failed: unable to send ping");
     }
 }
 
