@@ -546,11 +546,14 @@ decode_header_block(struct hpack_decoder *decoder,
     size_t pos = 0;
     size_t decoded_budget = HTTP2_MAX_HEADER_BLOCK_SIZE;
     size_t header_count = 0;
+    size_t table_size_updates = 0;
 
     while (pos < len) {
         unsigned char byte = data[pos];
 
-        /* Dynamic table size updates don't count as headers */
+        /* Dynamic table size updates don't count as headers but
+         * RFC 7541 Section 4.2 limits them to at most 2 and only
+         * at the start of a header block */
         if ((byte & 0xE0) != 0x20) {
             if (++header_count > http2_max_headers)
                 return -4;
@@ -575,6 +578,8 @@ decode_header_block(struct hpack_decoder *decoder,
         }
 
         if ((byte & 0xE0) == 0x20) { /* Dynamic table size update */
+            if (header_count > 0 || ++table_size_updates > 2)
+                return -4;
             size_t new_size;
             size_t consumed;
             if (decode_integer(data + pos, len - pos, 5, &new_size, &consumed) < 0)
