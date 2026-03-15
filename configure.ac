@@ -104,6 +104,7 @@ AS_IF([test "x$enable_hardening" != "xno"], [
   AS_IF([test "x$sniproxy_cv_cc_is_clang" != "xyes"], [
     SNIPROXY_APPEND_CFLAG([-fstack-clash-protection], [fstack_clash_protection])
   ])
+  SNIPROXY_APPEND_CFLAG([-fno-strict-overflow], [fno_strict_overflow])
   SNIPROXY_APPEND_CFLAG([-fcf-protection=full], [fcf_protection])
   SNIPROXY_APPEND_CFLAG([-Wformat], [wformat])
   SNIPROXY_APPEND_CFLAG([-Wformat-security], [wformat_security])
