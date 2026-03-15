@@ -47,10 +47,12 @@
 #include "binder.h"
 #include "protocol.h"
 #include "tls.h"
+#include "dtls.h"
 #include "http.h"
 #include "xmpp.h"
 #include "minecraft.h"
 #include "fd_util.h"
+#include "udp_connection.h"
 
 #define LISTENER_ACCEPT_MAX_BATCH 64
 /* Yield to the event loop after this many successful accepts to avoid starvation. */
@@ -303,6 +305,34 @@ listeners_reload(struct Listener_head *existing_listeners,
             /* -1 for removing from new_listeners */
             listener_ref_put(new_listener);
         } else if (compare_result == 0) {
+            /* If the socket type changed (e.g. tls->dtls or dtls->tls),
+             * we cannot update in place: the socket, watcher callback,
+             * and options all differ.  Remove old and add new instead. */
+            if (iter_existing->protocol->sock_type !=
+                    iter_new->protocol->sock_type) {
+                struct Listener *removed = iter_existing;
+                struct Listener *added = iter_new;
+                iter_existing = SLIST_NEXT(iter_existing, entries);
+                iter_new = SLIST_NEXT(iter_new, entries);
+
+                notice("Listener %s replaced (socket type changed).",
+                        display_address(removed->address,
+                                address, sizeof(address)));
+
+                remove_listener(existing_listeners, removed, loop);
+
+                SLIST_REMOVE(new_listeners, added, Listener, entries);
+                add_listener(existing_listeners, added);
+                if (init_listener(added, tables, loop) < 0) {
+                    err("Failed to initialize replacement listener %s",
+                            display_address(added->address,
+                                    address, sizeof(address)));
+                    remove_listener(existing_listeners, added, loop);
+                }
+                listener_ref_put(added);
+                continue;
+            }
+
             notice ("Listener %s updated.",
                     display_address(iter_existing->address,
                             address, sizeof(address)));
@@ -478,6 +508,8 @@ accept_listener_protocol(struct Listener *listener, const char *protocol) {
         listener->protocol = minecraft_protocol;
     else if (strcasecmp(protocol, "tls") == 0)
         listener->protocol = tls_protocol;
+    else if (strcasecmp(protocol, dtls_protocol->name) == 0)
+        listener->protocol = dtls_protocol;
     else {
         err("unknown protocol '%s'", protocol);
         return -1;
@@ -707,7 +739,8 @@ valid_listener(const struct Listener *listener) {
 
     if (listener->protocol != tls_protocol && listener->protocol != http_protocol &&
             listener->protocol != xmpp_protocol &&
-            listener->protocol != minecraft_protocol) {
+            listener->protocol != minecraft_protocol &&
+            listener->protocol != dtls_protocol) {
         err("Invalid protocol");
         return 0;
     }
@@ -736,9 +769,11 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         address_set_port(listener->fallback_address,
                 address_port(listener->address));
 
-    int socket_type = SOCK_STREAM;
+    int is_dgram = listener->protocol->sock_type == SOCK_DGRAM;
+    int socket_type = is_dgram ? SOCK_DGRAM : SOCK_STREAM;
 #ifdef HAVE_ACCEPT4
-    socket_type |= SOCK_NONBLOCK;
+    if (!is_dgram)
+        socket_type |= SOCK_NONBLOCK;
 #endif
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;
@@ -765,13 +800,15 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         goto error;
     }
 
-    /* set SO_KEEPALIVE on the server socket so that abandoned client connections
+    /* set SO_KEEPALIVE on TCP sockets so abandoned client connections
      * do not linger behind forever */
-    result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
-    if (result < 0) {
-        err("setsockopt SO_KEEPALIVE failed: %s", strerror(errno));
-        rc = result;
-        goto error;
+    if (!is_dgram) {
+        result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+        if (result < 0) {
+            err("setsockopt SO_KEEPALIVE failed: %s", strerror(errno));
+            rc = result;
+            goto error;
+        }
     }
 
     if (listener->reuseport == 1) {
@@ -811,7 +848,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         /* Retry using binder module */
         close(sockfd);
         sockfd = bind_socket(address_sa(listener->address),
-                address_sa_len(listener->address));
+                address_sa_len(listener->address),
+                listener->protocol->sock_type);
         if (sockfd < 0) {
             err("binder failed to bind to %s",
                 display_address(listener->address, address, sizeof(address)));
@@ -826,11 +864,13 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         }
 
         /* Re-apply socket options lost when the binder provided a new socket */
-        result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
-        if (result < 0) {
-            err("setsockopt SO_KEEPALIVE failed on binder socket: %s", strerror(errno));
-            rc = result;
-            goto error;
+        if (!is_dgram) {
+            result = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+            if (result < 0) {
+                err("setsockopt SO_KEEPALIVE failed on binder socket: %s", strerror(errno));
+                rc = result;
+                goto error;
+            }
         }
 
         if (listener->reuseport == 1) {
@@ -867,21 +907,23 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         goto error;
     }
 
-    result = listen(sockfd, SOMAXCONN);
-    if (result < 0) {
-        err("listen failed: %s", strerror(errno));
-        rc = result;
-        goto error;
-    }
+    if (!is_dgram) {
+        result = listen(sockfd, SOMAXCONN);
+        if (result < 0) {
+            err("listen failed: %s", strerror(errno));
+            rc = result;
+            goto error;
+        }
 
 #ifdef TCP_FASTOPEN
-    if (listener_tcp_fastopen) {
-        int tfo_qlen = 256;
-        if (setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN,
-                &tfo_qlen, sizeof(tfo_qlen)) < 0)
-            info("setsockopt TCP_FASTOPEN failed: %s", strerror(errno));
-    }
+        if (listener_tcp_fastopen) {
+            int tfo_qlen = 256;
+            if (setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN,
+                    &tfo_qlen, sizeof(tfo_qlen)) < 0)
+                info("setsockopt TCP_FASTOPEN failed: %s", strerror(errno));
+        }
 #endif
+    }
 
     /* Always set nonblocking. When the binder provides a replacement
      * socket, it does not have SOCK_NONBLOCK set even if the original
@@ -899,7 +941,10 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         goto error;
     }
 
-    ev_io_init(&listener->watcher, accept_cb, sockfd, EV_READ);
+    if (is_dgram)
+        ev_io_init(&listener->watcher, udp_recv_cb, sockfd, EV_READ);
+    else
+        ev_io_init(&listener->watcher, accept_cb, sockfd, EV_READ);
     listener->watcher.data = listener;
     listener->backoff_timer.data = listener;
 

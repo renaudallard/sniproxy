@@ -1,3 +1,12 @@
+Unreleased
+==========
+
+* Feature: Add DTLS (TLS over UDP) protocol support. Proxies DTLS
+  connections by extracting the SNI extension from the DTLS ClientHello
+  datagram, enabling hostname-based routing for WebRTC, OpenConnect VPN,
+  CoAP, and other UDP/DTLS protocols without decrypting traffic.
+  Configure with `protocol dtls` in listener blocks.
+
 sniproxy 0.10.0 (2026-03-14)
 ===============================
 

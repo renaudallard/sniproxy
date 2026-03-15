@@ -10,6 +10,7 @@ TESTS = address_test \
         table_test \
         http_test \
         tls_test \
+        dtls_test \
         xmpp_test \
         minecraft_test \
         binder_test \
@@ -33,6 +34,7 @@ TESTS += config_test \
 
 check_PROGRAMS = http_test \
                  tls_test \
+                 dtls_test \
                  xmpp_test \
                  minecraft_test \
                  table_test \
@@ -56,6 +58,14 @@ tls_test_SOURCES = tls_test.c \
                    ../src/seccomp.c
 
 tls_test_LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
+
+dtls_test_SOURCES = dtls_test.c \
+                    ../src/dtls.c \
+                    ../src/logger.c \
+                    ../src/ipc_crypto.c \
+                    ../src/seccomp.c
+
+dtls_test_LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 xmpp_test_SOURCES = xmpp_test.c \
                     ../src/xmpp.c
@@ -93,6 +103,7 @@ config_test_SOURCES = config_test.c \
                       ../src/listener.c \
                       ../src/connection.c \
                       ../src/buffer.c \
+                      ../src/dtls.c \
                       ../src/logger.c \
                       ../src/ipc_crypto.c \
                       ../src/resolv.c \
@@ -101,6 +112,7 @@ config_test_SOURCES = config_test.c \
                       ../src/http.c \
                       ../src/http2.c \
                       ../src/http2_huffman.c \
+                      ../src/udp_connection.c \
                       ../src/xmpp.c \
                       ../src/minecraft.c \
                       ../src/seccomp.c

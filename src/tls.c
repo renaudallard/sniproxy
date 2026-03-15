@@ -51,16 +51,10 @@ static size_t tls_max_extension_length = TLS_DEFAULT_MAX_EXTENSION_LENGTH;
 
 
 #include "util.h"
+#include "sni_parse.h"
 
 
 static int parse_tls_header(const char *, size_t, char **);
-static int parse_extensions(const uint8_t*, size_t, char **);
-static int parse_server_name_extension(const uint8_t*, size_t, char **);
-static int extensions_have_required_version(const uint8_t *, size_t,
-        uint8_t required_major, uint8_t required_minor);
-static int parse_supported_versions_extension(const uint8_t *, size_t,
-        uint8_t required_major, uint8_t required_minor,
-        int require_supported_versions, int *version_ok);
 
 static uint8_t min_client_hello_version_major = 3;
 static uint8_t min_client_hello_version_minor = 3;
@@ -85,7 +79,8 @@ const struct Protocol *const tls_protocol = &(struct Protocol){
     .default_port = 443,
     .parse_packet = &parse_tls_header,
     .abort_message = tls_alert,
-    .abort_message_len = sizeof(tls_alert)
+    .abort_message_len = sizeof(tls_alert),
+    .sock_type = SOCK_STREAM,
 };
 
 
@@ -249,8 +244,10 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
         return -5;
 
     if (require_supported_versions) {
-        int sv = extensions_have_required_version(body, len,
-                min_client_hello_version_major, min_client_hello_version_minor);
+        int sv = sni_extensions_have_required_version(body, len,
+                min_client_hello_version_major,
+                min_client_hello_version_minor,
+                tls_max_extensions);
         if (sv == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
             return sv;
         if (sv < 0)
@@ -259,187 +256,6 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
             return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
 
-    return parse_extensions(body, len, hostname);
-}
-
-static int
-parse_extensions(const uint8_t *data, size_t data_len, char **hostname) {
-    size_t pos = 0;
-    size_t ext_count = 0;
-
-    while (pos < data_len) {
-        size_t remaining = data_len - pos;
-        if (remaining < 4)
-            break;
-
-        if (ext_count++ >= tls_max_extensions) {
-            debug("TLS ClientHello exceeded maximum extension count (%zu)", tls_max_extensions);
-            return -5;
-        }
-
-        size_t len = ((size_t)data[pos + 2] << 8) +
-            (size_t)data[pos + 3];
-
-        if (len > remaining - 4)
-            return -5;
-
-        if (len > tls_max_extension_length)
-            return -5;
-
-        if (data[pos] == 0x00 && data[pos + 1] == 0x00)
-            return parse_server_name_extension(data + pos + 4, len, hostname);
-
-        if (data[pos] == 0xff && data[pos + 1] == 0x01) {
-            if (len < 1)
-                return -5;
-
-            size_t renegotiated_connection_length = data[pos + 4];
-
-            if (renegotiated_connection_length != len - 1)
-                return -5;
-
-            if (renegotiated_connection_length != 0) {
-                debug("Client-initiated TLS renegotiation is not supported.");
-                return TLS_ERR_CLIENT_RENEGOTIATION;
-            }
-        }
-
-        pos += 4 + len;
-    }
-
-    if (pos != data_len)
-        return -5;
-
-    return -2;
-}
-
-static int
-extensions_have_required_version(const uint8_t *data, size_t data_len,
-        uint8_t required_major, uint8_t required_minor) {
-    size_t pos = 0;
-    size_t len;
-    size_t ext_count = 0;
-
-    while (pos < data_len) {
-        size_t remaining = data_len - pos;
-        if (remaining < 4)
-            break;
-
-        if (ext_count++ >= tls_max_extensions)
-            return -5;
-
-        len = ((size_t)data[pos + 2] << 8) +
-            (size_t)data[pos + 3];
-
-        if (len > remaining - 4)
-            return -5;
-
-        if (data[pos] == 0x00 && data[pos + 1] == 0x2b) {
-            int version_ok = 0;
-            int rc = parse_supported_versions_extension(data + pos + 4, len,
-                    required_major, required_minor, 1, &version_ok);
-            if (rc == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
-                return rc;
-            if (rc < 0)
-                return rc;
-            return version_ok ? 1 : TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
-        }
-
-        pos += 4 + len;
-    }
-
-    return 0;
-}
-
-static int
-parse_server_name_extension(const uint8_t *data, size_t data_len,
-        char **hostname) {
-    size_t pos = 2; /* skip server name list length */
-    size_t len;
-
-    while (pos < data_len) {
-        size_t remaining = data_len - pos;
-        if (remaining <= 3)
-            break;
-        len = ((size_t)data[pos + 1] << 8) +
-            (size_t)data[pos + 2];
-
-        if (len > remaining - 3)
-            return -5;
-
-        switch (data[pos]) { /* name type */
-            case 0x00: /* host_name */
-                if (len == 0 || len >= SERVER_NAME_LEN)
-                    return -5;
-
-                const uint8_t *hostname_bytes = data + pos + 3;
-                if (memchr(hostname_bytes, '\0', len) != NULL)
-                    return -5;
-
-                size_t alloc_len = len + 1;
-                *hostname = calloc(alloc_len, 1);
-                if (*hostname == NULL) {
-                    err("calloc() failure");
-                    return -4;
-                }
-
-                memcpy(*hostname, hostname_bytes, len);
-
-                (*hostname)[len] = '\0';
-
-                size_t hostname_len = len;
-
-                if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
-                    free(*hostname);
-                    *hostname = NULL;
-                    return -5;
-                }
-
-                return (int)hostname_len;
-            default:
-                debug("Unknown server name extension name type: %" PRIu8,
-                      data[pos]);
-        }
-        pos += 3 + len;
-    }
-    /* Check we ended where we expected to */
-    if (pos != data_len)
-        return -5;
-
-    return -2;
-}
-
-static int
-parse_supported_versions_extension(const uint8_t *data, size_t data_len,
-        uint8_t required_major, uint8_t required_minor,
-        int require_supported_versions, int *version_ok) {
-    if (data_len < 1)
-        return -5;
-
-    size_t list_len = data[0];
-    data++;
-    data_len--;
-
-    if (list_len == 0 || list_len != data_len)
-        return -5;
-    if ((list_len & 1) != 0)
-        return -5;
-
-    if (version_ok == NULL)
-        return 0;
-
-    uint16_t required = ((uint16_t)required_major << 8) | required_minor;
-
-    for (size_t i = 0; i < list_len; i += 2) {
-        uint16_t version = ((uint16_t)data[i] << 8) | data[i + 1];
-        if (version >= required) {
-            *version_ok = 1;
-            break;
-        }
-    }
-
-    if (require_supported_versions && !*version_ok)
-        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
-
-    return 0;
+    return sni_parse_extensions(body, len, hostname,
+            tls_max_extensions, tls_max_extension_length);
 }

@@ -1,8 +1,12 @@
 Hardened SNI Proxy
 ==================
 
-Proxies incoming HTTP, TLS, XMPP, and Minecraft connections based on the
-hostname contained in the initial request of the TCP session. This enables
+Proxies incoming HTTP, TLS, DTLS, XMPP, and Minecraft connections based on
+the hostname contained in the initial request. For TCP protocols (TLS, HTTP,
+XMPP, Minecraft) the hostname is extracted from the initial TCP stream. For
+DTLS (TLS over UDP) the hostname is extracted from the SNI extension in the
+UDP ClientHello datagram, enabling proxying of WebRTC, OpenConnect VPN, CoAP,
+and other UDP/DTLS protocols by hostname without decryption. This enables
 HTTPS name-based virtual hosting to separate backend servers without
 installing the private key on the proxy machine.
 
@@ -15,9 +19,10 @@ Features
 ### Core Functionality
 + **Name-based proxying** of HTTPS without decrypting traffic - no keys or
   certificates required on the proxy
-+ **Protocol support**: TLS (SNI extraction), HTTP/1.x (Host header),
-  HTTP/2 (HPACK :authority pseudo-header), XMPP (stream `to` attribute),
-  and Minecraft Java Edition (handshake server address)
++ **Protocol support**: TLS (SNI extraction), DTLS (SNI extraction over UDP),
+  HTTP/1.x (Host header), HTTP/2 (HPACK :authority pseudo-header),
+  XMPP (stream `to` attribute), and Minecraft Java Edition (handshake server
+  address)
 + **Pattern matching**: Exact hostname matching and PCRE2 regular expressions
 + **Wildcard backends**: Route to dynamically resolved hostnames
 + **Fallback routing**: Default backend for requests without valid hostnames

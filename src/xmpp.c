@@ -63,6 +63,7 @@ const struct Protocol *const xmpp_protocol = &(struct Protocol){
     .parse_packet = &parse_xmpp_stream,
     .abort_message = xmpp_error,
     .abort_message_len = sizeof(xmpp_error) - 1,
+    .sock_type = SOCK_STREAM,
 };
 
 /*

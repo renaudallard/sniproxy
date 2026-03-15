@@ -96,6 +96,7 @@ void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
 void connections_set_global_limit(size_t limit);
 void connections_set_backend_acl(int mode,
         struct ListenerACLRule_head *rules);
+int backend_acl_allows(const struct sockaddr_storage *);
 void connections_set_tcp_fastopen(int enabled);
 
 #define CONNECTION_DEFAULT_HEADER_TIMEOUT 5.0

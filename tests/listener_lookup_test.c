@@ -168,9 +168,18 @@ void fatal(const char *fmt, ...) {
     (void)fmt;
 }
 
-struct Protocol { const char *name; };
+struct Protocol { const char *name; int sock_type; };
 const struct Protocol *const http_protocol = NULL;
 const struct Protocol *const tls_protocol = NULL;
+const struct Protocol *const dtls_protocol = NULL;
+
+void udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
+    (void)loop; (void)w; (void)revents;
+}
+
+void udp_print_sessions(FILE *f) {
+    (void)f;
+}
 
 struct Table *table_lookup(const struct Table_head *tables, const char *name) {
     (void)tables;
@@ -190,9 +199,10 @@ void table_ref_put(struct Table *table) {
     (void)table;
 }
 
-int bind_socket(const struct sockaddr *addr, size_t len) {
+int bind_socket(const struct sockaddr *addr, size_t len, int sock_type) {
     (void)addr;
     (void)len;
+    (void)sock_type;
     return -1;
 }
 

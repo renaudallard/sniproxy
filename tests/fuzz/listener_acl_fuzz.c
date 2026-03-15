@@ -23,6 +23,7 @@ static const struct Protocol http_protocol_impl = {
     .parse_packet = stub_protocol_parse_cb,
     .abort_message = http_abort_message,
     .abort_message_len = sizeof(http_abort_message) - 1,
+    .sock_type = SOCK_STREAM,
 };
 
 static const char tls_abort_message[] = "tls abort";
@@ -32,12 +33,23 @@ static const struct Protocol tls_protocol_impl = {
     .parse_packet = stub_protocol_parse_cb,
     .abort_message = tls_abort_message,
     .abort_message_len = sizeof(tls_abort_message) - 1,
+    .sock_type = SOCK_STREAM,
+};
+
+static const struct Protocol dtls_protocol_impl = {
+    .name = "dtls",
+    .default_port = 443,
+    .parse_packet = stub_protocol_parse_cb,
+    .abort_message = NULL,
+    .abort_message_len = 0,
+    .sock_type = SOCK_DGRAM,
 };
 
 /* Mark stub protocol pointers weak so real implementations can override them
  * when linked in, avoiding multiple definition errors. */
 const struct Protocol *const http_protocol __attribute__((weak)) = &http_protocol_impl;
 const struct Protocol *const tls_protocol __attribute__((weak)) = &tls_protocol_impl;
+const struct Protocol *const dtls_protocol __attribute__((weak)) = &dtls_protocol_impl;
 
 static void swallow_log(const char *fmt __attribute__((unused)),
         va_list ap __attribute__((unused))) {}
@@ -99,7 +111,8 @@ logger_ref_put(struct Logger *logger __attribute__((unused))) {}
 
 int
 bind_socket(const struct sockaddr *addr __attribute__((unused)),
-        size_t len __attribute__((unused))) {
+        size_t len __attribute__((unused)),
+        int sock_type __attribute__((unused))) {
     errno = EACCES;
     return -1;
 }

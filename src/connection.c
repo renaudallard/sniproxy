@@ -57,6 +57,7 @@
 #include "logger.h"
 #include "tls.h"
 #include "fd_util.h"
+#include "udp_connection.h"
 
 #if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
 #error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, macOS, and modern Linux)."
@@ -727,6 +728,8 @@ print_connections(void) {
         print_connection(temp, iter);
         iter = TAILQ_NEXT(iter, entries);
     }
+
+    udp_print_sessions(temp);
 
     if (fclose(temp) < 0) {
         warn("fclose failed: %s", strerror(errno));
@@ -1780,7 +1783,7 @@ backend_acl_rule_match_v6(const struct ListenerACLRule *rule,
     return 1;
 }
 
-static int
+int
 backend_acl_allows(const struct sockaddr_storage *addr) {
     if (backend_acl_mode == LISTENER_ACL_MODE_DISABLED)
         return 1;

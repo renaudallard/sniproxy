@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Dustin Lundquist <dustin@null-ptr.net>
+ * Copyright (c) 2026, Renaud Allard <renaud@allard.it>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -23,15 +23,23 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef BINDER_H
-#define BINDER_H
+#ifndef UDP_CONNECTION_H
+#define UDP_CONNECTION_H
 
-#include <stddef.h>
-#include <sys/socket.h>
+#include <stdio.h>
+#include <ev.h>
 
-void start_binder(void);
-int binder_register_allowed_address(const struct sockaddr *, size_t);
-int bind_socket(const struct sockaddr *, size_t, int sock_type);
-void stop_binder(void);
+struct Listener;
+
+void udp_init_sessions(void);
+void udp_free_sessions(struct ev_loop *);
+void udp_recv_cb(struct ev_loop *, struct ev_io *, int);
+void udp_print_sessions(FILE *);
+
+#define UDP_DEFAULT_IDLE_TIMEOUT 30.0
+#define UDP_SESSION_BUCKET_BITS 10
+#define UDP_SESSION_BUCKETS (1u << UDP_SESSION_BUCKET_BITS)
+#define UDP_MAX_DGRAM 65535
+#define UDP_MAX_SESSIONS 16384
 
 #endif

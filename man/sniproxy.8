@@ -2,7 +2,7 @@
 
 .SH NAME
 
-SNIProxy \- transparent session based TLS, HTTP, XMPP, and Minecraft proxy
+SNIProxy \- transparent session based TLS, HTTP, DTLS, XMPP, and Minecraft proxy
 
 .SH SYNOPSIS
 
@@ -11,10 +11,14 @@ SNIProxy \- transparent session based TLS, HTTP, XMPP, and Minecraft proxy
 
 .SH DESCRIPTION
 
-Proxies incoming HTTP, TLS, XMPP, and Minecraft Java Edition connections,
-including HTTP/2 requests, based on the hostname contained in the initial
-request of the TCP session. This enables HTTPS name-based virtual hosting to separate
-backend servers without installing the private key on the proxy
+Proxies incoming HTTP, TLS, DTLS, XMPP, and Minecraft Java Edition
+connections, including HTTP/2 requests, based on the hostname contained in
+the initial request. For TCP protocols (TLS, HTTP, XMPP, Minecraft) the
+hostname is extracted from the initial TCP stream. For DTLS the hostname is
+extracted from the SNI extension in the UDP ClientHello datagram, enabling
+proxying of WebRTC, OpenConnect VPN, and other UDP/DTLS protocols by
+hostname without decryption. This enables HTTPS name-based virtual hosting
+to separate backend servers without installing the private key on the proxy
 machine\&. By default TLS 1.2 (and newer) client hellos are
 accepted\&.
 

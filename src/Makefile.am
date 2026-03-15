@@ -22,6 +22,8 @@ sniproxy_common_sources = address.c \
                           config.h \
                           connection.c \
                           connection.h \
+                          dtls.c \
+                          dtls.h \
                           http.c \
                           http.h \
                           http2.c \
@@ -44,10 +46,13 @@ sniproxy_common_sources = address.c \
                           resolv.h \
                           seccomp.c \
                           seccomp_filter.h \
+                          sni_parse.h \
                           table.c \
                           table.h \
                           tls.c \
                           tls.h \
+                          udp_connection.c \
+                          udp_connection.h \
                           util.h \
                           xmpp.c \
                           xmpp.h

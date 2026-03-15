@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Dustin Lundquist <dustin@null-ptr.net>
+ * Copyright (c) 2026, Renaud Allard <renaud@allard.it>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -23,15 +23,11 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef BINDER_H
-#define BINDER_H
+#ifndef DTLS_H
+#define DTLS_H
 
-#include <stddef.h>
-#include <sys/socket.h>
+#include "protocol.h"
 
-void start_binder(void);
-int binder_register_allowed_address(const struct sockaddr *, size_t);
-int bind_socket(const struct sockaddr *, size_t, int sock_type);
-void stop_binder(void);
+extern const struct Protocol *const dtls_protocol;
 
 #endif

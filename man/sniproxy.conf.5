@@ -331,17 +331,26 @@ listener [::]:80 {
 
     fallback unix:/var/run/http_fallback_unix.sock
 }
+
+listener 0.0.0.0 4443 {
+    protocol dtls
+    table dtls_backends
+}
 .fi
 .PP
 
 Define a listening address to accept new connections from clients on.
-Addresses may be specified as an IPv4 literal followed by a TCP port
-number, an IPv6 literal followed by a TCP port number, a bare TCP port
+Addresses may be specified as an IPv4 literal followed by a port
+number, an IPv6 literal followed by a port number, a bare port
 number, or a unix socket path prefixed with 'unix:'.
 
 Protocol defines how the client request should be parsed to obtain the
-requested hostname. Four protocols are supported: tls, http, xmpp, and
-minecraft. The minecraft protocol defaults to port 25565.
+requested hostname. Five protocols are supported: tls, http, xmpp,
+minecraft, and dtls. The minecraft protocol defaults to port 25565.
+The dtls protocol proxies DTLS (TLS over UDP) connections by extracting
+the SNI extension from the DTLS ClientHello, enabling proxying of
+WebRTC, OpenConnect VPN, CoAP, and other UDP/DTLS protocols by hostname
+without decryption.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same

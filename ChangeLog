@@ -1,3 +1,14 @@
+2026-03-16  Renaud Allard  <renaud@allard.it>
+
+	- Add DTLS (TLS over UDP) protocol support for proxying WebRTC,
+	  OpenConnect VPN, CoAP, and other UDP/DTLS protocols by hostname
+	- Shared SNI extension parsing between TLS and DTLS parsers
+	- UDP session manager with per-session connected server sockets,
+	  DNS resolution, idle timeouts, source address binding, and
+	  transparent proxy support
+	- Binder support for UDP (SOCK_DGRAM) privileged port binding
+	- DTLS parser unit tests and fuzz harness
+
 2026-03-14  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.10.0

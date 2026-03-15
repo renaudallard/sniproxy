@@ -302,7 +302,7 @@ binder_restart_child(void) {
 }
 
 int
-bind_socket(const struct sockaddr *addr, size_t addr_len) {
+bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type) {
     if (addr_len > BINDER_IPC_MAX_PAYLOAD - sizeof(struct binder_request))
         fatal("bind_socket: address length %zu exceeds buffer", addr_len);
 
@@ -311,6 +311,7 @@ bind_socket(const struct sockaddr *addr, size_t addr_len) {
     struct binder_request *request = (struct binder_request *)buffer;
     memset(request, 0, sizeof(*request));
     request->cmd = BINDER_CMD_BIND;
+    request->reserved[0] = (sock_type == SOCK_DGRAM) ? 1 : 0;
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
 
@@ -541,7 +542,7 @@ binder_main(int sockfd) {
             continue;
         }
 
-        int socket_type = SOCK_STREAM;
+        int socket_type = req->reserved[0] ? SOCK_DGRAM : SOCK_STREAM;
 #ifdef SOCK_CLOEXEC
         socket_type |= SOCK_CLOEXEC;
 #endif

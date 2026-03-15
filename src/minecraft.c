@@ -51,6 +51,7 @@ const struct Protocol *const minecraft_protocol = &(struct Protocol){
     .parse_packet = &parse_minecraft_handshake,
     .abort_message = NULL,
     .abort_message_len = 0,
+    .sock_type = SOCK_STREAM,
 };
 
 /*

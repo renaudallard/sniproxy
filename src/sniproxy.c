@@ -69,6 +69,7 @@
 #include "ipc_crypto.h"
 #include "http.h"
 #include "tls.h"
+#include "udp_connection.h"
 #include "seccomp_filter.h"
 
 
@@ -528,6 +529,7 @@ main(int argc, char **argv) {
         fatal("Failed to initialize resolver");
 
     init_connections();
+    udp_init_sessions();
 
     /* Install seccomp filter after all initialization is complete */
     if (seccomp_available()) {
@@ -543,6 +545,7 @@ main(int argc, char **argv) {
     ev_run(loop, 0);
 
     logger_stop_health_check();
+    udp_free_sessions(loop);
     free_connections(loop);
     resolv_shutdown(loop);
 

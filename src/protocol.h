@@ -28,6 +28,7 @@
 
 #include <inttypes.h>
 #include <stddef.h>
+#include <sys/socket.h>
 
 struct Protocol {
     const char *const name;
@@ -35,6 +36,7 @@ struct Protocol {
     int (*const parse_packet)(const char*, size_t, char **);
     const char *const abort_message;
     const size_t abort_message_len;
+    const int sock_type;  /* SOCK_STREAM or SOCK_DGRAM */
 };
 
 #endif
