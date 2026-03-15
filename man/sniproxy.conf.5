@@ -1,4 +1,4 @@
-.TH SNIPROXY.CONF 5 "06 Feb 2026" "SNIProxy manual" "sniproxy"
+.TH SNIPROXY.CONF 5 "14 Mar 2026" "SNIProxy manual" "sniproxy"
 
 .SH NAME
 
@@ -140,6 +140,19 @@ backends that return large responses relative to request size. Limits are
 applied to new connections immediately and propagated to existing
 connections during a configuration reload.
 
+.SS HTTP_MAX_HEADERS
+
+.PP
+.nf
+http_max_headers 200
+.fi
+.PP
+
+Limit how many HTTP headers are accepted per request. The default is
+100. Setting this value prevents CPU exhaustion attacks that send
+requests with an excessive number of headers. Values must be between
+1 and 4096.
+
 .SS BACKEND_ACL
 
 .PP
@@ -273,7 +286,7 @@ complete, use the first AAAA record if any, otherwise use the first A
 record.
 
 The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
-may be in flight at once (default 256). Lower values cap resolver resource
+may be in flight at once (default 512). Lower values cap resolver resource
 usage, while higher values increase throughput for configurations that rely on
 wildcard or hostname targets.
 

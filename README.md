@@ -128,7 +128,7 @@ Usage
 
     Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
         -c  configuration file, defaults to /etc/sniproxy.conf
-        -f  run in foreground, do not drop privileges
+        -f  run in foreground
         -g  allow group-read (0640) config permissions for SIGHUP reload
         -t  test configuration and exit
         -n  specify file descriptor limit
@@ -521,7 +521,7 @@ SNIProxy includes extensive security hardening:
 
 ### Security Controls
 
-- **DNS query ID randomization**: Uses a xorshift32 PRNG instead of a linear counter to prevent timing-based prediction attacks
+- **DNS query ID randomization**: Uses arc4random() to generate cryptographically secure random IDs to prevent prediction attacks
 - **c-ares resolver hardening**: Async-signal-safe signal handlers, integer overflow protection, and leak fixes keep the resolver stable under load
 - **TLS parser hardening**: Early rejection of SSL 2.0/3.0 and malformed ClientHello variants that cannot carry the SNI extension
 - **Regex DoS mitigation**: Match limits scale with hostname length to prevent catastrophic backtracking on hostile hostnames
@@ -552,8 +552,8 @@ On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper proces
 - **pledge()**: Promise sets are tailored per process to minimize available system calls:
   - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix` while reading configuration, then tightens to `stdio inet dns rpath proc unix` after dropping privileges
   - Binder process: `stdio unix inet` while handling privileged socket creation
-  - Logger process: starts with `stdio rpath wpath cpath fattr id unix`, then tightens to `stdio rpath wpath cpath fattr unix` after dropping privileges
-  - Resolver process: `stdio inet dns unix` to perform DNS lookups in isolation
+  - Logger process: starts with `stdio rpath wpath cpath fattr id unix recvfd`, then tightens to `stdio rpath wpath cpath fattr unix recvfd` after dropping privileges
+  - Resolver process: `stdio rpath inet dns unix` to perform DNS lookups in isolation
 
 All paths are collected from the loaded configuration, so custom locations work
 as long as files/directories exist before launch. After unveiling resources,
@@ -663,7 +663,6 @@ Run in foreground with resolver debug logging enabled:
 
 This will:
 - Keep process in foreground (not daemonize)
-- Not drop privileges (runs as invoking user)
 - Show detailed resolver tracing on stderr/error log to troubleshoot DNS issues
 
 Project Status

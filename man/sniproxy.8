@@ -1,4 +1,4 @@
-.TH SNIPROXY 8 "06 Feb 2026" "SNIProxy manual" "sniproxy"
+.TH SNIPROXY 8 "14 Mar 2026" "SNIProxy manual" "sniproxy"
 
 .SH NAME
 
@@ -67,3 +67,25 @@ is 1.2.
 .TP
 -d
 Enable verbose resolver debug logging to stderr and the error log to aid DNS troubleshooting\&.
+
+.SH SIGNALS
+
+.TP
+.B SIGHUP
+Reopen log files and reload the configuration file\&. Existing
+connections continue using their original routing; new connections
+use the updated configuration\&.
+
+.TP
+.B SIGUSR1
+Dump all active connections to a temporary file in
+.I /tmp
+for debugging\&.
+
+.TP
+.B SIGINT\fR, \fBSIGTERM
+Shut down gracefully\&.
+
+.SH "SEE ALSO"
+.PP
+\fBsniproxy.conf\fR(5)
