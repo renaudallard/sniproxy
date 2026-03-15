@@ -283,6 +283,15 @@ init_connections(void) {
     TAILQ_INIT(&connections);
     TAILQ_INIT(&shrink_candidates);
     buffer_pressure_last_run = 0.0;
+
+    /* Initialize hash seed for all IP-based hash tables (rate limiting,
+     * per-IP connection counting, DNS client tracking, backend affinity) */
+    if (rate_limit_hash_seed == 0) {
+        rate_limit_hash_seed = arc4random();
+        if (rate_limit_hash_seed == 0)
+            rate_limit_hash_seed = 0xdeadbeef;
+    }
+
     rate_limit_reset();
     buffer_set_memory_observer(buffer_memory_observer);
     for (size_t i = 0; i < DNS_CLIENT_BUCKETS; i++)
@@ -1487,14 +1496,6 @@ connections_set_per_ip_connection_rate(double rate) {
         rate = 0.0;
 
     per_ip_connection_rate_limit = rate;
-
-    /* Initialize hash seed once with cryptographically secure random value */
-    if (rate_limit_hash_seed == 0) {
-        rate_limit_hash_seed = arc4random();
-        if (rate_limit_hash_seed == 0)
-            rate_limit_hash_seed = 0xdeadbeef;
-    }
-
     rate_limit_reset();
 }
 
