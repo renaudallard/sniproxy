@@ -99,6 +99,19 @@ static const char *const network_syscalls[] = {
     NULL,
 };
 
+/* Restricted network subset for the logger child: IPC over its AF_UNIX
+ * socketpair plus syslog (openlog needs socket+connect, syslog needs
+ * sendto).  Does not include bind, listen, accept, recvfrom, socketpair,
+ * sendmmsg, recvmmsg, or getpeername. */
+static const char *const logger_network_syscalls[] = {
+    "socket", "connect",
+    "sendto", "sendmsg", "recvmsg",
+    "getsockopt", "setsockopt",
+    "getsockname",
+    "shutdown",
+    NULL,
+};
+
 static const char *const event_syscalls[] = {
     "poll", "ppoll", "select", "pselect6",
     "epoll_create", "epoll_create1", "epoll_ctl", "epoll_wait", "epoll_pwait",
@@ -172,8 +185,7 @@ install_filter(enum seccomp_process_type type) {
 
     /* Common syscalls for all processes */
     if (allow_syscalls(ctx, common_syscalls) < 0 ||
-        allow_syscalls(ctx, event_syscalls) < 0 ||
-        allow_syscalls(ctx, network_syscalls) < 0) {
+        allow_syscalls(ctx, event_syscalls) < 0) {
         seccomp_release(ctx);
         return -1;
     }
@@ -181,7 +193,8 @@ install_filter(enum seccomp_process_type type) {
     /* Process-specific rules */
     switch (type) {
         case SECCOMP_PROCESS_MAIN:
-            if (allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+            if (allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, process_syscalls) < 0) {
@@ -191,7 +204,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_LOGGER:
-            if (allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+            if (allow_syscalls(ctx, logger_network_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, privilege_syscalls) < 0) {
@@ -201,7 +215,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_RESOLVER:
-            if (allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+            if (allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
@@ -209,8 +224,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_BINDER:
-            /* Binder doesn't need to open/write files, just manage sockets */
-            if (allow_syscalls(ctx, fs_misc_syscalls) < 0) {
+            if (allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
             }
