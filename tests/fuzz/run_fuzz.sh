@@ -75,6 +75,7 @@ fi
 
 mkdir -p "$OUT_DIR" \
     "$CORPUS_ROOT/tls" \
+    "$CORPUS_ROOT/dtls" \
     "$CORPUS_ROOT/http2" \
     "$CORPUS_ROOT/http" \
     "$CORPUS_ROOT/xmpp" \
@@ -147,6 +148,7 @@ build_fuzzer listener_acl_fuzz \
     "$ROOT_DIR/src/address.c" \
     "$ROOT_DIR/src/backend.c" \
     "$ROOT_DIR/src/table.c" \
+    "$ROOT_DIR/src/dtls.c" \
     "$ROOT_DIR/src/tls.c" \
     "$ROOT_DIR/src/http.c" \
     "$ROOT_DIR/src/http2.c" \
@@ -173,6 +175,7 @@ build_fuzzer config_fuzz \
     "$ROOT_DIR/src/address.c" \
     "$ROOT_DIR/src/backend.c" \
     "$ROOT_DIR/src/table.c" \
+    "$ROOT_DIR/src/dtls.c" \
     "$ROOT_DIR/src/listener.c" \
     "$ROOT_DIR/src/connection.c" \
     "$ROOT_DIR/src/buffer.c" \
@@ -183,6 +186,7 @@ build_fuzzer config_fuzz \
     "$ROOT_DIR/src/http.c" \
     "$ROOT_DIR/src/http2.c" \
     "$ROOT_DIR/src/http2_huffman.c" \
+    "$ROOT_DIR/src/udp_connection.c" \
     "$ROOT_DIR/src/xmpp.c" \
     "$ROOT_DIR/src/minecraft.c" \
     "$ROOT_DIR/src/seccomp.c" \
@@ -208,6 +212,11 @@ build_fuzzer cfg_tokenizer_fuzz \
 
 build_fuzzer tls_fuzz \
     "$ROOT_DIR/tests/fuzz/tls_fuzz.c" \
+    "$ROOT_DIR/src/tls.c"
+
+build_fuzzer dtls_fuzz \
+    "$ROOT_DIR/tests/fuzz/dtls_fuzz.c" \
+    "$ROOT_DIR/src/dtls.c" \
     "$ROOT_DIR/src/tls.c"
 
 build_fuzzer xmpp_fuzz \
@@ -241,6 +250,7 @@ FUZZ_TARGETS=(
     "hostname_fuzz:hostname"
     "cfg_tokenizer_fuzz:cfg_tokenizer"
     "tls_fuzz:tls"
+    "dtls_fuzz:dtls"
 )
 
 run_single_fuzzer() {

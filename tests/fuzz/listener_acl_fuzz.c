@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,6 +117,12 @@ bind_socket(const struct sockaddr *addr __attribute__((unused)),
     errno = EACCES;
     return -1;
 }
+
+void udp_recv_cb(struct ev_loop *loop __attribute__((unused)),
+        struct ev_io *w __attribute__((unused)),
+        int revents __attribute__((unused))) {}
+
+void udp_print_sessions(FILE *f __attribute__((unused))) {}
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
