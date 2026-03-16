@@ -2845,6 +2845,9 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
 
 static ares_socket_t
 resolver_child_dot_asocket(int domain, int type, int protocol, void *user_data __attribute__((unused))) {
+#ifdef SOCK_CLOEXEC
+    type |= SOCK_CLOEXEC;
+#endif
     return socket(domain, type, protocol);
 }
 
