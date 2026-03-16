@@ -20,6 +20,11 @@ Unreleased
 * Security: Add per-IP rate limiting and connection counting to UDP
   sessions, matching the TCP path. Previously an attacker from a single
   IP could exhaust all UDP sessions and file descriptors.
+* Security: Add DTLS source validation to prevent UDP reflection and
+  amplification attacks. New UDP sessions require a retransmission
+  from the client before the backend is contacted. Spoofed sources
+  never retransmit and are silently dropped after 3 seconds. This
+  eliminates ~10-20x amplification via backend ServerHello responses.
 * Security: Tighten seccomp filter for the logger child process,
   restricting it to IPC-only network syscalls (sendmsg/recvmsg) instead
   of the full network set (socket/bind/connect/etc.).
@@ -36,6 +41,16 @@ Unreleased
   calling SSL on known-broken connections.
 * Fix: Warn when reuseport or ipv6_v6only changes on SIGHUP reload
   since these socket options cannot be changed on a live bound socket.
+* Hardening: Set SOCK_CLOEXEC on DoT sockets in resolver child.
+* Hardening: Add bounds check on Huffman tree int16_t cast.
+* Hardening: Add compiler flags -Wshadow, -Wimplicit-fallthrough,
+  -Wnull-dereference, -Wundef, -fno-delete-null-pointer-checks.
+* Hardening: Add linker flag -Wl,-z,nodlopen to prevent dlopen.
+* Hardening: Harden systemd service with ProtectKernelTunables,
+  ProtectKernelModules, ProtectKernelLogs, ProtectControlGroups,
+  ProtectClock, ProtectHostname, PrivateDevices, RestrictNamespaces,
+  RestrictRealtime, RestrictSUIDSGID, MemoryDenyWriteExecute, and
+  LockPersonality.
 
 sniproxy 0.10.0 (2026-03-14)
 ===============================

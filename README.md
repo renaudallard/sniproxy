@@ -67,6 +67,9 @@ Features
 + **DNS query concurrency limits**: Prevents resolver exhaustion
 + **Connection idle timeouts**: Automatic cleanup of stalled connections
 + **Per-IP connection rate limiting**: Token-bucket guardrail on new TCP connections and UDP sessions across all listeners
++ **DTLS source validation**: New UDP sessions require a retransmission before
+  contacting the backend, preventing reflection/amplification attacks from
+  spoofed sources
 + **Privilege separation**: Separate processes for logging and DNS resolution
 + **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
 + **Input sanitization**: Hostname validation, control character removal

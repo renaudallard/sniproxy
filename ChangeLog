@@ -21,6 +21,13 @@
 	- Add per-IP rate and connection limiting to UDP sessions
 	- Wipe IPC send buffer before free
 	- Disable TLS session tickets for DNS-over-TLS connections
+	- Add DTLS source validation to prevent UDP reflection attacks
+	- Set SOCK_CLOEXEC on DoT sockets in resolver child
+	- Add int16_t bounds check in Huffman tree builder
+	- Add compiler hardening flags: -Wshadow, -Wimplicit-fallthrough,
+	  -Wnull-dereference, -Wundef, -fno-delete-null-pointer-checks
+	- Add linker hardening flag: -Wl,-z,nodlopen
+	- Harden systemd service with additional restrictions
 
 2026-03-14  Renaud Allard  <renaud@allard.it>
 

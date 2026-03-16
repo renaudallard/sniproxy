@@ -351,7 +351,11 @@ minecraft, and dtls. The minecraft protocol defaults to port 25565.
 The dtls protocol proxies DTLS (TLS over UDP) connections by extracting
 the SNI extension from the DTLS ClientHello, enabling proxying of
 WebRTC, OpenConnect VPN, CoAP, and other UDP/DTLS protocols by hostname
-without decryption.
+without decryption. To prevent UDP reflection/amplification attacks,
+new DTLS sessions require a retransmission from the client before the
+backend is contacted (DTLS clients retransmit by design per RFC 6347).
+Spoofed sources never retransmit and are silently dropped after a
+3-second validation timeout.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same
