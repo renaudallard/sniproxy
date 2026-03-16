@@ -2,10 +2,11 @@
 
 ## Overview
 
-SNIProxy is a transparent TLS/HTTP proxy that routes connections based on the
-Server Name Indication (SNI) extension in TLS handshakes or the Host header in
-HTTP requests. It operates at Layer 4 (transport) while inspecting Layer 7
-(application) protocol headers to make routing decisions.
+SNIProxy is a transparent proxy that routes TCP and UDP connections based on
+hostname extraction from protocol headers: TLS SNI, DTLS SNI, HTTP Host,
+HTTP/2 :authority, XMPP stream `to`, and Minecraft handshake server address.
+It operates at Layer 4 (transport) while inspecting Layer 7 (application)
+protocol headers to make routing decisions.
 
 ## Component Diagram
 
@@ -68,7 +69,7 @@ and tables.
   - `nameservers`: List of DNS servers
   - `search`: DNS search domains
   - `mode`: IPv4/IPv6 preference (default, IPv4-only, IPv6-only, IPv4-first, IPv6-first)
-  - `max_concurrent_queries`: Limit for concurrent DNS queries (default 256)
+  - `max_concurrent_queries`: Limit for concurrent DNS queries (default 512)
 - `access_log`: Global access logger
 - `listeners`: List of all configured listeners
 - `tables`: List of all routing tables
@@ -84,7 +85,7 @@ Each listener operates independently with its own event loop watchers.
 
 **Configuration fields:**
 - `address`: Listening address and port
-- `protocol`: Protocol parser (TLS, HTTP, HTTP/2)
+- `protocol`: Protocol parser (TLS, DTLS, HTTP, HTTP/2, XMPP, Minecraft)
 - `table_name`: Name of routing table to use
 - `fallback_address`: Default backend when no match found
 - `source_address`: Source address for outbound connections
@@ -144,9 +145,6 @@ Backends represent destination servers with pattern-based routing rules.
 - Regular expressions: PCRE2 patterns with wildcards (*, ., etc.)
 - Security: Regex match limits prevent algorithmic complexity attacks
 - NUL bytes in patterns are rejected
-- **Performance optimization (0.9.0)**: Per-backend cache stores the most recent
-  hostname lookup result, allowing repeated lookups to skip expensive PCRE2 regex
-  evaluation entirely
 
 ### Connection
 
@@ -235,15 +233,16 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 Protocol handlers parse application-layer headers to extract hostnames.
 
 **Structure:**
-- `name`: Protocol identifier ("tls", "http", "http2")
+- `name`: Protocol identifier ("tls", "dtls", "http", "xmpp", "minecraft")
 - `default_port`: Default port for protocol
+- `sock_type`: Socket type (SOCK_STREAM for TCP, SOCK_DGRAM for UDP)
 - `parse_packet`: Function pointer to header parser
 - `abort_message`: Message sent to client on parse failure
 - `abort_message_len`: Length of abort message
 
 **Supported protocols:**
 
-1. **TLS**: Extracts SNI from ClientHello
+1. **TLS**: Extracts SNI from ClientHello (TCP)
    - Supports TLS 1.0 through 1.3
    - Validates extension format
    - Limits ClientHello extension lists to 64 entries (0.9.6) to stop CPU
@@ -252,14 +251,21 @@ Protocol handlers parse application-layer headers to extract hostnames.
    - Minimum client version can be configured
    - Detects and rejects client renegotiation attempts
 
-2. **HTTP**: Extracts Host header from HTTP/1.x requests
+2. **DTLS**: Extracts SNI from DTLS ClientHello (UDP)
+   - Parses DTLS 1.0 and 1.2 record layer format
+   - Shares SNI extension parsing with TLS via `sni_parse.h`
+   - Rejects fragmented ClientHellos
+   - Per-session connected server sockets with idle timeout
+   - Supports source address binding and transparent proxy mode
+
+3. **HTTP**: Extracts Host header from HTTP/1.x requests
    - Parses GET/POST/HEAD and other methods
    - Case-insensitive header matching
    - Handles absolute URIs and Host headers
    - Enforces `HTTP_MAX_HEADERS` (100) (0.9.6) to prevent CPU exhaustion from
      adversarial header floods
 
-3. **HTTP/2**: Extracts :authority pseudo-header from HTTP/2 requests
+4. **HTTP/2**: Extracts :authority pseudo-header from HTTP/2 requests
    - Parses client preface and SETTINGS frames
    - HPACK decompression with dynamic table
    - Handles HEADERS and CONTINUATION frames
@@ -272,6 +278,16 @@ Protocol handlers parse application-layer headers to extract hostnames.
      - Max dynamic table size per connection: 64KB
      - Max aggregate dynamic table size: 4MB
      - Prevents memory exhaustion attacks
+
+5. **XMPP**: Extracts `to` attribute from stream opening
+   - Parses initial `<stream:stream to="...">` element
+   - Supports STARTTLS negotiation (transparent to proxy)
+   - Maximum header size: 4096 bytes
+
+6. **Minecraft**: Extracts server address from handshake packet
+   - Parses VarInt-framed handshake packet
+   - Strips FML markers and BungeeCord data after NUL bytes
+   - Default port: 25565
 
 ### Resolver
 
@@ -476,7 +492,7 @@ buffer assembly, reducing the number of buffer operations required
 - Binds to privileged ports as root
 - Drops to configured user/group after initialization
 - Logger process runs with reduced privileges
-- Separate processes communicate via pipes
+- Separate processes communicate via unix socketpairs with ChaCha20-Poly1305 encryption
 
 ## Configuration and Reload
 
@@ -506,15 +522,15 @@ buffer assembly, reducing the number of buffer operations required
 ## Performance Considerations
 
 - **Event-driven**: libev for efficient I/O multiplexing
-- **Minimal copying**: Ring buffers and vectored I/O; zero-copy syscalls are not required
+- **Minimal copying**: Ring buffers and vectored I/O; SO_SPLICE zero-copy on OpenBSD
 - **SO_REUSEPORT**: Multiple processes can accept on same port
 - **Connection pooling**: Reuses connection structures
 - **Compiled regexes**: One-time compilation, cached for all lookups
 
 ### Performance Optimizations in 0.9.0
 
-- **Pattern match caching**: Backends cache the most recent hostname lookup result,
-  eliminating repeated PCRE2 regex evaluations for the same hostname
+- **Table-level hostname cache**: 256-entry FNV-1a hash cache at the table level
+  eliminates repeated PCRE2 regex evaluations for the same hostname
 - **HTTP/2 HPACK**: Precomputed static table entry lengths and binary search for
   header names eliminate strlen calls and linear table scans
 - **Buffer management**: Periodic shrink timer reduces per-event operations,
@@ -532,7 +548,9 @@ buffer assembly, reducing the number of buffer operations required
 ## Testing
 
 The codebase includes comprehensive tests:
-- Unit tests for all major components (buffer, tls, http, http2, table, etc.)
-- Fuzz tests for TLS and HTTP/2 parsers
-- Integration tests for listener and backend lookup
+- Unit tests for all major components (buffer, TLS, DTLS, HTTP, HTTP/2, XMPP,
+  Minecraft, table, address, config, resolver, binder, seccomp)
+- Fuzz tests for TLS, DTLS, HTTP/2, XMPP, Minecraft, hostname, address, config,
+  listener ACL, IPC crypto, and resolver parsers
+- Integration tests for end-to-end listener and routing validation
 - Address and configuration parsing tests

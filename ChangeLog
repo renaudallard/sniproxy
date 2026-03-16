@@ -8,6 +8,11 @@
 	  transparent proxy support
 	- Binder support for UDP (SOCK_DGRAM) privileged port binding
 	- DTLS parser unit tests and fuzz harness
+	- Add missing sendfd/recvfd pledge promises on OpenBSD for binder
+	  fd passing during SIGHUP reload
+	- Fix conn_count_free_count underflow guard in connection rate limiter
+	- Fix missing partial write check in resolver child send
+	- Fix atomicity violation in resolver query resubmission after restart
 
 2026-03-14  Renaud Allard  <renaud@allard.it>
 

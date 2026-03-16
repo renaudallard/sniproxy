@@ -541,11 +541,13 @@ SNIProxy includes extensive security hardening:
 
 The project includes comprehensive testing:
 
-- **Unit tests**: All major components (buffer, TLS, HTTP, HTTP/2, XMPP, Minecraft, tables, etc.)
-- **Fuzz testing**: Dedicated fuzzers for TLS ClientHello, HTTP/2 HEADERS,
-  XMPP stream, and Minecraft handshake parsing in `tests/fuzz/`
+- **Unit tests**: All major components (buffer, TLS, DTLS, HTTP, HTTP/2, XMPP, Minecraft, tables, etc.)
+- **Fuzz testing**: Dedicated fuzzers for TLS ClientHello, DTLS ClientHello,
+  HTTP/2 HEADERS, XMPP stream, Minecraft handshake, hostname sanitization,
+  address parsing, config parsing, listener ACL, IPC crypto, and resolver
+  response in `tests/fuzz/`
 - **Integration tests**: End-to-end listener and routing validation
-- **Protocol conformance**: Tests for TLS 1.0-1.3, HTTP/1.x, HTTP/2, XMPP, and Minecraft
+- **Protocol conformance**: Tests for TLS 1.0-1.3, DTLS, HTTP/1.x, HTTP/2, XMPP, and Minecraft
 
 Run tests with: `make check`
 
@@ -555,8 +557,8 @@ On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper proces
 
 - **unveil()**: Restricts access to the configuration file, pidfile, log destinations, and Unix domain sockets declared in the configuration
 - **pledge()**: Promise sets are tailored per process to minimize available system calls:
-  - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix` while reading configuration, then tightens to `stdio inet dns rpath proc unix` after dropping privileges
-  - Binder process: `stdio unix inet` while handling privileged socket creation
+  - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix recvfd` while reading configuration, then tightens to `stdio inet dns rpath proc unix recvfd` after dropping privileges
+  - Binder process: `stdio unix inet sendfd` while handling privileged socket creation
   - Logger process: starts with `stdio rpath wpath cpath fattr id unix recvfd`, then tightens to `stdio rpath wpath cpath fattr unix recvfd` after dropping privileges
   - Resolver process: `stdio rpath inet dns unix` to perform DNS lookups in isolation
 
@@ -696,6 +698,8 @@ SNIProxy is production-ready and commonly used for:
   based on the stream's target domain, including STARTTLS support
 - **Minecraft hosting**: Host multiple Minecraft Java Edition servers behind
   a single IP and port using different hostnames
+- **DTLS/UDP proxying**: Route WebRTC, OpenConnect VPN, CoAP, and other
+  UDP/DTLS protocols by hostname without decryption
 - **Development proxies**: Local HTTPS routing for development environments
 - **IoT/embedded systems**: Lightweight SNI routing with minimal resource usage
 

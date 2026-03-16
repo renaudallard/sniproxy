@@ -6,6 +6,17 @@ Unreleased
   datagram, enabling hostname-based routing for WebRTC, OpenConnect VPN,
   CoAP, and other UDP/DTLS protocols without decrypting traffic.
   Configure with `protocol dtls` in listener blocks.
+* Security: Add missing `sendfd` pledge promise for binder child and
+  `recvfd` for main process on OpenBSD. Without these, SIGHUP reload
+  adding new listeners on privileged ports would trigger a pledge
+  violation.
+* Fix: Add underflow guard on conn_count_free_count in connection rate
+  limiter, matching the existing guard in rate_limit_bucket_acquire.
+* Fix: Check for partial writes in resolver child send, matching the
+  parent-side pattern.
+* Fix: Hold resolver_queries_lock across both resolver_attach_query and
+  resolver_emit_query in query resubmission, matching the documented
+  atomicity invariant.
 
 sniproxy 0.10.0 (2026-03-14)
 ===============================
