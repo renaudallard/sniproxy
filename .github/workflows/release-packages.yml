@@ -1049,6 +1049,60 @@ jobs:
           path: artifacts/apk/alpine-${{ needs.detect-versions.outputs.alpine_latest }}/
           if-no-files-found: error
 
+  build-macos:
+    name: Build macOS binary (ARM64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Install dependencies
+        run: |
+          brew install libev pcre2 c-ares openssl autoconf automake libtool gettext
+          brew link --force gettext
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          BREW_CPPFLAGS=""
+          BREW_LDFLAGS=""
+          BREW_PKG=""
+          for dep in libev pcre2 c-ares openssl; do
+            prefix="$(brew --prefix "$dep")"
+            BREW_CPPFLAGS="${BREW_CPPFLAGS} -I${prefix}/include"
+            BREW_LDFLAGS="${BREW_LDFLAGS} -L${prefix}/lib"
+            BREW_PKG="${BREW_PKG:+${BREW_PKG}:}${prefix}/lib/pkgconfig"
+          done
+          ./autogen.sh
+          ./configure --disable-dependency-tracking \
+            CC=cc \
+            CPPFLAGS="${BREW_CPPFLAGS}" \
+            LDFLAGS="${BREW_LDFLAGS}" \
+            PKG_CONFIG_PATH="${BREW_PKG}"
+          make -j$(sysctl -n hw.ncpu)
+
+          # Determine version from configure
+          VERSION=$(./src/sniproxy -V 2>&1 | awk '{print $2}')
+          ARCH=$(uname -m)
+
+          # Create tarball with binary, man pages, and config example
+          STAGING="sniproxy-${VERSION}-macos-${ARCH}"
+          mkdir -p "${STAGING}/bin" "${STAGING}/share/man/man5" "${STAGING}/share/man/man8"
+          cp src/sniproxy "${STAGING}/bin/"
+          cp man/sniproxy.8 "${STAGING}/share/man/man8/"
+          cp man/sniproxy.conf.5 "${STAGING}/share/man/man5/"
+          tar czf "${STAGING}.tar.gz" "${STAGING}"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-packages
+          path: sniproxy-*-macos-*.tar.gz
+          if-no-files-found: error
+
   publish:
     name: Upload Release Assets
     runs-on: ubuntu-latest
@@ -1064,6 +1118,7 @@ jobs:
       - build-rpm-opensuse
       - build-rpm-suse
       - build-apk-alpine
+      - build-macos
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v8
@@ -1086,6 +1141,12 @@ jobs:
           path: release-assets/apk
           merge-multiple: true
 
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: macos-packages
+          path: release-assets/macos
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -1094,3 +1155,4 @@ jobs:
             release-assets/deb/*.deb
             release-assets/rpm/*.rpm
             release-assets/apk/*.apk
+            release-assets/macos/*.tar.gz
