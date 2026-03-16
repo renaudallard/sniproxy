@@ -25,11 +25,20 @@ if [ -d ${GIT_DIR} ]; then
     fi
 fi
 
+# Portable in-place sed (macOS sed -i requires '' argument)
+sedi() {
+    if sed --version >/dev/null 2>&1; then
+        sed -i "$@"
+    else
+        sed -i '' "$@"
+    fi
+}
+
 # Update Autoconf with new version
-sed -i "s/^\(AC_INIT(\[sniproxy\], \[\)[^]]*\(.\+\)$/\1${VERSION}\2/" ${SOURCE_DIR}/configure.ac
+sedi "s/^\(AC_INIT(\[sniproxy\], \[\)[^]]*\(.\+\)$/\1${VERSION}\2/" ${SOURCE_DIR}/configure.ac
 
 # Update redhat/sniproxy.spec with new version
-sed -i "s/^Version:\s\+[^ ]\+/Version: ${VERSION}/" ${SOURCE_DIR}/redhat/sniproxy.spec
+sedi "s/^Version:[[:space:]]\{1,\}[^ ]\{1,\}/Version: ${VERSION}/" ${SOURCE_DIR}/redhat/sniproxy.spec
 
 # Update debian/changelog with new version when debchange is available
 if command -v debchange >/dev/null 2>&1; then
