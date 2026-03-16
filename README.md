@@ -562,7 +562,7 @@ On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper proces
 
 - **unveil()**: Restricts access to the configuration file, pidfile, log destinations, and Unix domain sockets declared in the configuration
 - **pledge()**: Promise sets are tailored per process to minimize available system calls:
-  - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix recvfd` while reading configuration, then tightens to `stdio inet dns rpath proc unix recvfd` after dropping privileges
+  - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix sendfd recvfd` while reading configuration, then tightens to `stdio inet dns rpath proc unix sendfd recvfd` after dropping privileges (includes `sendfd` so the binder child can inherit it after fork)
   - Binder process: `stdio unix inet sendfd` while handling privileged socket creation
   - Logger process: starts with `stdio rpath wpath cpath fattr id unix recvfd`, then tightens to `stdio rpath wpath cpath fattr unix recvfd` after dropping privileges
   - Resolver process: `stdio rpath inet dns unix` to perform DNS lookups in isolation
