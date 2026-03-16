@@ -1008,6 +1008,8 @@ ipc_crypto_state_clear(struct ipc_crypto_state *state) {
         return;
     EVP_CIPHER_CTX_free(state->seal_ctx);
     EVP_CIPHER_CTX_free(state->open_ctx);
+    if (state->send_buf != NULL && state->send_buf_cap > 0)
+        secure_memzero(state->send_buf, state->send_buf_cap);
     free(state->send_buf);
     state->seal_ctx = NULL;
     state->open_ctx = NULL;
