@@ -388,7 +388,7 @@ binder_main(int sockfd) {
 #endif
 
 #ifdef __OpenBSD__
-    if (pledge("stdio unix inet", NULL) == -1) {
+    if (pledge("stdio unix inet sendfd", NULL) == -1) {
         err("binder: pledge failed: %s", strerror(errno));
         binder_child_exit(EXIT_FAILURE);
     }
