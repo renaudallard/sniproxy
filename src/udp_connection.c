@@ -696,7 +696,8 @@ udp_hash_addr(const struct sockaddr_storage *addr, socklen_t addr_len) {
     }
     case AF_INET6: {
         const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
-        const uint32_t *words = (const uint32_t *)&in6->sin6_addr;
+        uint32_t words[4];
+        memcpy(words, &in6->sin6_addr, sizeof(words));
         for (int i = 0; i < 4; i++) {
             h ^= words[i];
             h *= 0x9e3779b9u;
