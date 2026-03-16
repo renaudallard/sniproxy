@@ -45,17 +45,16 @@ next_token(FILE *config, char *buffer, size_t buffer_len) {
     while ((ch = getc(config)) != EOF) {
         switch (ch) {
             case ' ':
-                /* fall through */
             case '\t':
                 /* no op */
                 break;
             case '#': /* comment */
                 chomp_line(config);
-                /* fall through */
+                __attribute__((fallthrough));
             case ';':
-                /* fall through */
+                __attribute__((fallthrough));
             case '\n':
-                /* fall through */
+                __attribute__((fallthrough));
             case '\r':
                 return TOKEN_EOL;
             case '{':
@@ -130,7 +129,7 @@ next_word(FILE *file, char *buffer, size_t buffer_len) {
                     len++;
                     return (int)len;
                 }
-                /* fall through */
+                __attribute__((fallthrough));
             default:
                 if (len >= buffer_len - 1)
                     return tokenizer_fail(buffer, buffer_len, len);
