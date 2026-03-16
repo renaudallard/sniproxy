@@ -59,7 +59,7 @@
 #include "fd_util.h"
 
 enum udp_session_state {
-    UDP_NEW,
+    UDP_VALIDATING,     /* awaiting retransmission to prove source is real */
     UDP_RESOLVING,
     UDP_CONNECTED,
 };
@@ -163,10 +163,16 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                     debug("UDP send to server failed: %s", strerror(errno));
             }
             break;
+        case UDP_VALIDATING:
+            /* Source validated: a retransmission from the same (IP, port)
+             * proves the source address is real (spoofed sources never
+             * retransmit). Switch to normal idle timeout and proceed. */
+            session->idle_timer.repeat = UDP_DEFAULT_IDLE_TIMEOUT;
+            ev_timer_again(loop, &session->idle_timer);
+            udp_parse_and_resolve(session, buf, (size_t)n, loop);
+            break;
         case UDP_RESOLVING:
             /* Drop; DTLS client will retransmit after resolution */
-            break;
-        case UDP_NEW:
             break;
         }
         return;
@@ -204,7 +210,11 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
 
     connections_conn_count_increment(&client_addr);
-    udp_parse_and_resolve(session, buf, (size_t)n, loop);
+    /* Session starts in UDP_VALIDATING state. The datagram is not forwarded
+     * yet; we wait for a retransmission from the same (IP, port) to confirm
+     * the source address is real. This prevents UDP reflection/amplification
+     * attacks where spoofed sources would receive backend responses. DTLS
+     * clients retransmit by design (RFC 6347 section 4.2.4). */
 }
 
 static void
@@ -276,13 +286,13 @@ udp_session_create(struct Listener *listener,
     s->listener = listener_ref_get(listener);
     s->server_fd = -1;
     s->addr_hash = hash;
-    s->state = UDP_NEW;
+    s->state = UDP_VALIDATING;
 
     ev_init(&s->server_watcher, udp_server_cb);
     s->server_watcher.data = s;
 
     ev_init(&s->idle_timer, udp_session_idle_cb);
-    s->idle_timer.repeat = UDP_DEFAULT_IDLE_TIMEOUT;
+    s->idle_timer.repeat = UDP_VALIDATION_TIMEOUT;
     s->idle_timer.data = s;
     ev_timer_again(loop, &s->idle_timer);
 
@@ -635,10 +645,10 @@ udp_print_sessions(FILE *file) {
             const char *state_str;
 
             switch (s->state) {
-            case UDP_NEW:       state_str = "NEW"; break;
-            case UDP_RESOLVING: state_str = "RESOLVING"; break;
-            case UDP_CONNECTED: state_str = "CONNECTED"; break;
-            default:            state_str = "UNKNOWN"; break;
+            case UDP_VALIDATING: state_str = "VALIDATING"; break;
+            case UDP_RESOLVING:  state_str = "RESOLVING"; break;
+            case UDP_CONNECTED:  state_str = "CONNECTED"; break;
+            default:             state_str = "UNKNOWN"; break;
             }
 
             fprintf(file, "  %s -> %s [%.*s] state=%s\n",

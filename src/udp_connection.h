@@ -37,6 +37,7 @@ void udp_recv_cb(struct ev_loop *, struct ev_io *, int);
 void udp_print_sessions(FILE *);
 
 #define UDP_DEFAULT_IDLE_TIMEOUT 30.0
+#define UDP_VALIDATION_TIMEOUT 3.0
 #define UDP_SESSION_BUCKET_BITS 10
 #define UDP_SESSION_BUCKETS (1u << UDP_SESSION_BUCKET_BITS)
 #define UDP_MAX_DGRAM 65535
