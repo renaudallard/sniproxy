@@ -17,6 +17,25 @@ Unreleased
 * Fix: Hold resolver_queries_lock across both resolver_attach_query and
   resolver_emit_query in query resubmission, matching the documented
   atomicity invariant.
+* Security: Add per-IP rate limiting and connection counting to UDP
+  sessions, matching the TCP path. Previously an attacker from a single
+  IP could exhaust all UDP sessions and file descriptors.
+* Security: Tighten seccomp filter for the logger child process,
+  restricting it to IPC-only network syscalls (sendmsg/recvmsg) instead
+  of the full network set (socket/bind/connect/etc.).
+* Security: Disable TLS session tickets for DNS-over-TLS connections
+  to preserve forward secrecy.
+* Hardening: Detect explicit_bzero in configure so secure_memzero uses
+  the compiler-safe variant instead of the volatile pointer loop
+  fallback.
+* Hardening: Wipe IPC send buffer before free to prevent ciphertext
+  lingering in freed memory.
+* Fix: Exit resolver child on ev_loop_new failure instead of falling
+  back to the parent's event loop.
+* Fix: Check sock->failed early in DoT read/write callbacks to avoid
+  calling SSL on known-broken connections.
+* Fix: Warn when reuseport or ipv6_v6only changes on SIGHUP reload
+  since these socket options cannot be changed on a live bound socket.
 
 sniproxy 0.10.0 (2026-03-14)
 ===============================

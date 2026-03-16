@@ -13,6 +13,14 @@
 	- Fix conn_count_free_count underflow guard in connection rate limiter
 	- Fix missing partial write check in resolver child send
 	- Fix atomicity violation in resolver query resubmission after restart
+	- Fix unsafe EV_DEFAULT fallback in resolver child after fork
+	- Add early sock->failed check in DoT read/write callbacks
+	- Warn when reuseport or ipv6_v6only changes on SIGHUP reload
+	- Detect explicit_bzero in configure for reliable secret wiping
+	- Tighten seccomp: restrict logger to IPC-only network syscalls
+	- Add per-IP rate and connection limiting to UDP sessions
+	- Wipe IPC send buffer before free
+	- Disable TLS session tickets for DNS-over-TLS connections
 
 2026-03-14  Renaud Allard  <renaud@allard.it>
 
