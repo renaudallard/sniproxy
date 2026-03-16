@@ -1224,14 +1224,13 @@ resolver_resubmit_pending_queries(void) {
 
         pthread_mutex_lock(&resolver_queries_lock);
         resolver_attach_query(pending_list);
+        int send_result = resolver_emit_query(pending_list);
+        if (send_result < 0)
+            resolver_remove_pending(pending_list);
         pthread_mutex_unlock(&resolver_queries_lock);
 
-        if (resolver_emit_query(pending_list) < 0) {
-            pthread_mutex_lock(&resolver_queries_lock);
-            resolver_remove_pending(pending_list);
-            pthread_mutex_unlock(&resolver_queries_lock);
+        if (send_result < 0)
             resolver_free_pending_list(pending_list, 1);
-        }
 
         pending_list = next;
     }
