@@ -31,4 +31,20 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+#if !defined(HAVE_REALLOCARRAY) && !defined(HAVE_BSD_STDLIB_H)
+#include <stdlib.h>
+#include <errno.h>
+#include <stdint.h>
+static inline void *
+sniproxy_reallocarray(void *ptr, size_t nmemb, size_t size)
+{
+    if (nmemb != 0 && size > SIZE_MAX / nmemb) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return realloc(ptr, nmemb * size);
+}
+#define reallocarray sniproxy_reallocarray
+#endif
+
 #endif

@@ -27,6 +27,7 @@
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
 #endif
+#include "util.h"
 
 #include "http2_huffman.h"
 

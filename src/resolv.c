@@ -57,6 +57,7 @@
 #ifdef HAVE_BSD_UNISTD_H
 #include <bsd/unistd.h>
 #endif
+#include "util.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>

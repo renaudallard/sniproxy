@@ -212,8 +212,11 @@ AC_SEARCH_LIBS([strlcpy], [bsd], [
 ], [
   AC_MSG_ERROR([strlcpy() is required; install libbsd-dev])
 ])
-AC_CHECK_FUNCS([reallocarray], [],
-  [AC_MSG_ERROR([reallocarray() is required; install libbsd-dev or use glibc >= 2.26])])
+AC_SEARCH_LIBS([reallocarray], [bsd], [
+  AC_DEFINE([HAVE_REALLOCARRAY], 1, [Define to 1 if you have the `reallocarray' function.])
+], [
+  AC_MSG_WARN([reallocarray() not found; using built-in fallback])
+])
 AC_SUBST([LIBBSD_LIBS])
 
 AC_CHECK_HEADERS([openssl/evp.h openssl/rand.h openssl/sha.h], [],

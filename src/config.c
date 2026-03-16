@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <string.h>
+#include "util.h"
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <strings.h>
