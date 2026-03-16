@@ -398,8 +398,12 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
 
     existing_listener->log_bad_requests = new_listener->log_bad_requests;
     existing_listener->accept_proxy_protocol = new_listener->accept_proxy_protocol;
-    existing_listener->reuseport = new_listener->reuseport;
-    existing_listener->ipv6_v6only = new_listener->ipv6_v6only;
+    if (existing_listener->reuseport != new_listener->reuseport)
+        warn("ignoring changed reuseport directive on reload "
+             "(requires listener restart)");
+    if (existing_listener->ipv6_v6only != new_listener->ipv6_v6only)
+        warn("ignoring changed ipv6_v6only directive on reload "
+             "(requires listener restart)");
 
     listener_acl_move(existing_listener, new_listener);
 
