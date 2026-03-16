@@ -30,6 +30,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+/*
+ * musl libc (Alpine) provides closefrom() but does not declare it in
+ * any header.  Provide our own declaration to avoid implicit-function-
+ * declaration errors with -Werror.
+ */
+#if defined(HAVE_CLOSEFROM) && !defined(__GLIBC__) && \
+    !defined(__OpenBSD__) && !defined(__FreeBSD__) && !defined(__NetBSD__)
+void closefrom(int);
+#endif
+
 static inline int
 set_cloexec(int fd)
 {
