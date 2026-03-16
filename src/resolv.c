@@ -1387,8 +1387,10 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 #endif
 
     child_loop = ev_loop_new(EVFLAG_AUTO);
-    if (child_loop == NULL)
-        child_loop = EV_DEFAULT;
+    if (child_loop == NULL) {
+        err("resolver child: ev_loop_new failed");
+        resolver_child_exit(EXIT_FAILURE);
+    }
 
     int ares_status = ares_library_init(ARES_LIB_INIT_ALL);
     if (ares_status != ARES_SUCCESS) {
@@ -2865,6 +2867,11 @@ resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int fla
     if (sock == NULL || sock->server == NULL)
         return recvfrom(fd, buffer, len, flags, addr, addrlen);
 
+    if (sock->failed) {
+        errno = ECONNABORTED;
+        return -1;
+    }
+
     if (!sock->handshake_complete) {
         if (resolver_child_dot_ensure_handshake(sock) < 0)
             return -1;
@@ -2903,6 +2910,11 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
     struct ResolverChildDotSocket *sock = resolver_child_dot_socket_get(fd);
     if (sock == NULL || sock->server == NULL)
         return writev(fd, iov, iovcnt);
+
+    if (sock->failed) {
+        errno = ECONNABORTED;
+        return -1;
+    }
 
     if (!sock->handshake_complete) {
         if (resolver_child_dot_ensure_handshake(sock) < 0)
