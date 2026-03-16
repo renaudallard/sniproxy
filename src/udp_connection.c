@@ -382,17 +382,24 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
         return;
     }
 
-    /* Save the datagram for forwarding after resolution */
-    session->pending_dgram = malloc(data_len);
-    if (session->pending_dgram == NULL) {
-        err("malloc: %s", strerror(errno));
-        if (lookup.caller_free_address)
-            free((void *)lookup.address);
-        udp_session_destroy(session, loop);
-        return;
+    /* Save the datagram for forwarding after resolution.
+     * Cap the saved size to UDP_MAX_PENDING_DGRAM to limit memory when
+     * many sessions are in RESOLVING state simultaneously. A DTLS
+     * ClientHello is typically 200-600 bytes. If the datagram exceeds
+     * the cap, skip saving; the client will retransmit after the backend
+     * connection is established. */
+    if (data_len <= UDP_MAX_PENDING_DGRAM) {
+        session->pending_dgram = malloc(data_len);
+        if (session->pending_dgram == NULL) {
+            err("malloc: %s", strerror(errno));
+            if (lookup.caller_free_address)
+                free((void *)lookup.address);
+            udp_session_destroy(session, loop);
+            return;
+        }
+        memcpy(session->pending_dgram, data, data_len);
+        session->pending_dgram_len = data_len;
     }
-    memcpy(session->pending_dgram, data, data_len);
-    session->pending_dgram_len = data_len;
 
     if (address_is_hostname(lookup.address)) {
         /* Need DNS resolution */

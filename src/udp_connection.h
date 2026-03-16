@@ -41,6 +41,7 @@ void udp_print_sessions(FILE *);
 #define UDP_SESSION_BUCKET_BITS 10
 #define UDP_SESSION_BUCKETS (1u << UDP_SESSION_BUCKET_BITS)
 #define UDP_MAX_DGRAM 65535
+#define UDP_MAX_PENDING_DGRAM 4096
 #define UDP_MAX_SESSIONS 16384
 
 #endif
