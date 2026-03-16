@@ -181,6 +181,18 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
     }
 
+    /* Per-IP rate limiting (shared with TCP) */
+    if (!connections_rate_limit_allow(&client_addr, ev_now(loop))) {
+        debug("UDP session rate limited");
+        return;
+    }
+
+    /* Per-IP connection count limiting (shared with TCP) */
+    if (!connections_conn_count_allow(&client_addr)) {
+        debug("UDP session denied by per-IP connection limit");
+        return;
+    }
+
     if (session_count >= UDP_MAX_SESSIONS) {
         debug("UDP session limit (%d) reached, dropping datagram",
                 UDP_MAX_SESSIONS);
@@ -191,6 +203,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (session == NULL)
         return;
 
+    connections_conn_count_increment(&client_addr);
     udp_parse_and_resolve(session, buf, (size_t)n, loop);
 }
 
@@ -297,6 +310,7 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
         pp = &(*pp)->next;
     }
     session_count--;
+    connections_conn_count_decrement(&session->client_addr);
 
     /* Cancel pending DNS query */
     if (session->query_handle != NULL) {

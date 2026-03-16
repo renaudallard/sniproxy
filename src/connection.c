@@ -1839,6 +1839,26 @@ connections_set_tcp_fastopen(int enabled) {
     tcp_fastopen_enabled = enabled;
 }
 
+int
+connections_rate_limit_allow(const struct sockaddr_storage *addr, ev_tstamp now) {
+    return rate_limit_allow_connection(addr, now);
+}
+
+int
+connections_conn_count_allow(const struct sockaddr_storage *addr) {
+    return conn_count_allow(addr);
+}
+
+void
+connections_conn_count_increment(const struct sockaddr_storage *addr) {
+    conn_count_increment(addr);
+}
+
+void
+connections_conn_count_decrement(const struct sockaddr_storage *addr) {
+    conn_count_decrement(addr);
+}
+
 static void
 connection_memory_adjust(ssize_t delta) {
     if (delta >= 0) {

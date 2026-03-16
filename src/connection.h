@@ -99,6 +99,12 @@ void connections_set_backend_acl(int mode,
 int backend_acl_allows(const struct sockaddr_storage *);
 void connections_set_tcp_fastopen(int enabled);
 
+/* Per-IP rate and connection limiting, shared between TCP and UDP paths */
+int connections_rate_limit_allow(const struct sockaddr_storage *, ev_tstamp now);
+int connections_conn_count_allow(const struct sockaddr_storage *);
+void connections_conn_count_increment(const struct sockaddr_storage *);
+void connections_conn_count_decrement(const struct sockaddr_storage *);
+
 #define CONNECTION_DEFAULT_HEADER_TIMEOUT 5.0
 #define CONNECTION_DEFAULT_IDLE_TIMEOUT 60.0
 
