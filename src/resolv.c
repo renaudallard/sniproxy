@@ -2674,6 +2674,11 @@ resolver_child_init_dot_ssl_ctx(void) {
     }
 
     SSL_CTX_set_verify(child_dot_ssl_ctx, SSL_VERIFY_PEER, NULL);
+
+    /* Disable TLS session tickets to preserve forward secrecy.
+     * Without this, a compromised ticket key could decrypt past sessions. */
+    SSL_CTX_set_options(child_dot_ssl_ctx, SSL_OP_NO_TICKET);
+
     return 0;
 }
 
