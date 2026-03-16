@@ -412,7 +412,7 @@ address_set_port(struct Address *addr, uint16_t port) {
                     break;
             }
         }
-            /* fall through */
+            __attribute__((fallthrough));
         case HOSTNAME:
         case WILDCARD:
             addr->port = port;
