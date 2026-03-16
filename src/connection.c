@@ -1523,7 +1523,8 @@ conn_count_bucket_acquire(void) {
     struct ConnCountBucket *b = conn_count_free_list;
     if (b != NULL) {
         conn_count_free_list = b->next;
-        conn_count_free_count--;
+        if (conn_count_free_count > 0)
+            conn_count_free_count--;
         return b;
     }
     return calloc(1, sizeof(*b));
