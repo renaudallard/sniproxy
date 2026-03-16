@@ -92,6 +92,8 @@ build_huffman_tree(void) {
                     huffman_tree = tmp;
                     huffman_tree_cap = new_cap;
                 }
+                if (huffman_tree_size > INT16_MAX)
+                    return 0;
                 next = (int16_t)huffman_tree_size++;
                 huffman_tree[node].child[direction] = next;
             }
