@@ -1822,15 +1822,25 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
         written = send(child_sock, frame, frame_len, 0);
     } while (written < 0 && errno == EINTR);
 
-    if (written < 0) {
-        err("resolver child send failed: %s (errno=%d)", strerror(errno), errno);
-        if (errno == ECONNRESET || errno == EPIPE || errno == ENOTCONN) {
-            notice("resolver child: parent socket dead, exiting");
-            if (child_loop != NULL)
-                ev_break(child_loop, EVBREAK_ALL);
-        }
+    if (written == (ssize_t)frame_len) {
+        free(frame);
+        return;
     }
+
+    int send_errno = errno;
     free(frame);
+
+    if (written >= 0)
+        send_errno = EIO;
+
+    err("resolver child send failed: %s (errno=%d)",
+            strerror(send_errno), send_errno);
+    if (send_errno == ECONNRESET || send_errno == EPIPE ||
+            send_errno == ENOTCONN) {
+        notice("resolver child: parent socket dead, exiting");
+        if (child_loop != NULL)
+            ev_break(child_loop, EVBREAK_ALL);
+    }
 }
 
 static void
