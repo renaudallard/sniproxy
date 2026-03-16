@@ -115,6 +115,7 @@ static int end_resolver_stanza(struct Config *, struct ResolverConfig *);
 static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
 static void free_string_vector(char **);
+static int string_vectors_equal(char **, char **);
 static void print_resolver_config(FILE *, struct ResolverConfig *);
 static int validate_config_path(const char *setting, const char *path,
         char **normalized_out);
@@ -643,6 +644,19 @@ reload_config(struct Config *config, struct ev_loop *loop) {
              strcmp(config->group, new_config->group) != 0))
         warn("ignoring changed group directive on reload "
              "(privilege drop is irreversible)");
+
+    /* Warn if resolver config changed since the resolver child is not
+     * restarted on reload. Nameserver, search domain, mode, and DNSSEC
+     * changes require a full restart to take effect. */
+    if (!string_vectors_equal(config->resolver.nameservers,
+                new_config->resolver.nameservers) ||
+            !string_vectors_equal(config->resolver.search,
+                new_config->resolver.search) ||
+            config->resolver.mode != new_config->resolver.mode ||
+            config->resolver.dnssec_validation_mode !=
+                new_config->resolver.dnssec_validation_mode)
+        warn("ignoring changed resolver directive on reload "
+             "(requires restart)");
 
     /* update access_log */
     logger_ref_put(config->access_log);
@@ -1730,6 +1744,22 @@ free_string_vector(char **vector) {
     }
 
     free(vector);
+}
+
+static int
+string_vectors_equal(char **a, char **b) {
+    if (a == NULL && b == NULL)
+        return 1;
+    if (a == NULL || b == NULL)
+        return 0;
+    for (int i = 0; ; i++) {
+        if (a[i] == NULL && b[i] == NULL)
+            return 1;
+        if (a[i] == NULL || b[i] == NULL)
+            return 0;
+        if (strcmp(a[i], b[i]) != 0)
+            return 0;
+    }
 }
 
 static int
