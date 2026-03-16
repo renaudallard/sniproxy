@@ -1,5 +1,6 @@
 2026-03-16  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.11.0
 	- Add DTLS (TLS over UDP) protocol support for proxying WebRTC,
 	  OpenConnect VPN, CoAP, and other UDP/DTLS protocols by hostname
 	- Shared SNI extension parsing between TLS and DTLS parsers
@@ -8,26 +9,29 @@
 	  transparent proxy support
 	- Binder support for UDP (SOCK_DGRAM) privileged port binding
 	- DTLS parser unit tests and fuzz harness
-	- Add missing sendfd/recvfd pledge promises on OpenBSD for binder
-	  fd passing during SIGHUP reload
+	- DTLS source validation to prevent UDP reflection/amplification
+	- Per-IP rate and connection limiting for UDP sessions
+	- Cap UDP pending datagram size to 4KB to limit memory under load
+	- Add missing sendfd/recvfd pledge promises on OpenBSD, including
+	  sendfd in parent pledge set for binder child inheritance
+	- Tighten seccomp: restrict logger to syslog and IPC-only syscalls
+	- Disable TLS session tickets for DNS-over-TLS connections
+	- Detect explicit_bzero in configure for reliable secret wiping
+	- Wipe IPC send buffer before free
+	- Set SOCK_CLOEXEC on DoT sockets in resolver child
+	- Add int16_t bounds check in Huffman tree builder
+	- Add compiler hardening flags: -Wshadow, -Wimplicit-fallthrough,
+	  -Wnull-dereference, -Wundef, -fno-delete-null-pointer-checks
+	- Harden systemd service with additional restrictions
+	- Use memcpy for IPv6 address hashing in UDP session lookup
+	- Annotate intentional switch fallthroughs for clang compatibility
 	- Fix conn_count_free_count underflow guard in connection rate limiter
 	- Fix missing partial write check in resolver child send
 	- Fix atomicity violation in resolver query resubmission after restart
 	- Fix unsafe EV_DEFAULT fallback in resolver child after fork
 	- Add early sock->failed check in DoT read/write callbacks
 	- Warn when reuseport or ipv6_v6only changes on SIGHUP reload
-	- Detect explicit_bzero in configure for reliable secret wiping
-	- Tighten seccomp: restrict logger to IPC-only network syscalls
-	- Add per-IP rate and connection limiting to UDP sessions
-	- Wipe IPC send buffer before free
-	- Disable TLS session tickets for DNS-over-TLS connections
-	- Add DTLS source validation to prevent UDP reflection attacks
-	- Set SOCK_CLOEXEC on DoT sockets in resolver child
-	- Add int16_t bounds check in Huffman tree builder
-	- Add compiler hardening flags: -Wshadow, -Wimplicit-fallthrough,
-	  -Wnull-dereference, -Wundef, -fno-delete-null-pointer-checks
-	- Add linker hardening flag: -Wl,-z,nodlopen
-	- Harden systemd service with additional restrictions
+	- Warn when resolver config changes on SIGHUP reload
 
 2026-03-14  Renaud Allard  <renaud@allard.it>
 

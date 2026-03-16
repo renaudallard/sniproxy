@@ -1,15 +1,46 @@
-Unreleased
-==========
+sniproxy 0.11.0 (2026-03-16)
+===============================
 
 * Feature: Add DTLS (TLS over UDP) protocol support. Proxies DTLS
   connections by extracting the SNI extension from the DTLS ClientHello
   datagram, enabling hostname-based routing for WebRTC, OpenConnect VPN,
   CoAP, and other UDP/DTLS protocols without decrypting traffic.
   Configure with `protocol dtls` in listener blocks.
-* Security: Add missing `sendfd` pledge promise for binder child and
-  `recvfd` for main process on OpenBSD. Without these, SIGHUP reload
-  adding new listeners on privileged ports would trigger a pledge
-  violation.
+* Security: Add DTLS source validation to prevent UDP reflection and
+  amplification attacks. New UDP sessions require a retransmission
+  from the client before the backend is contacted. Spoofed sources
+  never retransmit and are silently dropped after 3 seconds. This
+  eliminates ~10-20x amplification via backend ServerHello responses.
+* Security: Add per-IP rate limiting and connection counting to UDP
+  sessions, matching the TCP path. Previously an attacker from a single
+  IP could exhaust all UDP sessions and file descriptors.
+* Security: Tighten seccomp filter for the logger child process,
+  restricting it to syslog and IPC-only network syscalls instead of the
+  full network set.
+* Security: Disable TLS session tickets for DNS-over-TLS connections
+  to preserve forward secrecy.
+* Security: Add missing `sendfd` and `recvfd` pledge promises on
+  OpenBSD for binder fd passing during SIGHUP reload. The `sendfd`
+  promise must also be in the parent's pledge set so the binder child
+  can inherit it after fork.
+* Security: Cap UDP pending datagram size to 4KB to limit memory when
+  many sessions are in RESOLVING state simultaneously.
+* Hardening: Detect explicit_bzero in configure so secure_memzero uses
+  the compiler-safe variant instead of the volatile pointer loop
+  fallback.
+* Hardening: Wipe IPC send buffer before free to prevent ciphertext
+  lingering in freed memory.
+* Hardening: Set SOCK_CLOEXEC on DoT sockets in resolver child.
+* Hardening: Add bounds check on Huffman tree int16_t cast.
+* Hardening: Add compiler flags -Wshadow, -Wimplicit-fallthrough,
+  -Wnull-dereference, -Wundef, -fno-delete-null-pointer-checks.
+* Hardening: Harden systemd service with ProtectKernelTunables,
+  ProtectKernelModules, ProtectKernelLogs, ProtectControlGroups,
+  ProtectClock, ProtectHostname, PrivateDevices, RestrictNamespaces,
+  RestrictRealtime, RestrictSUIDSGID, MemoryDenyWriteExecute, and
+  LockPersonality.
+* Hardening: Use memcpy for IPv6 address hashing in UDP session lookup
+  for strict-alignment portability.
 * Fix: Add underflow guard on conn_count_free_count in connection rate
   limiter, matching the existing guard in rate_limit_bucket_acquire.
 * Fix: Check for partial writes in resolver child send, matching the
@@ -17,40 +48,16 @@ Unreleased
 * Fix: Hold resolver_queries_lock across both resolver_attach_query and
   resolver_emit_query in query resubmission, matching the documented
   atomicity invariant.
-* Security: Add per-IP rate limiting and connection counting to UDP
-  sessions, matching the TCP path. Previously an attacker from a single
-  IP could exhaust all UDP sessions and file descriptors.
-* Security: Add DTLS source validation to prevent UDP reflection and
-  amplification attacks. New UDP sessions require a retransmission
-  from the client before the backend is contacted. Spoofed sources
-  never retransmit and are silently dropped after 3 seconds. This
-  eliminates ~10-20x amplification via backend ServerHello responses.
-* Security: Tighten seccomp filter for the logger child process,
-  restricting it to IPC-only network syscalls (sendmsg/recvmsg) instead
-  of the full network set (socket/bind/connect/etc.).
-* Security: Disable TLS session tickets for DNS-over-TLS connections
-  to preserve forward secrecy.
-* Hardening: Detect explicit_bzero in configure so secure_memzero uses
-  the compiler-safe variant instead of the volatile pointer loop
-  fallback.
-* Hardening: Wipe IPC send buffer before free to prevent ciphertext
-  lingering in freed memory.
 * Fix: Exit resolver child on ev_loop_new failure instead of falling
   back to the parent's event loop.
 * Fix: Check sock->failed early in DoT read/write callbacks to avoid
   calling SSL on known-broken connections.
 * Fix: Warn when reuseport or ipv6_v6only changes on SIGHUP reload
   since these socket options cannot be changed on a live bound socket.
-* Hardening: Set SOCK_CLOEXEC on DoT sockets in resolver child.
-* Hardening: Add bounds check on Huffman tree int16_t cast.
-* Hardening: Add compiler flags -Wshadow, -Wimplicit-fallthrough,
-  -Wnull-dereference, -Wundef, -fno-delete-null-pointer-checks.
-* Hardening: Add linker flag -Wl,-z,nodlopen to prevent dlopen.
-* Hardening: Harden systemd service with ProtectKernelTunables,
-  ProtectKernelModules, ProtectKernelLogs, ProtectControlGroups,
-  ProtectClock, ProtectHostname, PrivateDevices, RestrictNamespaces,
-  RestrictRealtime, RestrictSUIDSGID, MemoryDenyWriteExecute, and
-  LockPersonality.
+* Fix: Warn when resolver config changes on SIGHUP reload since the
+  resolver child is not restarted.
+* Fix: Annotate intentional switch fallthroughs for clang
+  -Wimplicit-fallthrough compatibility.
 
 sniproxy 0.10.0 (2026-03-14)
 ===============================
