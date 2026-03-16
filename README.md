@@ -66,11 +66,12 @@ Features
   bugs.
 + **DNS query concurrency limits**: Prevents resolver exhaustion
 + **Connection idle timeouts**: Automatic cleanup of stalled connections
-+ **Per-IP connection rate limiting**: Token-bucket guardrail on new client connections across all listeners
++ **Per-IP connection rate limiting**: Token-bucket guardrail on new TCP connections and UDP sessions across all listeners
 + **Privilege separation**: Separate processes for logging and DNS resolution
 + **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
 + **Input sanitization**: Hostname validation, control character removal
-+ **Comprehensive fuzzing**: TLS and HTTP/2 protocol fuzzers included
++ **Comprehensive fuzzing**: Protocol fuzzers for TLS, DTLS, HTTP/2, XMPP,
+  Minecraft, hostname, address, config, listener ACL, IPC crypto, and resolver
 + **Configuration integrity**: Config files are re-checked for strict permissions
   on reload, all path directives must be absolute, and resolver search domains are
   treated as literal suffixes instead of being DNS-parsed.
@@ -243,9 +244,10 @@ per_ip_connection_rate 50   # allow 50 new connections per second per source IP
 per_ip_max_connections 100  # max 100 simultaneous connections per source IP
 ```
 
-`per_ip_connection_rate` limits the rate of new connections (default 30/s).
-`per_ip_max_connections` limits how many connections may be open concurrently
-from a single IP (default 0, disabled). Set either value to `0` to disable.
+`per_ip_connection_rate` limits the rate of new connections and UDP sessions
+(default 30/s). `per_ip_max_connections` limits how many connections and UDP
+sessions may be open concurrently from a single IP (default 0, disabled).
+Both limits are shared between TCP and UDP. Set either value to `0` to disable.
 
 To guard against descriptor exhaustion during floods, cap the number of
 concurrent connections (set `0` to auto-derive ~80% of the file descriptor
@@ -353,7 +355,7 @@ tcp_fastopen on
         #nameserver dot://9.9.9.9/dns.quad9.net/tls1.2
 
         # Limit concurrent DNS queries to prevent resource exhaustion
-        max_concurrent_queries 256
+        max_concurrent_queries 512
 
         # Limit per-client concurrent DNS queries (default 16, 0 to disable)
         max_concurrent_queries_per_client 16
@@ -563,9 +565,8 @@ On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper proces
   - Resolver process: `stdio rpath inet dns unix` to perform DNS lookups in isolation
 
 All paths are collected from the loaded configuration, so custom locations work
-as long as files/directories exist before launch. After unveiling resources,
-SNIProxy pledges minimal runtime promises and a restricted exec profile for
-spawning helper processes.
+as long as files/directories exist before launch. Helper processes are forked
+(not exec'd) and inherit the master key for IPC encryption.
 
 Performance Notes
 -----------------

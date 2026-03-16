@@ -1,4 +1,4 @@
-.TH SNIPROXY 8 "14 Mar 2026" "SNIProxy manual" "sniproxy"
+.TH SNIPROXY 8 "16 Mar 2026" "SNIProxy manual" "sniproxy"
 
 .SH NAME
 
@@ -82,9 +82,13 @@ use the updated configuration\&.
 
 .TP
 .B SIGUSR1
-Dump all active connections to a temporary file in
-.I /tmp
-for debugging\&.
+Dump all active TCP connections and UDP sessions to a temporary file
+for debugging\&. The file is created in
+.I $XDG_RUNTIME_DIR/sniproxy\fR,
+.I /var/run/sniproxy\fR,
+or
+.I /tmp/sniproxy-<uid>
+(tried in that order)\&.
 
 .TP
 .B SIGINT\fR, \fBSIGTERM

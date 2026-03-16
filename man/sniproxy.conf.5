@@ -1,4 +1,4 @@
-.TH SNIPROXY.CONF 5 "14 Mar 2026" "SNIProxy manual" "sniproxy"
+.TH SNIPROXY.CONF 5 "16 Mar 2026" "SNIProxy manual" "sniproxy"
 
 .SH NAME
 
@@ -76,12 +76,12 @@ per_ip_connection_rate 20
 .fi
 .PP
 
-Limit how many new client connections a single source IP address may open
-per second. The value is interpreted as connections per second and is
-applied globally across all listeners using a token-bucket policy that
-allows short bursts up to the configured rate. The default is 30
-connections per second. Set the value to 0 to disable per-IP rate
-limiting entirely.
+Limit how many new TCP connections and UDP sessions a single source IP
+address may open per second. The value is interpreted as connections per
+second and is applied globally across all listeners (both TCP and DTLS)
+using a token-bucket policy that allows short bursts up to the
+configured rate. The default is 30 connections per second. Set the value
+to 0 to disable per-IP rate limiting entirely.
 
 .SS PER_IP_MAX_CONNECTIONS
 
@@ -91,9 +91,10 @@ per_ip_max_connections 100
 .fi
 .PP
 
-Limit the maximum number of simultaneously active connections from a
-single source IP address. When an IP reaches the limit, new connections
-from that address are closed immediately until existing ones complete.
+Limit the maximum number of simultaneously active TCP connections and
+UDP sessions from a single source IP address. When an IP reaches the
+limit, new connections from that address are closed immediately until
+existing ones complete. TCP and UDP sessions share the same counter.
 The default value of 0 disables the per-IP connection cap.
 
 This is distinct from \fBper_ip_connection_rate\fR, which limits the rate
@@ -393,8 +394,9 @@ load balancer, extracts the original client address, and uses it for
 access logging and any outgoing PROXY protocol headers to backends. This
 allows chaining sniproxy behind load balancers (e.g. AWS NLB, HAProxy)
 or other sniproxy instances while preserving the real client IP. Note
-that ACL and per-IP rate limiting are applied to the direct TCP peer
-(the upstream proxy), not the address from the PROXY header.
+that ACL and per-IP rate limiting are applied to the direct peer
+address (the upstream proxy for TCP, or the UDP source address for
+DTLS), not the address from the PROXY header.
 
 The source directive allows specifying an address to bind to before
 connecting to the backend server. In most cases it is better to omit
