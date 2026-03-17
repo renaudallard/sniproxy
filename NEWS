@@ -1,3 +1,12 @@
+sniproxy 0.11.1 (2026-03-17)
+===============================
+
+* Bugfix: Fix IPV6_V6ONLY not effective when binding privileged ports
+  via binder child process. On Linux, setsockopt(IPV6_V6ONLY) after
+  bind() is rejected with EINVAL, so the option must be set before
+  bind(). The ipv6_v6only flag is now passed to the binder child which
+  sets it before calling bind().
+
 sniproxy 0.11.0 (2026-03-16)
 ===============================
 

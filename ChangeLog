@@ -1,3 +1,9 @@
+2026-03-17  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.11.1
+	- Fix IPV6_V6ONLY not effective when binding privileged ports via
+	  binder child process (setsockopt after bind rejected by Linux)
+
 2026-03-16  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.11.0
