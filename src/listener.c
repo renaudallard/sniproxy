@@ -853,7 +853,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         close(sockfd);
         sockfd = bind_socket(address_sa(listener->address),
                 address_sa_len(listener->address),
-                listener->protocol->sock_type);
+                listener->protocol->sock_type,
+                listener->ipv6_v6only);
         if (sockfd < 0) {
             err("binder failed to bind to %s",
                 display_address(listener->address, address, sizeof(address)));
@@ -890,19 +891,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
             }
         }
 
-        if (listener->ipv6_v6only == 1 &&
-                address_sa(listener->address)->sa_family == AF_INET6) {
-#ifdef IPV6_V6ONLY
-            result = setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
-#else
-            result = -ENOSYS;
-#endif
-            if (result < 0) {
-                err("setsockopt IPV6_V6ONLY failed on binder socket: %s", strerror(errno));
-                rc = result;
-                goto error;
-            }
-        }
+        /* IPV6_V6ONLY is passed to the binder and set before bind(),
+         * since Linux rejects setsockopt(IPV6_V6ONLY) after bind. */
     } else if (result < 0) {
         err("bind %s failed: %s",
             display_address(listener->address, address, sizeof(address)),

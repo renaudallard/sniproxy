@@ -302,7 +302,8 @@ binder_restart_child(void) {
 }
 
 int
-bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type) {
+bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
+        int ipv6_v6only) {
     if (addr_len > BINDER_IPC_MAX_PAYLOAD - sizeof(struct binder_request))
         fatal("bind_socket: address length %zu exceeds buffer", addr_len);
 
@@ -312,6 +313,7 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type) {
     memset(request, 0, sizeof(*request));
     request->cmd = BINDER_CMD_BIND;
     request->reserved[0] = (sock_type == SOCK_DGRAM) ? 1 : 0;
+    request->reserved[1] = ipv6_v6only ? 1 : 0;
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
 
@@ -579,6 +581,24 @@ binder_main(int sockfd) {
             free(plain);
             continue;
         }
+
+#ifdef IPV6_V6ONLY
+        if (req->reserved[1] &&
+                req->address[0].sa_family == AF_INET6) {
+            if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY,
+                    &on, sizeof(on)) < 0) {
+                char errbuf[128];
+                snprintf(errbuf, sizeof(errbuf),
+                        "setsockopt IPV6_V6ONLY failed: %s",
+                        strerror(errno));
+                close(fd);
+                ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                        errbuf, strlen(errbuf), -1);
+                free(plain);
+                continue;
+            }
+        }
+#endif
 
         if (bind(fd, req->address, req->address_len) < 0) {
             char errbuf[128];

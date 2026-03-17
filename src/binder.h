@@ -31,7 +31,7 @@
 
 void start_binder(void);
 int binder_register_allowed_address(const struct sockaddr *, size_t);
-int bind_socket(const struct sockaddr *, size_t, int sock_type);
+int bind_socket(const struct sockaddr *, size_t, int sock_type, int ipv6_v6only);
 void stop_binder(void);
 
 #endif

@@ -65,7 +65,7 @@ test_binder(int port) {
     int rc = binder_register_allowed_address((struct sockaddr *)&addr, sizeof(addr));
     assert(rc == 0);
 
-    int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM);
+    int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM, 0);
 
     assert(fd >= 0);
 
@@ -88,7 +88,7 @@ test_binder(int port) {
     }
 
     /* Test error handling: bind same port while still held */
-    int fd2 = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM);
+    int fd2 = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM, 0);
     assert(fd2 == -1);
 
     close(fd);
