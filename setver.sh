@@ -25,12 +25,14 @@ if [ -d ${GIT_DIR} ]; then
     fi
 fi
 
-# Portable in-place sed (macOS sed -i requires '' argument)
+# Portable in-place sed
+# GNU sed: -i works without argument
+# macOS/OpenBSD: -i requires/accepts extension, must be adjacent (no space)
 sedi() {
     if sed --version >/dev/null 2>&1; then
         sed -i "$@"
     else
-        sed -i '' "$@"
+        sed -i'' "$@"
     fi
 }
 
