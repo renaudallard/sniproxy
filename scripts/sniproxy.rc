@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# PROVIDE: sniproxy
+# REQUIRE: LOGIN DAEMON NETWORKING
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf to enable sniproxy:
+#
+# sniproxy_enable (bool):	Set to "YES" to enable sniproxy.
+#				Default: "NO"
+# sniproxy_config (path):	Path to sniproxy configuration file.
+#				Default: "/usr/local/etc/sniproxy.conf"
+# sniproxy_flags (str):	Extra flags passed to sniproxy.
+#				Default: ""
+
+. /etc/rc.subr
+
+name="sniproxy"
+rcvar="${name}_enable"
+
+load_rc_config $name
+
+: ${sniproxy_enable:="NO"}
+: ${sniproxy_config:="/usr/local/etc/sniproxy.conf"}
+: ${sniproxy_flags:=""}
+
+pidfile="/var/run/${name}.pid"
+command="/usr/local/sbin/${name}"
+command_args="-c ${sniproxy_config} ${sniproxy_flags}"
+required_files="${sniproxy_config}"
+
+extra_commands="reload"
+reload_cmd="${name}_reload"
+start_precmd="${name}_prestart"
+
+sniproxy_prestart()
+{
+	if [ ! -f "${sniproxy_config}" ]; then
+		err 1 "${sniproxy_config} not found"
+	fi
+}
+
+sniproxy_reload()
+{
+	if [ -f "${pidfile}" ]; then
+		kill -HUP $(cat "${pidfile}")
+	else
+		err 1 "${name} is not running"
+	fi
+}
+
+run_rc_command "$1"

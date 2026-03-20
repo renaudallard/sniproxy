@@ -1,1 +1,1 @@
-EXTRA_DIST = sniproxy.service
+EXTRA_DIST = sniproxy.service sniproxy.rc

@@ -219,6 +219,30 @@ This is the preferred installation method for modern Fedora based distributions.
 
         sudo yum install ../sniproxy-<version>.<arch>.rpm
 
+**Building on FreeBSD**
+
+1. Install required packages
+
+        pkg install autoconf automake libtool pkgconf libev pcre2 c-ares
+
+2. Build
+
+        ./autogen.sh && ./configure LDFLAGS="-L/usr/local/lib" CPPFLAGS="-I/usr/local/include" && make
+
+3. Install
+
+        sudo make install
+        sudo cp scripts/sniproxy.rc /usr/local/etc/rc.d/sniproxy
+        sudo cp /usr/local/etc/sniproxy.conf.sample /usr/local/etc/sniproxy.conf
+
+4. Enable and start
+
+        sudo sysrc sniproxy_enable=YES
+        sudo service sniproxy start
+
+Capsicum capability mode is automatically enabled on FreeBSD when all
+listeners and backends use IP addresses (not Unix domain sockets).
+
 ***Building on OS X with Homebrew***
 
 1. install dependencies.

@@ -123,6 +123,22 @@ On Linux,
 \fBsniproxy\fR
 uses seccomp-bpf to restrict available system calls per process\&.
 
+.SH FILES
+.TP
+.I /etc/sniproxy.conf
+Default configuration file (Linux)\&.
+.TP
+.I /usr/local/etc/sniproxy.conf
+Default configuration file (FreeBSD)\&.
+.TP
+.I /usr/local/etc/rc.d/sniproxy
+FreeBSD rc.d startup script\&.
+Enable with
+.B sysrc sniproxy_enable=YES
+and control with
+.B service sniproxy start|stop|reload\fR\&.
+
 .SH "SEE ALSO"
 .PP
-\fBsniproxy.conf\fR(5)
+\fBsniproxy.conf\fR(5)\fR,
+\fBrc.subr\fR(8)
