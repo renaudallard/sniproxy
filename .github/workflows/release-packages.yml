@@ -44,6 +44,7 @@ jobs:
       opensuse_leap: ${{ steps.detect.outputs.opensuse_leap }}
       suse_bci: ${{ steps.detect.outputs.suse_bci }}
       alpine_latest: ${{ steps.detect.outputs.alpine_latest }}
+      freebsd_version: ${{ steps.detect.outputs.freebsd_version }}
     steps:
       - name: Fetch latest Ubuntu/Debian versions
         id: detect
@@ -233,6 +234,17 @@ jobs:
                   pass
               return "latest"
 
+          def latest_freebsd():
+              try:
+                  data = fetch_text("https://download.freebsd.org/releases/VM-IMAGES/")
+                  versions = re.findall(r'(\d+\.\d+)-RELEASE', data)
+                  if versions:
+                      versions.sort(key=lambda v: [int(x) for x in v.split(".")])
+                      return versions[-1]
+              except Exception:
+                  pass
+              return "14.2"
+
           ubuntu_stable = latest_ubuntu_non_lts()
           ubuntu_lts = latest_ubuntu_lts()
           debian_stable = debian_codename("stable")
@@ -246,6 +258,7 @@ jobs:
           opensuse_leap = latest_opensuse_leap()
           suse_bci = latest_suse_bci()
           alpine_latest = latest_alpine()
+          freebsd_version = latest_freebsd()
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"ubuntu_stable={ubuntu_stable}\n")
@@ -262,6 +275,7 @@ jobs:
               fh.write(f"opensuse_leap={opensuse_leap}\n")
               fh.write(f"suse_bci={suse_bci}\n")
               fh.write(f"alpine_latest={alpine_latest}\n")
+              fh.write(f"freebsd_version={freebsd_version}\n")
           PY
 
   build-deb-ubuntu-stable:
@@ -1103,6 +1117,60 @@ jobs:
           path: sniproxy-*-macos-*.tar.gz
           if-no-files-found: error
 
+  build-freebsd:
+    name: Build FreeBSD package (${{ needs.detect-versions.outputs.freebsd_version }})
+    runs-on: ubuntu-latest
+    needs:
+      - detect-versions
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Build on FreeBSD
+        uses: cross-platform-actions/action@v0.31.0
+        with:
+          operating_system: freebsd
+          version: "${{ needs.detect-versions.outputs.freebsd_version }}"
+          run: |
+            set -eux
+
+            sudo pkg install -y \
+              autoconf automake libtool pkgconf \
+              libev pcre2 c-ares
+
+            ./autogen.sh
+            ./configure \
+              --prefix=/usr/local \
+              LDFLAGS="-L/usr/local/lib" \
+              CPPFLAGS="-I/usr/local/include"
+
+            make -j$(sysctl -n hw.ncpu)
+
+            VERSION=$(./src/sniproxy -V 2>&1 | awk '{print $2}')
+            ARCH=$(uname -m)
+
+            STAGING="sniproxy-${VERSION}-freebsd-${ARCH}"
+            mkdir -p "${STAGING}/sbin" \
+                     "${STAGING}/etc/rc.d" \
+                     "${STAGING}/share/man/man5" \
+                     "${STAGING}/share/man/man8"
+            cp src/sniproxy "${STAGING}/sbin/"
+            cp man/sniproxy.8 "${STAGING}/share/man/man8/"
+            cp man/sniproxy.conf.5 "${STAGING}/share/man/man5/"
+            cp scripts/sniproxy.rc "${STAGING}/etc/rc.d/sniproxy"
+            tar czf "${STAGING}.tar.gz" "${STAGING}"
+
+      - name: Upload FreeBSD artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: freebsd-packages
+          path: sniproxy-*-freebsd-*.tar.gz
+          if-no-files-found: error
+
   publish:
     name: Upload Release Assets
     runs-on: ubuntu-latest
@@ -1119,6 +1187,7 @@ jobs:
       - build-rpm-suse
       - build-apk-alpine
       - build-macos
+      - build-freebsd
     steps:
       - name: Download Debian artifacts
         uses: actions/download-artifact@v8
@@ -1147,6 +1216,12 @@ jobs:
           name: macos-packages
           path: release-assets/macos
 
+      - name: Download FreeBSD artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: freebsd-packages
+          path: release-assets/freebsd
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -1156,3 +1231,4 @@ jobs:
             release-assets/rpm/*.rpm
             release-assets/apk/*.apk
             release-assets/macos/*.tar.gz
+            release-assets/freebsd/*.tar.gz
