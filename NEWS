@@ -1,5 +1,5 @@
-Changes since 0.11.1 (unreleased)
-===================================
+sniproxy 0.12.0 (2026-03-20)
+===============================
 
 * FreeBSD Capsicum sandboxing: mainloop, resolver, and logger processes
   enter capability mode after initialization. IPC sockets are restricted

@@ -1,5 +1,6 @@
 2026-03-20  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.12.0
 	- Add Capsicum capability mode sandboxing for FreeBSD
 	- Add FreeBSD rc.d startup script (scripts/sniproxy.rc)
 	- Fix build system: add AC_CANONICAL_HOST for seccomp/Capsicum

@@ -1,3 +1,13 @@
+sniproxy (0.12.0) unstable; urgency=medium
+
+  * Add Capsicum capability mode sandboxing for FreeBSD.
+  * Add FreeBSD rc.d startup script.
+  * Fix build system: add AC_CANONICAL_HOST for seccomp and Capsicum
+    detection, link libm for isfinite() on FreeBSD.
+  * Add FreeBSD package build to release workflow.
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 20 Mar 2026 12:00:00 +0100
+
 sniproxy (0.11.1) unstable; urgency=medium
 
   * Fix IPV6_V6ONLY not effective when binding privileged ports via
