@@ -410,6 +410,10 @@ binder_main(int sockfd) {
         }
     }
 
+    /* Capsicum is not used for the binder process because it must
+     * call bind() on AF_UNIX paths, which requires VFS lookups
+     * that are forbidden in capability mode. */
+
     for (;;) {
         uint8_t *plain = NULL;
         size_t plain_len = 0;

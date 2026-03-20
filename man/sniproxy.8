@@ -94,6 +94,35 @@ or
 .B SIGINT\fR, \fBSIGTERM
 Shut down gracefully\&.
 
+.SH SANDBOXING
+On OpenBSD,
+\fBsniproxy\fR
+uses
+\fBpledge\fR(2)
+and
+\fBunveil\fR(2)
+to restrict each process to the minimum set of system calls and
+filesystem paths required\&.
+.PP
+On FreeBSD,
+\fBsniproxy\fR
+uses Capsicum capability mode
+(\fBcap_enter\fR(2))
+and per-fd rights
+(\fBcap_rights_limit\fR(2))
+to confine each process after initialization\&.
+Directories needed for config reload and log rotation are pre-opened
+so that
+\fBopenat\fR(2)
+works inside capability mode\&.
+Set
+.B SNIPROXY_DISABLE_CAPSICUM
+in the environment to disable Capsicum sandboxing\&.
+.PP
+On Linux,
+\fBsniproxy\fR
+uses seccomp-bpf to restrict available system calls per process\&.
+
 .SH "SEE ALSO"
 .PP
 \fBsniproxy.conf\fR(5)

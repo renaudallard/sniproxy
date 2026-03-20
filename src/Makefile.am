@@ -14,6 +14,8 @@ sniproxy_common_sources = address.c \
                           binder.h \
                           buffer.c \
                           buffer.h \
+                          capsicum.c \
+                          capsicum.h \
                           cfg_parser.c \
                           cfg_parser.h \
                           cfg_tokenizer.c \

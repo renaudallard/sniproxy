@@ -53,6 +53,11 @@
 #include "logger.h"
 #include "connection.h"
 #include "binder.h"
+#include <fcntl.h>
+#include <unistd.h>
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+#include <libgen.h>
+#endif
 
 
 struct LoggerBuilder {
@@ -78,6 +83,8 @@ enum GlobalACLPolicy {
 
 static enum GlobalACLPolicy global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
 static int allow_group_read = 0;
+static int config_dirfd = -1;
+static char *config_basename = NULL;
 
 static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
@@ -518,11 +525,32 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
 
-    FILE *file = fopen(config->filename, "r");
-    if (file == NULL) {
-        err("%s: unable to open configuration file: %s", __func__, config->filename);
-        free_config(config, loop);
-        return NULL;
+    FILE *file;
+    if (config_dirfd >= 0 && config_basename != NULL) {
+        int cfd = openat(config_dirfd, config_basename,
+                O_RDONLY | O_CLOEXEC);
+        if (cfd < 0) {
+            err("%s: unable to open configuration file: %s",
+                    __func__, config->filename);
+            free_config(config, loop);
+            return NULL;
+        }
+        file = fdopen(cfd, "r");
+        if (file == NULL) {
+            close(cfd);
+            err("%s: unable to open configuration file: %s",
+                    __func__, config->filename);
+            free_config(config, loop);
+            return NULL;
+        }
+    } else {
+        file = fopen(config->filename, "r");
+        if (file == NULL) {
+            err("%s: unable to open configuration file: %s",
+                    __func__, config->filename);
+            free_config(config, loop);
+            return NULL;
+        }
     }
 
     /* Check permissions on opened file to prevent TOCTOU.
@@ -1984,3 +2012,40 @@ int
 config_get_allow_group_read(void) {
     return allow_group_read;
 }
+
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+int
+config_prepare_capsicum(const char *filename) {
+    char *pathcopy, *dir, *base;
+
+    if (filename == NULL)
+        return -1;
+
+    pathcopy = strdup(filename);
+    if (pathcopy == NULL)
+        return -1;
+    dir = dirname(pathcopy);
+
+    config_dirfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    free(pathcopy);
+    if (config_dirfd < 0)
+        return -1;
+
+    pathcopy = strdup(filename);
+    if (pathcopy == NULL) {
+        close(config_dirfd);
+        config_dirfd = -1;
+        return -1;
+    }
+    base = basename(pathcopy);
+    config_basename = strdup(base);
+    free(pathcopy);
+    if (config_basename == NULL) {
+        close(config_dirfd);
+        config_dirfd = -1;
+        return -1;
+    }
+
+    return 0;
+}
+#endif

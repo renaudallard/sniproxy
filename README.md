@@ -72,6 +72,7 @@ Features
   spoofed sources
 + **Privilege separation**: Separate processes for logging and DNS resolution
 + **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
++ **FreeBSD sandboxing**: Capsicum capability mode with per-fd rights limiting
 + **Input sanitization**: Hostname validation, control character removal
 + **Comprehensive fuzzing**: Protocol fuzzers for TLS, DTLS, HTTP/2, XMPP,
   Minecraft, hostname, address, config, listener ACL, IPC crypto, and resolver
@@ -570,6 +571,19 @@ On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper proces
 All paths are collected from the loaded configuration, so custom locations work
 as long as files/directories exist before launch. Helper processes are forked
 (not exec'd) and inherit the master key for IPC encryption.
+
+### FreeBSD Sandboxing
+
+On FreeBSD, SNIProxy uses Capsicum capability mode to restrict each process after initialization:
+
+- **Resolver process**: DoT SSL context is eagerly initialized before entering capability mode (since CA bundle loading requires filesystem access). The IPC socket is limited to read/write/send/recv/event rights.
+- **Logger process**: Enters capability mode after privilege drop. Pre-opened directory fds allow log file rotation via `openat()` in capability mode. Syslog is pre-connected before `cap_enter()`. The IPC socket is limited to read/write/send/recv/event rights.
+- **Main process**: Config directory and temp directory are pre-opened before entering capability mode. Config reload uses `openat()` on the pre-opened directory fd. Debug dumps use `openat()` on the pre-opened temp directory fd.
+- **Binder process**: Not sandboxed with Capsicum because it must `bind()` AF_UNIX paths, which requires VFS lookups forbidden in capability mode.
+
+The main process skips capability mode when any listener, fallback, or backend address is a Unix domain socket, since `connect()` and `bind()` to AF_UNIX paths require VFS lookups forbidden in capability mode. IP-only configurations (the common case) get full Capsicum protection. Adding new log file paths during SIGHUP reload is not supported in capability mode (existing log files can be reopened).
+
+Set `SNIPROXY_DISABLE_CAPSICUM=1` in the environment to disable Capsicum sandboxing for debugging.
 
 Performance Notes
 -----------------

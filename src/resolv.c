@@ -86,6 +86,10 @@
 #include "fd_util.h"
 #include "ipc_crypto.h"
 #include "seccomp_filter.h"
+#include "capsicum.h"
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+#include <sys/capsicum.h>
+#endif
 
 /*
  * Implement DNS resolution interface using a dedicated resolver child process
@@ -1420,6 +1424,28 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
             resolver_child_exit(EXIT_FAILURE);
         }
     }
+
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (capsicum_available()) {
+        /* Force DoT SSL context init before entering capability mode,
+         * since it needs to read CA bundles from the filesystem */
+        if (child_dot_server_count > 0) {
+            if (resolver_child_init_dot_ssl_ctx() < 0)
+                err("resolver: failed to pre-init DoT SSL context");
+        }
+        cap_rights_t rights;
+        cap_rights_init(&rights, CAP_READ, CAP_WRITE, CAP_SEND, CAP_RECV,
+                CAP_EVENT);
+        if (cap_rights_limit(child_sock, &rights) < 0 && errno != ENOSYS) {
+            err("resolver: cap_rights_limit failed: %s", strerror(errno));
+            resolver_child_exit(EXIT_FAILURE);
+        }
+        if (capsicum_enter() < 0) {
+            err("resolver: cap_enter failed: %s", strerror(errno));
+            resolver_child_exit(EXIT_FAILURE);
+        }
+    }
+#endif
 
     ev_run(child_loop, 0);
 

@@ -61,6 +61,11 @@
 #include "fd_util.h"
 #include "ipc_crypto.h"
 #include "seccomp_filter.h"
+#include "capsicum.h"
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+#include <sys/capsicum.h>
+#include <libgen.h>
+#endif
 
 struct Logger {
     struct LogSink *sink;
@@ -89,6 +94,8 @@ struct ChildSink {
     int type;
     FILE *file;
     char *filepath;
+    int dirfd;
+    char *file_basename;
     SLIST_ENTRY(ChildSink) entries;
 };
 
@@ -245,7 +252,8 @@ static int logger_send_privileges(uid_t uid, gid_t gid);
 static void logger_child_handle_message(int, struct logger_ipc_header *, int, char *);
 static struct ChildSink *child_sink_lookup(struct ChildSink_head *, uint32_t);
 static void child_sink_free(struct ChildSink_head *, struct ChildSink *);
-static FILE *logger_child_open_file(const char *filepath);
+static FILE *logger_child_open_file(const char *filepath, int dirfd,
+        const char *file_basename);
 static int logger_register_sink(struct LogSink *sink);
 static void logger_resend_sinks(void);
 static void logger_health_check_cb(struct ev_loop *, struct ev_timer *, int);
@@ -1529,17 +1537,23 @@ child_sink_free(struct ChildSink_head *head, struct ChildSink *sink) {
     else if (sink->type == LOG_SINK_SYSLOG)
         closelog();
     sink->file = NULL;
+    if (sink->dirfd >= 0)
+        close(sink->dirfd);
+    sink->dirfd = -1;
+    free(sink->file_basename);
+    sink->file_basename = NULL;
     free(sink->filepath);
     sink->filepath = NULL;
     free(sink);
 }
 
 static FILE *
-logger_child_open_file(const char *filepath) {
+logger_child_open_file(const char *filepath, int dirfd,
+        const char *file_basename) {
     int fd;
     struct stat st;
 
-    if (filepath == NULL)
+    if (filepath == NULL && (dirfd < 0 || file_basename == NULL))
         return NULL;
 
     int open_flags = O_WRONLY | O_APPEND | O_CREAT;
@@ -1550,7 +1564,10 @@ logger_child_open_file(const char *filepath) {
     open_flags |= O_NOFOLLOW;
 #endif
 
-    fd = open(filepath, open_flags, 0600);
+    if (dirfd >= 0 && file_basename != NULL)
+        fd = openat(dirfd, file_basename, open_flags, 0600);
+    else
+        fd = open(filepath, open_flags, 0600);
     if (fd < 0)
         return NULL;
 
@@ -1653,6 +1670,41 @@ logger_resend_sinks(void) {
     }
 }
 
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+static void
+logger_child_sink_init_dirfd(struct ChildSink *sink) {
+    char *pathcopy, *dir, *base;
+
+    if (sink->filepath == NULL)
+        return;
+
+    /* Extract basename */
+    pathcopy = strdup(sink->filepath);
+    if (pathcopy == NULL)
+        return;
+    base = basename(pathcopy);
+    sink->file_basename = strdup(base);
+    free(pathcopy);
+    if (sink->file_basename == NULL)
+        return;
+
+    /* Extract dirname and open as directory fd */
+    pathcopy = strdup(sink->filepath);
+    if (pathcopy == NULL) {
+        free(sink->file_basename);
+        sink->file_basename = NULL;
+        return;
+    }
+    dir = dirname(pathcopy);
+    sink->dirfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    free(pathcopy);
+    if (sink->dirfd < 0) {
+        free(sink->file_basename);
+        sink->file_basename = NULL;
+    }
+}
+#endif
+
 static void
 logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
         int received_fd, char *payload) {
@@ -1670,6 +1722,8 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             sink->type = (int)header->arg0;
             sink->file = NULL;
             sink->filepath = NULL;
+            sink->dirfd = -1;
+            sink->file_basename = NULL;
 
             if (payload != NULL) {
                 sink->filepath = strdup(payload);
@@ -1682,24 +1736,38 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             }
 
             if (sink->type == LOG_SINK_FILE) {
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+                if (capsicum_available() && sink->filepath != NULL)
+                    logger_child_sink_init_dirfd(sink);
+#endif
                 if (received_fd >= 0) {
                     sink->file = fdopen(received_fd, "a");
                     if (sink->file == NULL) {
                         close(received_fd);
                         free(sink->filepath);
+                        free(sink->file_basename);
+                        if (sink->dirfd >= 0)
+                            close(sink->dirfd);
                         free(sink);
                         break;
                     }
                     setvbuf(sink->file, NULL, _IOLBF, 0);
                 } else if (sink->filepath != NULL) {
-                    sink->file = logger_child_open_file(sink->filepath);
+                    sink->file = logger_child_open_file(sink->filepath,
+                            sink->dirfd, sink->file_basename);
                     if (sink->file == NULL) {
+                        free(sink->file_basename);
+                        if (sink->dirfd >= 0)
+                            close(sink->dirfd);
                         free(sink->filepath);
                         free(sink);
                         break;
                     }
                 }
                 if (received_fd < 0 && sink->file == NULL) {
+                    free(sink->file_basename);
+                    if (sink->dirfd >= 0)
+                        close(sink->dirfd);
                     free(sink->filepath);
                     free(sink);
                     break;
@@ -1758,7 +1826,8 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                     }
                     setvbuf(file, NULL, _IOLBF, 0);
                 } else if (sink->filepath != NULL) {
-                    file = logger_child_open_file(sink->filepath);
+                    file = logger_child_open_file(sink->filepath,
+                            sink->dirfd, sink->file_basename);
                     if (file == NULL)
                         break;
                 }
@@ -1820,6 +1889,29 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 }
 #endif
             }
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+            if (capsicum_available()) {
+                /* Pre-connect syslog before entering capability mode */
+                openlog(PACKAGE_NAME, LOG_PID, 0);
+
+                cap_rights_t rights;
+                cap_rights_init(&rights, CAP_READ, CAP_WRITE, CAP_SEND,
+                        CAP_RECV, CAP_EVENT);
+                if (cap_rights_limit(sockfd, &rights) < 0 &&
+                        errno != ENOSYS) {
+                    fprintf(stderr,
+                            "logger: cap_rights_limit failed: %s\n",
+                            strerror(errno));
+                    logger_child_exit(EXIT_FAILURE);
+                }
+                if (capsicum_enter() < 0) {
+                    fprintf(stderr,
+                            "logger: cap_enter failed: %s\n",
+                            strerror(errno));
+                    logger_child_exit(EXIT_FAILURE);
+                }
+            }
+#endif
             break;
         case LOGGER_CMD_DROP:
             sink = child_sink_lookup(&child_sink_head, header->sink_id);

@@ -71,6 +71,14 @@
 #include "tls.h"
 #include "udp_connection.h"
 #include "seccomp_filter.h"
+#include "capsicum.h"
+#include "address.h"
+#include "table.h"
+#include "backend.h"
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+#include <sys/capsicum.h>
+#include <sys/un.h>
+#endif
 
 
 static void usage(void);
@@ -538,6 +546,65 @@ main(int argc, char **argv) {
         }
     }
 
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (capsicum_available()) {
+        /* AF_UNIX connect/bind requires VFS path lookups that are
+         * forbidden in capability mode.  Skip cap_enter() if any
+         * listener or backend uses a Unix domain socket. */
+        int has_unix = 0;
+        struct Listener *l;
+        SLIST_FOREACH(l, &config->listeners, entries) {
+            const struct sockaddr *sa = address_sa(l->address);
+            if (sa != NULL && sa->sa_family == AF_UNIX) {
+                has_unix = 1;
+                break;
+            }
+            if (l->fallback_address != NULL) {
+                sa = address_sa(l->fallback_address);
+                if (sa != NULL && sa->sa_family == AF_UNIX) {
+                    has_unix = 1;
+                    break;
+                }
+            }
+        }
+        if (!has_unix) {
+            struct Table *t;
+            SLIST_FOREACH(t, &config->tables, entries) {
+                struct Backend *b;
+                STAILQ_FOREACH(b, &t->backends, entries) {
+                    if (b->address != NULL) {
+                        const struct sockaddr *sa = address_sa(b->address);
+                        if (sa != NULL && sa->sa_family == AF_UNIX) {
+                            has_unix = 1;
+                            break;
+                        }
+                    }
+                }
+                if (has_unix)
+                    break;
+            }
+        }
+        if (!has_unix) {
+            /* Pre-open directories needed after cap_enter() */
+            if (config_prepare_capsicum(config->filename) < 0)
+                warn("main: failed to pre-open config directory for capsicum");
+            /* Initialize temp dir (keeps dirfd open for debug dumps) */
+            init_secure_temp_dir();
+
+            if (capsicum_enter() < 0) {
+                fatal("main: cap_enter failed: %s", strerror(errno));
+            }
+            /* Notify logger that the parent can no longer open files,
+             * matching the OpenBSD unveil path.  During SIGHUP reload
+             * new log sinks will be created without parent-side fds;
+             * the logger child uses pre-opened dirfds for reopening
+             * existing sinks. */
+            if (logger_process_is_active())
+                logger_parent_notify_fs_locked();
+        }
+    }
+#endif
+
     /* Start logger health check watchdog */
     if (logger_process_is_active())
         logger_start_health_check(loop);
@@ -655,6 +722,9 @@ drop_perms(const char *username, const char *groupname) {
             fatal("Process UID does not match configured user %s", username);
         if (getgid() != gid || getegid() != gid)
             fatal("Process GID does not match configured gid %lu", (unsigned long)gid);
+        /* Still notify logger child so it can tighten sandboxing */
+        if (logger_drop_privileges(user->pw_uid, gid) < 0)
+            fatal("logger_drop_privileges(): %s", strerror(errno));
         return;
     }
 

@@ -58,6 +58,7 @@
 #include "tls.h"
 #include "fd_util.h"
 #include "udp_connection.h"
+#include "capsicum.h"
 
 #if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
 #error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, macOS, and modern Linux)."
@@ -481,6 +482,8 @@ free_connections(struct ev_loop *loop) {
  * Returns a static buffer containing the path, or NULL on error.
  * The directory is created with mode 0700 (owner-only access).
  */
+static int tempdir_fd = -1;
+
 static const char *
 get_secure_temp_dir(void) {
     static char temp_dir[PATH_MAX];
@@ -533,7 +536,7 @@ get_secure_temp_dir(void) {
                 /* Verify ownership and permissions using fstat on the fd */
                 if (fstat(dir_fd, &st) == 0 && S_ISDIR(st.st_mode) &&
                     st.st_uid == getuid() && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
-                    close(dir_fd);
+                    tempdir_fd = dir_fd;
                     initialized = 1;
                     return temp_dir;
                 }
@@ -563,12 +566,13 @@ fallback:
             if (fstat(dir_fd, &st) == 0 && S_ISDIR(st.st_mode) &&
                 st.st_uid == getuid() &&
                 (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
-                close(dir_fd);
                 if (snprintf(temp_dir, sizeof(temp_dir), "%s",
                         fallback_dir) < (int)sizeof(temp_dir)) {
+                    tempdir_fd = dir_fd;
                     initialized = 1;
                     return temp_dir;
                 }
+                close(dir_fd);
             } else {
                 close(dir_fd);
             }
@@ -639,10 +643,15 @@ fallback:
         return NULL;
     }
 
-    close(dir_fd);
+    tempdir_fd = dir_fd;
     initialized = 1;
     return temp_dir;
     }
+}
+
+void
+init_secure_temp_dir(void) {
+    (void)get_secure_temp_dir();
 }
 
 /* dumps a list of all connections for debugging */
@@ -655,35 +664,62 @@ print_connections(void) {
     }
 
     char filename[PATH_MAX];
-    if (snprintf(filename, sizeof(filename), "%s/connections-XXXXXX", temp_dir)
-        >= (int)sizeof(filename)) {
-        warn("Temp filename path too long");
-        return;
-    }
-
-    mode_t old_umask = umask(077);
     int fd;
     int need_set_cloexec = 1;
+
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (tempdir_fd >= 0) {
+        /* In capability mode, use openat() with a random name */
+        int attempts = 0;
+        do {
+            uint32_t rnd = arc4random();
+            char basename[64];
+            snprintf(basename, sizeof(basename),
+                    "connections-%08x", rnd);
+            fd = openat(tempdir_fd, basename,
+                    O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+            if (fd >= 0) {
+                need_set_cloexec = 0;
+                snprintf(filename, sizeof(filename), "%s/%s",
+                        temp_dir, basename);
+                break;
+            }
+        } while (errno == EEXIST && ++attempts < 16);
+        if (fd < 0) {
+            warn("openat failed: %s", strerror(errno));
+            return;
+        }
+    } else
+#endif
+    {
+        if (snprintf(filename, sizeof(filename), "%s/connections-XXXXXX",
+                    temp_dir) >= (int)sizeof(filename)) {
+            warn("Temp filename path too long");
+            return;
+        }
+
+        mode_t old_umask = umask(077);
 #ifdef HAVE_MKOSTEMP
-    int mkostemp_flags = 0;
+        int mkostemp_flags = 0;
 #ifdef O_CLOEXEC
-    mkostemp_flags |= O_CLOEXEC;
+        mkostemp_flags |= O_CLOEXEC;
 #endif
 #ifdef O_NOFOLLOW
-    mkostemp_flags |= O_NOFOLLOW;
+        mkostemp_flags |= O_NOFOLLOW;
 #endif
-    fd = mkostemp(filename, mkostemp_flags);
+        fd = mkostemp(filename, mkostemp_flags);
 #ifdef O_CLOEXEC
-    if (mkostemp_flags & O_CLOEXEC)
-        need_set_cloexec = 0;
+        if (mkostemp_flags & O_CLOEXEC)
+            need_set_cloexec = 0;
 #endif
 #else
-    fd = mkstemp(filename);
+        fd = mkstemp(filename);
 #endif
-    umask(old_umask);
-    if (fd < 0) {
-        warn("mkstemp failed: %s", strerror(errno));
-        return;
+        umask(old_umask);
+        if (fd < 0) {
+            warn("mkstemp failed: %s", strerror(errno));
+            return;
+        }
     }
 
     if (need_set_cloexec && set_cloexec(fd) < 0) {

@@ -245,6 +245,17 @@ case "$host_os" in
 esac
 AC_SUBST([LIBSECCOMP_LIBS])
 
+# Check for Capsicum (FreeBSD only)
+case "$host_os" in
+  freebsd*)
+    AC_CHECK_HEADERS([sys/capsicum.h])
+    AC_CHECK_FUNCS([cap_enter cap_rights_limit])
+    AS_IF([test "x$ac_cv_func_cap_enter" = xyes -a "x$ac_cv_func_cap_rights_limit" = xyes], [
+      AC_DEFINE([HAVE_CAPSICUM], 1, [Define to 1 if Capsicum is available])
+    ])
+    ;;
+esac
+
 AC_CHECK_FUNCS([accept4 closefrom daemon setproctitle mkostemp explicit_bzero memset_s])
 
 # Enable large file support (so we can log more than 2GB)
