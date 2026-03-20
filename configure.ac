@@ -4,6 +4,7 @@ AC_PREREQ([2.71])
 AC_INIT([sniproxy],[0.11.1])
 AM_INIT_AUTOMAKE([subdir-objects])
 AM_SILENT_RULES([yes])
+AC_CANONICAL_HOST
 AC_USE_SYSTEM_EXTENSIONS
 
 AC_DEFUN([SNIPROXY_APPEND_CFLAG], [
@@ -218,6 +219,8 @@ AC_SEARCH_LIBS([reallocarray], [bsd], [
   AC_MSG_WARN([reallocarray() not found; using built-in fallback])
 ])
 AC_SUBST([LIBBSD_LIBS])
+
+AC_SEARCH_LIBS([floor], [m])
 
 AC_CHECK_HEADERS([openssl/evp.h openssl/rand.h openssl/sha.h], [],
   [AC_MSG_ERROR([OpenSSL/LibreSSL headers with ChaCha20-Poly1305 are required])])
