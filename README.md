@@ -233,7 +233,6 @@ This is the preferred installation method for modern Fedora based distributions.
 
         sudo make install
         sudo cp scripts/sniproxy.rc /usr/local/etc/rc.d/sniproxy
-        sudo cp /usr/local/etc/sniproxy.conf.sample /usr/local/etc/sniproxy.conf
 
 4. Enable and start
 

@@ -1,3 +1,12 @@
+2026-03-20  Renaud Allard  <renaud@allard.it>
+
+	- Add Capsicum capability mode sandboxing for FreeBSD
+	- Add FreeBSD rc.d startup script (scripts/sniproxy.rc)
+	- Fix build system: add AC_CANONICAL_HOST for seccomp/Capsicum
+	  detection and link libm for isfinite() on FreeBSD
+	- Add capsicum.c to test binaries that link logger.c
+	- Add FreeBSD package build to release workflow
+
 2026-03-17  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.11.1
