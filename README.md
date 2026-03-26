@@ -765,6 +765,7 @@ When developing, please use the memory sanitizers to catch bugs early:
 - **Memory sanitizers guide**: See [SANITIZERS.md](SANITIZERS.md)
 - **Issue tracking**: GitHub Issues
 - **License**: BSD 2-Clause
+- **Donate**: [PayPal](https://www.paypal.me/RenaudAllard)
 
 ### Credits
 
