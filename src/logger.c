@@ -2031,6 +2031,22 @@ logger_parent_notify_fs_locked(void) {
 }
 
 /*
+ * Reset logger IPC state inherited from the parent.  Called by sibling
+ * children (binder, resolver) right after fd_preserve_only() closes the
+ * logger socket fd.  Without this, any err()/warn()/notice() in the
+ * child would attempt IPC on a closed fd, hit EBADF, fall through to
+ * disable_logger_process(), and SIGKILL the parent's logger child.
+ */
+void
+logger_post_fork_child_disinherit(void) {
+    logger_sock = -1;
+    logger_pid = -1;
+    logger_process_enabled = 0;
+    logger_process_failed = 1;
+    ipc_crypto_state_clear(&logger_crypto_parent);
+}
+
+/*
  * Logger health check implementation
  *
  * Periodically sends a PING to the logger child process and waits for a PONG

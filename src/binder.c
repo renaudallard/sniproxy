@@ -224,6 +224,9 @@ binder_spawn_child(void) {
         return -1;
     } else if (pid == 0) { /* child */
         close(sockets[0]);
+        /* Disinherit parent's logger IPC state before any err() so a
+         * later log call cannot SIGKILL the parent's logger child. */
+        logger_post_fork_child_disinherit();
         int child_fd = fd_preserve_only(sockets[1]);
         if (child_fd < 0) {
             err("binder child: failed to preserve IPC socket: %s", strerror(errno));

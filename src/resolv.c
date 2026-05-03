@@ -562,6 +562,9 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
         goto fail_crypto;
     } else if (pid == 0) {
         close(sockets[0]);
+        /* Disinherit parent's logger IPC state before any err() so a
+         * later log call cannot SIGKILL the parent's logger child. */
+        logger_post_fork_child_disinherit();
         int child_fd = fd_preserve_only(sockets[1]);
         if (child_fd < 0) {
             err("resolver child: failed to preserve IPC socket: %s", strerror(errno));
