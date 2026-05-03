@@ -1,3 +1,66 @@
+2026-05-03  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.13.0
+	- Security: TLS parser now rejects renegotiation_info even when SNI
+	  appears earlier in the extension list. Previously the parser
+	  returned on the SNI extension and never inspected later
+	  extensions, allowing a client-initiated renegotiation attempt
+	  alongside a valid SNI to be routed instead of rejected.
+	- Security: Reject empty or mis-sized SNI server_name list per
+	  RFC 6066 section 3.
+	- Security: PROXY protocol v2 rejects undefined command values.
+	- Security: IPC channel closes orphan fds in SCM_RIGHTS ancillary
+	  data, validates cmsg_len before extracting fd, checks MSG_CTRUNC
+	  on the prefix recvmsg, and wipes partial ciphertext on seal
+	  failure.
+	- Reliability: Binder and resolver children no longer SIGKILL the
+	  parent's logger child via inherited IPC state; the resolver
+	  child's startup notice() previously triggered this on every
+	  launch.
+	- Reliability: disable_logger_process and logger_process_shutdown
+	  no longer SIGKILL on waitpid ECHILD - the PID may have been
+	  recycled.
+	- Reliability: HTTP/2 returns -1 (incomplete) instead of -2 (no
+	  host) when the buffer ends mid-request, so clients that split
+	  preface, SETTINGS and HEADERS across TCP segments are not
+	  aborted.
+	- Reliability: Configuration tokenizer rejects embedded NUL bytes.
+	- Configuration: dot://ADDRESS/SNI/tls1.2|tls1.3 syntax now
+	  parses correctly (previously rejected before reaching the
+	  resolver child).
+	- FreeBSD: Connect to syslog at openlog() time with LOG_NDELAY so
+	  the connection is open before cap_enter().
+	- FreeBSD: Pre-open pidfile parent directory and remove on
+	  shutdown via unlinkat. Register cleanup via atexit.
+	- FreeBSD: Use unlinkat for connection-dump cleanup paths.
+	- FreeBSD: Limit cap_rights on parent-side IPC sockets.
+	- FreeBSD: Warn when logger child cannot open a new file sink in
+	  capability mode.
+	- OpenBSD: Keep cpath in the post-tightening pledge so the pidfile
+	  can be removed at exit (otherwise daemon SIGABRTed on shutdown).
+	- Packaging: Add libseccomp build dependency to debian/control,
+	  redhat/sniproxy.spec, alpine/APKBUILD and the matching install
+	  lines in release-packages.yml. Without this, every Linux package
+	  release was being built without the seccomp sandbox.
+	- Packaging: Detect libssl in configure instead of hardcoding
+	  -lssl. Point package metadata at the renaudallard fork.
+	- Build: Actually clear hardening flags when sanitizers are
+	  enabled (the conflict-resolution branch had no effect).
+	- Tests: Tighten resolv_test, ipc_crypto_debug_test and tls_test
+	  assertions so silent regressions are caught. The lenient
+	  tls_test assertion is what previously masked the
+	  renegotiation_info bypass.
+	- Tests: Wire ipc_crypto_debug_test, ipc_crypto_rekey_test and
+	  ipc_crypto_time_rekey_test into the build.
+	- Tests: Cover dtls and ipc_crypto tests in the valgrind workflow.
+	- Tests: Fix functional_test connection-dump file lookup,
+	  xmpp_test off-by-one length, config_test TMPDIR honoring.
+	- Other: Rate limit buckets now track is_v4 to mirror
+	  ConnCountBucket and avoid v4/v6 cross-match on hash collision.
+	- Other: Skip destructive sink swap when REOPEN produced no new
+	  file. Avoid double ev_timer_again in UDP validating fast-path.
+	  Use _exit in manual daemonize fork-and-exit fallback.
+
 2026-03-20  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.12.0

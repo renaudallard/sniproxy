@@ -1,3 +1,113 @@
+sniproxy 0.13.0 (2026-05-03)
+===============================
+
+Security:
+
+* TLS parser: reject renegotiation_info even when the SNI extension
+  appears earlier in the ClientHello extension list. The parser used
+  to return immediately on SNI, bypassing the renegotiation rejection
+  check. A client could place a non-empty renegotiated_connection
+  alongside SNI and get the connection routed instead of rejected.
+
+* TLS parser: reject empty SNI server_name list (RFC 6066 section 3)
+  and validate the inner length matches the remaining bytes.
+
+* PROXY protocol v2: reject unknown command values (only LOCAL and
+  PROXY are defined by the spec).
+
+* IPC channel: close orphan fds in SCM_RIGHTS ancillary data so a
+  malformed peer cannot exhaust the receiver's fd table. Validate
+  cmsg_len before extracting fd, check MSG_CTRUNC on the prefix
+  recvmsg, wipe partial ciphertext on seal failure.
+
+Reliability:
+
+* Logger: stop the binder and resolver children from SIGKILLing the
+  parent's logger child via inherited IPC state. The resolver child's
+  first notice() at startup triggered this on every launch when file
+  or syslog logging was configured.
+
+* Logger: do not SIGKILL the logger PID on waitpid ECHILD - the PID
+  may have been recycled to an unrelated process.
+
+* HTTP/2: return -1 (incomplete, wait for more data) instead of -2
+  (no host) when the buffer ends mid-request, so clients that split
+  preface, SETTINGS and HEADERS across TCP segments are not aborted.
+
+* Configuration tokenizer: reject embedded NUL bytes (raw or via
+  backslash escape) so tokens cannot silently truncate.
+
+FreeBSD / Capsicum:
+
+* Connect to syslog at openlog() time with LOG_NDELAY so the syslog
+  socket is open before cap_enter() forbids path-based connect.
+
+* Pre-open the pidfile parent directory; remove on shutdown via
+  unlinkat. Register cleanup via atexit so fatal() also removes it.
+
+* Use unlinkat for connection-dump cleanup paths.
+
+* Limit cap_rights on parent-side IPC sockets.
+
+* Warn (rather than silently drop) when the logger child cannot
+  open a new file sink in capability mode.
+
+OpenBSD:
+
+* Keep cpath in the post-tightening pledge so the pidfile can be
+  removed at exit. Otherwise the daemon SIGABRTed on every shutdown.
+
+Configuration:
+
+* dot://ADDRESS/SNI/tls1.2|tls1.3 syntax now parses correctly
+  (previously the documented third URI segment was rejected by the
+  parent before reaching the resolver child).
+
+Packaging:
+
+* Add libseccomp build dependency to debian/control,
+  redhat/sniproxy.spec, alpine/APKBUILD, and the matching install
+  lines in release-packages.yml. Without this, every Linux package
+  release was being built without the seccomp sandbox.
+
+* Detect libssl in configure instead of hardcoding -lssl.
+
+* Actually clear hardening flags when sanitizers are enabled
+  (the conflict-resolution branch had no effect).
+
+* Point package metadata at the renaudallard fork.
+
+Tests / CI:
+
+* Tighten resolv_test, ipc_crypto_debug_test and tls_test
+  assertions so silent regressions are caught. The lenient tls_test
+  assertion is what previously masked the renegotiation_info bypass.
+
+* Wire ipc_crypto_debug_test, ipc_crypto_rekey_test, and
+  ipc_crypto_time_rekey_test into TESTS / check_PROGRAMS.
+
+* Cover dtls and ipc_crypto tests in the valgrind workflow.
+
+* Fix functional_test connection-dump file lookup, xmpp_test
+  off-by-one length, config_test TMPDIR honoring.
+
+* Remove broken orphan test files.
+
+Other:
+
+* Rate limit buckets now track is_v4 to mirror ConnCountBucket and
+  avoid v4/v6 cross-match on hash collision.
+
+* Skip destructive sink swap when REOPEN produced no new file.
+
+* Avoid double ev_timer_again in UDP validating fast-path.
+
+* Use _exit in manual daemonize fork-and-exit fallback.
+
+* Forward-declare struct Logger in listener.h.
+
+* Parenthesize IS_TEMPORARY_SOCKERR macro argument.
+
 sniproxy 0.12.0 (2026-03-20)
 ===============================
 

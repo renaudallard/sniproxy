@@ -1,3 +1,37 @@
+sniproxy (0.13.0) unstable; urgency=medium
+
+  * Security: TLS parser rejects renegotiation_info even when SNI
+    appears earlier in the extension list.
+  * Security: Reject empty or mis-sized SNI server_name list.
+  * Security: PROXY protocol v2 rejects undefined command values.
+  * Security: IPC channel closes orphan fds in SCM_RIGHTS, validates
+    cmsg_len, checks MSG_CTRUNC on the prefix recvmsg, wipes partial
+    ciphertext on seal failure.
+  * Reliability: Binder and resolver children no longer SIGKILL the
+    parent's logger child via inherited IPC state.
+  * Reliability: Do not SIGKILL on waitpid ECHILD (PID may have been
+    recycled).
+  * Reliability: HTTP/2 returns -1 instead of -2 when buffer ends
+    mid-request.
+  * Reliability: Configuration tokenizer rejects embedded NUL bytes.
+  * FreeBSD: Pre-connect syslog with LOG_NDELAY, pre-open pidfile dir,
+    use unlinkat for cleanup paths, limit cap_rights on parent IPC
+    sockets, warn when logger child cannot open new file sink in
+    capability mode.
+  * OpenBSD: Keep cpath in post-tightening pledge so pidfile can be
+    removed at exit.
+  * Configuration: dot://ADDRESS/SNI/tls1.2|tls1.3 syntax now parses
+    correctly.
+  * Packaging: Add libseccomp build dependency to debian, redhat,
+    alpine recipes - prior packages shipped without seccomp sandbox.
+  * Build: Detect libssl in configure. Clear hardening flags when
+    sanitizers enabled. Fix Vcs URL.
+  * Tests: Tighten resolv_test, ipc_crypto_debug_test, tls_test
+    assertions. Wire ipc_crypto rekey tests into the build. Cover
+    dtls and ipc_crypto under valgrind. Various test fixes.
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 03 May 2026 20:00:00 +0200
+
 sniproxy (0.12.0) unstable; urgency=medium
 
   * Add Capsicum capability mode sandboxing for FreeBSD.
