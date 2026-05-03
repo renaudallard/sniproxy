@@ -109,6 +109,7 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
         size_t max_extensions, size_t max_extension_length) {
     size_t pos = 0;
     size_t ext_count = 0;
+    int sni_result = -2;
 
     while (pos < data_len) {
         size_t remaining = data_len - pos;
@@ -118,33 +119,75 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
         if (ext_count++ >= max_extensions) {
             debug("ClientHello exceeded maximum extension count (%zu)",
                     max_extensions);
+            if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+                free(*hostname);
+                *hostname = NULL;
+            }
             return -5;
         }
 
         size_t len = ((size_t)data[pos + 2] << 8) +
             (size_t)data[pos + 3];
 
-        if (len > remaining - 4)
+        if (len > remaining - 4) {
+            if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+                free(*hostname);
+                *hostname = NULL;
+            }
             return -5;
+        }
 
-        if (len > max_extension_length)
+        if (len > max_extension_length) {
+            if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+                free(*hostname);
+                *hostname = NULL;
+            }
             return -5;
+        }
 
-        if (data[pos] == 0x00 && data[pos + 1] == 0x00)
-            return sni_parse_server_name_extension(data + pos + 4, len,
-                    hostname);
+        if (data[pos] == 0x00 && data[pos + 1] == 0x00) {
+            /* Only accept the first SNI extension; a duplicate is
+             * malformed and we must not leak the prior hostname. */
+            if (sni_result > 0) {
+                if (hostname != NULL && *hostname != NULL) {
+                    free(*hostname);
+                    *hostname = NULL;
+                }
+                return -5;
+            }
+            sni_result = sni_parse_server_name_extension(data + pos + 4,
+                    len, hostname);
+            if (sni_result < 0)
+                return sni_result;
+            /* Continue scanning so renegotiation_info / supported_versions
+             * after the SNI extension are still inspected. */
+        }
 
         if (data[pos] == 0xff && data[pos + 1] == 0x01) {
-            if (len < 1)
+            if (len < 1) {
+                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+                    free(*hostname);
+                    *hostname = NULL;
+                }
                 return -5;
+            }
 
             size_t renegotiated_connection_length = data[pos + 4];
 
-            if (renegotiated_connection_length != len - 1)
+            if (renegotiated_connection_length != len - 1) {
+                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+                    free(*hostname);
+                    *hostname = NULL;
+                }
                 return -5;
+            }
 
             if (renegotiated_connection_length != 0) {
                 debug("Client-initiated TLS renegotiation is not supported.");
+                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+                    free(*hostname);
+                    *hostname = NULL;
+                }
                 return TLS_ERR_CLIENT_RENEGOTIATION;
             }
         }
@@ -152,10 +195,15 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
         pos += 4 + len;
     }
 
-    if (pos != data_len)
+    if (pos != data_len) {
+        if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
+            free(*hostname);
+            *hostname = NULL;
+        }
         return -5;
+    }
 
-    return -2;
+    return sni_result;
 }
 
 static inline int
