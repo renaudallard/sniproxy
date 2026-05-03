@@ -1165,10 +1165,10 @@ disable_logger_process(void) {
         if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);
-        } else if (wr == -1 && errno == ECHILD) {
-            /* Not our child (reparented after daemonize) */
-            kill(logger_pid, SIGKILL);
         }
+        /* ECHILD means sigchld_cb already reaped the child; sending
+         * SIGKILL to logger_pid would target whatever process the
+         * kernel later allocated that PID to.  Just clear our handle. */
         logger_pid = -1;
     }
 
@@ -1294,10 +1294,10 @@ logger_process_shutdown(void) {
         if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);
-        } else if (wr == -1 && errno == ECHILD) {
-            /* Not our child (reparented after daemonize) */
-            kill(logger_pid, SIGKILL);
         }
+        /* ECHILD means sigchld_cb already reaped the child; sending
+         * SIGKILL to logger_pid would target whatever process the
+         * kernel later allocated that PID to.  Just clear our handle. */
     }
 
     logger_pid = -1;
