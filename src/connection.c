@@ -666,6 +666,12 @@ print_connections(void) {
     char filename[PATH_MAX];
     int fd;
     int need_set_cloexec = 1;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    /* basename used by unlinkat() on the cap-mode cleanup paths.  Empty
+     * string means we never opened via openat (so use plain unlink). */
+    char cap_basename[64];
+    cap_basename[0] = '\0';
+#endif
 
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
     if (tempdir_fd >= 0) {
@@ -673,15 +679,14 @@ print_connections(void) {
         int attempts = 0;
         do {
             uint32_t rnd = arc4random();
-            char basename[64];
-            snprintf(basename, sizeof(basename),
+            snprintf(cap_basename, sizeof(cap_basename),
                     "connections-%08x", rnd);
-            fd = openat(tempdir_fd, basename,
+            fd = openat(tempdir_fd, cap_basename,
                     O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
             if (fd >= 0) {
                 need_set_cloexec = 0;
                 snprintf(filename, sizeof(filename), "%s/%s",
-                        temp_dir, basename);
+                        temp_dir, cap_basename);
                 break;
             }
         } while (errno == EEXIST && ++attempts < 16);
@@ -722,10 +727,24 @@ print_connections(void) {
         }
     }
 
+    /* Cleanup helper: in cap mode, unlinkat(tempdir_fd, cap_basename) is
+     * the only path-removal call permitted; outside cap mode plain
+     * unlink(filename) works. */
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+#define CLEANUP_DUMP_FILE() do {                                           \
+    if (tempdir_fd >= 0 && cap_basename[0] != '\0')                        \
+        (void)unlinkat(tempdir_fd, cap_basename, 0);                       \
+    else                                                                   \
+        (void)unlink(filename);                                            \
+} while (0)
+#else
+#define CLEANUP_DUMP_FILE() (void)unlink(filename)
+#endif
+
     if (need_set_cloexec && set_cloexec(fd) < 0) {
         warn("set_cloexec failed for %s: %s", filename, strerror(errno));
         close(fd);
-        unlink(filename);
+        CLEANUP_DUMP_FILE();
         return;
     }
 
@@ -733,7 +752,7 @@ print_connections(void) {
     if (fstat(fd, &st) != 0) {
         warn("fstat failed for %s: %s", filename, strerror(errno));
         close(fd);
-        unlink(filename);
+        CLEANUP_DUMP_FILE();
         return;
     }
 
@@ -742,7 +761,7 @@ print_connections(void) {
         if (fchmod(fd, desired_mode) != 0) {
             warn("fchmod failed for %s: %s", filename, strerror(errno));
             close(fd);
-            unlink(filename);
+            CLEANUP_DUMP_FILE();
             return;
         }
     }
@@ -751,7 +770,7 @@ print_connections(void) {
     if (temp == NULL) {
         warn("fdopen failed: %s", strerror(errno));
         close(fd);
-        unlink(filename);
+        CLEANUP_DUMP_FILE();
         return;
     }
 
@@ -769,11 +788,13 @@ print_connections(void) {
 
     if (fclose(temp) < 0) {
         warn("fclose failed: %s", strerror(errno));
-        unlink(filename);
+        CLEANUP_DUMP_FILE();
         return;
     }
 
     notice("Dumped connections to %s", filename);
+
+#undef CLEANUP_DUMP_FILE
 }
 
 /*
