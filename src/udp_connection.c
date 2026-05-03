@@ -152,7 +152,10 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             hash);
 
     if (session != NULL) {
-        /* Reset idle timer */
+        /* In VALIDATING state, switch the timer's repeat to the normal
+         * idle timeout before the (single) ev_timer_again reset below. */
+        if (session->state == UDP_VALIDATING)
+            session->idle_timer.repeat = UDP_DEFAULT_IDLE_TIMEOUT;
         ev_timer_again(loop, &session->idle_timer);
 
         switch (session->state) {
@@ -166,9 +169,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         case UDP_VALIDATING:
             /* Source validated: a retransmission from the same (IP, port)
              * proves the source address is real (spoofed sources never
-             * retransmit). Switch to normal idle timeout and proceed. */
-            session->idle_timer.repeat = UDP_DEFAULT_IDLE_TIMEOUT;
-            ev_timer_again(loop, &session->idle_timer);
+             * retransmit).  Repeat already swapped to idle timeout above. */
             udp_parse_and_resolve(session, buf, (size_t)n, loop);
             break;
         case UDP_RESOLVING:
