@@ -45,13 +45,26 @@ sub worker($$$$) {
 }
 
 sub connection_dump_files() {
-    my $dir = '/tmp';
-    opendir(my $dh, $dir)
-        or die("opendir(): $!");
+    # connection.c writes dumps as <secure-temp-dir>/connections-XXXXXX.
+    # The secure temp dir is whichever of these the daemon chose at
+    # startup (in priority order): $XDG_RUNTIME_DIR/sniproxy,
+    # /var/run/sniproxy, or /tmp/sniproxy-<uid>.
+    my @candidates;
+    if (defined $ENV{XDG_RUNTIME_DIR} && $ENV{XDG_RUNTIME_DIR} =~ m{^/}) {
+        push @candidates, "$ENV{XDG_RUNTIME_DIR}/sniproxy";
+    }
+    push @candidates, '/var/run/sniproxy';
+    push @candidates, "/tmp/sniproxy-$<";
 
-    my %files = map { $dir . '/' . $_ => 1 } grep { /^sniproxy-connections-.{6}$/ } readdir($dh);
-
-    closedir($dh);
+    my %files;
+    foreach my $dir (@candidates) {
+        opendir(my $dh, $dir) or next;
+        foreach my $entry (readdir($dh)) {
+            $files{"$dir/$entry"} = 1
+                if $entry =~ /^connections-[0-9a-fA-F]{6,}$/;
+        }
+        closedir($dh);
+    }
 
     return \%files;
 }
