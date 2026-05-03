@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: HTTPS-SNI-Proxy
-Source: <https://github.com/dlundquist/HTTPS-SNI-Proxy/>
+Upstream-Name: sniproxy
+Source: <https://github.com/renaudallard/sniproxy/>
 
 Files: *
 Copyright: 2011 - 2013 Dustin Lundquist <dustin@null-ptr.net>

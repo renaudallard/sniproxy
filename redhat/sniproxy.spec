@@ -5,7 +5,7 @@ Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
 Group: System Environment/Daemons
 License: BSD
-URL: https://github.com/dlundquist/sniproxy
+URL: https://github.com/renaudallard/sniproxy
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
