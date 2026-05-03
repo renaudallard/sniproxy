@@ -1547,6 +1547,33 @@ child_sink_free(struct ChildSink_head *head, struct ChildSink *sink) {
     free(sink);
 }
 
+/* Write a short warning message to all existing file/syslog sinks held
+ * by the logger child.  Used when a NEW_SINK or REOPEN command fails so
+ * that operators see the error rather than silently losing log lines. */
+static void
+logger_child_warn(struct ChildSink_head *head, const char *fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n < 0)
+        return;
+    size_t len = (size_t)n;
+    if (len >= sizeof(buf))
+        len = sizeof(buf) - 1;
+
+    struct ChildSink *iter;
+    SLIST_FOREACH(iter, head, entries) {
+        if (iter->type == LOG_SINK_FILE && iter->file != NULL) {
+            (void)fwrite(buf, 1, len, iter->file);
+            (void)fwrite("\n", 1, 1, iter->file);
+        } else if (iter->type == LOG_SINK_SYSLOG) {
+            syslog(LOG_ERR, "%s", buf);
+        }
+    }
+}
+
 static FILE *
 logger_child_open_file(const char *filepath, int dirfd,
         const char *file_basename) {
@@ -1756,6 +1783,9 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                     sink->file = logger_child_open_file(sink->filepath,
                             sink->dirfd, sink->file_basename);
                     if (sink->file == NULL) {
+                        logger_child_warn(&child_sink_head,
+                                "logger child: failed to open new log file %s: %s",
+                                sink->filepath, strerror(errno));
                         free(sink->file_basename);
                         if (sink->dirfd >= 0)
                             close(sink->dirfd);
@@ -1765,6 +1795,8 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                     }
                 }
                 if (received_fd < 0 && sink->file == NULL) {
+                    logger_child_warn(&child_sink_head,
+                            "logger child: new sink dropped (no fd, no path)");
                     free(sink->file_basename);
                     if (sink->dirfd >= 0)
                         close(sink->dirfd);
