@@ -118,6 +118,13 @@ static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+/* Pre-opened parent dir + basename for the pidfile, used to remove it
+ * via unlinkat() on shutdown after cap_enter() has forbidden plain
+ * path-based removal. */
+static int pidfile_dirfd = -1;
+static char *pidfile_basename = NULL;
+#endif
 
 
 #ifdef __OpenBSD__
@@ -590,6 +597,32 @@ main(int argc, char **argv) {
                 warn("main: failed to pre-open config directory for capsicum");
             /* Initialize temp dir (keeps dirfd open for debug dumps) */
             init_secure_temp_dir();
+            /* Pre-open pidfile parent dir for unlinkat() on shutdown */
+            if (config->pidfile != NULL) {
+                char *copy = strdup(config->pidfile);
+                if (copy != NULL) {
+                    pidfile_dirfd = open(dirname(copy),
+                            O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+                    free(copy);
+                    if (pidfile_dirfd < 0) {
+                        warn("main: failed to pre-open pidfile dir: %s",
+                                strerror(errno));
+                    } else {
+                        copy = strdup(config->pidfile);
+                        if (copy == NULL) {
+                            close(pidfile_dirfd);
+                            pidfile_dirfd = -1;
+                        } else {
+                            pidfile_basename = strdup(basename(copy));
+                            free(copy);
+                            if (pidfile_basename == NULL) {
+                                close(pidfile_dirfd);
+                                pidfile_dirfd = -1;
+                            }
+                        }
+                    }
+                }
+            }
 
             if (capsicum_enter() < 0) {
                 fatal("main: cap_enter failed: %s", strerror(errno));
@@ -616,8 +649,18 @@ main(int argc, char **argv) {
     free_connections(loop);
     resolv_shutdown(loop);
 
-    if (config->pidfile != NULL)
-        (void)remove(config->pidfile);
+    if (config->pidfile != NULL) {
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+        if (pidfile_dirfd >= 0 && pidfile_basename != NULL) {
+            (void)unlinkat(pidfile_dirfd, pidfile_basename, 0);
+            close(pidfile_dirfd);
+            pidfile_dirfd = -1;
+            free(pidfile_basename);
+            pidfile_basename = NULL;
+        } else
+#endif
+            (void)remove(config->pidfile);
+    }
 
     free_config(config, loop);
 
