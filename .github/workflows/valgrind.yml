@@ -18,7 +18,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential autoconf automake libtool pkg-config \
-            libev-dev libpcre2-dev libc-ares-dev libssl-dev valgrind
+            libev-dev libpcre2-dev libc-ares-dev libssl-dev \
+            libbsd-dev libseccomp-dev valgrind
 
       - name: Generate build system
         run: |
@@ -39,7 +40,13 @@ jobs:
             address_test \
             table_test \
             tls_test \
-            http_test
+            dtls_test \
+            http_test \
+            xmpp_test \
+            minecraft_test \
+            ipc_crypto_debug_test \
+            ipc_crypto_rekey_test \
+            ipc_crypto_time_rekey_test
 
       - name: Run valgrind on tests
         run: |
@@ -51,7 +58,13 @@ jobs:
             tests/address_test \
             tests/table_test \
             tests/tls_test \
-            tests/http_test; do
+            tests/dtls_test \
+            tests/http_test \
+            tests/xmpp_test \
+            tests/minecraft_test \
+            tests/ipc_crypto_debug_test \
+            tests/ipc_crypto_rekey_test \
+            tests/ipc_crypto_time_rekey_test; do
             echo "valgrind $bin"
             name=$(basename "$bin")
             log="valgrind-logs/${name}.log"
