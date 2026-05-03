@@ -135,6 +135,11 @@ next_word(FILE *file, char *buffer, size_t buffer_len) {
                 }
                 __attribute__((fallthrough));
             default:
+                /* A raw NUL byte from the config file would silently
+                 * truncate downstream strdup/strlen consumers; treat
+                 * the same way as the escaped \\<NUL> case. */
+                if (ch == 0)
+                    return tokenizer_fail(buffer, buffer_len, len);
                 if (len >= buffer_len - 1)
                     return tokenizer_fail(buffer, buffer_len, len);
                 buffer[len] = (char)ch;
