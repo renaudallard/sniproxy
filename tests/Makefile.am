@@ -31,6 +31,9 @@ TESTS += functional_test \
 TESTS += config_test \
          resolv_test \
          bad_dns_request_test
+TESTS += ipc_crypto_debug_test \
+         ipc_crypto_rekey_test \
+         ipc_crypto_time_rekey_test
 
 check_PROGRAMS = http_test \
                  tls_test \
@@ -44,7 +47,10 @@ check_PROGRAMS = http_test \
                  address_test \
                  resolv_test \
                  config_test \
-                 seccomp_test
+                 seccomp_test \
+                 ipc_crypto_debug_test \
+                 ipc_crypto_rekey_test \
+                 ipc_crypto_time_rekey_test
 
 http_test_SOURCES = http_test.c \
                     ../src/http.c \
@@ -148,3 +154,18 @@ seccomp_test_SOURCES = seccomp_test.c \
                        ../src/seccomp.c
 
 seccomp_test_LDADD = $(LIBSECCOMP_LIBS) -lpthread
+
+ipc_crypto_debug_test_SOURCES = ipc_crypto_debug_test.c \
+                                 ../src/ipc_crypto.c
+
+ipc_crypto_debug_test_LDADD = $(LIBCRYPTO_LIBS) $(LIBBSD_LIBS)
+
+ipc_crypto_rekey_test_SOURCES = ipc_crypto_rekey_test.c \
+                                 ../src/ipc_crypto.c
+
+ipc_crypto_rekey_test_LDADD = $(LIBCRYPTO_LIBS) $(LIBBSD_LIBS)
+
+ipc_crypto_time_rekey_test_SOURCES = ipc_crypto_time_rekey_test.c \
+                                      ../src/ipc_crypto.c
+
+ipc_crypto_time_rekey_test_LDADD = $(LIBCRYPTO_LIBS) $(LIBBSD_LIBS)
