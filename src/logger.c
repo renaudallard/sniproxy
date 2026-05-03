@@ -403,7 +403,7 @@ reopen_loggers(void) {
                 }
             } else {
                 closelog();
-                openlog(PACKAGE_NAME, LOG_PID, 0);
+                openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
             }
         } else if (sink->type == LOG_SINK_FILE) {
             if (logger_process_enabled) {
@@ -820,7 +820,7 @@ obtain_syslog_sink(void) {
         sink->reference_count = 0;
 
         if (!logger_process_enabled)
-            openlog(PACKAGE_NAME, LOG_PID, 0);
+            openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
 
         SLIST_INSERT_HEAD(&sinks, sink, entries);
 
@@ -1187,7 +1187,7 @@ disable_logger_process(void) {
                 sink->fd_owned = 0;
             }
         } else if (sink->type == LOG_SINK_SYSLOG) {
-            openlog(PACKAGE_NAME, LOG_PID, 0);
+            openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
         } else if (sink->type == LOG_SINK_STDERR) {
             sink->fd = stderr;
         }
@@ -1779,7 +1779,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             } else if (sink->type == LOG_SINK_SYSLOG) {
                 if (received_fd >= 0)
                     close(received_fd);
-                openlog(PACKAGE_NAME, LOG_PID, 0);
+                openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
             } else {
                 /* Unknown sink type */
                 if (received_fd >= 0)
@@ -1838,7 +1838,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 if (received_fd >= 0)
                     close(received_fd);
                 closelog();
-                openlog(PACKAGE_NAME, LOG_PID, 0);
+                openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
             } else {
                 if (received_fd >= 0)
                     close(received_fd);
@@ -1892,7 +1892,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
             if (capsicum_available()) {
                 /* Pre-connect syslog before entering capability mode */
-                openlog(PACKAGE_NAME, LOG_PID, 0);
+                openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
 
                 cap_rights_t rights;
                 cap_rights_init(&rights, CAP_READ, CAP_WRITE, CAP_SEND,
