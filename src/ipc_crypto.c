@@ -795,8 +795,12 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
     }
 
     if (seal_internal(state, payload, payload_len,
-                state->send_buf, frame_len) < 0)
+                state->send_buf, frame_len) < 0) {
+        /* Wipe any partial ciphertext written before the failure so it
+         * does not linger in the cached buffer until the next send. */
+        secure_memzero(state->send_buf, frame_len);
         return -1;
+    }
 
     uint32_t frame_len_net = htonl((uint32_t)frame_len);
     struct iovec iov[2];
