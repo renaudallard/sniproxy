@@ -98,6 +98,10 @@ next_word(FILE *file, char *buffer, size_t buffer_len) {
     while ((ch = getc(file)) != EOF) {
         if (escaped) {
             escaped = 0;
+            /* An embedded NUL byte from \\<NUL> would silently truncate
+             * downstream strdup/strlen consumers; reject it. */
+            if (ch == 0)
+                return tokenizer_fail(buffer, buffer_len, len);
             if (len >= buffer_len - 1)
                 return tokenizer_fail(buffer, buffer_len, len);
             buffer[len] = (char)ch;
