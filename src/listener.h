@@ -41,6 +41,8 @@ enum ListenerACLMode {
     LISTENER_ACL_MODE_DENY_EXCEPT,
 };
 
+struct Logger;
+
 struct ListenerACLRule {
     int family;
     uint8_t prefix_len;
