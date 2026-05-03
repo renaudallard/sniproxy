@@ -1863,9 +1863,14 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                     if (file == NULL)
                         break;
                 }
-                if (sink->file != NULL)
-                    fclose(sink->file);
-                sink->file = file;
+                /* Only swap if reopen actually produced a new file -
+                 * otherwise we would close the working sink and leave
+                 * NULL behind, silently disabling logging. */
+                if (file != NULL) {
+                    if (sink->file != NULL)
+                        fclose(sink->file);
+                    sink->file = file;
+                }
             } else if (sink->type == LOG_SINK_SYSLOG) {
                 if (received_fd >= 0)
                     close(received_fd);
