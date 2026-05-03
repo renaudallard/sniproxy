@@ -19,6 +19,7 @@ makedepends="
 	c-ares-dev
 	openssl-dev
 	libbsd-dev
+	libseccomp-dev
 	"
 source="$pkgname-$pkgver.tar.gz"
 builddir="$srcdir/$pkgname-$pkgver"
