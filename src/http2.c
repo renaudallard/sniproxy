@@ -367,6 +367,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
     size_t pos = 0;
     int result = -1;
     size_t frame_count = 0;
+    int saw_end_headers = 0;
 
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
@@ -450,6 +451,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                 }
 
                 if (flags & 0x04) {
+                    saw_end_headers = 1;
                     result = decode_header_block(&decoder, block.data, block.len, &hosts);
                     if (result < 0)
                         goto done;
@@ -477,6 +479,7 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                     }
                 }
                 if (flags & 0x04) {
+                    saw_end_headers = 1;
                     result = decode_header_block(&decoder, block.data, block.len, &hosts);
                     if (result < 0)
                         goto done;
@@ -516,7 +519,11 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
         pos += length;
     }
 
-    if (frame_count > 0)
+    /* Only declare "no hostname" if we processed at least one complete
+     * header block (HEADERS with END_HEADERS, possibly via CONTINUATION)
+     * and it did not contain a host.  Otherwise the request is still
+     * arriving and we should return -1 to wait for more data. */
+    if (saw_end_headers)
         result = -2;
 
  done:
