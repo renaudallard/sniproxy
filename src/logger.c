@@ -2062,6 +2062,21 @@ logger_parent_notify_fs_locked(void) {
     logger_parent_fs_locked = 1;
 }
 
+void
+logger_parent_capsicum_limit_rights(void) {
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (logger_sock < 0)
+        return;
+    cap_rights_t rights;
+    cap_rights_init(&rights, CAP_READ, CAP_WRITE, CAP_SEND, CAP_RECV,
+            CAP_EVENT);
+    if (cap_rights_limit(logger_sock, &rights) < 0 && errno != ENOSYS)
+        fprintf(stderr,
+                "logger: parent cap_rights_limit failed: %s\n",
+                strerror(errno));
+#endif
+}
+
 /*
  * Reset logger IPC state inherited from the parent.  Called by sibling
  * children (binder, resolver) right after fd_preserve_only() closes the

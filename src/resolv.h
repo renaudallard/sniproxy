@@ -38,6 +38,7 @@ struct ResolvQuery *resolv_query(const char *, int, uint32_t,
         void(*)(struct Address *, void *), void (*)(void *), void *);
 void resolv_cancel(struct ResolvQuery *);
 void resolv_shutdown(struct ev_loop *);
+void resolv_parent_capsicum_limit_rights(void);
 
 enum resolv_mode {
     RESOLV_MODE_DEFAULT = 0,

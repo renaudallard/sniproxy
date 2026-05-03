@@ -591,6 +591,19 @@ fail_crypto:
 }
 
 void
+resolv_parent_capsicum_limit_rights(void) {
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (resolver_sock < 0)
+        return;
+    cap_rights_t rights;
+    cap_rights_init(&rights, CAP_READ, CAP_WRITE, CAP_SEND, CAP_RECV,
+            CAP_EVENT);
+    if (cap_rights_limit(resolver_sock, &rights) < 0 && errno != ENOSYS)
+        warn("resolver: parent cap_rights_limit failed: %s", strerror(errno));
+#endif
+}
+
+void
 resolv_shutdown(struct ev_loop *loop) {
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);

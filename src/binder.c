@@ -57,6 +57,9 @@
 #include "fd_util.h"
 #include "ipc_crypto.h"
 #include "seccomp_filter.h"
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+#include <sys/capsicum.h>
+#endif
 
 /*
  * binder is a child process we spawn before dropping privileges that is
@@ -381,6 +384,19 @@ stop_binder(void) {
     parent_allowed = NULL;
     parent_allowed_count = 0;
     parent_allowed_capacity = 0;
+}
+
+void
+binder_parent_capsicum_limit_rights(void) {
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (binder_sock < 0)
+        return;
+    cap_rights_t rights;
+    cap_rights_init(&rights, CAP_READ, CAP_WRITE, CAP_SEND, CAP_RECV,
+            CAP_EVENT);
+    if (cap_rights_limit(binder_sock, &rights) < 0 && errno != ENOSYS)
+        warn("binder: cap_rights_limit failed: %s", strerror(errno));
+#endif
 }
 
 static void

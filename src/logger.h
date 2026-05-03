@@ -52,6 +52,7 @@ void logger_for_each_file_sink(void (*callback)(const char *, void *), void *use
 void logger_prepare_process_title(int argc, char **argv);
 int logger_process_is_active(void);
 void logger_post_fork_child_disinherit(void);
+void logger_parent_capsicum_limit_rights(void);
 void logger_parent_notify_fs_locked(void);
 void logger_chown_files(uid_t uid, gid_t gid);
 int logger_drop_privileges(uid_t uid, gid_t gid);

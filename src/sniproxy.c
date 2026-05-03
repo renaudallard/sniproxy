@@ -624,6 +624,12 @@ main(int argc, char **argv) {
                 }
             }
 
+            /* Limit per-fd rights on the parent-side IPC sockets so a
+             * compromised main cannot bind/connect/fcntl them. */
+            logger_parent_capsicum_limit_rights();
+            resolv_parent_capsicum_limit_rights();
+            binder_parent_capsicum_limit_rights();
+
             if (capsicum_enter() < 0) {
                 fatal("main: cap_enter failed: %s", strerror(errno));
             }
