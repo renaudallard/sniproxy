@@ -48,6 +48,15 @@
 static inline int
 sni_parse_server_name_extension(const uint8_t *data, size_t data_len,
         char **hostname) {
+    /* ServerNameList = uint16 length + at least one ServerName entry
+     * (RFC 6066 section 3).  Reject truncated headers and lists whose
+     * declared length does not match the remaining bytes. */
+    if (data_len < 2)
+        return -5;
+    size_t list_len = ((size_t)data[0] << 8) | (size_t)data[1];
+    if (list_len == 0 || list_len != data_len - 2)
+        return -5;
+
     size_t pos = 2; /* skip server name list length */
     size_t len;
 
