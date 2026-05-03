@@ -125,6 +125,24 @@ static struct ev_signal sigchld_watcher;
 static int pidfile_dirfd = -1;
 static char *pidfile_basename = NULL;
 #endif
+static const char *pidfile_path_at_exit = NULL;
+
+static void
+pidfile_cleanup(void) {
+    if (pidfile_path_at_exit == NULL)
+        return;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (pidfile_dirfd >= 0 && pidfile_basename != NULL) {
+        (void)unlinkat(pidfile_dirfd, pidfile_basename, 0);
+        close(pidfile_dirfd);
+        pidfile_dirfd = -1;
+        free(pidfile_basename);
+        pidfile_basename = NULL;
+    } else
+#endif
+        (void)remove(pidfile_path_at_exit);
+    pidfile_path_at_exit = NULL;
+}
 
 
 #ifdef __OpenBSD__
@@ -468,8 +486,13 @@ main(int argc, char **argv) {
         daemonize();
 
 
-        if (config->pidfile != NULL)
+        if (config->pidfile != NULL) {
             write_pidfile(config->pidfile, getpid());
+            /* Register atexit so a fatal() between here and the
+             * normal shutdown path still removes the pidfile. */
+            pidfile_path_at_exit = config->pidfile;
+            atexit(pidfile_cleanup);
+        }
     }
 
 #ifdef __OpenBSD__
@@ -655,18 +678,8 @@ main(int argc, char **argv) {
     free_connections(loop);
     resolv_shutdown(loop);
 
-    if (config->pidfile != NULL) {
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-        if (pidfile_dirfd >= 0 && pidfile_basename != NULL) {
-            (void)unlinkat(pidfile_dirfd, pidfile_basename, 0);
-            close(pidfile_dirfd);
-            pidfile_dirfd = -1;
-            free(pidfile_basename);
-            pidfile_basename = NULL;
-        } else
-#endif
-            (void)remove(config->pidfile);
-    }
+    if (config->pidfile != NULL)
+        pidfile_cleanup();
 
     free_config(config, loop);
 
