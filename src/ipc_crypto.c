@@ -882,7 +882,8 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
             struct cmsghdr *prefix_cmsg = CMSG_FIRSTHDR(&prefix_msg);
             if (prefix_cmsg != NULL &&
                     prefix_cmsg->cmsg_level == SOL_SOCKET &&
-                    prefix_cmsg->cmsg_type == SCM_RIGHTS) {
+                    prefix_cmsg->cmsg_type == SCM_RIGHTS &&
+                    prefix_cmsg->cmsg_len == CMSG_LEN(sizeof(int))) {
                 memcpy(&prefix_fd, CMSG_DATA(prefix_cmsg), sizeof(int));
             }
         }
@@ -981,7 +982,8 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
     int frame_fd = -1;
     struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
     if (cmsg != NULL && cmsg->cmsg_level == SOL_SOCKET &&
-            cmsg->cmsg_type == SCM_RIGHTS) {
+            cmsg->cmsg_type == SCM_RIGHTS &&
+            cmsg->cmsg_len == CMSG_LEN(sizeof(int))) {
         memcpy(&frame_fd, CMSG_DATA(cmsg), sizeof(int));
     }
 
