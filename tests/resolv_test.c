@@ -77,5 +77,9 @@ int main(void) {
 
     resolv_shutdown(loop);
 
+    /* Resolving "localhost" must yield at least one address; if it
+     * does not the resolver is silently broken. */
+    assert(query_count > 0);
+
     return 0;
 }
