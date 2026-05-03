@@ -63,18 +63,17 @@ int main(void) {
     printf("Child recv_gen: %u, counter: %lu\n\n",
            child_state.recv_generation, child_state.recv_counter);
 
-    if (result == 0) {
-        printf("Success! Message decrypted.\n");
-        printf("Plaintext length: %zu\n", plaintext_len);
-        printf("Match: %s\n", memcmp(plaintext, test_msg, sizeof(test_msg)) == 0 ? "YES" : "NO");
-        free(plaintext);
-    } else {
-        printf("FAILED to decrypt!\n");
-    }
+    assert(result == 0);
+    assert(plaintext != NULL);
+    assert(plaintext_len == sizeof(test_msg));
+    assert(memcmp(plaintext, test_msg, sizeof(test_msg)) == 0);
+    printf("Success! Message decrypted, length %zu, contents match.\n",
+           plaintext_len);
+    free(plaintext);
 
     free(frame);
     ipc_crypto_state_clear(&parent_state);
     ipc_crypto_state_clear(&child_state);
 
-    return result == 0 ? 0 : 1;
+    return 0;
 }
