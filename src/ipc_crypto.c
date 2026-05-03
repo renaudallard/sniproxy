@@ -579,6 +579,7 @@ ipc_crypto_seal(struct ipc_crypto_state *state, const uint8_t *plaintext,
         return -1;
 
     if (seal_internal(state, plaintext, plaintext_len, buffer, total_len) < 0) {
+        secure_memzero(buffer, total_len);
         free(buffer);
         return -1;
     }
