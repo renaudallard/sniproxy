@@ -2459,6 +2459,11 @@ parse_incoming_proxy_header(struct Connection *con) {
             return -1; /* incomplete */
 
         uint8_t cmd = ver_cmd & 0x0F;
+        /* PROXY protocol v2 defines only LOCAL (0x00) and PROXY (0x01).
+         * Anything else is a protocol violation - reject rather than
+         * silently treating it as LOCAL. */
+        if (cmd != 0x00 && cmd != 0x01)
+            return -2;
         if (cmd == 0x01) { /* PROXY command */
             uint8_t af = (fam >> 4) & 0x0F;
             if (af == 0x01 && addr_len >= 12) {
