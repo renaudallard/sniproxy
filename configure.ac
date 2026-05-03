@@ -168,11 +168,16 @@ AS_IF([test "x$enable_tsan" = "xyes"], [
   SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=thread"
 ])
 
-# Disable hardening if sanitizers are enabled (some flags conflict)
+# Clear hardening flags if sanitizers are enabled.  _FORTIFY_SOURCE in
+# particular conflicts with ASAN/MSAN.  The earlier hardening block
+# already populated HARDEN_*FLAGS, so toggling enable_hardening here
+# was a no-op; we have to clear the variables themselves.
 AS_IF([test "x$enable_asan" = "xyes" -o "x$enable_msan" = "xyes" -o "x$enable_tsan" = "xyes" -o "x$enable_ubsan" = "xyes"], [
-  AS_IF([test "x$enable_hardening" = "xyes"], [
-    AC_MSG_WARN([Disabling hardening flags due to sanitizer usage (some flags conflict)])
-    enable_hardening=no
+  AS_IF([test -n "$HARDEN_CFLAGS$HARDEN_CPPFLAGS$HARDEN_LDFLAGS"], [
+    AC_MSG_WARN([Clearing hardening flags due to sanitizer usage (some flags conflict)])
+    HARDEN_CFLAGS=""
+    HARDEN_CPPFLAGS=""
+    HARDEN_LDFLAGS=""
   ])
 ])
 
