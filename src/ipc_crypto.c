@@ -893,6 +893,15 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
             return (int)prefix_ret;
         }
 
+        /* Reject truncated payload or ancillary data; the second recvmsg
+         * (frame body) does the same check on its own msg_flags. */
+        if (prefix_msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) {
+            if (prefix_fd >= 0)
+                close(prefix_fd);
+            errno = EMSGSIZE;
+            return -1;
+        }
+
         if ((size_t)prefix_ret != sizeof(frame_len_net)) {
             if (prefix_fd >= 0)
                 close(prefix_fd);
