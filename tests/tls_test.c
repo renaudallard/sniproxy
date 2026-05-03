@@ -648,10 +648,13 @@ int main(void) {
 
         result = tls_protocol->parse_packet(bad[i].packet, bad[i].len, &hostname);
 
-        // parse failure or not "localhost"
-        assert(result < 0 ||
-               hostname == NULL ||
-               strcmp("localhost", hostname) != 0);
+        /* All packets in bad[] are malformed and must produce a
+         * negative parse result.  The previous looser check (result<0
+         * || hostname==NULL || strcmp(...)!=0) accepted any wrong
+         * hostname as a "pass" and would mask regressions where a
+         * malformed packet parsed to garbage. */
+        assert(result < 0);
+        assert(hostname == NULL);
 
         free(hostname);
     }
