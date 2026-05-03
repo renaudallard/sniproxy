@@ -497,7 +497,11 @@ main(int argc, char **argv) {
 
 #ifdef __OpenBSD__
     if (logger_process_is_active()) {
-        if (pledge("stdio getpw inet dns rpath proc id unix sendfd recvfd", NULL) == -1) {
+        /* cpath stays so the atexit handler can remove the pidfile;
+         * unveil bounds it to the pre-unveiled paths (pidfile, temp
+         * dir, etc.).  wpath is dropped because file logging now goes
+         * through the logger child. */
+        if (pledge("stdio getpw inet dns rpath proc id cpath unix sendfd recvfd", NULL) == -1) {
             fatal("main: pledge failed: %s", strerror(errno));
         }
         logger_parent_notify_fs_locked();
@@ -544,8 +548,9 @@ main(int argc, char **argv) {
     rename_main_process();
 
 #ifdef __OpenBSD__
-    /* Tighten pledge after dropping privileges - no longer need getpw or id */
-    if (pledge("stdio inet dns rpath proc unix sendfd recvfd", NULL) == -1) {
+    /* Tighten pledge after dropping privileges - no longer need getpw or id.
+     * cpath kept for the atexit pidfile removal; unveil bounds it. */
+    if (pledge("stdio inet dns rpath proc cpath unix sendfd recvfd", NULL) == -1) {
         fatal("main: pledge failed: %s", strerror(errno));
     }
 #endif
