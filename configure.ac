@@ -234,6 +234,18 @@ AC_CHECK_LIB([crypto], [EVP_chacha20_poly1305], [],
 LIBCRYPTO_LIBS='-lcrypto'
 AC_SUBST([LIBCRYPTO_LIBS])
 
+# DoT requires libssl in addition to libcrypto.  Check separately so a
+# missing libssl produces a clear error instead of a hidden link
+# failure.  -lcrypto is passed as a dependency since libssl symbols
+# resolve through it.
+AC_CHECK_HEADERS([openssl/ssl.h], [],
+  [AC_MSG_ERROR([OpenSSL/LibreSSL ssl.h is required for DNS-over-TLS])])
+AC_CHECK_LIB([ssl], [SSL_CTX_new], [],
+  [AC_MSG_ERROR([libssl is required for DNS-over-TLS])],
+  [-lcrypto])
+LIBSSL_LIBS='-lssl'
+AC_SUBST([LIBSSL_LIBS])
+
 AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],
   [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])

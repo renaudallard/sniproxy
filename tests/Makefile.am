@@ -58,7 +58,7 @@ tls_test_SOURCES = tls_test.c \
                    ../src/seccomp.c \
                    ../src/capsicum.c
 
-tls_test_LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
+tls_test_LDADD = $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 dtls_test_SOURCES = dtls_test.c \
                     ../src/dtls.c \
@@ -67,7 +67,7 @@ dtls_test_SOURCES = dtls_test.c \
                     ../src/seccomp.c \
                     ../src/capsicum.c
 
-dtls_test_LDADD = -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
+dtls_test_LDADD = $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 xmpp_test_SOURCES = xmpp_test.c \
                     ../src/xmpp.c
@@ -121,7 +121,7 @@ config_test_SOURCES = config_test.c \
                       ../src/seccomp.c \
                       ../src/capsicum.c
 
-config_test_LDADD = $(LIBEV_LIBS) $(PCRE2_LIBS) -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
+config_test_LDADD = $(LIBEV_LIBS) $(PCRE2_LIBS) $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 resolv_test_SOURCES = resolv_test.c \
                       ../src/resolv.c \
@@ -131,7 +131,7 @@ resolv_test_SOURCES = resolv_test.c \
                       ../src/seccomp.c \
                       ../src/capsicum.c
 
-resolv_test_LDADD = $(LIBEV_LIBS) -lssl $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
+resolv_test_LDADD = $(LIBEV_LIBS) $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS) $(LIBSECCOMP_LIBS)
 
 table_test_SOURCES = table_test.c \
                       ../src/backend.c \
