@@ -688,7 +688,7 @@ daemonize(void) {
     if (pid < 0)
         perror_exit("fork()");
     else if (pid != 0)
-        exit(EXIT_SUCCESS);
+        _exit(EXIT_SUCCESS);
 
     if (setsid() < 0)
         perror_exit("setsid()");
@@ -709,7 +709,7 @@ daemonize(void) {
     if (pid < 0)
         perror_exit("fork()");
     else if (pid != 0)
-        exit(EXIT_SUCCESS);
+        _exit(EXIT_SUCCESS);
 #endif
 
     /* local part */
