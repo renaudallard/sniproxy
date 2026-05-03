@@ -35,9 +35,22 @@
 
 static char *generated_log_path;
 
+/* Honor TMPDIR if the caller exported one; default to /tmp so that
+ * `make check` works without extra setup.  Both files are unlinked in
+ * cleanup_test_config(). */
+static const char *
+config_test_tmpdir(void) {
+    const char *t = getenv("TMPDIR");
+    return (t != NULL && t[0] == '/') ? t : "/tmp";
+}
+
 static char *
 generate_test_config(void) {
-    char template[] = "/tmp/sniproxy-config-testXXXXXX";
+    char template[256];
+    if (snprintf(template, sizeof(template),
+                "%s/sniproxy-config-testXXXXXX",
+                config_test_tmpdir()) >= (int)sizeof(template))
+        return NULL;
     int fd = mkstemp(template);
     if (fd < 0)
         return NULL;
@@ -49,7 +62,14 @@ generate_test_config(void) {
         return NULL;
     }
 
-    char log_template[] = "/tmp/sniproxy-config-logXXXXXX";
+    char log_template[256];
+    if (snprintf(log_template, sizeof(log_template),
+                "%s/sniproxy-config-logXXXXXX",
+                config_test_tmpdir()) >= (int)sizeof(log_template)) {
+        fclose(fp);
+        unlink(template);
+        return NULL;
+    }
     int log_fd = mkstemp(log_template);
     if (log_fd < 0) {
         fclose(fp);
