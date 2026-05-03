@@ -65,9 +65,9 @@
 #endif
 
 
-#define IS_TEMPORARY_SOCKERR(_errno) (_errno == EAGAIN || \
-                                      _errno == EWOULDBLOCK || \
-                                      _errno == EINTR)
+#define IS_TEMPORARY_SOCKERR(_errno) ((_errno) == EAGAIN || \
+                                      (_errno) == EWOULDBLOCK || \
+                                      (_errno) == EINTR)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define CLIENT_BUFFER_INITIAL_SIZE 16384
 #define CLIENT_BUFFER_MIN_SIZE 8192
