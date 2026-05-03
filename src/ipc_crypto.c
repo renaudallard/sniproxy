@@ -844,6 +844,35 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
     return 0;
 }
 
+/* Walk the ancillary data of a recvmsg result.  Capture the first
+ * SCM_RIGHTS fd into *out_fd (if NULL there); close every other fd
+ * that arrived (multi-fd payloads, additional SCM_RIGHTS cmsgs).
+ * The kernel installs each fd in our process before recvmsg returns,
+ * so any fd we do not explicitly keep must be explicitly closed. */
+static void
+ipc_crypto_drain_fds(const struct msghdr *msg, int *out_fd) {
+    struct cmsghdr *c;
+    for (c = CMSG_FIRSTHDR((struct msghdr *)msg); c != NULL;
+            c = CMSG_NXTHDR((struct msghdr *)msg, c)) {
+        if (c->cmsg_level != SOL_SOCKET || c->cmsg_type != SCM_RIGHTS)
+            continue;
+        if (c->cmsg_len < CMSG_LEN(sizeof(int)))
+            continue;
+        size_t nfds = (c->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+        for (size_t i = 0; i < nfds; i++) {
+            int fd = -1;
+            memcpy(&fd, (const unsigned char *)CMSG_DATA(c) + i * sizeof(int),
+                    sizeof(int));
+            if (fd < 0)
+                continue;
+            if (out_fd != NULL && *out_fd < 0)
+                *out_fd = fd;
+            else
+                close(fd);
+        }
+    }
+}
+
 int
 ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
         size_t max_payload_len, uint8_t **plaintext, size_t *plaintext_len,
@@ -879,15 +908,8 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
          * even a short read may have transferred an fd to us.
          * Only check on positive return: on error the kernel does
          * not update the msghdr and the control buffer is garbage. */
-        if (prefix_ret > 0) {
-            struct cmsghdr *prefix_cmsg = CMSG_FIRSTHDR(&prefix_msg);
-            if (prefix_cmsg != NULL &&
-                    prefix_cmsg->cmsg_level == SOL_SOCKET &&
-                    prefix_cmsg->cmsg_type == SCM_RIGHTS &&
-                    prefix_cmsg->cmsg_len == CMSG_LEN(sizeof(int))) {
-                memcpy(&prefix_fd, CMSG_DATA(prefix_cmsg), sizeof(int));
-            }
-        }
+        if (prefix_ret > 0)
+            ipc_crypto_drain_fds(&prefix_msg, &prefix_fd);
 
         if (prefix_ret <= 0) {
             if (prefix_fd >= 0)
@@ -981,12 +1003,7 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
         *received_fd = -1;
 
     int frame_fd = -1;
-    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-    if (cmsg != NULL && cmsg->cmsg_level == SOL_SOCKET &&
-            cmsg->cmsg_type == SCM_RIGHTS &&
-            cmsg->cmsg_len == CMSG_LEN(sizeof(int))) {
-        memcpy(&frame_fd, CMSG_DATA(cmsg), sizeof(int));
-    }
+    ipc_crypto_drain_fds(&msg, &frame_fd);
 
     if (prefix_fd >= 0) {
         fd_received = prefix_fd;
