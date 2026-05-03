@@ -176,6 +176,7 @@ struct RateLimitBucket {
     struct RateLimitBucket *next;
     uint32_t addr_hash;
     uint32_t addr_v4;
+    int is_v4;
 };
 
 static struct RateLimitBucket *rate_limit_bucket_acquire(void);
@@ -1355,7 +1356,7 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
             return 0;  /* Reject connection to prevent rate limit bypass */
         }
 
-        if (bucket->addr_hash == hash) {
+        if (bucket->addr_hash == hash && bucket->is_v4 == is_v4) {
             if (is_v4 && bucket->addr_v4 == addr_v4)
                 break;
             if (!is_v4 && sockaddr_equal_ip(&bucket->addr, addr))
@@ -1375,6 +1376,7 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         bucket->addr = *addr;
         bucket->addr_hash = hash;
         bucket->addr_v4 = addr_v4;
+        bucket->is_v4 = is_v4;
         bucket->last_check = now;
         bucket->allowance = capacity - 1.0;
         bucket->next = rate_limit_table[bucket_index];
