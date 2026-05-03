@@ -1832,27 +1832,68 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
             dot_target_copy[addr_len] = '\0';
             value = dot_target_copy;
 
-            const char *sni_hostname = slash + 1;
-            if (*sni_hostname == '\0') {
+            const char *sni_part = slash + 1;
+            if (*sni_part == '\0') {
                 err("resolver nameserver '%s' is missing a TLS hostname after '/'", nameserver);
                 free(dot_target_copy);
                 return -1;
             }
-            if (strchr(sni_hostname, '/') != NULL) {
-                err("resolver nameserver '%s' contains multiple '/' characters", nameserver);
+
+            /* Optional third field: dot://ADDR/SNI/tls1.2|tls1.3 selects
+             * the minimum TLS version.  The resolver child re-parses
+             * and enforces this; here we just bound-check the syntax. */
+            const char *second_slash = strchr(sni_part, '/');
+            size_t sni_len;
+            if (second_slash != NULL) {
+                sni_len = (size_t)(second_slash - sni_part);
+                const char *tls_ver = second_slash + 1;
+                if (*tls_ver == '\0') {
+                    err("resolver nameserver '%s' is missing a TLS version after second '/'", nameserver);
+                    free(dot_target_copy);
+                    return -1;
+                }
+                if (strchr(tls_ver, '/') != NULL) {
+                    err("resolver nameserver '%s' contains too many '/' characters", nameserver);
+                    free(dot_target_copy);
+                    return -1;
+                }
+                if (strcasecmp(tls_ver, "tls1.2") != 0 &&
+                        strcasecmp(tls_ver, "tls1.3") != 0) {
+                    err("resolver nameserver '%s' has invalid TLS version '%s' (expected tls1.2 or tls1.3)", nameserver, tls_ver);
+                    free(dot_target_copy);
+                    return -1;
+                }
+            } else {
+                sni_len = strlen(sni_part);
+            }
+
+            if (sni_len == 0) {
+                err("resolver nameserver '%s' has an empty TLS hostname", nameserver);
                 free(dot_target_copy);
                 return -1;
             }
 
-            struct Address *sni_address = new_address(sni_hostname);
-            if (sni_address == NULL || !address_is_hostname(sni_address)) {
+            char sni_buf[256];
+            if (sni_len >= sizeof(sni_buf)) {
+                err("resolver nameserver '%s' TLS hostname is too long", nameserver);
                 free(dot_target_copy);
-                if (sni_address != NULL)
-                    free(sni_address);
-                err("resolver nameserver '%s' has an invalid TLS hostname '%s'", nameserver, sni_hostname);
                 return -1;
             }
-            free(sni_address);
+            memcpy(sni_buf, sni_part, sni_len);
+            sni_buf[sni_len] = '\0';
+
+            /* "insecure" is accepted by the child for IP-literal targets. */
+            if (strcasecmp(sni_buf, "insecure") != 0) {
+                struct Address *sni_address = new_address(sni_buf);
+                if (sni_address == NULL || !address_is_hostname(sni_address)) {
+                    free(dot_target_copy);
+                    if (sni_address != NULL)
+                        free(sni_address);
+                    err("resolver nameserver '%s' has an invalid TLS hostname '%s'", nameserver, sni_buf);
+                    return -1;
+                }
+                free(sni_address);
+            }
         }
     }
 
