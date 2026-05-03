@@ -296,9 +296,10 @@ int main(void) {
 
     /* Test bracketed IPv6 in to attribute */
     hostname = NULL;
-    result = xmpp_protocol->parse_packet(
-        "<stream:stream to=\"[2001:db8::1]\" xmlns=\"jabber:client\">",
-        57, &hostname);
+    {
+        const char pkt[] = "<stream:stream to=\"[2001:db8::1]\" xmlns=\"jabber:client\">";
+        result = xmpp_protocol->parse_packet(pkt, sizeof(pkt) - 1, &hostname);
+    }
     assert(result == 13);  /* [2001:db8::1] is 13 chars */
     assert(hostname != NULL);
     assert(strcmp(hostname, "[2001:db8::1]") == 0);
