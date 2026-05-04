@@ -1,3 +1,19 @@
+sniproxy (0.13.1) unstable; urgency=medium
+
+  * Build: include libgen.h unconditionally so dirname()/basename()
+    are declared on FreeBSD (0.13.0 left the include in an
+    OpenBSD-only block).
+  * Build: require seccomp.h to be present before defining
+    HAVE_SECCOMP; fixes compile failure on distros that split
+    libseccomp into separate header and library packages.
+  * Tests: stub logger_post_fork_child_disinherit in
+    resolver_response_fuzz so the resolver harness links cleanly.
+  * CI: continuous-fuzzing only files an issue when actual crash
+    artifacts exist; build failures no longer create false-positive
+    fuzzer-crash issues.
+
+ -- Renaud Allard <renaud@allard.it>  Mon, 04 May 2026 09:00:00 +0200
+
 sniproxy (0.13.0) unstable; urgency=medium
 
   * Security: TLS parser rejects renegotiation_info even when SNI

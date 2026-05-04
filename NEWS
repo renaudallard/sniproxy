@@ -1,3 +1,29 @@
+sniproxy 0.13.1 (2026-05-04)
+===============================
+
+Build fixes for 0.13.0:
+
+* Include libgen.h unconditionally so dirname() and basename() are
+  declared on FreeBSD. The 0.13.0 Capsicum pidfile-cleanup code
+  guarded the include behind #ifdef __OpenBSD__, breaking the
+  FreeBSD build.
+
+* Require seccomp.h to be present before defining HAVE_SECCOMP. On
+  distros where libseccomp ships its header in a separate package
+  (notably SUSE BCI), 0.13.0 detected the library, defined
+  HAVE_SECCOMP, then failed to compile seccomp.c when the header
+  was missing.
+
+* Tests / CI:
+  - Add a logger_post_fork_child_disinherit stub to
+    resolver_response_fuzz; without it the harness fails to link
+    after the 0.13.0 disinherit hook in resolv.c.
+  - The continuous-fuzzing workflow only files an issue when
+    actual crash/leak/timeout artifacts exist, so build failures
+    no longer auto-file false-positive 'fuzzer crash' issues.
+
+No source changes affect the daemon's runtime behavior.
+
 sniproxy 0.13.0 (2026-05-03)
 ===============================
 

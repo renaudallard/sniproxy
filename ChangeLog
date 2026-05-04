@@ -1,3 +1,20 @@
+2026-05-04  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.13.1
+	- Build: include libgen.h unconditionally for dirname()/basename().
+	  0.13.0 left the include inside #ifdef __OpenBSD__, so the new
+	  Capsicum pidfile-cleanup code failed to build on FreeBSD.
+	- Build: require seccomp.h to be present before defining
+	  HAVE_SECCOMP. Distros that split libseccomp into separate
+	  header and library packages (notably SUSE BCI) no longer fail
+	  the seccomp.c compile when only the library is installed.
+	- Tests: add a logger_post_fork_child_disinherit stub to
+	  resolver_response_fuzz so the resolver fuzz harness links
+	  cleanly without pulling in logger.c.
+	- CI: continuous-fuzzing only files an issue when actual
+	  crash/leak/timeout artifacts exist; build or link failures no
+	  longer create false-positive 'fuzzer crash' issues.
+
 2026-05-03  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.13.0
