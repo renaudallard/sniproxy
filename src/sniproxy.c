@@ -54,9 +54,9 @@
 #ifdef HAVE_BSD_UNISTD_H
 #include <bsd/unistd.h>
 #endif
+#include <libgen.h>
 #ifdef __OpenBSD__
 #include <limits.h>
-#include <libgen.h>
 #include <sys/un.h>
 #endif
 #include <ev.h>
