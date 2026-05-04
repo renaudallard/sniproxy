@@ -95,8 +95,20 @@ jobs:
           path: tests/fuzz/corpus/
           retention-days: 90
 
-      - name: Create issue on crash
+      - name: Detect actual crash artifacts
+        id: detect-crashes
         if: failure()
+        run: |
+          if compgen -G "tests/fuzz/crash-*" > /dev/null || \
+             compgen -G "tests/fuzz/leak-*" > /dev/null || \
+             compgen -G "tests/fuzz/timeout-*" > /dev/null; then
+            echo "has_crash=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_crash=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create issue on crash
+        if: failure() && steps.detect-crashes.outputs.has_crash == 'true'
         uses: actions/github-script@v8
         with:
           script: |
