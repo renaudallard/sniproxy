@@ -250,16 +250,23 @@ AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],
   [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])
 
-# Check for libseccomp (Linux only)
+# Check for libseccomp (Linux only).  Both the header and the library
+# must be present; HAVE_SECCOMP gates a #include <seccomp.h> in
+# seccomp.c, so defining it without the header would make compilation
+# fail (some distros split header and lib packages).
 LIBSECCOMP_LIBS=""
 case "$host_os" in
   linux*)
-    AC_CHECK_HEADERS([seccomp.h])
-    AC_SEARCH_LIBS([seccomp_init], [seccomp], [
-      AS_IF([test "x$ac_cv_search_seccomp_init" != "xnone required"],
-        [LIBSECCOMP_LIBS="$ac_cv_search_seccomp_init"],
-        [LIBSECCOMP_LIBS=""])
-      AC_DEFINE([HAVE_SECCOMP], 1, [Define to 1 if libseccomp is available])
+    AC_CHECK_HEADER([seccomp.h], [sniproxy_have_seccomp_h=yes],
+        [sniproxy_have_seccomp_h=no])
+    AS_IF([test "x$sniproxy_have_seccomp_h" = "xyes"], [
+      AC_SEARCH_LIBS([seccomp_init], [seccomp], [
+        AS_IF([test "x$ac_cv_search_seccomp_init" != "xnone required"],
+          [LIBSECCOMP_LIBS="$ac_cv_search_seccomp_init"],
+          [LIBSECCOMP_LIBS=""])
+        AC_DEFINE([HAVE_SECCOMP], 1,
+            [Define to 1 if libseccomp and seccomp.h are available])
+      ])
     ])
     ;;
 esac
