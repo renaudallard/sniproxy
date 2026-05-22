@@ -1,3 +1,12 @@
+sniproxy (0.13.2) unstable; urgency=medium
+
+  * OpenBSD: initialize the IPC master key in the parent before
+    forking the logger and binder children, so the children inherit
+    the locked state and do not retry mlock() after pledge() (which
+    is not covered by any pledge promise and aborts the child).
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 22 May 2026 11:00:00 +0200
+
 sniproxy (0.13.1) unstable; urgency=medium
 
   * Build: include libgen.h unconditionally so dirname()/basename()

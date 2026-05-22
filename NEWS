@@ -1,3 +1,16 @@
+sniproxy 0.13.2 (2026-05-22)
+===============================
+
+OpenBSD fixes:
+
+* Initialize the IPC master key in the parent before forking the
+  logger and binder children. The children pledged before calling
+  ipc_crypto_channel_init(), and the first call would try to mlock
+  the master key, which is not covered by any pledge promise and
+  aborts the child. Pre-initializing in the parent lets the
+  children inherit the locked state and avoid the mlock path.
+
+
 sniproxy 0.13.1 (2026-05-04)
 ===============================
 

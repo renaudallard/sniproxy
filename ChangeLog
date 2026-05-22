@@ -1,3 +1,14 @@
+2026-05-22  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.13.2
+	- OpenBSD: initialize the IPC master key in the parent before
+	  forking the logger and binder children. Previously the children
+	  pledged before calling ipc_crypto_channel_init(), which on first
+	  invocation tries to mlock the master key. mlock() is not covered
+	  by any pledge promise, so the child was aborted. Pre-initializing
+	  in the parent lets the children inherit the locked state and
+	  skip the mlock path.
+
 2026-05-04  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.13.1
