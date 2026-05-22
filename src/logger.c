@@ -1202,6 +1202,15 @@ ensure_logger_process(void) {
     if (logger_process_enabled || logger_process_failed)
         return logger_process_enabled;
 
+    /* Initialize the IPC master key in the parent before fork so the child
+     * inherits the initialized (and mlock'd) state. Otherwise the child's
+     * first ipc_crypto_channel_init() would call mlock() after pledge() on
+     * OpenBSD, which is not covered by any pledge promise and aborts. */
+    if (ipc_crypto_system_init() < 0) {
+        logger_process_failed = 1;
+        return 0;
+    }
+
     int sockets[2];
     int socket_type = SOCK_STREAM;
 #ifdef SOCK_CLOEXEC

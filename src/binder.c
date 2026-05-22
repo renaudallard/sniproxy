@@ -201,6 +201,15 @@ binder_register_allowed_address(const struct sockaddr *addr, size_t addr_len) {
 
 static int
 binder_spawn_child(void) {
+    /* Initialize the IPC master key in the parent before fork so the child
+     * inherits the initialized (and mlock'd) state. Otherwise the child's
+     * first ipc_crypto_channel_init() would call mlock() after pledge() on
+     * OpenBSD, which is not covered by any pledge promise and aborts. */
+    if (ipc_crypto_system_init() < 0) {
+        err("failed to initialize IPC crypto");
+        return -1;
+    }
+
     int sockets[2];
     int socket_type = SOCK_STREAM;
 #ifdef SOCK_CLOEXEC
