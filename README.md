@@ -1,777 +1,665 @@
-Hardened SNI Proxy
-==================
-
-Proxies incoming HTTP, TLS, DTLS, XMPP, and Minecraft connections based on
-the hostname contained in the initial request. For TCP protocols (TLS, HTTP,
-XMPP, Minecraft) the hostname is extracted from the initial TCP stream. For
-DTLS (TLS over UDP) the hostname is extracted from the SNI extension in the
-UDP ClientHello datagram, enabling proxying of WebRTC, OpenConnect VPN, CoAP,
-and other UDP/DTLS protocols by hostname without decryption. This enables
-HTTPS name-based virtual hosting to separate backend servers without
-installing the private key on the proxy machine.
-
-SNIProxy is a production-ready, high-performance transparent proxy with a focus
-on security, reliability, and minimal resource usage.
-
-Features
---------
-
-### Core Functionality
-+ **Name-based proxying** of HTTPS without decrypting traffic - no keys or
-  certificates required on the proxy
-+ **Protocol support**: TLS (SNI extraction), DTLS (SNI extraction over UDP),
-  HTTP/1.x (Host header), HTTP/2 (HPACK :authority pseudo-header),
-  XMPP (stream `to` attribute), and Minecraft Java Edition (handshake server
-  address)
-+ **Pattern matching**: Exact hostname matching and PCRE2 regular expressions
-+ **Wildcard backends**: Route to dynamically resolved hostnames
-+ **Fallback routing**: Default backend for requests without valid hostnames
-+ **HAProxy PROXY protocol**: Propagate original client IP/port to backends (v1
-  and v2), and accept incoming PROXY headers from upstream proxies/load balancers
-
-### Network & Performance
-+ **IPv4, IPv6, and Unix domain sockets** for both listeners and backends
-+ **Multiple listeners** per instance with independent configurations
-+ **Source address binding** for outbound connections
-+ **Transparent proxy mode** (IP_TRANSPARENT) to preserve client source IPs
-+ **SO_REUSEPORT** support for multi-process scalability
-+ **Event-driven architecture** using libev for efficient I/O multiplexing
-+ **Dynamic ring buffers** with automatic growth/shrinking
-+ **Memory pressure trimming**: global soft limit aggressively shrinks idle connection buffers before RAM balloons
-+ **Per-connection buffer caps**: configurable `connection_buffer_limit` (or per-side overrides) prevent slow clients from pinning unbounded RAM
-+ **Zero-copy forwarding** via SO_SPLICE on OpenBSD for kernel-level data movement
-  with automatic buffer reclamation and kernel-managed idle timeouts
-+ **Bounded shrink queues**: 4096-entry shrink candidate lists with automatic
-  trimming prevent idle buffer bookkeeping from exhausting memory under churn.
-
-### Security & Hardening
-+ **TLS 1.2+ required by default** - use `-T <version>` to allow older TLS 1.1/1.0 clients or enforce TLS 1.3 for stricter deployments
-+ **Cryptographic DNS query IDs**: arc4random()-seeded IDs with lifecycle
-  tracking prevent prediction or reuse
-+ **Regex DoS prevention**: Match limits scale with hostname length
-+ **Buffer overflow protection**: Strict bounds checking in all protocol parsers
-+ **NULL byte rejection**: Prevents hostname validation bypasses
-+ **Listener ACLs**: CIDR-based allow/deny policies per listener to block or permit client ranges
-+ **Backend ACLs**: CIDR-based restrictions on outbound connections prevent open proxy abuse
-+ **HTTP/2 memory limits**: Per-connection and global HPACK table size caps
-+ **Request guardrails**: Caps of 100 HTTP headers and 64 TLS extensions stop
-  CPU exhaustion attempts before parsers process attacker-controlled blobs.
-  Extension counting is enforced consistently across all TLS parsing paths.
-+ **Rate limiter collision defense**: arc4random()-seeded buckets use FNV-1a
-  hashing and short-chain cutoffs so hash spraying cannot bypass per-IP token
-  buckets.
-+ **DNS resolver hardening**: Async-signal-safe handlers, integer overflow
-  protection, arc4random()-seeded query IDs, mutex-guarded restart state, and
-  leak-resistant handle accounting prevent prediction, leaks, or use-after-free
-  bugs.
-+ **DNS query concurrency limits**: Prevents resolver exhaustion
-+ **Connection idle timeouts**: Automatic cleanup of stalled connections
-+ **Per-IP connection rate limiting**: Token-bucket guardrail on new TCP connections and UDP sessions across all listeners
-+ **DTLS source validation**: New UDP sessions require a retransmission before
-  contacting the backend, preventing reflection/amplification attacks from
-  spoofed sources
-+ **Privilege separation**: Separate processes for logging and DNS resolution
-+ **OpenBSD sandboxing**: pledge(2) and unveil(2) for minimal system access
-+ **FreeBSD sandboxing**: Capsicum capability mode with per-fd rights limiting
-+ **Input sanitization**: Hostname validation, control character removal
-+ **Comprehensive fuzzing**: Protocol fuzzers for TLS, DTLS, HTTP/2, XMPP,
-  Minecraft, hostname, address, config, listener ACL, IPC crypto, and resolver
-+ **Configuration integrity**: Config files are re-checked for strict permissions
-  on reload, all path directives must be absolute, and resolver search domains are
-  treated as literal suffixes instead of being DNS-parsed.
-+ **Binder allowlisting**: The privileged binder helper only binds sockets for
-  listener addresses present in the configuration, preventing unprivileged
-  processes from requesting arbitrary bound descriptors.
-+ **DNS-over-TLS upstreams**: Resolver blocks can send queries over TLS via
-  `dot://IP-or-hostname/<SNI>[/tls1.2|tls1.3]` entries; IP literals now require
-  either a TLS hostname after the slash or `/insecure` to explicitly disable
-  verification. TLS 1.2 is enforced by default, and TLS 1.3 can be requested
-  when supported by the linked OpenSSL.
-
-### DNS Resolution
-+ **Asynchronous DNS** via dedicated resolver process (powered by c-ares from 0.8.7)
-+ **IPv4/IPv6 preference modes**: default, IPv4-only, IPv6-only, IPv4-first, IPv6-first
-+ **Configurable nameservers** and search domains
-+ **Concurrency limits** to prevent resource exhaustion
-
-### Operations & Management
-+ **Hot configuration reload** via SIGHUP without dropping connections
-+ **Reference counting** ensures safe updates during reload
-+ **Flexible logging**: Syslog and file-based logs with per-listener overrides
-+ **Access logs** with connection duration and byte transfer statistics
-+ **Process renaming**: Processes show as `sniproxy-mainloop` (Linux only),
-  `sniproxy-binder`, `sniproxy-logger`, and `sniproxy-resolver` in process listings
-+ **IPC hardening**: binder/logger/resolver channels encrypt control messages,
-  validate framing, enforce `max_payload_len`, and emit clear restart guidance
-+ **PID file support** for process management with strict validation that
-  rejects stale sockets, FIFOs, or symlinks before writing
-+ **Privilege dropping** to non-root user/group after binding privileged ports
-+ **Privilege verification**: startup fails fast if real or effective UID remains root after dropping privileges
-+ **Config permission guard**: sniproxy refuses to run when the configuration file is accessible to group/other users
-+ **Legacy config compatibility**: Accepts older `listen`, `proto`, `user`, `group`
-  keywords
-+ **Resolver debug tracing**: Enable verbose DNS resolver logs on demand with the
-  `-d` CLI flag for troubleshooting query flow
-
-Architecture
-------------
-
-SNIProxy uses a multi-process architecture for security and isolation:
-
-1. **Main process** (`sniproxy-mainloop`): Accepts connections, parses protocol headers, routes to
-   backends, and proxies data bidirectionally
-2. **Binder process** (`sniproxy-binder`): Creates privileged listening sockets before
-   and after reloads so the main loop can drop root while still opening low ports
-3. **Logger process** (`sniproxy-logger`): Handles all log writes with dropped
-   privileges, enabling secure logging from the main process
-4. **Resolver process** (`sniproxy-resolver`): Performs asynchronous DNS lookups
-   in isolation when DNS support is enabled
-
-This separation ensures that even if a component is compromised, the attack
-surface is minimized. The main process drops privileges after binding to ports,
-and helper processes run with minimal system access.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
-
-Usage
------
-
-    Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]
-        -c  configuration file, defaults to /etc/sniproxy.conf
-        -f  run in foreground
-        -g  allow group-read (0640) config permissions for SIGHUP reload
-        -t  test configuration and exit
-        -n  specify file descriptor limit
-        -V  print the version of SNIProxy and exit
-        -T  <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)
-        -d  enable resolver debug logging (verbose DNS tracing to stderr/error log)
-
-
-Installation
-------------
-
-For Debian, Fedora, or Alpine based Linux distributions see building packages below.
-
-**Prerequisites**
-
-+ Autotools (autoconf, automake, gettext and libtool)
-+ libev4, libpcre2, c-ares, OpenSSL (or LibreSSL) and libbsd development headers
-+ libbsd is not required on systems that provide arc4random and strlcpy natively
-  (OpenBSD, FreeBSD, macOS)
-+ Perl and cURL for test suite
-
-**Install**
-
-    ./autogen.sh && ./configure && make check && sudo make install
-
-**Building Debian/Ubuntu package**
-
-This is the preferred installation method on recent Debian based distributions:
-
-1. Install required packages
-
-        sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev gettext libev-dev libpcre2-dev libc-ares-dev libssl-dev libbsd-dev pkg-config fakeroot devscripts
-
-2. Build a Debian package
-
-        ./autogen.sh && dpkg-buildpackage
-
-3. Install the resulting package
-
-        sudo dpkg -i ../sniproxy_<version>_<arch>.deb
-
-**Building Alpine package**
-
-1. Install required packages
-
-        apk add build-base abuild autoconf automake libtool pkgconf libev-dev pcre2-dev c-ares-dev openssl-dev libbsd-dev
-
-2. Build a distribution tarball
-
-        ./autogen.sh && ./configure && make dist
-
-3. Build an APK package using the included APKBUILD
-
-        cp alpine/APKBUILD /tmp/aport/ && cp sniproxy-*.tar.gz /tmp/aport/
-        cd /tmp/aport && abuild checksum && abuild -r
-
-4. Install the resulting package
-
-        apk add --allow-untrusted ~/packages/<arch>/sniproxy-<version>.apk
-
-**Building Fedora/RedHat package**
-
-This is the preferred installation method for modern Fedora based distributions.
-
-1. Install required packages
-
-        sudo yum install autoconf automake curl gettext-devel libev-devel pcre2-devel pkgconfig rpm-build c-ares-devel openssl-devel libbsd-devel
-
-2. Build a distribution tarball:
-
-        ./autogen.sh && ./configure && make dist
-
-3. Build a RPM package
-
-        rpmbuild --define "_sourcedir `pwd`" -ba redhat/sniproxy.spec
-
-4. Install resulting RPM
-
-        sudo yum install ../sniproxy-<version>.<arch>.rpm
-
-**Building on FreeBSD**
-
-1. Install required packages
-
-        pkg install autoconf automake libtool pkgconf libev pcre2 c-ares
-
-2. Build
-
-        ./autogen.sh && ./configure LDFLAGS="-L/usr/local/lib" CPPFLAGS="-I/usr/local/include" && make
-
-3. Install
-
-        sudo make install
-        sudo cp scripts/sniproxy.rc /usr/local/etc/rc.d/sniproxy
-
-4. Enable and start
-
-        sudo sysrc sniproxy_enable=YES
-        sudo service sniproxy start
-
-Capsicum capability mode is automatically enabled on FreeBSD when all
-listeners and backends use IP addresses (not Unix domain sockets).
-
-***Building on OS X with Homebrew***
-
-1. install dependencies.
-
-        brew install libev pcre2 c-ares openssl autoconf automake gettext libtool
-
-2. Read the warning about gettext and force link it so autogen.sh works. We need the GNU gettext for the macro `AC_LIB_HAVE_LINKFLAGS` which isn't present in the default OS X package.
-
-        brew link --force gettext
-
-3. Make it so
-
-        ./autogen.sh && ./configure && make
-
-OS X support is a best effort, and isn't a primary target platform.
-
-
-Configuration Syntax
---------------------
-
-Global directives appear before any `listener` or `table` blocks. In addition to
-standard items such as `user`, `group`, `pidfile`, `resolver`, and `access_log`,
-you can keep abusive clients in check with a global per-IP rate limiter:
-
-```
-per_ip_connection_rate 50   # allow 50 new connections per second per source IP
-per_ip_max_connections 100  # max 100 simultaneous connections per source IP
+<h1 align="center">Hardened SNI Proxy</h1>
+
+<p align="center">
+  <em>Route HTTP, TLS, DTLS, XMPP and Minecraft connections by hostname &mdash; without decrypting traffic.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/renaudallard/sniproxy/releases/latest">
+    <img src="https://img.shields.io/github/v/release/renaudallard/sniproxy?label=version&style=flat-square&sort=semver" alt="Latest release"/>
+  </a>
+  <a href="https://github.com/renaudallard/sniproxy/actions/workflows/build-and-fuzz.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/renaudallard/sniproxy/build-and-fuzz.yml?style=flat-square&label=build%20%26%20fuzz" alt="Build and Fuzz"/>
+  </a>
+  <a href="https://github.com/renaudallard/sniproxy/actions/workflows/sanitizers.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/renaudallard/sniproxy/sanitizers.yml?style=flat-square&label=sanitizers" alt="Sanitizers"/>
+  </a>
+  <a href="https://github.com/renaudallard/sniproxy/actions/workflows/valgrind.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/renaudallard/sniproxy/valgrind.yml?style=flat-square&label=valgrind" alt="Valgrind"/>
+  </a>
+  <a href="https://github.com/renaudallard/sniproxy/actions/workflows/continuous-fuzzing.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/renaudallard/sniproxy/continuous-fuzzing.yml?style=flat-square&label=continuous%20fuzzing" alt="Continuous Fuzzing"/>
+  </a>
+  <a href="./COPYING">
+    <img src="https://img.shields.io/github/license/renaudallard/sniproxy?style=flat-square" alt="License"/>
+  </a>
+  <a href="https://www.paypal.me/RenaudAllard">
+    <img src="https://img.shields.io/badge/PayPal-Donate-blue.svg?logo=paypal&style=flat-square" alt="PayPal"/>
+  </a>
+</p>
+
+---
+
+SNIProxy inspects the **first packet** of an inbound connection, extracts the
+client-requested hostname (SNI for TLS/DTLS, `Host` for HTTP, `:authority` for
+HTTP/2, the stream `to` attribute for XMPP, the handshake server address for
+Minecraft), and forwards the connection to a backend selected by hostname
+pattern. The encrypted payload is **never decrypted**, so no private key
+material is ever installed on the proxy host. This makes name-based virtual
+hosting work for HTTPS the same way it does for HTTP.
+
+The fork is a hardened, production-oriented continuation of the original
+sniproxy by Dustin Lundquist, with privilege separation, encrypted IPC,
+per-platform sandboxing (pledge/unveil, Capsicum, seccomp), continuous
+fuzzing, and active maintenance.
+
+> Primary platform: **OpenBSD**. Best-effort support on Linux, FreeBSD and macOS.
+
+## Highlights
+
+- **Name-based proxying without decryption** &mdash; TLS/DTLS SNI, HTTP/1 Host,
+  HTTP/2 HPACK `:authority`, XMPP stream `to`, Minecraft handshake. No
+  certificates or private keys on the proxy.
+- **Five protocols, one binary** &mdash; TLS, DTLS (UDP), HTTP/1 + HTTP/2, XMPP
+  (with STARTTLS), Minecraft Java Edition (FML and BungeeCord markers
+  stripped automatically).
+- **Pattern matching** &mdash; exact hostnames or PCRE2 (JIT-compiled where
+  available), per-table backend selection with optional client-IP affinity.
+- **Wildcard backends** &mdash; route to the dynamically resolved hostname the
+  client asked for (`*:443`).
+- **HAProxy PROXY protocol** &mdash; emit v1 or v2 headers to backends; accept v1
+  or v2 from upstream load balancers (auto-detected).
+- **Privilege separation** &mdash; four cooperating processes:
+  `sniproxy-mainloop`, `sniproxy-binder`, `sniproxy-logger`,
+  `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
+- **Per-platform sandboxing** &mdash; pledge(2) + unveil(2) on OpenBSD, Capsicum
+  capability mode on FreeBSD, seccomp BPF on Linux.
+- **DTLS source validation** &mdash; new UDP sessions must complete a HelloVerify
+  retransmission before any backend traffic is sent, so spoofed sources
+  cannot turn the proxy into a reflection amplifier.
+- **Per-IP rate limiting** &mdash; FNV-1a hashed, arc4random-seeded token
+  buckets cap new TCP connections and UDP sessions; short-chain cutoffs
+  defeat hash spraying.
+- **Backend ACLs** &mdash; `deny_except` or `allow_except` CIDR policies stop
+  abuse as an open proxy to reach internal hosts.
+- **Listener ACLs** &mdash; the same CIDR policies, applied to inbound clients.
+- **DNS-over-TLS upstreams** &mdash; `nameserver dot://9.9.9.9/dns.quad9.net/tls1.2`
+  inside the `resolver` block; IP literals require a TLS hostname or an
+  explicit `/insecure`. TLS 1.2 is enforced by default.
+- **Hot reload** &mdash; SIGHUP re-reads the config, re-resolves backends and
+  rebuilds tables without dropping live connections. Reference counting
+  keeps old tables alive while connections that pinned them drain.
+- **Zero-copy on OpenBSD** &mdash; SO_SPLICE moves data in the kernel after the
+  handshake is parsed, user buffers shrink to 4 KiB and the splice timeout
+  handles idle detection.
+- **Bounded memory** &mdash; per-connection buffer caps, a global soft limit
+  that aggressively trims idle buffers, and a 4096-entry shrink queue stop
+  slow clients from pinning unbounded RAM.
+- **Continuous fuzzing** &mdash; dedicated harnesses for TLS, DTLS, HTTP/2,
+  XMPP, Minecraft, hostname, address, config, listener ACL, IPC crypto and
+  resolver responses run in CI and on a separate continuous-fuzzing job.
+
+## Protocol support
+
+| Protocol | Hostname source | Notes |
+| --- | --- | --- |
+| TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
+| DTLS | SNI extension in UDP ClientHello | Source-address validation via HelloVerify retransmission |
+| HTTP/1.x | `Host:` request header | Per-listener `bad_requests log` records malformed input |
+| HTTP/2 | HPACK `:authority` pseudo-header | Bounded HPACK table (per-conn 64 KiB / global 4 MiB) |
+| XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
+| Minecraft (Java Edition) | Server address in handshake packet | FML and BungeeCord NUL-delimited trailers stripped |
+
+## Architecture
+
+SNIProxy runs as four cooperating processes:
+
+1. **`sniproxy-mainloop`** &mdash; accepts connections, parses the first protocol
+   header, picks a backend and forwards bidirectionally.
+2. **`sniproxy-binder`** &mdash; the only process that keeps the privilege to
+   `bind()` low ports. It hands listening sockets back to the main loop on
+   startup and on every SIGHUP reload, then idles. Allowlisted to the
+   listener addresses present in the config.
+3. **`sniproxy-logger`** &mdash; owns the log files. The main loop sends log
+   lines over an encrypted Unix socket, so a compromised main loop cannot
+   forge or replay log writes.
+4. **`sniproxy-resolver`** &mdash; runs c-ares for async DNS, with arc4random
+   query IDs, mutex-guarded restart state, and per-client concurrency caps.
+
+All IPC channels are encrypted with ChaCha20-Poly1305 keys derived once in
+the parent and inherited across `fork()`, so children never have to read
+key material from disk or call `mlock()` after `pledge()`. Each helper
+process drops privileges immediately and enters its platform sandbox
+(pledge/unveil, Capsicum, or seccomp) before reading any tainted input.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and process
+boundaries, and [SANITIZERS.md](SANITIZERS.md) for how to build under
+ASan/MSan/UBSan/TSan.
+
+## Quick start
+
+```nginx
+user daemon
+group daemon
+
+pidfile /var/run/sniproxy.pid
+
+error_log {
+    filename /var/log/sniproxy/error.log
+    priority notice
+}
+
+listener 0.0.0.0:443 {
+    protocol tls
+    table https_hosts
+
+    # Used when the ClientHello has no usable SNI
+    fallback 192.0.2.50:443
+
+    access_log {
+        filename /var/log/sniproxy/access.log
+    }
+}
+
+table https_hosts {
+    # Exact host. Bare hostnames are auto-anchored, so this matches
+    # "example.com" only, never "sub.example.com".
+    example.com         192.0.2.10:443
+
+    # PCRE2 regular expression
+    .*\.example\.net    192.0.2.11:443
+
+    # Wildcard backend: connect to whatever the client asked for
+    .*\.cdn\.example    *:443
+}
 ```
 
-`per_ip_connection_rate` limits the rate of new connections and UDP sessions
-(default 30/s). `per_ip_max_connections` limits how many connections and UDP
-sessions may be open concurrently from a single IP (default 0, disabled).
-Both limits are shared between TCP and UDP. Set either value to `0` to disable.
+Validate with `sniproxy -t -c /etc/sniproxy.conf`, then start in
+foreground with `sniproxy -f -c /etc/sniproxy.conf`.
 
-To guard against descriptor exhaustion during floods, cap the number of
-concurrent connections (set `0` to auto-derive ~80% of the file descriptor
-limit, which is the default):
+## Usage
 
 ```
+Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max fd>] [-V] [-T <min TLS>] [-d]
+    -c  configuration file (default: /etc/sniproxy.conf)
+    -f  run in foreground
+    -g  allow group-readable (0640) config for SIGHUP reload
+    -t  test configuration and exit
+    -n  override file descriptor limit
+    -V  print version and exit
+    -T  minimum accepted TLS ClientHello version (1.0|1.1|1.2|1.3, default 1.2)
+    -d  enable verbose resolver debug tracing
+```
+
+## Installation
+
+Prebuilt Debian, Fedora and Alpine packages are produced by the
+[Release Packages](https://github.com/renaudallard/sniproxy/actions/workflows/release-packages.yml)
+workflow for every tagged release.
+
+### Prerequisites
+
+- Autotools (autoconf, automake, gettext, libtool)
+- libev, libpcre2-8, c-ares, OpenSSL (or LibreSSL) development headers
+- libbsd for `arc4random` and `strlcpy` (not needed on OpenBSD/FreeBSD/macOS,
+  which ship them natively)
+- Perl and cURL for the test suite
+
+### From source
+
+```sh
+./autogen.sh && ./configure && make check && sudo make install
+```
+
+### Debian / Ubuntu
+
+```sh
+sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev \
+    gettext libev-dev libpcre2-dev libc-ares-dev libssl-dev libbsd-dev \
+    pkg-config fakeroot devscripts
+./autogen.sh && dpkg-buildpackage
+sudo dpkg -i ../sniproxy_<version>_<arch>.deb
+```
+
+### Alpine
+
+```sh
+apk add build-base abuild autoconf automake libtool pkgconf \
+    libev-dev pcre2-dev c-ares-dev openssl-dev libbsd-dev
+./autogen.sh && ./configure && make dist
+cp alpine/APKBUILD /tmp/aport/ && cp sniproxy-*.tar.gz /tmp/aport/
+cd /tmp/aport && abuild checksum && abuild -r
+apk add --allow-untrusted ~/packages/<arch>/sniproxy-<version>.apk
+```
+
+### Fedora / RHEL
+
+```sh
+sudo yum install autoconf automake curl gettext-devel libev-devel pcre2-devel \
+    pkgconfig rpm-build c-ares-devel openssl-devel libbsd-devel
+./autogen.sh && ./configure && make dist
+rpmbuild --define "_sourcedir `pwd`" -ba redhat/sniproxy.spec
+sudo yum install ../sniproxy-<version>.<arch>.rpm
+```
+
+### FreeBSD
+
+```sh
+pkg install autoconf automake libtool pkgconf libev pcre2 c-ares
+./autogen.sh && ./configure LDFLAGS="-L/usr/local/lib" CPPFLAGS="-I/usr/local/include" && make
+sudo make install
+sudo cp scripts/sniproxy.rc /usr/local/etc/rc.d/sniproxy
+sudo sysrc sniproxy_enable=YES
+sudo service sniproxy start
+```
+
+Capsicum capability mode is enabled automatically when every listener,
+fallback and backend address is an IP (not a Unix domain socket).
+
+### macOS (best effort)
+
+```sh
+brew install libev pcre2 c-ares openssl autoconf automake gettext libtool
+brew link --force gettext      # GNU gettext is needed for autogen.sh
+./autogen.sh && ./configure && make
+```
+
+## Configuration
+
+A config file has a small set of **global** directives followed by one or
+more `listener <addr>` and `table <name>` blocks. SIGHUP triggers a
+zero-downtime reload; SIGUSR1 dumps the live connection table to
+`/tmp/sniproxy-status`.
+
+### Global directives
+
+```nginx
+user daemon
+group daemon
+pidfile /var/run/sniproxy.pid
+
+# Let libev batch I/O readiness and timer wakeups (seconds).
+# Defaults trade a tiny amount of latency for throughput; set 0 for
+# the lowest possible latency.
+io_collect_interval      0.0005
+timeout_collect_interval 0.005
+
+# Cap total simultaneous connections. 0 (the default) auto-derives
+# ~80% of the file descriptor limit.
 max_connections 20000
-```
 
-To cap how much memory any one connection can pin, set a shared limit (or
-override each side independently):
+# Per-IP token-bucket rate (TCP + UDP, default 30/s; 0 disables).
+per_ip_connection_rate 50
 
-```
-connection_buffer_limit 4M     # both client and server buffers cap at 4 MiB
-# client_buffer_limit 4M       # optional per-side overrides
-# server_buffer_limit 8M
-```
+# Per-IP cap on simultaneous connections (default 0, disabled).
+per_ip_max_connections 100
 
-Limit how many HTTP headers are accepted per request (default 100) to guard
-against header-count DoS attempts:
+# Per-side buffer caps. The shared form sets both at once; the per-side
+# overrides win when present. Defaults: 1 MiB each.
+connection_buffer_limit 4M
+# client_buffer_limit   4M
+# server_buffer_limit   8M
 
-```
+# Cap accepted HTTP headers per request (default 100).
 http_max_headers 200
-```
 
-Restrict which backend addresses sniproxy may connect to, preventing abuse
-as an open proxy to reach internal hosts:
-
-```
+# Restrict outbound connections so sniproxy cannot be used as an open
+# proxy into internal address space.
 backend_acl deny_except {
     10.0.0.0/8
     172.16.0.0/12
     192.168.0.0/16
 }
-```
 
-The policy is either `deny_except` (only allow listed ranges) or
-`allow_except` (allow everything except listed ranges).
-
-Enable TCP Fast Open on both listener and backend sockets for reduced
-connection latency (Linux 3.7+/4.11+, FreeBSD 12+):
-
-```
+# Enable TCP Fast Open (Linux 3.7+/4.11+, FreeBSD 12+).
 tcp_fastopen on
 ```
 
-### Basic Configuration
+### Resolver block
 
-    user daemon
-    group daemon
+```nginx
+resolver {
+    # ipv4_only | ipv6_only | ipv4_first | ipv6_first | default
+    mode ipv4_first
 
-    pidfile /tmp/sniproxy.pid
+    nameserver 8.8.8.8
+    nameserver 2001:4860:4860::8888
 
-    # Allow libev to batch events for better throughput (seconds)
-    io_collect_interval 0.0005
-    timeout_collect_interval 0.005
+    # DNS-over-TLS upstream.
+    # IP literals require either a TLS verification hostname after the
+    # slash, or an explicit "/insecure" to opt out of verification.
+    # The optional third segment pins the minimum TLS version
+    # (tls1.2 default, tls1.3 if your OpenSSL supports it).
+    nameserver dot://9.9.9.9/dns.quad9.net/tls1.2
 
-    error_log {
-        filename /var/log/sniproxy/error.log
-        priority notice
-    }
+    max_concurrent_queries 512
+    max_concurrent_queries_per_client 16
 
-    listener 127.0.0.1:443 {
-        protocol tls
-        table TableName
-
-        # Specify a server to use if the initial client request doesn't contain
-        # a hostname
-        fallback 192.0.2.5:443
-
-        # Optional: bind outbound connections to specific source address
-        source 192.0.2.100
-
-        # Optional: per-listener access log
-        access_log {
-            filename /var/log/sniproxy/access.log
-        }
-    }
-
-    table TableName {
-        # Bare hostnames are auto-anchored: example.com only matches
-        # "example.com", not "sub.example.com"
-        example.com 192.0.2.10:4343
-
-        # If port is not specified the listener port will be used
-        example.net [2001:DB8::1:10]
-
-        # Use regular expressions to match multiple hosts
-        .*\\.example\\.com    192.0.2.11:443
-
-        # Wildcard backends resolve the client-requested hostname
-        .*\\.dynamiccdn\\.com    *:443
-    }
-
-### Advanced Configuration
-
-    resolver {
-        # DNS resolution mode: ipv4_only, ipv6_only, ipv4_first, ipv6_first
-        mode ipv4_first
-
-        # Custom nameservers (handled by c-ares)
-        nameserver 8.8.8.8
-        nameserver 2001:4860:4860::8888
-        # DNS-over-TLS upstream with explicit TLS verification hostname
-        #nameserver dot://9.9.9.9/dns.quad9.net/tls1.2
-
-        # Limit concurrent DNS queries to prevent resource exhaustion
-        max_concurrent_queries 512
-
-        # Limit per-client concurrent DNS queries (default 16, 0 to disable)
-        max_concurrent_queries_per_client 16
-
-        # DNSSEC policy (default relaxed): off | relaxed | strict
-        dnssec_validation strict
-    }
-
-`dot://` entries accept an IP literal or hostname before the slash and the TLS
-verification hostname after the slash. Bare IP literals are no longer accepted;
-for IPs you must supply either a TLS hostname (preferred) or `/insecure` to
-explicitly disable certificate verification (e.g. `nameserver dot://9.9.9.9/insecure`).
-An optional third segment lets you pin a minimum TLS version (`/tls1.2` (default)
-or `/tls1.3` where supported by your OpenSSL). Certificates are validated
-against the system trust store, so keep `/etc/ssl` up-to-date.
-
-**Security recommendation**: For maximum security, use IP literals with explicit
-SNI hostnames rather than DNS hostnames for your DoT servers. This avoids a
-bootstrap problem where the DoT server's hostname must be resolved via
-potentially untrusted DNS before the secure channel is established:
-
+    # off | relaxed (default) | strict
+    dnssec_validation strict
+}
 ```
-# Recommended: IP literal with explicit TLS hostname
+
+**Security note**: prefer IP literals with explicit SNI hostnames for DoT
+servers. Bootstrapping a DoT server's hostname through untrusted DNS
+defeats the protection it is supposed to provide:
+
+```nginx
+# Recommended
 nameserver dot://9.9.9.9/dns.quad9.net
 
-# Less secure: hostname requires DNS resolution before DoT is available
+# Less secure: needs cleartext DNS before DoT becomes available
 nameserver dot://dns.quad9.net
 ```
 
-    listener [::]:443 {
-        protocol tls
-        table SecureHosts
+### Listener and table
 
-        # Enable SO_REUSEPORT for multi-process load balancing
-        reuseport yes
+```nginx
+listener [::]:443 {
+    protocol tls
+    table secure_hosts
 
-        # Enable IP_TRANSPARENT to preserve client source IPs
-        source client
+    # Multi-process scale-out via SO_REUSEPORT
+    reuseport yes
 
-        # Log malformed/rejected requests
-        bad_requests log
+    # Preserve the client source IP on outbound (IP_TRANSPARENT)
+    source client
 
-        # Restrict which clients may connect (default is allow all)
-        acl deny_except {
-            10.0.0.0/8
-            2001:db8::/32
-        }
+    # Log malformed / rejected requests
+    bad_requests log
 
-
-        # Accept incoming PROXY protocol headers (v1 and v2 auto-detected)
-        # from upstream proxies/load balancers
-        proxy_protocol on
-
-        # Fallback with PROXY protocol v1 header (text format)
-        fallback 192.0.2.50:443
-        fallback proxy_protocol
-
-        # Or use PROXY protocol v2 (binary format)
-        # fallback proxy_protocol_v2
+    # Allow listener: every CIDR not listed is blocked
+    acl deny_except {
+        10.0.0.0/8
+        2001:db8::/32
     }
 
-    table SecureHosts {
-        # Per-backend PROXY protocol v1 (text) or v2 (binary)
-        secure.example.com 192.0.2.20:443 proxy_protocol
-        other.example.com 192.0.2.21:443 proxy_protocol_v2
-
-        # Consistent backend selection: same client IP always
-        # reaches the same backend when DNS returns multiple records
-        backend_affinity on
-        .*\.cdn\.example\.com *:443
-    }
-
-Setting `io_collect_interval` and `timeout_collect_interval` lets libev batch I/O readiness notifications and timer recalculations, which reduces system call pressure on busy instances. The defaults (0.0005s and 0.005s respectively) favor throughput; set the values to 0 if you need the absolute lowest latency.
-
-### XMPP Configuration
-
-SNIProxy supports proxying XMPP connections by extracting the target domain from
-the `to` attribute in the initial `<stream:stream>` opening. This enables
-routing of XMPP traffic including STARTTLS negotiation without terminating the
-TLS connection on the proxy.
-
-    listener 0.0.0.0:5222 {
-        protocol xmpp
-        table XMPPServers
-
-        # Fallback for connections without a valid 'to' attribute
-        fallback 192.0.2.50:5222
-    }
-
-    table XMPPServers {
-        # Route XMPP domains to their respective servers
-        example.com      192.0.2.10:5222
-        chat.example.org 192.0.2.11:5222
-
-        # Wildcard for dynamic XMPP hosting
-        .*\\.xmpp\\.net  *:5222
-    }
-
-XMPP clients send an initial stream opening like:
-
-    <?xml version='1.0'?>
-    <stream:stream to="example.com" xmlns="jabber:client" ...>
-
-SNIProxy extracts the `to` attribute value and routes to the appropriate
-backend. The STARTTLS negotiation happens after the connection is established
-and is transparent to the proxy.
-
-**Security notes**:
-- Hostnames are validated and sanitized (only alphanumeric, dots, hyphens,
-  underscores, and bracketed IPv6 allowed)
-- Control characters, path traversal attempts, and injection characters are
-  rejected
-- Maximum hostname length is 255 characters
-- Maximum header size is 4096 bytes
-
-### Minecraft Configuration
-
-SNIProxy supports proxying Minecraft Java Edition connections by extracting
-the server address from the initial handshake packet. This enables hosting
-multiple Minecraft servers behind a single IP and port using different
-hostnames.
-
-    listener 0.0.0.0:25565 {
-        protocol minecraft
-        table MinecraftServers
-
-        fallback 192.0.2.50:25565
-    }
-
-    table MinecraftServers {
-        mc.example.com   192.0.2.10:25565
-        play.example.org 192.0.2.11:25565
-
-        # Wildcard for dynamic Minecraft hosting
-        .*\\.mc\\.net  *:25565
-    }
-
-Minecraft clients send a handshake packet containing the server address as
-the very first data in the TCP connection. SNIProxy extracts the server
-address field and routes to the appropriate backend. All subsequent protocol
-traffic (login, encryption, compression) passes through transparently.
-
-Forge Mod Loader (FML) markers and BungeeCord forwarding data appended to
-the server address after NUL bytes are automatically stripped before routing.
-
-Listeners default to accepting clients from any address. Use `acl allow_except` to list forbidden ranges while permitting all other clients, or `acl deny_except` to start from a deny-all stance and explicitly list the ranges that should be accepted. IPv4 and IPv6 networks can be mixed in the same block, and IPv4-mapped IPv6 connections are evaluated against IPv4 CIDRs. Only one policy style may appear in the configuration; mixing `allow_except` and `deny_except` blocks causes SNIProxy to exit during parsing.
-
-
-DNS Resolution
---------------
-
-Using hostnames or wildcard entries in the configuration relies on [c-ares](https://c-ares.org) for asynchronous resolution. DNS-dependent features such as fallback hostnames, wildcard tables, and transparent proxy mode all use this resolver.
-
-SNIProxy spawns a dedicated `sniproxy-resolver` process that handles all DNS queries asynchronously. This architecture provides:
-
-- **Process isolation**: DNS operations are separated from the main proxy
-- **Concurrency control**: Configurable limits prevent resolver exhaustion
-- **IPv4/IPv6 flexibility**: Multiple resolution modes for different deployment needs
-- **Custom nameservers**: Override system DNS configuration per SNIProxy instance
-
-**Security note**: Run SNIProxy alongside a local caching DNS resolver (e.g., unbound, dnsmasq) to reduce exposure to spoofed responses and improve performance.
-
-DNSSEC validation runs in `relaxed` mode by default, which requests DNSSEC records and trusts replies carrying the AD flag while still falling back to unsigned answers when AD isn't set. Set `dnssec_validation strict` inside the `resolver` block to require DNS replies that carry the AD (Authenticated Data) flag from a validating upstream resolver. This mode needs a c-ares build with DNSSEC/Trust AD support and will fail to resolve unsigned zones. Use `dnssec_validation off` to disable DNSSEC entirely if your upstream resolvers do not support it.
-
-
-Security & Hardening
---------------------
-
-SNIProxy includes extensive security hardening:
-
-### Security Controls
-
-- **DNS query ID randomization**: Uses arc4random() to generate cryptographically secure random IDs to prevent prediction attacks
-- **c-ares resolver hardening**: Async-signal-safe signal handlers, integer overflow protection, and leak fixes keep the resolver stable under load
-- **TLS parser hardening**: Early rejection of SSL 2.0/3.0 and malformed ClientHello variants that cannot carry the SNI extension
-- **Regex DoS mitigation**: Match limits scale with hostname length to prevent catastrophic backtracking on hostile hostnames
-- **Buffer overflow protection**: `buffer_reserve()` enforces strict overflow guards to block integer wraparound attempts
-- **NUL byte filtering**: TLS SNI parsing rejects server names with embedded NUL bytes before hostname validation
-- **HTTP/2 memory limits**: Enforces per-connection (64KB) and global (4MB) HPACK table limits to avoid memory exhaustion
-- **PROXY header hardening**: Single-pass header composition eliminates read-past-buffer bugs
-- **Connection timeout protection**: Idle timers clear pending events to prevent use-after-free conditions
-- **DNS concurrency limits**: Mutex-protected resolver queues enforce configurable caps on in-flight lookups
-
-### Testing Infrastructure
-
-The project includes comprehensive testing:
-
-- **Unit tests**: All major components (buffer, TLS, DTLS, HTTP, HTTP/2, XMPP, Minecraft, tables, etc.)
-- **Fuzz testing**: Dedicated fuzzers for TLS ClientHello, DTLS ClientHello,
-  HTTP/2 HEADERS, XMPP stream, Minecraft handshake, hostname sanitization,
-  address parsing, config parsing, listener ACL, IPC crypto, and resolver
-  response in `tests/fuzz/`
-- **Integration tests**: End-to-end listener and routing validation
-- **Protocol conformance**: Tests for TLS 1.0-1.3, DTLS, HTTP/1.x, HTTP/2, XMPP, and Minecraft
-
-Run tests with: `make check`
-
-### OpenBSD Sandboxing
-
-On OpenBSD, SNIProxy combines unveil(2) and pledge(2) to keep each helper process constrained:
-
-- **unveil()**: Restricts access to the configuration file, pidfile, log destinations, and Unix domain sockets declared in the configuration
-- **pledge()**: Promise sets are tailored per process to minimize available system calls:
-  - Main process: starts with `stdio getpw inet dns rpath proc id wpath cpath unix sendfd recvfd` while reading configuration, then tightens to `stdio inet dns rpath proc unix sendfd recvfd` after dropping privileges (includes `sendfd` so the binder child can inherit it after fork)
-  - Binder process: `stdio unix inet sendfd` while handling privileged socket creation
-  - Logger process: starts with `stdio rpath wpath cpath fattr id unix recvfd`, then tightens to `stdio rpath wpath cpath fattr unix recvfd` after dropping privileges
-  - Resolver process: `stdio rpath inet dns unix` to perform DNS lookups in isolation
-
-All paths are collected from the loaded configuration, so custom locations work
-as long as files/directories exist before launch. Helper processes are forked
-(not exec'd) and inherit the master key for IPC encryption.
-
-### FreeBSD Sandboxing
-
-On FreeBSD, SNIProxy uses Capsicum capability mode to restrict each process after initialization:
-
-- **Resolver process**: DoT SSL context is eagerly initialized before entering capability mode (since CA bundle loading requires filesystem access). The IPC socket is limited to read/write/send/recv/event rights.
-- **Logger process**: Enters capability mode after privilege drop. Pre-opened directory fds allow log file rotation via `openat()` in capability mode. Syslog is pre-connected before `cap_enter()`. The IPC socket is limited to read/write/send/recv/event rights.
-- **Main process**: Config directory and temp directory are pre-opened before entering capability mode. Config reload uses `openat()` on the pre-opened directory fd. Debug dumps use `openat()` on the pre-opened temp directory fd.
-- **Binder process**: Not sandboxed with Capsicum because it must `bind()` AF_UNIX paths, which requires VFS lookups forbidden in capability mode.
-
-The main process skips capability mode when any listener, fallback, or backend address is a Unix domain socket, since `connect()` and `bind()` to AF_UNIX paths require VFS lookups forbidden in capability mode. IP-only configurations (the common case) get full Capsicum protection. Adding new log file paths during SIGHUP reload is not supported in capability mode (existing log files can be reopened).
-
-Set `SNIPROXY_DISABLE_CAPSICUM=1` in the environment to disable Capsicum sandboxing for debugging.
-
-Performance Notes
------------------
-
-SNIProxy is designed for high performance and low resource usage:
-
-- **Event-driven I/O**: Uses libev for efficient non-blocking I/O multiplexing,
-  handling thousands of concurrent connections per process
-- **Minimal per-connection overhead**: Dynamic buffers start small (16KB client,
-  32KB server) and grow only as needed, then shrink when idle
-- **Efficient buffered I/O**: Ring buffers and vectored writes minimize copies
-  while remaining portable
-- **SO_SPLICE zero-copy**: On OpenBSD, after the initial handshake is parsed the
-  kernel splices data directly between client and server sockets, eliminating
-  user-space copies for the bulk of proxied traffic. User-space buffers are
-  shrunk to 4KB once the splice is active to minimize per-connection memory, and idle
-  detection is handled by the kernel splice timeout which properly resets on
-  data flow
-- **TCP_NODELAY**: Nagle's algorithm is disabled on both client and server
-  sockets to avoid coalescing delays on forwarded data
-- **JIT-compiled regex**: PCRE2 JIT compilation is used when available, giving
-  2-10x faster backend pattern matching
-- **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1) via ring buffer
-  indexing, eliminating per-header memmove overhead
-- **SO_REUSEPORT support**: Run multiple SNIProxy instances on the same port for
-  kernel-level load balancing across CPU cores
-- **Compiled regex patterns**: Pattern matching happens once at config load,
-  not per connection
-- **Hot config reload**: Update routing rules without restarting or dropping
-  existing connections (SIGHUP)
-
-**Typical resource usage**: 1-2 MB RAM per process plus ~2-8 KB per active
-connection (varies with traffic patterns)
-
-Troubleshooting
----------------
-
-### Common Issues
-
-**"Address already in use" when starting**
-- Another process is bound to the port, or a previous SNIProxy instance didn't
-  clean up. Use `netstat -tlnp` or `ss -tlnp` to check.
-- Try enabling `reuseport yes` in listener config for multi-instance setups
-
-**Connections fail to route / "No matching backend"**
-- Check that table names match between listener and table definitions
-- Verify hostname patterns - remember that regex patterns need proper escaping
-  (e.g., `.*\.example\.com` not `*.example.com`)
-- Enable `bad_requests log` to see rejected requests in error log
-
-**DNS resolution not working**
-- Ensure the c-ares development headers were available when SNIProxy was built
-- Check `sniproxy-resolver` process is running (should appear in process list)
-- Verify nameserver configuration and network connectivity
-
-**High memory usage**
-- Check for connections stuck in RESOLVING state with slow/unresponsive DNS
-- Reduce `max_concurrent_queries` to limit DNS-related memory
-- Verify no regex patterns causing excessive backtracking (check error log)
-
-**Permissions errors on startup**
-- Ensure user/group specified in config exists
-- Verify log file directories are writable by the configured user
-- On OpenBSD, ensure all paths exist before starting (for unveil)
-
-**HTTP/2 connection coalescing causes wrong backend routing**
-
-HTTP/2 clients (browsers) reuse an existing TLS connection for a different
-hostname when two conditions are met: (1) both hostnames resolve to the same
-IP, and (2) the TLS certificate is valid for both (e.g. a wildcard cert
-`*.example.com`). Since all proxied hostnames resolve to the sniproxy IP,
-condition (1) is always true. If the backend presents a shared certificate,
-the browser multiplexes requests for multiple hostnames over a single
-connection. SNIProxy routes once per TCP connection based on the SNI in the
-ClientHello and cannot inspect encrypted HTTP/2 frames, so subsequent
-hostnames are silently sent to the wrong backend.
-
-Symptoms include 404 errors, CORS failures, "Access denied" responses, or
-content from the wrong site. The problem resolves temporarily when the browser
-is restarted or connections are cleared.
-
-Workarounds (pick the most practical for your setup):
-- **Use per-domain certificates** instead of wildcard certs. Let's Encrypt
-  makes this easy. This is the most effective fix when you control the backends.
-- **Assign separate IPs per backend** so the browser's IP-match check fails.
-  IPv6 makes this practical.
-- **Disable HTTP/2 on backends** by removing `h2` from ALPN negotiation.
-  Loses HTTP/2 performance benefits but eliminates coalescing entirely.
-- **Configure backends to return HTTP 421** (Misdirected Request) for
-  hostnames they do not serve. RFC 9110 defines this status code; compliant
-  browsers retry on a fresh connection.
-
-When proxying third-party services (e.g. CDNs) where you control neither the
-certificate nor the backend, there is no workaround within sniproxy. Use a
-TLS-terminating reverse proxy instead for those services.
-
-### Debug Mode
-
-Run in foreground with resolver debug logging enabled:
-
-    sniproxy -f -d -c /path/to/config.conf
-
-This will:
-- Keep process in foreground (not daemonize)
-- Show detailed resolver tracing on stderr/error log to troubleshoot DNS issues
-
-Project Status
---------------
-
-SNIProxy is actively maintained with a focus on security, stability, and
-standards compliance. The codebase has undergone extensive security hardening
-in recent releases, including protection against regex DoS, buffer overflows,
-and memory exhaustion attacks.
-
-**Primary platform**: OpenBSD
-**Best-effort support**: Linux, Other BSDs, macOS
-
-### Use Cases
-
-SNIProxy is production-ready and commonly used for:
-
-- **Name-based virtual hosting**: Route HTTPS traffic by hostname without
-  TLS termination
-- **TLS/SSL load balancing**: Distribute connections across backend servers
-  based on SNI
-- **Multi-tenant hosting**: Route multiple domains to different backend
-  infrastructure
-- **CDN origins**: Route traffic to appropriate origin servers by hostname
-- **XMPP federation**: Route federated XMPP traffic to appropriate servers
-  based on the stream's target domain, including STARTTLS support
-- **Minecraft hosting**: Host multiple Minecraft Java Edition servers behind
-  a single IP and port using different hostnames
-- **DTLS/UDP proxying**: Route WebRTC, OpenConnect VPN, CoAP, and other
-  UDP/DTLS protocols by hostname without decryption
-- **Development proxies**: Local HTTPS routing for development environments
-- **IoT/embedded systems**: Lightweight SNI routing with minimal resource usage
-
-### Contributing
-
-Contributions are welcome! Areas of particular interest:
+    # Accept inbound PROXY protocol (v1/v2 auto-detected)
+    proxy_protocol on
+
+    # Fallback (used when no SNI / Host / etc. is present) with v1 header
+    fallback 192.0.2.50:443
+    fallback proxy_protocol
+    # ...or v2:
+    # fallback proxy_protocol_v2
+}
+
+table secure_hosts {
+    # Per-backend PROXY protocol
+    secure.example.com  192.0.2.20:443 proxy_protocol
+    other.example.com   192.0.2.21:443 proxy_protocol_v2
+
+    # Same client IP always reaches the same backend when DNS returns
+    # multiple records for that hostname
+    backend_affinity on
+    .*\.cdn\.example\.com *:443
+}
+```
+
+Only one ACL policy style may appear in the configuration at once: mixing
+`allow_except` and `deny_except` aborts startup. IPv4 and IPv6 networks
+can be mixed in the same block; IPv4-mapped IPv6 connections are matched
+against the IPv4 CIDRs.
+
+### XMPP
+
+```nginx
+listener 0.0.0.0:5222 {
+    protocol xmpp
+    table xmpp_servers
+    fallback 192.0.2.50:5222
+}
+
+table xmpp_servers {
+    example.com      192.0.2.10:5222
+    chat.example.org 192.0.2.11:5222
+    .*\.xmpp\.net    *:5222
+}
+```
+
+The proxy extracts the `to` attribute from the opening `<stream:stream>`
+element and routes accordingly. The STARTTLS negotiation that follows is
+transparent. Hostnames are validated (alphanumeric, dot, hyphen,
+underscore, bracketed IPv6); control characters, path traversal and
+injection metacharacters are rejected. Maximum hostname length is 255
+bytes, maximum stream header size is 4096 bytes.
+
+### Minecraft
+
+```nginx
+listener 0.0.0.0:25565 {
+    protocol minecraft
+    table minecraft_servers
+    fallback 192.0.2.50:25565
+}
+
+table minecraft_servers {
+    mc.example.com   192.0.2.10:25565
+    play.example.org 192.0.2.11:25565
+    .*\.mc\.net      *:25565
+}
+```
+
+The handshake packet is the very first data in the TCP stream, so
+sniproxy reads it, strips any Forge Mod Loader or BungeeCord forwarding
+trailer appended after a NUL byte, and routes on the clean server
+address.
+
+## Security and hardening
+
+SNIProxy is built with defense-in-depth as a design goal, not an
+afterthought.
+
+- **TLS 1.2+ by default** &mdash; older clients can be re-enabled with
+  `-T 1.1` or `-T 1.0`, or you can lock the listener to `-T 1.3`.
+- **Cryptographically random IDs** &mdash; DNS query IDs and per-IP rate
+  limiter buckets are seeded from arc4random; hash chains are kept short
+  to defeat spraying.
+- **Bounded parsers** &mdash; TLS rejects SSL 2.0/3.0 ClientHellos and NUL
+  bytes in server names; HTTP caps headers (default 100); TLS extension
+  count is capped at 64 on every code path; HTTP/2 HPACK is bounded per
+  connection (64 KiB) and globally (4 MiB).
+- **Regex DoS mitigation** &mdash; PCRE2 match limits scale with hostname
+  length so a crafted SNI cannot trigger catastrophic backtracking.
+- **DTLS amplification defense** &mdash; new UDP sessions must complete a
+  HelloVerify retransmission before any backend connect, so spoofed
+  source addresses cannot be amplified.
+- **Privilege separation** &mdash; the privileged binder, the log writer
+  and the resolver are each their own process, communicating over
+  encrypted Unix sockets with framed, length-checked messages.
+- **Strict config and pidfile checks** &mdash; config files must not be
+  group/other-readable (unless `-g` is passed); all path directives must
+  be absolute; resolver search domains are treated as literal suffixes,
+  not re-parsed by the system resolver. Pidfiles refuse to be written
+  over stale sockets, FIFOs or symlinks.
+- **Privilege drop verification** &mdash; startup aborts if real or effective
+  UID is still 0 after `setuid()`.
+- **OpenBSD sandboxing** &mdash; unveil(2) restricts the visible filesystem
+  to declared paths; per-process pledge(2) promise sets are pared down
+  in two stages (startup vs. steady state) for each helper.
+- **FreeBSD sandboxing** &mdash; Capsicum capability mode is entered after
+  the resolver loads its CA bundle, the logger has its log dirfds
+  pre-opened, and the main loop has its config dir + temp dir
+  pre-opened for `openat()`. Adding a new log path during SIGHUP reload
+  is not supported in capability mode; set `SNIPROXY_DISABLE_CAPSICUM=1`
+  for debugging.
+- **Linux sandboxing** &mdash; seccomp BPF filters per process type.
+- **Continuous fuzzing** &mdash; protocol fuzzers under `tests/fuzz/` run in
+  CI and on a dedicated continuous-fuzzing job. The job only files an
+  issue when a real crash/leak/timeout artifact is produced (build
+  errors are not treated as false-positive crashes).
+
+Run the regression suite with:
+
+```sh
+make check
+```
+
+ASan and UBSan run on every pull request via the
+[Sanitizers](https://github.com/renaudallard/sniproxy/actions/workflows/sanitizers.yml)
+workflow; MSan and TSan are available locally through configure flags
+(see [SANITIZERS.md](SANITIZERS.md)).
+
+## DNS resolution
+
+Hostnames in the config (table entries, fallbacks, transparent-proxy
+sources, wildcard backends) are resolved by a dedicated
+`sniproxy-resolver` child built on [c-ares](https://c-ares.org).
+That gives:
+
+- **Process isolation** for DNS code paths
+- **Configurable nameservers and search domains** independent of the
+  system resolver
+- **IPv4/IPv6 preference modes** for mixed-stack deployments
+- **Concurrency caps**, globally and per client, to bound resolver memory
+- **DNSSEC validation** in `relaxed` mode by default (trust upstream AD
+  flag, fall back to unsigned), with `strict` to require AD on every
+  reply and `off` to disable entirely. `strict` needs a c-ares build
+  with DNSSEC/Trust-AD support and will fail to resolve unsigned zones.
+
+For production, run a local validating resolver (Unbound, dnsmasq) and
+point sniproxy at it &mdash; that reduces both spoofing exposure and
+upstream query volume.
+
+## Performance
+
+- **Event-driven I/O** via libev; thousands of concurrent connections per
+  process.
+- **Small per-connection footprint** &mdash; buffers start at 16 KiB (client)
+  / 32 KiB (server), grow on demand, shrink when idle. Typical resident
+  usage is 1&ndash;2 MiB per process plus 2&ndash;8 KiB per active connection.
+- **Memory-pressure trimming** &mdash; a global soft limit drives an
+  aggressive shrink pass against idle buffers before total RAM balloons;
+  the shrink candidate queue is itself bounded (4096 entries).
+- **TCP_NODELAY** on both sides to avoid Nagle coalescing delays.
+- **SO_SPLICE zero-copy on OpenBSD** &mdash; once the handshake is parsed the
+  kernel splices client and server sockets directly; user-space buffers
+  shrink to 4 KiB and the splice timeout handles idle detection.
+- **JIT regex** &mdash; PCRE2 JIT compilation is used where available
+  (typically 2&ndash;10&times; faster backend matching).
+- **HPACK ring buffer** &mdash; HTTP/2 dynamic table inserts are O(1).
+- **SO_REUSEPORT** &mdash; bind multiple sniproxy workers to the same port
+  for kernel-level load balancing across cores.
+- **Hot reload** &mdash; SIGHUP rebuilds routing tables in place; in-flight
+  connections finish on the old table.
+
+## Troubleshooting
+
+**"Address already in use" on start**
+
+A previous instance or another service is bound to the listener address.
+Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
+`reuseport yes` on the listener.
+
+**Connections are not routed (or hit the fallback)**
+
+- Confirm the listener references the right `table <name>`.
+- Verify the pattern is a valid regex when it contains metacharacters
+  (`.*\.example\.com`, not `*.example.com`). Bare hostnames are
+  auto-anchored.
+- Enable `bad_requests log` on the listener to see what the parser
+  decided was malformed.
+
+**DNS is not working**
+
+- Confirm c-ares development headers were present at build time
+  (`./configure` output).
+- Check that `sniproxy-resolver` is alive (`ps`).
+- Verify the `resolver { nameserver ... }` config and network
+  reachability.
+
+**Memory keeps climbing**
+
+- Look for connections stuck in DNS resolution with a flaky upstream;
+  lower `max_concurrent_queries` and `max_concurrent_queries_per_client`.
+- Check the error log for regex backtracking warnings.
+- Lower `connection_buffer_limit` or the per-side caps.
+
+**Permission errors on start**
+
+- The configured `user`/`group` must exist.
+- Log directories must be writable by that user.
+- On OpenBSD, every path that will be opened (logs, pidfile, config
+  directory) must already exist before launch &mdash; unveil cannot reveal
+  what is not there.
+
+**HTTP/2 connection coalescing routes to the wrong backend**
+
+HTTP/2 clients (browsers) will reuse a single TLS connection for any
+second hostname when (1) the two names resolve to the same IP and (2)
+the server certificate is valid for both (typical wildcard cert
+`*.example.com`). Since every name proxied by sniproxy resolves to the
+sniproxy IP, condition (1) is always satisfied. If the backend serves a
+shared cert, the browser will multiplex requests for different names
+over one connection &mdash; sniproxy routes once per TCP connection from
+the SNI and cannot see the encrypted HTTP/2 frames, so subsequent
+requests are sent to the wrong backend.
+
+Symptoms: 404s, CORS failures, "Access denied" responses, or content
+from the wrong site. Restarting the browser clears it temporarily.
+
+Workarounds (in order of cleanness):
+
+1. **Per-domain certificates** on the backends instead of wildcards
+   (Let's Encrypt makes this trivial). This is the most effective fix.
+2. **Backends return HTTP 421 (Misdirected Request)** for hostnames they
+   do not serve. RFC 9110 says compliant browsers must retry on a fresh
+   connection.
+3. **Separate IPs per backend** so the browser's IP-match check fails
+   (IPv6 makes this easy).
+4. **Disable HTTP/2 on backends** by stripping `h2` from ALPN. Loses
+   HTTP/2 performance but eliminates coalescing.
+
+For third-party services where you control neither the cert nor the
+backend (CDNs, hosted SaaS), there is no in-proxy workaround &mdash; use a
+TLS-terminating reverse proxy for those names.
+
+### Debug mode
+
+```sh
+sniproxy -f -d -c /etc/sniproxy.conf
+```
+
+`-f` keeps the process in the foreground; `-d` turns on verbose resolver
+tracing on stderr / the configured error log.
+
+## Project status
+
+SNIProxy is actively maintained with a focus on security, stability and
+standards compliance. Recent releases have concentrated on protocol
+parser hardening, sandboxing portability and continuous fuzzing.
+
+Common deployments:
+
+- Name-based HTTPS virtual hosting without TLS termination
+- TLS / SSL load balancing by SNI across backend pools
+- Multi-tenant hosting (multiple domains, distinct backend
+  infrastructure, single public IP)
+- CDN origin selection by hostname
+- XMPP federation routing with STARTTLS passthrough
+- Multi-server Minecraft Java Edition hosting behind one IP and port
+- DTLS / UDP routing for WebRTC, OpenConnect VPN, CoAP and other
+  UDP/DTLS protocols, by hostname, without decryption
+- Local development HTTPS routing
+- Lightweight SNI routing on IoT and embedded systems
+
+## Contributing
+
+Contributions are welcome. Areas of particular interest:
 
 - Additional protocol parsers
-- Performance optimizations
-- Security improvements
-- Documentation improvements
-- Bug reports and test cases
+- Performance work
+- Additional fuzz harnesses or sanitizer coverage
+- Documentation
+- Bug reports with reproducers
 
-When developing, please use the memory sanitizers to catch bugs early:
-- See [SANITIZERS.md](SANITIZERS.md) for AddressSanitizer, MemorySanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer usage
-- CI automatically runs ASAN and UBSAN on all pull requests
+Please build with the sanitizers and run `make check` locally before
+opening a pull request. ASan and UBSan run automatically on every PR.
 
-### Resources
+## Resources
 
-- **Source code**: https://github.com/renaudallard/sniproxy
-- **Architecture documentation**: See [ARCHITECTURE.md](ARCHITECTURE.md)
-- **Memory sanitizers guide**: See [SANITIZERS.md](SANITIZERS.md)
-- **Issue tracking**: GitHub Issues
-- **License**: BSD 2-Clause
+- **Source**: https://github.com/renaudallard/sniproxy
+- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Sanitizers**: [SANITIZERS.md](SANITIZERS.md)
+- **Issues**: GitHub Issues
+- **License**: BSD 2-Clause &mdash; see [COPYING](COPYING)
 - **Donate**: [PayPal](https://www.paypal.me/RenaudAllard)
 
-### Credits
+## Credits
 
-Current author: Renaud Allard <renaud@allard.it>
+Current maintainer: **Renaud Allard** &lt;renaud@allard.it&gt;
 
-Original author: Dustin Lundquist <dustin@null-ptr.net>
+Original author: **Dustin Lundquist** &lt;dustin@null-ptr.net&gt;
 
 Contributors: Chris Lundquist, Igor Novgorodov, Nikos Mavrogiannopoulos,
 Vit Herman, Remi Gacogne, Pieter Lexis, Oldrich Jedlicka, Nick Kugaevsky,
@@ -779,14 +667,13 @@ Manuel Kasper, Lars Reemts, Bearnard Hibbins, Robin Balyan, Andrej Manduch,
 Andreas Loibl, Aaron Schrab, Zhang Sen, Udit Raikwar, Thomas Nordquist,
 Theophile Helleboid, Sebastian Wiedenroth, RickieL, Pierre-Olivier Mercier,
 Peter van Dijk, Naveen Nathan, Marc Haber, Kirill Ponomarev, John Wang,
-imlonghao, Christopher Galtenberg, Bram Gotink, Arni Birgisson
+imlonghao, Christopher Galtenberg, Bram Gotink, Arni Birgisson.
 
-### Nota Bene
+Built on:
 
-All real life tests are only done on OpenBSD. If you see issues on other OSes
-feel free to submit PRs or bug reports.
+- [libev](http://software.schmorp.de/pkg/libev.html) &mdash; event loop
+- [PCRE2](https://www.pcre.org/) &mdash; regular expressions
+- [c-ares](https://c-ares.org) &mdash; asynchronous DNS
 
-SNIProxy builds on several excellent libraries:
-- [libev](http://software.schmorp.de/pkg/libev.html) - event loop
-- [PCRE2](https://www.pcre.org/) - regex
-- [c-ares](https://c-ares.org) - async DNS resolution
+All production testing is performed on OpenBSD. Patches and bug reports
+for other platforms are welcome.
