@@ -2,6 +2,8 @@
   <img src="sniproxy-banner-dark.svg" alt="sniproxy &mdash; hardened SNI routing" width="640"/>
 </p>
 
+<h3 align="center">Hardened SNI Proxy</h3>
+
 <p align="center">
   <em>Route HTTP, TLS, DTLS, XMPP and Minecraft connections by hostname &mdash; without decrypting traffic.</em>
 </p>
