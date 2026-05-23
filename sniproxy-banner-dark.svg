@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 200" width="880" height="200" role="img" aria-labelledby="title desc">
+  <title id="title">sniproxy — hardened SNI routing</title>
+  <desc id="desc">Logo banner: splitter mark + sniproxy wordmark on dark background.</desc>
+  <rect width="880" height="200" fill="#0d1117"></rect>
+
+  
+  <g transform="translate(60 36)">
+    <g transform="scale(2)">
+      <rect x="26" y="20" width="12" height="24" rx="1" fill="none" stroke="#F4F1EB" stroke-width="2.5"></rect>
+      <path d="M2 32 H26" fill="none" stroke="#F4F1EB" stroke-width="2.5" stroke-linecap="square"></path>
+      <path d="M38 26 H56 M38 32 H62 M38 38 H56" fill="none" stroke="#F4F1EB" stroke-width="2.5" stroke-linecap="square"></path>
+      <rect x="55" y="24" width="3" height="4" fill="#F4F1EB"></rect>
+      <rect x="61" y="30" width="3" height="4" fill="#D89A3A"></rect>
+      <rect x="55" y="36" width="3" height="4" fill="#F4F1EB"></rect>
+      <rect x="29" y="28" width="6" height="8" fill="#D89A3A"></rect>
+    </g>
+  </g>
+
+  
+  <g font-family="&#39;JetBrains Mono&#39;, ui-monospace, &#39;SF Mono&#39;, Menlo, Consolas, monospace" font-weight="600">
+    <text x="220" y="110" font-size="64" fill="#F4F1EB" letter-spacing="-0.5">
+      <tspan fill="#D89A3A">&gt; </tspan><tspan>sni</tspan><tspan fill="#D89A3A">proxy</tspan>
+    </text>
+    <text x="220" y="138" font-size="14" fill="#8d96a0" letter-spacing="1">
+      hardened sni · routing for tls / http / xmpp / minecraft
+    </text>
+  </g>
+</svg>
