@@ -321,6 +321,11 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     struct Connection *con = new_connection(loop);
     if (con == NULL) {
         err("new_connection failed");
+        /* Set a deterministic errno: accept_cb inspects errno after a
+         * <= 0 return to decide on fd-exhaustion backoff, and err()
+         * above may have clobbered it. ENOMEM keeps it out of the
+         * EMFILE/ENFILE backoff path. */
+        errno = ENOMEM;
         return 0;
     }
     con->listener = listener_ref_get(listener);
