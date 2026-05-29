@@ -83,7 +83,7 @@
 
 static void usage(void);
 static void daemonize(void);
-static void write_pidfile(const char *, pid_t);
+static int write_pidfile(const char *, pid_t);
 static void set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
 static void perror_exit(const char *);
@@ -486,10 +486,12 @@ main(int argc, char **argv) {
         daemonize();
 
 
-        if (config->pidfile != NULL) {
-            write_pidfile(config->pidfile, getpid());
-            /* Register atexit so a fatal() between here and the
-             * normal shutdown path still removes the pidfile. */
+        if (config->pidfile != NULL &&
+                write_pidfile(config->pidfile, getpid()) == 0) {
+            /* Register atexit so a fatal() between here and the normal
+             * shutdown path still removes the pidfile. Only arm cleanup
+             * when we actually created the file, so a failed write never
+             * removes a pidfile owned by another instance. */
             pidfile_path_at_exit = config->pidfile;
             atexit(pidfile_cleanup);
         }
@@ -918,7 +920,12 @@ parse_min_tls_version(const char *value, uint8_t *major, uint8_t *minor) {
     return 1;
 }
 
-static void
+/* Create the pidfile with O_EXCL and write our pid into it. Returns 0 when
+ * this process created the file (the caller should then arrange removal at
+ * exit), or -1 when no pidfile was created by this call (e.g. it already
+ * existed). Post-creation validation failures still return 0: we own the
+ * freshly created file and want it cleaned up. */
+static int
 write_pidfile(const char *path, pid_t pid) {
     /* Use O_EXCL to prevent opening existing files (hardlink attack protection) */
     int open_flags = O_WRONLY | O_CREAT | O_EXCL;
@@ -938,21 +945,21 @@ write_pidfile(const char *path, pid_t pid) {
             err("PID file %s already exists (possible race or stale file)", path);
         else
             err("open PID file %s: %s", path, strerror(errno));
-        return;
+        return -1;
     }
 
     struct stat st;
     if (fstat(fd, &st) != 0) {
         err("fstat PID file: %s", strerror(errno));
         close(fd);
-        return;
+        return 0;
     }
 
     /* Validate file type and attributes for security */
     if (!S_ISREG(st.st_mode)) {
         err("PID file is not a regular file");
         close(fd);
-        return;
+        return 0;
     }
 
     /* Defense-in-depth: verify file was just created and we own it */
@@ -960,21 +967,21 @@ write_pidfile(const char *path, pid_t pid) {
         err("PID file has unexpected link count: %lu",
                 (unsigned long)st.st_nlink);
         close(fd);
-        return;
+        return 0;
     }
 
     if (st.st_uid != getuid()) {
         err("PID file owned by unexpected UID: %u (expected %u)",
                 (unsigned int)st.st_uid, (unsigned int)getuid());
         close(fd);
-        return;
+        return 0;
     }
 
     if (st.st_size != 0) {
         err("PID file has unexpected size: %lld",
                 (long long)st.st_size);
         close(fd);
-        return;
+        return 0;
     }
 
     if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
@@ -997,6 +1004,7 @@ cleanup:
     else if (fd >= 0)
         close(fd);
 
+    return 0;
 }
 
 static void
