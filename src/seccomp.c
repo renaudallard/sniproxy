@@ -112,6 +112,21 @@ static const char *const logger_network_syscalls[] = {
     NULL,
 };
 
+/* Restricted network subset for the binder child: it binds privileged
+ * ports and passes the resulting sockets back over its IPC channel via
+ * sendmsg/recvmsg; it never listens or accepts.  socket/connect/sendto
+ * are kept because, after disinheriting the logger process, the binder
+ * logs its own errors directly, which reaches vsyslog() when error_log
+ * uses syslog.  Excludes listen, accept, accept4, recvfrom, sendmmsg,
+ * recvmmsg, getsockname, getpeername, and socketpair (created in the
+ * parent before fork). */
+static const char *const binder_network_syscalls[] = {
+    "socket", "connect",
+    "bind", "setsockopt",
+    "sendto", "sendmsg", "recvmsg",
+    NULL,
+};
+
 static const char *const event_syscalls[] = {
     "poll", "ppoll", "select", "pselect6",
     "epoll_create", "epoll_create1", "epoll_ctl", "epoll_wait", "epoll_pwait",
@@ -224,7 +239,7 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_BINDER:
-            if (allow_syscalls(ctx, network_syscalls) < 0 ||
+            if (allow_syscalls(ctx, binder_network_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
