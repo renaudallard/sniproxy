@@ -2237,8 +2237,12 @@ connection_memory_apply_pressure(void) {
             now - buffer_pressure_last_run < CONNECTION_MEMORY_PRESSURE_COOLDOWN)
         return;
 
-    shrink_idle_buffers(now, 1);
+    /* Record the run time before shrinking: shrink_idle_buffers can re-enter
+     * this function via the buffer memory observer, and the cooldown check
+     * above should suppress those reentrant passes (the loop below already
+     * drains the whole candidate queue on its own). */
     buffer_pressure_last_run = now;
+    shrink_idle_buffers(now, 1);
 }
 
 static int
