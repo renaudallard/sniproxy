@@ -3043,11 +3043,6 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
         return;
     }
 
-    /* During shutdown, don't free queries here. Let shutdown_dns handle it
-     * after ares_destroy() completes to avoid use-after-free. */
-    if (child_shutting_down)
-        return;
-
     if (query->pending_v4 == 0 && query->pending_v6 == 0 &&
             (query->callback_completed || query->cancelled)) {
 
@@ -3062,14 +3057,23 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
 
         query->marked_for_free = 1;
 
-        /* Add to deferred free list instead of freeing immediately.
-         * This prevents use-after-free if c-ares calls another callback
-         * with the same pointer after we return from this callback. */
+        /* Move the query onto the deferred free list, taking it off the
+         * active list first so it lives on exactly one list. During normal
+         * operation it was already removed in process_callback/cancel (so
+         * this is a no-op), but when the final callback fires from
+         * ares_destroy() during shutdown the query is still on child_queries;
+         * removing it here prevents both a leak (an orphan that shutdown_dns
+         * would never free) and a double free. Freeing stays deferred so a
+         * later c-ares callback with the same pointer cannot use freed
+         * memory. */
+        resolver_child_remove_query(query);
         query->next = child_queries_to_free;
         child_queries_to_free = query;
 
-        /* Schedule immediate timer to free queries outside of c-ares callbacks */
-        if (!ev_is_active(&child_deferred_free_timer)) {
+        /* Schedule a timer to free queries outside c-ares callbacks. During
+         * shutdown the event loop is no longer running and shutdown_dns frees
+         * the deferred list directly, so the timer would never fire. */
+        if (!child_shutting_down && !ev_is_active(&child_deferred_free_timer)) {
             ev_timer_set(&child_deferred_free_timer, 0.0, 0.0);
             ev_timer_start(child_loop, &child_deferred_free_timer);
         }
