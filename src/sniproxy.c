@@ -501,9 +501,10 @@ main(int argc, char **argv) {
     if (logger_process_is_active()) {
         /* cpath stays so the atexit handler can remove the pidfile;
          * unveil bounds it to the pre-unveiled paths (pidfile, temp
-         * dir, etc.).  wpath is dropped because file logging now goes
-         * through the logger child. */
-        if (pledge("stdio getpw inet dns rpath proc id cpath unix sendfd recvfd", NULL) == -1) {
+         * dir, etc.).  wpath is kept so the SIGUSR1 connection dump
+         * (print_connections) can write its temp file; unveil bounds
+         * writes to the temp directories. */
+        if (pledge("stdio getpw inet dns rpath wpath proc id cpath unix sendfd recvfd", NULL) == -1) {
             fatal("main: pledge failed: %s", strerror(errno));
         }
         logger_parent_notify_fs_locked();
@@ -551,8 +552,10 @@ main(int argc, char **argv) {
 
 #ifdef __OpenBSD__
     /* Tighten pledge after dropping privileges - no longer need getpw or id.
-     * cpath kept for the atexit pidfile removal; unveil bounds it. */
-    if (pledge("stdio inet dns rpath proc cpath unix sendfd recvfd", NULL) == -1) {
+     * cpath kept for the atexit pidfile removal; wpath kept so the SIGUSR1
+     * connection dump (print_connections) can write its temp file; unveil
+     * bounds both to the pidfile and temp directories. */
+    if (pledge("stdio inet dns rpath wpath proc cpath unix sendfd recvfd", NULL) == -1) {
         fatal("main: pledge failed: %s", strerror(errno));
     }
 #endif
