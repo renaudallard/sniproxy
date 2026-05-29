@@ -239,7 +239,13 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_BINDER:
+            /* fs_read is needed by the binder's own error logging: after it
+             * disinherits the logger process it formats messages locally,
+             * and both the timestamp path (localtime/strftime) and vsyslog
+             * read /etc/localtime (openat + per-call newfstatat). Without it
+             * the first err() would be killed by SCMP_ACT_KILL_PROCESS. */
             if (allow_syscalls(ctx, binder_network_syscalls) < 0 ||
+                allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
