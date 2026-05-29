@@ -986,6 +986,7 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
      * (e.g., partially received SCM_RIGHTS file descriptors). */
     if (msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) {
         free(cipher);
+        ipc_crypto_drain_fds(&msg, NULL);
         if (prefix_fd >= 0)
             close(prefix_fd);
         errno = EMSGSIZE;
@@ -994,6 +995,7 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
 
     if ((size_t)ret != frame_len) {
         free(cipher);
+        ipc_crypto_drain_fds(&msg, NULL);
         if (prefix_fd >= 0)
             close(prefix_fd);
         errno = EIO;
