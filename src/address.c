@@ -209,7 +209,10 @@ new_address(const char *hostname_or_ip) {
 
 struct Address *
 new_address_sa(const struct sockaddr *sa, socklen_t sa_len) {
-    if (sa == NULL || sa_len == 0 ||
+    /* Require at least the sa_family field: address_port() below reads
+     * sa->sa_family before any per-family length check, so a shorter
+     * buffer would be an out-of-bounds read. */
+    if (sa == NULL || sa_len < sizeof(sa_family_t) ||
             sa_len > sizeof(struct sockaddr_storage))
         return NULL;
 
