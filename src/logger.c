@@ -1926,17 +1926,21 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                             "sniproxy logger: failed to drop privileges\n");
                     logger_child_exit(EXIT_FAILURE);
                 }
-#ifdef __OpenBSD__
-                /* Tighten pledge - no longer need id */
-                if (pledge("stdio rpath wpath cpath fattr unix recvfd",
-                            NULL) == -1) {
-                    fprintf(stderr,
-                            "logger: pledge tighten failed: %s\n",
-                            strerror(errno));
-                    logger_child_exit(EXIT_FAILURE);
-                }
-#endif
             }
+#ifdef __OpenBSD__
+            /* Tighten pledge - no longer need id. Runs whether or not the
+             * child was root when the message arrived, so the logger drops
+             * the id promise even when sniproxy was started directly as the
+             * unprivileged target user (the geteuid()==0 block is skipped
+             * there). */
+            if (pledge("stdio rpath wpath cpath fattr unix recvfd",
+                        NULL) == -1) {
+                fprintf(stderr,
+                        "logger: pledge tighten failed: %s\n",
+                        strerror(errno));
+                logger_child_exit(EXIT_FAILURE);
+            }
+#endif
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
             if (capsicum_available()) {
                 /* Pre-connect syslog before entering capability mode */
