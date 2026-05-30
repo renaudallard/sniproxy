@@ -197,11 +197,18 @@ resolver_hostname_hash(const char *hostname, size_t len, int mode) {
 }
 
 static struct ResolverPending *
-resolver_find_pending_host(const char *hostname, size_t len, int mode, uint32_t hash) {
+resolver_find_pending_host(const char *hostname, size_t len, int mode, uint32_t hash,
+        uint32_t affinity_seed) {
     size_t bucket = resolver_host_bucket_index(hash);
     struct ResolverPending *iter = resolver_hosts[bucket];
     while (iter != NULL) {
+        /* Only coalesce queries that resolve to the same backend. With
+         * backend_affinity the chosen address depends on affinity_seed, so a
+         * pending may only absorb a client carrying the same seed; otherwise
+         * the coalesced clients would all be pinned to the first client's
+         * backend. seed 0 (no affinity) groups together as before. */
         if (iter->resolv_mode == mode && iter->host_hash == hash &&
+                iter->affinity_seed == affinity_seed &&
                 iter->hostname_len == len &&
                 memcmp(iter->hostname, hostname, len) == 0)
             return iter;
@@ -696,7 +703,7 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
 
     pthread_mutex_lock(&resolver_queries_lock);
     struct ResolverPending *pending = resolver_find_pending_host(hostname, hostname_len,
-            requested_mode, host_hash);
+            requested_mode, host_hash, affinity_seed);
     if (pending != NULL) {
         handle->pending = pending;
         handle->next_client = pending->clients;
@@ -745,7 +752,7 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
 
     pthread_mutex_lock(&resolver_queries_lock);
     struct ResolverPending *race = resolver_find_pending_host(hostname, hostname_len,
-            requested_mode, host_hash);
+            requested_mode, host_hash, affinity_seed);
     if (race != NULL) {
         free(new_pending->hostname);
         free(new_pending);
