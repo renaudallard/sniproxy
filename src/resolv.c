@@ -298,6 +298,7 @@ static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t p
 static int resolver_emit_query(struct ResolverPending *pending);
 static void resolver_attach_query(struct ResolverPending *pending);
 static struct ResolverPending *resolver_take_query(uint32_t id);
+static int resolver_query_id_in_use(uint32_t id);
 static void resolver_remove_pending(struct ResolverPending *pending);
 static struct ResolverPending *resolver_detach_pending_queries(void);
 static void resolver_cleanup_pending_queries(void);
@@ -742,9 +743,8 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
     new_pending->resolv_mode = requested_mode;
     new_pending->affinity_seed = affinity_seed;
     new_pending->host_hash = host_hash;
-    new_pending->id = resolver_next_query_prng();
-    if (new_pending->id == 0)
-        new_pending->id = resolver_next_query_prng();
+    /* id is assigned under resolver_queries_lock below, where uniqueness
+     * among in-flight queries can be guaranteed. */
 
     handle->pending = new_pending;
     handle->next_client = NULL;
@@ -762,6 +762,17 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
         pthread_mutex_unlock(&resolver_queries_lock);
         return handle;
     }
+
+    /* Assign a query id unique among in-flight queries so an incoming RESULT
+     * is never mis-routed to a different pending (resolver_take_query matches
+     * on id alone). Done under resolver_queries_lock. 64 retries makes a
+     * residual collision astronomically unlikely at any concurrency. */
+    new_pending->id = resolver_next_query_prng();
+    for (int tries = 0;
+            (new_pending->id == 0 || resolver_query_id_in_use(new_pending->id))
+                && tries < 64;
+            tries++)
+        new_pending->id = resolver_next_query_prng();
 
     resolver_attach_query(new_pending);
     /* Hold lock during send to make attach+emit atomic.
@@ -1127,6 +1138,18 @@ resolver_attach_query(struct ResolverPending *pending) {
     size_t host_bucket = resolver_host_bucket_index(pending->host_hash);
     pending->next_host = resolver_hosts[host_bucket];
     resolver_hosts[host_bucket] = pending;
+}
+
+/* Whether a query id is already used by an in-flight pending.
+ * Caller must hold resolver_queries_lock. */
+static int
+resolver_query_id_in_use(uint32_t id) {
+    size_t bucket = resolver_query_bucket_index(id);
+    for (struct ResolverPending *iter = resolver_queries[bucket];
+            iter != NULL; iter = iter->next_id)
+        if (iter->id == id)
+            return 1;
+    return 0;
 }
 
 static struct ResolverPending *
