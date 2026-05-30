@@ -78,6 +78,8 @@ struct UDPSession {
     char *pending_dgram;        /* saved during DNS resolution */
     size_t pending_dgram_len;
     struct ResolvQuery *query_handle;
+    int dns_query_acquired;     /* holds a DNS query accounting slot */
+    struct DnsClientUsageEntry *dns_client_usage;
     struct UDPSession *next;    /* hash chain */
     uint32_t addr_hash;
     enum udp_session_state state;
@@ -309,6 +311,17 @@ udp_session_create(struct Listener *listener,
     return s;
 }
 
+/* Release the DNS query accounting slot if this session holds one. Safe to
+ * call more than once; the flag guards against a double release. */
+static void
+udp_dns_query_release(struct UDPSession *session) {
+    if (session->dns_query_acquired) {
+        connections_dns_query_release_entry(session->dns_client_usage);
+        session->dns_query_acquired = 0;
+        session->dns_client_usage = NULL;
+    }
+}
+
 static void
 udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
     if (session == NULL)
@@ -332,6 +345,7 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
         resolv_cancel(session->query_handle);
         session->query_handle = NULL;
     }
+    udp_dns_query_release(session);
 
     /* Stop watchers */
     ev_timer_stop(loop, &session->idle_timer);
@@ -455,6 +469,23 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
             }
         }
 
+        /* Count this lookup against the global and per-client DNS limits,
+         * the same caps the TCP path enforces, so UDP/DTLS cannot drive
+         * unbounded concurrent upstream resolutions. */
+        enum dns_acquire_status dns_status =
+                connections_dns_query_acquire_addr(&session->client_addr,
+                        &session->dns_client_usage);
+        if (dns_status != DNS_ACQUIRE_OK) {
+            notice("UDP: DNS query for %s rejected: %s limit reached", hn,
+                    dns_status == DNS_ACQUIRE_GLOBAL_LIMIT ? "global"
+                            : "per-client");
+            free(cb_data->address);
+            free(cb_data);
+            udp_session_destroy(session, loop);
+            return;
+        }
+        session->dns_query_acquired = 1;
+
         session->state = UDP_RESOLVING;
         struct ResolvQuery *qh = resolv_query(hn, resolv_mode, 0,
                 udp_resolv_cb, udp_free_resolv_cb_data, cb_data);
@@ -494,6 +525,8 @@ udp_resolv_cb(struct Address *result, void *data) {
     struct ev_loop *loop = cb_data->loop;
 
     session->query_handle = NULL;
+    /* The query has completed (or failed); release its accounting slot. */
+    udp_dns_query_release(session);
 
     if (session->state != UDP_RESOLVING) {
         return;

@@ -37,6 +37,12 @@ struct Buffer;
 struct DnsClientUsageEntry;
 struct Protocol;
 
+enum dns_acquire_status {
+    DNS_ACQUIRE_OK = 0,
+    DNS_ACQUIRE_GLOBAL_LIMIT,
+    DNS_ACQUIRE_PER_CLIENT_LIMIT,
+};
+
 struct Connection {
     enum State {
         NEW,            /* Before successful accept */
@@ -93,6 +99,16 @@ void connections_set_per_ip_connection_rate(double rate);
 void connections_set_per_ip_max_connections(size_t limit);
 void connections_set_dns_query_limit(size_t limit);
 void connections_set_dns_query_per_client_limit(size_t limit);
+
+/* Protocol-agnostic DNS query accounting keyed on the client address, used by
+ * the UDP/DTLS path so it is subject to the same global and per-client limits
+ * as TCP. On DNS_ACQUIRE_OK, *out_entry holds the per-client tracking entry
+ * (NULL when per-client limiting is disabled) and must be handed back to
+ * connections_dns_query_release_entry exactly once. */
+enum dns_acquire_status connections_dns_query_acquire_addr(
+        const struct sockaddr_storage *addr,
+        struct DnsClientUsageEntry **out_entry);
+void connections_dns_query_release_entry(struct DnsClientUsageEntry *entry);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
 void connections_set_global_limit(size_t limit);
 void connections_set_backend_acl(int mode,

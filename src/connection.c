@@ -260,12 +260,6 @@ mix64_to_32(uint64_t v) {
     return (uint32_t)(v ^ (v >> 32));
 }
 
-enum dns_acquire_status {
-    DNS_ACQUIRE_OK = 0,
-    DNS_ACQUIRE_GLOBAL_LIMIT,
-    DNS_ACQUIRE_PER_CLIENT_LIMIT,
-};
-
 static int push_proxy_header(struct Connection *, const char *, size_t);
 static int dns_client_increment(struct Connection *);
 static void dns_client_decrement(struct Connection *);
@@ -1455,21 +1449,22 @@ dns_client_lookup_entry(const struct sockaddr_storage *addr, uint32_t hash,
     return NULL;
 }
 
+/* Account one outstanding DNS query against the per-client limit for addr.
+ * On success *out_entry holds the tracking entry (NULL when per-client
+ * limiting is disabled) for a later dns_client_decrement_entry. */
 static int
-dns_client_increment(struct Connection *con) {
-    if (con == NULL)
-        return 0;
+dns_client_increment_addr(const struct sockaddr_storage *addr,
+        struct DnsClientUsageEntry **out_entry) {
+    *out_entry = NULL;
 
-    if (max_dns_queries_per_client == 0) {
-        con->dns_client_usage = NULL;
+    if (max_dns_queries_per_client == 0)
         return 1;
-    }
 
     uint32_t addr_v4 = 0;
     int is_v4 = 0;
-    uint32_t hash = hash_sockaddr_ip(&con->client.addr, &addr_v4, &is_v4);
+    uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
     struct DnsClientUsageEntry *entry = dns_client_lookup_entry(
-            &con->client.addr, hash, addr_v4, is_v4);
+            addr, hash, addr_v4, is_v4);
 
     if (entry == NULL) {
         entry = calloc(1, sizeof(*entry));
@@ -1477,7 +1472,7 @@ dns_client_increment(struct Connection *con) {
             warn("Failed to allocate DNS client usage entry: %s", strerror(errno));
             return 0;
         }
-        entry->addr = con->client.addr;
+        entry->addr = *addr;
         entry->addr_hash = hash;
         entry->addr_v4 = addr_v4;
         entry->is_v4 = is_v4;
@@ -1486,20 +1481,19 @@ dns_client_increment(struct Connection *con) {
         dns_client_table[bucket] = entry;
     }
 
-    if (entry->outstanding >= max_dns_queries_per_client)
+    if (entry->outstanding >= max_dns_queries_per_client) {
+        /* A freshly allocated entry has outstanding 0 < limit, so it is only
+         * reachable here for an existing entry and is never leaked. */
         return 0;
+    }
 
     entry->outstanding++;
-    con->dns_client_usage = entry;
+    *out_entry = entry;
     return 1;
 }
 
 static void
-dns_client_decrement(struct Connection *con) {
-    if (con == NULL)
-        return;
-
-    struct DnsClientUsageEntry *entry = con->dns_client_usage;
+dns_client_decrement_entry(struct DnsClientUsageEntry *entry) {
     if (entry == NULL)
         return;
 
@@ -1518,7 +1512,22 @@ dns_client_decrement(struct Connection *con) {
             iter = &(*iter)->next;
         }
     }
+}
 
+static int
+dns_client_increment(struct Connection *con) {
+    if (con == NULL)
+        return 0;
+
+    return dns_client_increment_addr(&con->client.addr, &con->dns_client_usage);
+}
+
+static void
+dns_client_decrement(struct Connection *con) {
+    if (con == NULL)
+        return;
+
+    dns_client_decrement_entry(con->dns_client_usage);
     con->dns_client_usage = NULL;
 }
 
@@ -1749,6 +1758,29 @@ dns_query_release(struct Connection *con) {
         active_dns_queries--;
 
     dns_client_decrement(con);
+}
+
+enum dns_acquire_status
+connections_dns_query_acquire_addr(const struct sockaddr_storage *addr,
+        struct DnsClientUsageEntry **out_entry) {
+    *out_entry = NULL;
+
+    if (active_dns_queries >= max_concurrent_dns_queries)
+        return DNS_ACQUIRE_GLOBAL_LIMIT;
+
+    if (!dns_client_increment_addr(addr, out_entry))
+        return DNS_ACQUIRE_PER_CLIENT_LIMIT;
+
+    active_dns_queries++;
+    return DNS_ACQUIRE_OK;
+}
+
+void
+connections_dns_query_release_entry(struct DnsClientUsageEntry *entry) {
+    if (active_dns_queries > 0)
+        active_dns_queries--;
+
+    dns_client_decrement_entry(entry);
 }
 
 void
