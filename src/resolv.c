@@ -2850,6 +2850,9 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
     if (sock->handshake_complete)
         return 0;
 
+    /* Empty the thread error queue so SSL_get_error()/ERR_get_error()
+     * below reflect only this operation (OpenSSL SSL_get_error(3)). */
+    ERR_clear_error();
     int ret = SSL_do_handshake(sock->ssl);
     if (ret == 1) {
         sock->handshake_complete = 1;
@@ -2930,6 +2933,7 @@ resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int fla
 
     if (len > INT_MAX)
         len = INT_MAX;
+    ERR_clear_error();
     int ret = SSL_read(sock->ssl, buffer, (int)len);
     if (ret > 0)
         return ret;
@@ -3005,6 +3009,7 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
         offset += iov[i].iov_len;
     }
 
+    ERR_clear_error();
     int ret = SSL_write(sock->ssl, buf, (int)total);
     if (use_heap)
         free(buf);
