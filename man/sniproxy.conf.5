@@ -411,7 +411,11 @@ each server at a time. The special argument \fBclient\fR enables
 transparent proxy mode (IP_TRANSPARENT) where supported, preserving the
 original source address when connecting to the backend. This mode
 requires root privileges and an operating system that implements
-transparent sockets (such as Linux).
+transparent sockets (such as Linux). For safety \fBsource client\fR
+cannot be combined with the proxy_protocol directive on the same
+listener: the PROXY header is untrusted, so letting it choose the
+transparent bind address would let a client spoof its source address
+toward the backend.
 
 An optional acl block restricts which clients may connect to a listener
 based on CIDR ranges. The directive takes a default policy of either

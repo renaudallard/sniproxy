@@ -368,9 +368,6 @@ listener [::]:443 {
         2001:db8::/32
     }
 
-    # Accept inbound PROXY protocol (v1/v2 auto-detected)
-    proxy_protocol on
-
     # Fallback (used when no SNI / Host / etc. is present) with v1 header
     fallback 192.0.2.50:443
     fallback proxy_protocol

@@ -749,6 +749,13 @@ valid_listener(const struct Listener *listener) {
         return 0;
     }
 
+    if (listener->transparent_proxy && listener->accept_proxy_protocol) {
+        err("source client (transparent proxy) cannot be combined with "
+            "proxy_protocol: the PROXY header is untrusted, so letting it "
+            "drive the transparent source bind would allow source spoofing");
+        return 0;
+    }
+
     return 1;
 }
 
