@@ -685,6 +685,20 @@ binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len) {
             /* Reject abstract sockets and relative paths. */
             if (sun->sun_path[0] != '/')
                 return 0;
+            /* Confine root-bound unix sockets to the conventional runtime
+             * directories. A unix listener whose directory is root-owned is
+             * the only case that reaches the root binder (the unprivileged
+             * main binds user-writable directories directly), so this does
+             * not affect normal use but stops a compromised main from driving
+             * the root binder to create a socket node at an arbitrary,
+             * sensitive path. No ".." component may escape the prefix. */
+            for (const char *p = sun->sun_path;
+                    (p = strstr(p, "/..")) != NULL; p += 3)
+                if (p[3] == '/' || p[3] == '\0')
+                    return 0;
+            if (strncmp(sun->sun_path, "/run/", 5) != 0 &&
+                    strncmp(sun->sun_path, "/var/run/", 9) != 0)
+                return 0;
             return 1;
         }
         default:

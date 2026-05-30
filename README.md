@@ -113,7 +113,8 @@ SNIProxy runs as four cooperating processes:
 2. **`sniproxy-binder`** &mdash; the only process that keeps the privilege to
    `bind()` low ports. It hands listening sockets back to the main loop on
    startup and on every SIGHUP reload, then idles. Allowlisted to the
-   listener addresses present in the config.
+   listener addresses present in the config; root-bound Unix-socket
+   listeners are confined to `/run` or `/var/run`.
 3. **`sniproxy-logger`** &mdash; owns the log files. The main loop sends log
    lines over an encrypted Unix socket, so a compromised main loop cannot
    forge or replay log writes.

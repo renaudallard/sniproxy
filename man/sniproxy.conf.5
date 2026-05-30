@@ -343,7 +343,10 @@ listener 0.0.0.0 4443 {
 Define a listening address to accept new connections from clients on.
 Addresses may be specified as an IPv4 literal followed by a port
 number, an IPv6 literal followed by a port number, a bare port
-number, or a unix socket path prefixed with 'unix:'.
+number, or a unix socket path prefixed with 'unix:'. A unix-socket
+listener whose directory is not writable by the configured user is
+bound by the privileged binder helper; for safety the binder only
+creates such root-bound unix sockets under \fI/run\fR or \fI/var/run\fR.
 
 Protocol defines how the client request should be parsed to obtain the
 requested hostname. Five protocols are supported: tls, http, xmpp,
