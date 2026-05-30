@@ -574,21 +574,33 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
         return;
     }
 
-    /* Source address binding */
+    /* Source address binding - fail closed like the TCP path so a
+     * privilege or configuration failure cannot silently leak the proxy's
+     * own source address to the backend instead of the client address. */
     if (session->listener->transparent_proxy) {
 #ifdef IP_TRANSPARENT
         int on = 1;
-        if (setsockopt(fd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0)
-            debug("UDP: setsockopt IP_TRANSPARENT: %s", strerror(errno));
+        if (setsockopt(fd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
+            err("UDP: setsockopt IP_TRANSPARENT: %s", strerror(errno));
+            close(fd);
+            udp_session_destroy(session, loop);
+            return;
+        }
         if (bind(fd, (struct sockaddr *)&session->client_addr,
                 session->client_addr_len) < 0) {
-            debug("UDP: bind transparent source: %s", strerror(errno));
+            err("UDP: bind transparent source: %s", strerror(errno));
+            close(fd);
+            udp_session_destroy(session, loop);
+            return;
         }
 #endif
     } else if (session->listener->source_address != NULL) {
         if (bind(fd, address_sa(session->listener->source_address),
                 address_sa_len(session->listener->source_address)) < 0) {
-            debug("UDP: bind source address: %s", strerror(errno));
+            err("UDP: bind source address: %s", strerror(errno));
+            close(fd);
+            udp_session_destroy(session, loop);
+            return;
         }
     }
 
