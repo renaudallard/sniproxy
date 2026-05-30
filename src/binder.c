@@ -210,6 +210,14 @@ binder_spawn_child(void) {
         return -1;
     }
 
+    /* Fresh per-instance key salt before fork so the parent and child derive
+     * matching keys and a restarted binder never reuses the previous
+     * instance's (key, nonce) stream. */
+    if (ipc_crypto_prepare_channel(BINDER_IPC_CHANNEL_ID) < 0) {
+        err("failed to prepare binder IPC channel salt");
+        return -1;
+    }
+
     int sockets[2];
     int socket_type = SOCK_STREAM;
 #ifdef SOCK_CLOEXEC

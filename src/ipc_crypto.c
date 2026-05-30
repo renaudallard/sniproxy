@@ -269,6 +269,57 @@ ipc_crypto_system_init(void) {
     return 0;
 }
 
+#define IPC_CRYPTO_SALT_LEN 16
+#define IPC_CRYPTO_MAX_CHANNELS 4
+
+/* Per-channel instance salt. The parent generates a fresh salt with
+ * ipc_crypto_prepare_channel() before forking a child, so the parent and the
+ * inheriting child derive matching keys while every (re)start uses a new salt.
+ * Without it a restarted channel would reset its counter to 0 under the same
+ * derived key and reuse the previous instance's (key, nonce) keystream. */
+static struct {
+    uint32_t channel_id;
+    uint8_t salt[IPC_CRYPTO_SALT_LEN];
+    int valid;
+} ipc_crypto_channel_salts[IPC_CRYPTO_MAX_CHANNELS];
+
+static const uint8_t *
+ipc_crypto_channel_salt(uint32_t channel_id) {
+    for (size_t i = 0; i < IPC_CRYPTO_MAX_CHANNELS; i++)
+        if (ipc_crypto_channel_salts[i].valid &&
+                ipc_crypto_channel_salts[i].channel_id == channel_id)
+            return ipc_crypto_channel_salts[i].salt;
+    return NULL;
+}
+
+int
+ipc_crypto_prepare_channel(uint32_t channel_id) {
+    int slot = -1;
+    for (size_t i = 0; i < IPC_CRYPTO_MAX_CHANNELS; i++) {
+        if (ipc_crypto_channel_salts[i].valid &&
+                ipc_crypto_channel_salts[i].channel_id == channel_id) {
+            slot = (int)i;
+            break;
+        }
+    }
+    if (slot < 0)
+        for (size_t i = 0; i < IPC_CRYPTO_MAX_CHANNELS; i++)
+            if (!ipc_crypto_channel_salts[i].valid) {
+                slot = (int)i;
+                break;
+            }
+    if (slot < 0)
+        return -1;
+
+    if (RAND_bytes(ipc_crypto_channel_salts[slot].salt,
+                IPC_CRYPTO_SALT_LEN) != 1)
+        return -1;
+
+    ipc_crypto_channel_salts[slot].channel_id = channel_id;
+    ipc_crypto_channel_salts[slot].valid = 1;
+    return 0;
+}
+
 static int
 derive_base_key(uint32_t channel_id, uint8_t out[32]) {
     if (ipc_crypto_system_init() < 0)
@@ -278,10 +329,17 @@ derive_base_key(uint32_t channel_id, uint8_t out[32]) {
     uint32_t value = htonl(channel_id);
     memcpy(channel_be, &value, sizeof(channel_be));
 
-    /* Use HKDF with master key as IKM and channel ID as salt for domain separation */
+    /* Fold the per-instance salt (if one was prepared for this channel) into
+     * the HKDF info so each (re)started channel derives unique keys. When no
+     * salt is prepared (e.g. unit tests) both endpoints fall back to the same
+     * saltless derivation and still agree. */
+    const uint8_t *salt = ipc_crypto_channel_salt(channel_id);
+
+    /* Use HKDF with master key as IKM, channel ID as salt for domain
+     * separation, and the per-instance salt as info. */
     return hkdf_sha256(channel_be, sizeof(channel_be),
             ipc_crypto_master_key, sizeof(ipc_crypto_master_key),
-            NULL, 0, out);
+            salt, salt != NULL ? IPC_CRYPTO_SALT_LEN : 0, out);
 }
 
 static int

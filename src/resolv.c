@@ -481,6 +481,13 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
 #endif
 
     resolver_loop_ref = loop;
+    /* Fresh per-instance key salt before the parent derives keys and forks, so
+     * the parent and child match and a restarted resolver never reuses the
+     * previous instance's (key, nonce) stream. */
+    if (ipc_crypto_prepare_channel(RESOLVER_IPC_CHANNEL_ID) < 0) {
+        err("Failed to prepare resolver IPC channel salt");
+        return -1;
+    }
     if (ipc_crypto_channel_init(&resolver_ipc_crypto, RESOLVER_IPC_CHANNEL_ID,
                 IPC_CRYPTO_ROLE_PARENT) < 0) {
         err("Failed to initialize resolver IPC crypto");

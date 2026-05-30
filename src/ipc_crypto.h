@@ -63,6 +63,11 @@ struct ipc_crypto_state {
 };
 
 int ipc_crypto_system_init(void);
+/* Generate a fresh per-instance salt for a channel. The parent must call this
+ * before forking the child (so both inherit the salt and derive matching
+ * keys); calling it again on restart yields new keys, preventing (key, nonce)
+ * reuse across child restarts. */
+int ipc_crypto_prepare_channel(uint32_t channel_id);
 int ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
         enum ipc_crypto_role role);
 int ipc_crypto_channel_set_role(struct ipc_crypto_state *state,

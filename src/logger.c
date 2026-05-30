@@ -1211,6 +1211,14 @@ ensure_logger_process(void) {
         return 0;
     }
 
+    /* Fresh per-instance key salt before fork so the parent and child derive
+     * matching keys and a restarted logger never reuses the previous
+     * instance's (key, nonce) stream. */
+    if (ipc_crypto_prepare_channel(LOGGER_IPC_CHANNEL_ID) < 0) {
+        logger_process_failed = 1;
+        return 0;
+    }
+
     int sockets[2];
     int socket_type = SOCK_STREAM;
 #ifdef SOCK_CLOEXEC
