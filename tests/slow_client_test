@@ -26,7 +26,12 @@ sub slow_client($$) {
         "\r\n";
 
     local $SIG{ALRM} = sub { die "alarm\n" };
-    alarm 10;
+    # The request is dripped one line per second and the final recv() has no
+    # per-operation timeout, so under heavy host load (e.g. a busy CI runner)
+    # a delayed backend response can block past a tight deadline and fail the
+    # test spuriously. Use a generous deadline; it only bounds a genuine hang,
+    # not normal operation (which takes about five seconds).
+    alarm 30;
 
     my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
             PeerPort => $port,
