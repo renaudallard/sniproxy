@@ -94,7 +94,7 @@ static size_t session_count;
 static uint32_t udp_hash_seed;
 
 static struct UDPSession *udp_session_lookup(const struct sockaddr_storage *addr,
-        socklen_t addr_len, uint32_t hash);
+        socklen_t addr_len, uint32_t hash, const struct Listener *listener);
 static struct UDPSession *udp_session_create(struct Listener *listener,
         const struct sockaddr_storage *addr, socklen_t addr_len,
         uint32_t hash, struct ev_loop *loop);
@@ -149,7 +149,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
     uint32_t hash = udp_hash_addr(&client_addr, addr_len);
     struct UDPSession *session = udp_session_lookup(&client_addr, addr_len,
-            hash);
+            hash, listener);
 
     if (session != NULL) {
         /* In VALIDATING state, switch the timer's repeat to the normal
@@ -257,12 +257,16 @@ udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
 static struct UDPSession *
 udp_session_lookup(const struct sockaddr_storage *addr, socklen_t addr_len,
-        uint32_t hash) {
+        uint32_t hash, const struct Listener *listener) {
     uint32_t bucket = hash & (UDP_SESSION_BUCKETS - 1);
     struct UDPSession *s = session_table[bucket];
 
     while (s != NULL) {
-        if (s->addr_hash == hash &&
+        /* The session table is global, so also match the receiving listener:
+         * a datagram from the same client (IP, port) arriving on a different
+         * DTLS listener must not reuse another listener's session, backend or
+         * routing policy. */
+        if (s->addr_hash == hash && s->listener == listener &&
                 udp_sockaddr_equal(&s->client_addr, s->client_addr_len,
                         addr, addr_len))
             return s;
