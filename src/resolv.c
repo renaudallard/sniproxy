@@ -159,6 +159,7 @@ struct ResolverChildDotSocket {
     int handshake_complete;
     int forcing_events;
     int base_events;
+    int handshake_events;
     int failed;
     struct ResolverChildDotSocket *next;
 };
@@ -2066,7 +2067,10 @@ resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, 
     if (sock != NULL && sock->server != NULL) {
         sock->base_events = events;
         if (!sock->handshake_complete && events != 0) {
-            events = EV_READ | EV_WRITE;
+            /* During the TLS handshake watch only the direction the SSL
+             * layer needs (tracked in handshake_events), not whatever c-ares
+             * asked for, otherwise an always-writable socket spins the loop. */
+            events = sock->handshake_events;
             sock->forcing_events = 1;
         } else if (sock->handshake_complete) {
             sock->forcing_events = 0;
@@ -2788,6 +2792,7 @@ resolver_child_dot_socket_attach(ares_socket_t fd, struct ResolverDotServer *ser
     sock->handshake_complete = 0;
     sock->forcing_events = 0;
     sock->base_events = 0;
+    sock->handshake_events = EV_READ | EV_WRITE;
     sock->failed = 0;
 
     sock->ssl = SSL_new(child_dot_ssl_ctx);
@@ -2868,6 +2873,16 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
 
     int errcode = SSL_get_error(sock->ssl, ret);
     if (errcode == SSL_ERROR_WANT_READ || errcode == SSL_ERROR_WANT_WRITE) {
+        /* Watch only the direction the TLS layer actually needs. A connected
+         * socket is almost always writable, so forcing EV_WRITE while merely
+         * waiting for the peer's ServerHello (WANT_READ) would spin the event
+         * loop at 100% CPU until the handshake timed out. */
+        int want = (errcode == SSL_ERROR_WANT_WRITE) ? EV_WRITE : EV_READ;
+        if (!sock->forcing_events || sock->handshake_events != want) {
+            sock->handshake_events = want;
+            sock->forcing_events = 1;
+            resolver_child_watch_fd(child_loop, sock->fd, want);
+        }
         errno = EWOULDBLOCK;
         return -1;
     }
