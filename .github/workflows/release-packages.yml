@@ -60,6 +60,13 @@ jobs:
               with urllib.request.urlopen(url, timeout=10) as resp:
                   return resp.read().decode()
 
+          def ubuntu_major_minor(version):
+              # The meta-release "Version" field can carry a " LTS" suffix and a
+              # point release (e.g. "24.04.1 LTS"); a Docker tag needs the bare
+              # major.minor (e.g. "24.04").
+              m = re.match(r"\s*(\d+\.\d+)", version)
+              return m.group(1) if m else version.split()[0]
+
           def latest_ubuntu_non_lts():
               try:
                   data = fetch_text("https://changelogs.ubuntu.com/meta-release")
@@ -68,7 +75,7 @@ jobs:
                   for line in data.splitlines() + [""]:
                       if not line.strip():
                           if block.get("Supported") == "1" and block.get("Lts", "0") == "0" and "Version" in block:
-                              versions.append(block["Version"])
+                              versions.append(ubuntu_major_minor(block["Version"]))
                           block = {}
                           continue
                       if ":" in line:
@@ -88,7 +95,7 @@ jobs:
                   for line in data.splitlines() + [""]:
                       if not line.strip():
                           if block.get("Supported") == "1" and block.get("Lts") == "1" and "Version" in block:
-                              versions.append(block["Version"])
+                              versions.append(ubuntu_major_minor(block["Version"]))
                           block = {}
                           continue
                       if ":" in line:
