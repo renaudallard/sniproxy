@@ -1,3 +1,41 @@
+2026-05-30  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.13.3
+	Security and correctness fixes from a multi-pass source audit:
+	- ipc: close received file descriptors on the frame recvmsg
+	  truncation and short-read error paths so a misbehaving IPC peer
+	  cannot leak a descriptor per crafted message.
+	- ipc: derive per-instance keys from a fresh salt so a restarted
+	  logger, resolver or binder child never reuses the previous
+	  instance's ChaCha20-Poly1305 (key, nonce) keystream.
+	- listener: reject "source client" combined with proxy_protocol;
+	  the untrusted PROXY header must not drive the transparent source
+	  bind, which would allow source spoofing toward backends.
+	- udp: enforce the global and per-client DNS query limits on the
+	  UDP/DTLS resolution path, match the receiving listener when
+	  looking up sessions, and fail closed when the transparent or
+	  source bind fails.
+	- resolver: free queries orphaned at shutdown, assign
+	  in-flight-unique query ids, include the affinity seed in query
+	  coalescing, watch only the direction the TLS layer needs during
+	  the DoT handshake (fixes a CPU busy-loop), and clear the OpenSSL
+	  error queue before each DoT SSL operation.
+	- seccomp: give the binder a minimal network syscall allowlist and
+	  grant it fs_read so its own error logging does not hit SIGSYS.
+	- OpenBSD: keep wpath in the main pledge so the SIGUSR1 connection
+	  dump can write its file, and always tighten the logger pledge
+	  after privilege handover.
+	- address: reject a sockaddr shorter than sa_family to avoid a
+	  heap over-read from a hostile resolver result.
+	- pidfile: do not remove a pidfile this process did not create.
+	- listener: set a deterministic errno when a connection allocation
+	  fails so the accept backoff is not driven by a stale value.
+	- children: redirect stdio to /dev/null after closing inherited
+	  descriptors so a stray log write cannot corrupt a reused fd.
+	- connection: record the memory-pressure run time before shrinking
+	  so the cooldown suppresses reentrant passes.
+	- tests: give slow_client_test more timeout headroom under load.
+
 2026-05-22  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.13.2

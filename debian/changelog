@@ -1,3 +1,13 @@
+sniproxy (0.13.3) unstable; urgency=medium
+
+  * Security and correctness fixes from a multi-pass audit: reject
+    "source client" with proxy_protocol (source spoofing), per-instance
+    IPC keys (no nonce reuse across child restarts), DNS query limits on
+    the UDP/DTLS path, per-listener UDP session lookup, and numerous
+    resolver, seccomp/pledge and fd-handling fixes. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Sat, 30 May 2026 12:00:00 +0200
+
 sniproxy (0.13.2) unstable; urgency=medium
 
   * OpenBSD: initialize the IPC master key in the parent before

@@ -1,3 +1,24 @@
+sniproxy 0.13.3 (2026-05-30)
+===============================
+
+Security and correctness fixes from a multi-pass source audit.
+Highlights:
+
+* Reject "source client" combined with proxy_protocol: the untrusted
+  PROXY header must not drive the IP_TRANSPARENT source bind, which
+  would otherwise allow source-address spoofing toward backends.
+
+* IPC channels now derive per-instance keys, so a restarted logger,
+  resolver or binder child no longer reuses the previous instance's
+  ChaCha20-Poly1305 (key, nonce) keystream.
+
+* UDP/DTLS resolution now honors the global and per-client DNS query
+  limits, and UDP sessions are matched per receiving listener.
+
+* Numerous resolver, sandbox (seccomp/pledge) and file-descriptor
+  hardening fixes; see the ChangeLog for the full list.
+
+
 sniproxy 0.13.2 (2026-05-22)
 ===============================
 
