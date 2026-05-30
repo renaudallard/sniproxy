@@ -1241,16 +1241,10 @@ ensure_logger_process(void) {
         if (child_fd < 0) {
             _exit(EXIT_FAILURE);
         }
-        /* Redirect stderr to /dev/null so that fprintf(stderr) in error
-         * paths does not accidentally write to a log file fd that reuses
-         * fd 2 after sink files are opened. */
-        int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) {
-            if (devnull != STDERR_FILENO) {
-                (void)dup2(devnull, STDERR_FILENO);
-                close(devnull);
-            }
-        }
+        /* Point stdio at /dev/null so a stray fprintf(stderr) in an error
+         * path cannot write to a log file fd that reused fd 1/2 after the
+         * sink files are opened. */
+        fd_redirect_std_to_devnull(child_fd);
         logger_child_main(child_fd);
     }
 

@@ -570,6 +570,9 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
             err("resolver child: failed to preserve IPC socket: %s", strerror(errno));
             resolver_child_exit(EXIT_FAILURE);
         }
+        /* Point stdio at /dev/null so later log lines or the crash handler
+         * cannot write into a socket that reused fd 1/2. */
+        fd_redirect_std_to_devnull(child_fd);
         resolver_child_main(child_fd, nameservers, search, mode,
                 dnssec_mode);
     }

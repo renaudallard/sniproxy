@@ -244,6 +244,9 @@ binder_spawn_child(void) {
             err("binder child: failed to preserve IPC socket: %s", strerror(errno));
             binder_child_exit(EXIT_FAILURE);
         }
+        /* Point stdio at /dev/null so later log lines or the crash handler
+         * cannot write into a socket that reused fd 1/2. */
+        fd_redirect_std_to_devnull(child_fd);
 
         binder_main(child_fd);
         binder_child_exit(EXIT_SUCCESS);

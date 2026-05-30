@@ -90,4 +90,29 @@ fd_preserve_only(int fd)
     return fd;
 #endif
 }
+
+/*
+ * After fd_preserve_only() has closed stdin/stdout/stderr (keeping only the
+ * IPC descriptor), point fd 0/1/2 at /dev/null - except keep_fd, the
+ * preserved IPC descriptor.  Without this a stray fprintf(stderr) or a
+ * crash-handler write(STDERR_FILENO) in a sandboxed child could land on a
+ * socket descriptor that later reused fd 1 or 2.  open() returns the lowest
+ * free descriptor and the IPC fd is never free, so it is never clobbered.
+ */
+static inline void
+fd_redirect_std_to_devnull(int keep_fd)
+{
+    int devnull = open("/dev/null", O_RDWR);
+    if (devnull < 0)
+        return;
+
+    for (int target = 0; target <= 2; target++) {
+        if (target == keep_fd || target == devnull)
+            continue;
+        (void)dup2(devnull, target);
+    }
+
+    if (devnull > 2)
+        close(devnull);
+}
 #endif /* FD_UTIL_H */
