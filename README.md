@@ -12,6 +12,9 @@
   <a href="https://github.com/renaudallard/sniproxy/releases/latest">
     <img src="https://img.shields.io/github/v/release/renaudallard/sniproxy?label=version&style=flat-square&sort=semver" alt="Latest release"/>
   </a>
+  <a href="https://github.com/renaudallard/sniproxy/releases">
+    <img src="https://img.shields.io/github/downloads/renaudallard/sniproxy/total?style=flat-square&label=downloads" alt="Downloads"/>
+  </a>
   <a href="https://github.com/renaudallard/sniproxy/actions/workflows/build-and-fuzz.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/renaudallard/sniproxy/build-and-fuzz.yml?style=flat-square&label=build%20%26%20fuzz" alt="Build and Fuzz"/>
   </a>
