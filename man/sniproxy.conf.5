@@ -462,7 +462,9 @@ request's hostname is matched against entries in the table in order
 until a match is found and that server is used. The server address may
 be either an IP, an IP and port, a unix socket path, a hostname, or '*'.
 If no port is specified, the port of the listener that received the
-connection will be used.
+connection will be used. Table names must be unique; defining the same
+table name (or the unnamed default table) twice is a configuration
+error.
 
 Table entries that contain no regex metacharacters (\fB\e * + ? [ ] ( ) { }
 ^ $ |\fR) are treated as literal hostnames: dots are escaped and the

@@ -157,6 +157,51 @@ test_missing_trailing_newline(void) {
     return 0;
 }
 
+/* Duplicate table names make table_lookup() ambiguous and must be
+ * rejected at config load. */
+static int
+test_duplicate_table_rejected(void) {
+    char template[256];
+    if (snprintf(template, sizeof(template),
+                "%s/sniproxy-config-testXXXXXX",
+                config_test_tmpdir()) >= (int)sizeof(template))
+        return 1;
+    int fd = mkstemp(template);
+    if (fd < 0)
+        return 1;
+
+    FILE *fp = fdopen(fd, "w");
+    if (fp == NULL) {
+        close(fd);
+        unlink(template);
+        return 1;
+    }
+
+    fprintf(fp,
+            "listen 127.0.0.1 8080 {\n"
+            "    proto http\n"
+            "    table hosts\n"
+            "}\n"
+            "table hosts {\n"
+            "    localhost 127.0.0.1 8081\n"
+            "}\n"
+            "table hosts {\n"
+            "    localhost 127.0.0.1 8082\n"
+            "}\n");
+
+    fclose(fp);
+
+    struct Config *config = init_config(template, EV_DEFAULT, 1);
+    unlink(template);
+    if (config != NULL) {
+        fprintf(stderr, "Config with duplicate table names was accepted\n");
+        free_config(config, EV_DEFAULT);
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -198,6 +243,9 @@ int main(int argc, char **argv) {
     }
 
     if (test_missing_trailing_newline() != 0)
+        return 1;
+
+    if (test_duplicate_table_rejected() != 0)
         return 1;
 
     return 0;

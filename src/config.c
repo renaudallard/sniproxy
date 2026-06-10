@@ -1529,6 +1529,15 @@ end_table_stanza(struct Config *config, struct Table *table) {
         return -1;
     }
 
+    /* Duplicate names would make table_lookup() ambiguous: startup
+     * would route per the last definition and a reload would flip to
+     * the first one. */
+    if (table_lookup(&config->tables, table->name) != NULL) {
+        err("Table \"%s\" defined more than once",
+                table->name != NULL ? table->name : "(default)");
+        return -1;
+    }
+
     add_table(&config->tables, table);
 
     return 1;
