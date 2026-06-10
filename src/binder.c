@@ -369,10 +369,16 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
                 BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, &received_fd);
         if (rc <= 0) {
             free(reply);
-            if ((errno == EPIPE || errno == ECONNRESET) &&
+            /* rc == 0 is end of stream: the binder child died before
+             * replying. recvmsg() does not set errno in that case, so
+             * it must not be consulted. */
+            if ((rc == 0 || errno == EPIPE || errno == ECONNRESET) &&
                     binder_restart_child() == 0)
                 continue;
-            err("binder response recv failed: %s", strerror(errno));
+            if (rc == 0)
+                err("binder closed the IPC socket");
+            else
+                err("binder response recv failed: %s", strerror(errno));
             return -1;
         }
 
