@@ -415,11 +415,11 @@ reopen_loggers(void) {
                 if (!logger_parent_fs_locked && sink->fd != NULL && sink->fd_owned) {
                     FILE *file = open_log_file_checked(sink->filepath);
                     if (file == NULL) {
-                        err("failed to reopen local log file %s: %s",
+                        /* Keep the current mirror open rather than
+                         * silently losing the fallback sink. */
+                        err("failed to reopen local log file %s: %s; "
+                                "keeping current file",
                                 sink->filepath, strerror(errno));
-                        fclose(sink->fd);
-                        sink->fd = NULL;
-                        sink->fd_owned = 0;
                     } else {
                         fclose(sink->fd);
                         sink->fd = file;
@@ -430,11 +430,12 @@ reopen_loggers(void) {
                 if (!logger_parent_fs_locked) {
                     FILE *file = open_log_file_checked(sink->filepath);
                     if (file == NULL) {
-                        err("failed to reopen log file %s: %s",
+                        /* Only swap when reopen produced a new file;
+                         * closing the working sink here would silently
+                         * disable logging until a later reopen succeeds. */
+                        err("failed to reopen log file %s: %s; "
+                                "keeping current file",
                                 sink->filepath, strerror(errno));
-                        if (sink->fd != NULL)
-                            fclose(sink->fd);
-                        sink->fd = NULL;
                     } else {
                         if (sink->fd != NULL)
                             fclose(sink->fd);
