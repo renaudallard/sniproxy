@@ -59,6 +59,8 @@
 #define LISTENER_ACCEPT_YIELD_BATCH 16
 
 static void close_listener(struct ev_loop *, struct Listener *);
+static int unix_listener_path(const struct Listener *, char *, size_t);
+static int unix_listener_is_stale(const struct Listener *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
 static void backoff_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static int init_listener(struct Listener *, const struct Table_head *, struct ev_loop *);
@@ -861,6 +863,23 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 
     result = bind(sockfd, address_sa(listener->address),
             address_sa_len(listener->address));
+    if (result < 0 && errno == EADDRINUSE &&
+            address_sa(listener->address)->sa_family == AF_UNIX) {
+        /* A unix socket file survives its listener, so a file left
+         * behind by a previous instance blocks bind() forever. When
+         * nothing accepts connections on it, remove it and retry. */
+        int bind_errno = errno;
+        char path[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
+        if (unix_listener_is_stale(listener) &&
+                unix_listener_path(listener, path, sizeof(path)) &&
+                unlink(path) == 0) {
+            notice("removed stale unix socket %s", path);
+            result = bind(sockfd, address_sa(listener->address),
+                    address_sa_len(listener->address));
+        } else {
+            errno = bind_errno;
+        }
+    }
     if (result < 0 && errno == EACCES) {
         /* Retry using binder module */
         close(sockfd);
@@ -1142,6 +1161,43 @@ print_listener_config(FILE *file, const struct Listener *listener) {
     fprintf(file, "}\n\n");
 }
 
+/* Copy the filesystem path of an AF_UNIX listener address into buf.
+ * Returns 0 when the listener is not a pathname unix socket. */
+static int
+unix_listener_path(const struct Listener *listener, char *buf, size_t buf_len) {
+    const struct sockaddr *sa = address_sa(listener->address);
+    socklen_t sa_len = address_sa_len(listener->address);
+    if (sa == NULL || sa->sa_family != AF_UNIX ||
+            (size_t)sa_len <= offsetof(struct sockaddr_un, sun_path))
+        return 0;
+
+    const struct sockaddr_un *sun = (const struct sockaddr_un *)sa;
+    size_t max_len = sa_len - offsetof(struct sockaddr_un, sun_path);
+    size_t path_len = strnlen(sun->sun_path, max_len);
+    if (path_len == 0 || sun->sun_path[0] != '/' || path_len >= buf_len)
+        return 0;
+
+    memcpy(buf, sun->sun_path, path_len);
+    buf[path_len] = '\0';
+    return 1;
+}
+
+/* Probe an AF_UNIX listener path that failed to bind: when no process
+ * accepts connections on it, the socket file is a stale leftover. */
+static int
+unix_listener_is_stale(const struct Listener *listener) {
+    int fd = socket(AF_UNIX, listener->protocol->sock_type, 0);
+    if (fd < 0)
+        return 0;
+
+    int rc = connect(fd, address_sa(listener->address),
+            address_sa_len(listener->address));
+    int saved_errno = errno;
+    close(fd);
+
+    return rc < 0 && saved_errno == ECONNREFUSED;
+}
+
 static void
 close_listener(struct ev_loop *loop, struct Listener *listener) {
     ev_timer_stop(loop, &listener->backoff_timer);
@@ -1150,6 +1206,14 @@ close_listener(struct ev_loop *loop, struct Listener *listener) {
         ev_io_stop(loop, &listener->watcher);
         close(listener->watcher.fd);
         listener->watcher.fd = -1;
+
+        /* Remove the socket file so the path can be bound again on the
+         * next start. This may fail when the binder created the file in
+         * a root-owned directory after privileges were dropped; such
+         * leftovers are removed by the stale check on the next start. */
+        char path[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
+        if (unix_listener_path(listener, path, sizeof(path)))
+            (void)unlink(path);
     }
 }
 

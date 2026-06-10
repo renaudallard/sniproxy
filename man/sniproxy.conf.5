@@ -351,6 +351,10 @@ number, or a unix socket path prefixed with 'unix:'. A unix-socket
 listener whose directory is not writable by the configured user is
 bound by the privileged binder helper; for safety the binder only
 creates such root-bound unix sockets under \fI/run\fR or \fI/var/run\fR.
+The socket file is removed when the listener shuts down, and a stale
+socket file left behind by an unclean shutdown is detected and replaced
+on the next start as long as no other process is accepting connections
+on it.
 
 Protocol defines how the client request should be parsed to obtain the
 requested hostname. Five protocols are supported: tls, http, xmpp,
