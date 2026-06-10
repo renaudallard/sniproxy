@@ -169,6 +169,18 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                 }
                 return 1;
             case TOKEN_END:
+                /* A directive on the last line of a file without a
+                 * trailing newline reaches EOF with its keyword still
+                 * pending; finalize it as TOKEN_EOL would. */
+                if (depth == 0 && keyword && sub_context && keyword->finalize) {
+                    result = keyword->finalize(context, sub_context);
+                    if (result <= 0) {
+                        cleanup_keyword_context(keyword, context, sub_context);
+                        return result;
+                    }
+                    keyword = NULL;
+                    sub_context = NULL;
+                }
                 cleanup_keyword_context(keyword, context, sub_context);
                 if (depth > 0) {
                     err("unexpected end of configuration (missing closing brace)");

@@ -103,6 +103,60 @@ generate_test_config(void) {
     return strdup(template);
 }
 
+/* A directive on the last line of a file without a trailing newline
+ * must not be silently dropped. */
+static int
+test_missing_trailing_newline(void) {
+    char template[256];
+    if (snprintf(template, sizeof(template),
+                "%s/sniproxy-config-testXXXXXX",
+                config_test_tmpdir()) >= (int)sizeof(template))
+        return 1;
+    int fd = mkstemp(template);
+    if (fd < 0)
+        return 1;
+
+    FILE *fp = fdopen(fd, "w");
+    if (fp == NULL) {
+        close(fd);
+        unlink(template);
+        return 1;
+    }
+
+    fprintf(fp,
+            "table {\n"
+            "    localhost 127.0.0.1 8081\n"
+            "}\n"
+            "listen 127.0.0.1 8080 {\n"
+            "    proto http\n"
+            "}\n"
+            "listen 127.0.0.1 8082");
+
+    fclose(fp);
+
+    struct Config *config = init_config(template, EV_DEFAULT, 1);
+    unlink(template);
+    if (config == NULL) {
+        fprintf(stderr, "Failed to parse config without trailing newline\n");
+        return 1;
+    }
+
+    int listeners = 0;
+    struct Listener *listener;
+    SLIST_FOREACH(listener, &config->listeners, entries)
+        listeners++;
+
+    free_config(config, EV_DEFAULT);
+
+    if (listeners != 2) {
+        fprintf(stderr, "Expected 2 listeners, got %d: final directive "
+                "without trailing newline was dropped\n", listeners);
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -142,6 +196,9 @@ int main(int argc, char **argv) {
         free(generated_log_path);
         generated_log_path = NULL;
     }
+
+    if (test_missing_trailing_newline() != 0)
+        return 1;
 
     return 0;
 }
