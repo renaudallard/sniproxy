@@ -55,12 +55,17 @@ jobs:
       - name: Build
         run: make -j$(nproc)
 
-      - name: Download previous corpus
-        continue-on-error: true
-        uses: actions/download-artifact@v8
+      # download-artifact cannot fetch artifacts from previous workflow
+      # runs, so the accumulated corpus is carried across runs with the
+      # cache: each run saves under a unique key and the next run
+      # restores the most recent one via the restore-keys prefix.
+      - name: Restore previous corpus
+        uses: actions/cache/restore@v4
         with:
-          name: fuzzer-corpus-continuous
           path: tests/fuzz/corpus/
+          key: fuzzer-corpus-continuous-${{ github.run_id }}
+          restore-keys: |
+            fuzzer-corpus-continuous-
 
       - name: Run extended fuzzing
         env:
@@ -86,6 +91,13 @@ jobs:
             tests/fuzz/timeout-*
             tests/fuzz/bin/*.log
           if-no-files-found: ignore
+
+      - name: Save corpus for the next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: tests/fuzz/corpus/
+          key: fuzzer-corpus-continuous-${{ github.run_id }}
 
       - name: Upload corpus
         if: always()
