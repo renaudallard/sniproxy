@@ -113,8 +113,10 @@ connection_buffer_limit 4M
 Cap the amount of buffered data a single connection may hold on either
 side. The value applies to both the client and server buffers, accepts
 optional K, M, or G suffixes (powers of 1024), and must fall between
-8 KiB and 1 GiB. The default is 1 MiB per side. Tighter caps protect the
-proxy from slow clients pinning unbounded RAM.
+8 KiB and 1 GiB. The default is 1 MiB per side. Buffers grow in powers
+of two, so the effective ceiling is the largest power of two not
+exceeding the configured limit. Tighter caps protect the proxy from
+slow clients pinning unbounded RAM.
 
 .SS CLIENT_BUFFER_LIMIT
 

@@ -43,7 +43,9 @@
 
 
 #define BUFFER_COALESCE_STACK_COPY 4096
-static const size_t BUFFER_MAX_SIZE = 10 * 1024 * 1024;
+/* Absolute per-buffer ceiling; must cover the documented configuration
+ * range, MAX_CONNECTION_BUFFER_LIMIT in config.h (1 GiB). */
+static const size_t BUFFER_MAX_SIZE = 1024 * 1024 * 1024;
 
 struct BufferPoolClass {
     size_t size;
