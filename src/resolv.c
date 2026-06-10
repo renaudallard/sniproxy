@@ -63,9 +63,6 @@
 #include <openssl/x509v3.h>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
-#ifdef HAVE_RESOLV_H
-#include <resolv.h>
-#endif
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 #include "tests/include/resolver_fuzz.h"
 #endif
@@ -2557,10 +2554,6 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         memset(&hints, 0, sizeof(hints));
         hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
-
-#ifdef HAVE_RESOLV_H
-        (void)res_init();
-#endif
 
         struct addrinfo *results = NULL;
         int rc = getaddrinfo(hostname, port_str, &hints, &results);
