@@ -35,6 +35,25 @@ TESTS += ipc_crypto_debug_test \
          ipc_crypto_rekey_test \
          ipc_crypto_time_rekey_test
 
+# Perl integration tests and their harness modules are not built, so
+# automake does not distribute them automatically.
+EXTRA_DIST = functional_test \
+             bad_request_test \
+             bind_source_test \
+             connection_reset_test \
+             fallback_test \
+             fd_limit_test \
+             ipv6_v6only_test \
+             proxy_header_test \
+             reload_test \
+             reuseport_test \
+             slow_client_test \
+             transparent_proxy_test \
+             bad_dns_request_test \
+             TestUtils.pm \
+             TestHTTPD.pm \
+             README.md
+
 check_PROGRAMS = http_test \
                  tls_test \
                  dtls_test \
