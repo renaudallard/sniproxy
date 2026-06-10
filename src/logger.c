@@ -398,8 +398,16 @@ reopen_loggers(void) {
         if (sink->type == LOG_SINK_SYSLOG) {
             if (logger_process_enabled) {
                 if (send_logger_reopen(sink, -1) < 0) {
-                    err("failed to reopen syslog sink: %s", strerror(errno));
-                    disable_logger_process();
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        /* Socket buffer full under heavy logging; the
+                         * child keeps its current sink until the next
+                         * rotation rather than being killed. */
+                        warn("logger busy, syslog reopen postponed");
+                    } else {
+                        err("failed to reopen syslog sink: %s",
+                                strerror(errno));
+                        disable_logger_process();
+                    }
                 }
             } else {
                 closelog();
@@ -408,9 +416,14 @@ reopen_loggers(void) {
         } else if (sink->type == LOG_SINK_FILE) {
             if (logger_process_enabled) {
                 if (send_logger_reopen(sink, -1) < 0) {
-                    err("failed to request reopen for log file %s: %s",
-                            sink->filepath, strerror(errno));
-                    disable_logger_process();
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        warn("logger busy, reopen of %s postponed",
+                                sink->filepath);
+                    } else {
+                        err("failed to request reopen for log file %s: %s",
+                                sink->filepath, strerror(errno));
+                        disable_logger_process();
+                    }
                 }
                 if (!logger_parent_fs_locked && sink->fd != NULL && sink->fd_owned) {
                     FILE *file = open_log_file_checked(sink->filepath);
@@ -1033,7 +1046,11 @@ free_sink(struct LogSink *sink) {
     SLIST_REMOVE(&sinks, sink, LogSink, entries);
 
     if (logger_process_enabled) {
-        if (send_logger_drop(sink) < 0)
+        /* On a momentarily full socket the child just keeps the dropped
+         * sink open until it is restarted; only a real IPC failure
+         * disables the logger process. */
+        if (send_logger_drop(sink) < 0 &&
+                errno != EAGAIN && errno != EWOULDBLOCK)
             disable_logger_process();
     }
 
