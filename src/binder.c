@@ -70,7 +70,8 @@ static void binder_main(int);
 static int binder_spawn_child(void);
 static int binder_restart_child(void);
 static void binder_cleanup_child(int block);
-static int binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len);
+static int binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
+        int bind_check);
 static int binder_sockaddr_equal(const struct sockaddr *a, size_t alen,
         const struct sockaddr *b, size_t blen);
 static int binder_sync_allowlist_to_child(void);
@@ -125,7 +126,7 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
     if (addr_len > BINDER_IPC_MAX_PAYLOAD - sizeof(struct binder_request))
         return -1;
 
-    if (!binder_validate_sockaddr(addr, addr_len))
+    if (!binder_validate_sockaddr(addr, addr_len, 0))
         return -1;
 
     uint8_t buffer[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
@@ -165,7 +166,7 @@ binder_register_allowed_address(const struct sockaddr *addr, size_t addr_len) {
     if (addr == NULL || addr_len == 0)
         return -1;
 
-    if (!binder_validate_sockaddr(addr, addr_len))
+    if (!binder_validate_sockaddr(addr, addr_len, 0))
         return -1;
 
     /* Check for duplicate registration */
@@ -498,7 +499,8 @@ binder_main(int sockfd) {
             continue;
         }
 
-        if (!binder_validate_sockaddr(req->address, req->address_len)) {
+        if (!binder_validate_sockaddr(req->address, req->address_len,
+                req->cmd == BINDER_CMD_BIND)) {
             const char *msg = "Address family or format not permitted";
             ipc_crypto_send_msg(&binder_crypto_child, sockfd,
                     msg, strlen(msg), -1);
@@ -664,7 +666,8 @@ binder_main(int sockfd) {
 }
 
 static int
-binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len) {
+binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
+        int bind_check) {
     if (addr == NULL || addr_len < sizeof(sa_family_t) ||
             addr_len > sizeof(struct sockaddr_storage))
         return 0;
@@ -685,13 +688,18 @@ binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len) {
             /* Reject abstract sockets and relative paths. */
             if (sun->sun_path[0] != '/')
                 return 0;
-            /* Confine root-bound unix sockets to the conventional runtime
-             * directories. A unix listener whose directory is root-owned is
-             * the only case that reaches the root binder (the unprivileged
-             * main binds user-writable directories directly), so this does
-             * not affect normal use but stops a compromised main from driving
-             * the root binder to create a socket node at an arbitrary,
-             * sensitive path. No ".." component may escape the prefix. */
+            if (!bind_check)
+                return 1;
+            /* Confine binder-created unix sockets to the conventional
+             * runtime directories. A unix listener whose directory is
+             * root-owned is the only case that reaches the root binder
+             * (the unprivileged main binds user-writable directories
+             * directly), so this does not affect normal use but stops a
+             * compromised main from driving the root binder to create a
+             * socket node at an arbitrary, sensitive path. The confinement
+             * applies only when actually binding so that allowlist
+             * registration of user-bindable listener paths cannot fail.
+             * No ".." component may escape the prefix. */
             for (const char *p = sun->sun_path;
                     (p = strstr(p, "/..")) != NULL; p += 3)
                 if (p[3] == '/' || p[3] == '\0')
