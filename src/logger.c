@@ -212,6 +212,12 @@ static int logger_process_enabled = 0;
 static int logger_process_failed = 0;
 static int logger_parent_fs_locked = 0;
 
+/* Credentials sent with LOGGER_CMD_PRIVILEGES, kept so a logger child
+ * restarted by the health check tightens its sandbox like the original. */
+static uid_t logger_priv_uid;
+static gid_t logger_priv_gid;
+static int logger_priv_recorded = 0;
+
 /* Health check state */
 #define LOGGER_HEALTH_CHECK_INTERVAL 30.0
 #define LOGGER_HEALTH_CHECK_TIMEOUT 5.0
@@ -498,6 +504,10 @@ logger_chown_files(uid_t uid, gid_t gid) {
 
 int
 logger_drop_privileges(uid_t uid, gid_t gid) {
+    logger_priv_uid = uid;
+    logger_priv_gid = gid;
+    logger_priv_recorded = 1;
+
     if (!logger_process_enabled)
         return 0;
 
@@ -1293,6 +1303,13 @@ ensure_logger_process(void) {
     }
     logger_process_enabled = 1;
     logger_resend_sinks();
+
+    /* A child started after the privilege drop must tighten its sandbox
+     * and pre-connect syslog exactly like the original one did. */
+    if (logger_process_enabled && logger_priv_recorded &&
+            send_logger_privileges(logger_priv_uid, logger_priv_gid) < 0)
+        err("failed to send privileges to restarted logger process: %s",
+                strerror(errno));
 
     return logger_process_enabled;
 }
