@@ -145,6 +145,11 @@ static const char *const process_syscalls[] = {
     "setpgid", "getpgid", "getsid", "setsid",
     "setgid", "setuid", "setgroups",
     "capget", "capset",
+    /* Helper processes forked at runtime to replace a dead child run
+     * under the inherited main filter until they install their own,
+     * which libseccomp loads via seccomp(2). Allowing it here cannot
+     * loosen the sandbox since a second filter only restricts further. */
+    "seccomp",
     NULL,
 };
 

@@ -180,6 +180,45 @@ test_tsync_applies_to_threads(void) {
     return 1;
 }
 
+/* A child forked at runtime to replace a dead helper process inherits the
+ * main filter and must still be able to install its own filter. */
+static int
+test_forked_child_can_install_filter(void) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return 1;
+    } else if (pid == 0) {
+        if (seccomp_install_filter(SECCOMP_PROCESS_MAIN) < 0)
+            _exit(1);
+
+        pid_t child = fork();
+        if (child < 0)
+            _exit(1);
+        if (child == 0) {
+            if (seccomp_install_filter(SECCOMP_PROCESS_RESOLVER) < 0)
+                _exit(1);
+            _exit(0);
+        }
+
+        int status;
+        if (waitpid(child, &status, 0) < 0)
+            _exit(1);
+        _exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
+    }
+
+    int status;
+    if (waitpid(pid, &status, 0) < 0) {
+        perror("waitpid");
+        return 1;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        return 1;
+
+    return 0;
+}
+
 static int
 run_child_with_seccomp(int (*fn)(void)) {
     pid_t pid = fork();
@@ -218,6 +257,9 @@ main(void) {
         return 1;
 
     if (test_tsync_applies_to_threads() != 0)
+        return 1;
+
+    if (test_forked_child_can_install_filter() != 0)
         return 1;
 
     return 0;
