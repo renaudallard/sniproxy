@@ -141,10 +141,7 @@ static size_t connections_memory_peak_bytes(void);
 static size_t connections_active_count(void);
 static size_t connections_peak_count(void);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
-static void reset_idle_timer_with_now(struct Connection *, struct ev_loop *, ev_tstamp);
-#if defined(DEBUG)
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
-#endif
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 static void start_header_timer(struct Connection *, struct ev_loop *);
 static void stop_header_timer(struct Connection *, struct ev_loop *);
@@ -444,7 +441,7 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     start_buffer_shrink_timer(loop);
 
     ev_io_start(loop, client_watcher);
-    reset_idle_timer_with_now(con, loop, now);
+    reset_idle_timer(con, loop);
     start_header_timer(con, loop);
 
     shrink_candidate_update(con, loop, 0.0);
@@ -835,7 +832,6 @@ server_socket_open(const struct Connection *con) {
 static void
 connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Connection *con = (struct Connection *)w->data;
-    const ev_tstamp now = loop_now(loop);
     int is_client = &con->client.watcher == w;
     const char *socket_name =
         is_client ? "client" : "server";
@@ -906,7 +902,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         } while (buffer_room(input_buffer));
 
         if (read_activity)
-            reset_idle_timer_with_now(con, loop, now);
+            reset_idle_timer(con, loop);
 
         if (bytes_received < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("recv(%s): %s, closing connection",
@@ -950,7 +946,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         } while (buffer_len(output_buffer));
 
         if (write_activity)
-            reset_idle_timer_with_now(con, loop, now);
+            reset_idle_timer(con, loop);
 
         if (bytes_transmitted < 0 && !IS_TEMPORARY_SOCKERR(errno)) {
             warn("send(%s): %s, closing connection",
@@ -1115,13 +1111,17 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w,
 }
 
 static void
-reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstamp now) {
+reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
     if (connection_idle_timeout <= 0.0)
         return;
 
     if (ev_is_active(&con->idle_timer)) {
-        double remaining = con->idle_timer.at - now;
-        if (remaining > connection_idle_timeout * 0.5)
+        /* Skip the timer churn while more than half the timeout
+         * remains. ev_timer_remaining() is the documented accessor;
+         * the watcher's own deadline field is private and lives in
+         * the monotonic clock domain, not in ev_now() time. */
+        if (ev_timer_remaining(loop, &con->idle_timer) >
+                connection_idle_timeout * 0.5)
             return;
         ev_timer_stop(loop, &con->idle_timer);
     }
@@ -1129,13 +1129,6 @@ reset_idle_timer_with_now(struct Connection *con, struct ev_loop *loop, ev_tstam
     ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
     ev_timer_start(loop, &con->idle_timer);
 }
-
-#if defined(DEBUG)
-static void
-reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
-    reset_idle_timer_with_now(con, loop, loop_now(loop));
-}
-#endif
 
 static void
 stop_idle_timer(struct Connection *con, struct ev_loop *loop) {
