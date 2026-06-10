@@ -1323,6 +1323,24 @@ resolver_restart(void) {
     resolver_restart_in_progress = 1;
     pthread_mutex_unlock(&resolver_restart_lock);
 
+    /* Throttle restart storms: a child that dies right after every
+     * restart, for example due to a persistent startup failure, would
+     * otherwise be respawned hundreds of times per second. */
+    static struct timespec last_restart;
+    static int rapid_restarts;
+    struct timespec now_ts = {0, 0};
+    clock_gettime(CLOCK_MONOTONIC, &now_ts);
+    if (last_restart.tv_sec != 0 &&
+            now_ts.tv_sec - last_restart.tv_sec < 2) {
+        if (++rapid_restarts >= 3) {
+            warn("resolver child keeps failing; throttling restarts");
+            sleep(1);
+        }
+    } else {
+        rapid_restarts = 0;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &last_restart);
+
     notice("resolver child restarting after IPC failure");
     resolv_shutdown(resolver_loop_ref);
     int rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
