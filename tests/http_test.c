@@ -55,10 +55,15 @@ static const unsigned char http_host_with_nul[] =
     "Accept: */*\r\n"
     "\r\n";
 
-static const unsigned char http2_dynamic_table_overflow[] =
+/* SETTINGS_HEADER_TABLE_SIZE describes the client's own decoder and may
+ * carry any value; it must not fail parsing of the request that follows. */
+static const unsigned char http2_large_table_size_setting[] =
     "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
     "\x00\x00\x06\x04\x00\x00\x00\x00\x00"
-    "\x00\x01\x00\x10\x00\x00";
+    "\x00\x01\x00\x10\x00\x00"
+    "\x00\x00\x0e\x01\x05\x00\x00\x00\x01"
+    "\x82\x87\x84\x41\x09"
+    "localhost";
 
 struct http_request_case {
     const char *request;
@@ -217,10 +222,12 @@ int main(void) {
     assert(hostname == NULL);
 
     hostname = NULL;
-    result = http_protocol->parse_packet((const char *)http2_dynamic_table_overflow,
-            sizeof(http2_dynamic_table_overflow) - 1, &hostname);
-    assert(result < 0);
-    assert(hostname == NULL);
+    result = http_protocol->parse_packet((const char *)http2_large_table_size_setting,
+            sizeof(http2_large_table_size_setting) - 1, &hostname);
+    assert(result == (int)strlen("localhost"));
+    assert(hostname != NULL);
+    assert(strcmp("localhost", hostname) == 0);
+    free(hostname);
 
     size_t oversized_payload = HTTP2_MAX_HEADER_BLOCK_SIZE + 1;
     size_t oversized_total = sizeof(http2_preface) - 1 + 9 + oversized_payload;

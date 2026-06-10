@@ -497,19 +497,14 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                         result = -4;
                         goto done;
                     }
-                    for (size_t i = 0; i < length; i += 6) {
-                        uint16_t identifier = ((uint16_t)payload[i] << 8) | payload[i + 1];
-                        uint32_t value = ((uint32_t)payload[i + 2] << 24) |
-                                         ((uint32_t)payload[i + 3] << 16) |
-                                         ((uint32_t)payload[i + 4] << 8) |
-                                         payload[i + 5];
-                        if (identifier == 0x1) {
-                            if (!hpack_set_dynamic_size(&decoder, value)) {
-                                result = -4;
-                                goto done;
-                            }
-                        }
-                    }
+                    /* SETTINGS_HEADER_TABLE_SIZE in the client's
+                     * SETTINGS describes the client's own decoder and
+                     * may carry any 32 bit value (RFC 7540 6.5.2); it
+                     * places no limit on decoding the client's header
+                     * blocks, so it must not be applied to this decoder
+                     * or rejected. The decoder limit is driven by the
+                     * dynamic table size updates inside the header
+                     * block, which are capped separately. */
                 }
                 break;
             default:
