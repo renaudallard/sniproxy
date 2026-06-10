@@ -2949,7 +2949,24 @@ resolver_child_dot_asocket(int domain, int type, int protocol, void *user_data _
 #ifdef SOCK_CLOEXEC
     type |= SOCK_CLOEXEC;
 #endif
-    return socket(domain, type, protocol);
+    int fd = socket(domain, type, protocol);
+    if (fd < 0)
+        return fd;
+
+    /* c-ares does not configure sockets created through custom socket
+     * functions, so blocking mode must be cleared here. The event loop
+     * and the DoT handshake machinery (SSL_ERROR_WANT_READ handling,
+     * forced events) require non-blocking sockets; a blocking socket
+     * stalls the whole resolver child in connect() or SSL_read(). */
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        int saved_errno = errno;
+        close(fd);
+        errno = saved_errno;
+        return -1;
+    }
+
+    return fd;
 }
 
 static int
