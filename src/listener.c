@@ -417,6 +417,12 @@ listener_update(struct Listener *existing_listener, struct Listener *new_listene
 
         table_ref_put(new_listener->table);
         new_listener->table = NULL;
+    } else {
+        /* Unreachable since init_config() validates listener table
+         * references, but do not fail silently if it ever happens. */
+        err("Table \"%s\" not defined; listener keeps its previous table",
+                existing_listener->table_name != NULL ?
+                existing_listener->table_name : "(default)");
     }
 }
 

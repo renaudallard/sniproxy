@@ -624,6 +624,23 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         }
     }
 
+    /* Every listener must reference a defined table. Checking here makes
+     * config test, startup and reload reject such configs uniformly,
+     * instead of config test passing and reload silently keeping the
+     * previous table while init_listener fails only at startup. */
+    if (config != NULL) {
+        struct Listener *listener = SLIST_FIRST(&config->listeners);
+        while (listener != NULL) {
+            if (table_lookup(&config->tables, listener->table_name) == NULL) {
+                err("Table \"%s\" not defined", listener->table_name != NULL ?
+                        listener->table_name : "(default)");
+                free_config(config, loop);
+                return NULL;
+            }
+            listener = SLIST_NEXT(listener, entries);
+        }
+    }
+
     return(config);
 }
 
