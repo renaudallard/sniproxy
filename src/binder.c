@@ -330,7 +330,7 @@ binder_restart_child(void) {
 
 int
 bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
-        int ipv6_v6only) {
+        int ipv6_v6only, int reuseport) {
     if (addr_len > BINDER_IPC_MAX_PAYLOAD - sizeof(struct binder_request))
         fatal("bind_socket: address length %zu exceeds buffer", addr_len);
 
@@ -341,6 +341,7 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
     request->cmd = BINDER_CMD_BIND;
     request->reserved[0] = (sock_type == SOCK_DGRAM) ? 1 : 0;
     request->reserved[1] = ipv6_v6only ? 1 : 0;
+    request->reserved[2] = reuseport ? 1 : 0;
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
 
@@ -644,6 +645,33 @@ binder_main(int sockfd) {
             }
         }
 #endif
+
+        /* SO_REUSEPORT must be set before bind() on every socket that
+         * shares the port; setting it on the returned socket afterwards
+         * would not allow further binds to the same address. */
+        if (req->reserved[2]) {
+#ifdef SO_REUSEPORT
+            if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT,
+                    &on, sizeof(on)) < 0) {
+                char errbuf[128];
+                snprintf(errbuf, sizeof(errbuf),
+                        "setsockopt SO_REUSEPORT failed: %s",
+                        strerror(errno));
+                close(fd);
+                ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                        errbuf, strlen(errbuf), -1);
+                free(plain);
+                continue;
+            }
+#else
+            const char *msg = "SO_REUSEPORT not supported on this platform";
+            close(fd);
+            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                    msg, strlen(msg), -1);
+            free(plain);
+            continue;
+#endif
+        }
 
         if (bind(fd, req->address, req->address_len) < 0) {
             char errbuf[128];

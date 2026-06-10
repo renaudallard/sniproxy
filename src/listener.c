@@ -886,7 +886,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         sockfd = bind_socket(address_sa(listener->address),
                 address_sa_len(listener->address),
                 listener->protocol->sock_type,
-                listener->ipv6_v6only);
+                listener->ipv6_v6only,
+                listener->reuseport);
         if (sockfd < 0) {
             err("binder failed to bind to %s",
                 display_address(listener->address, address, sizeof(address)));
@@ -910,21 +911,10 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
             }
         }
 
-        if (listener->reuseport == 1) {
-#ifdef SO_REUSEPORT
-            result = setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
-#else
-            result = -ENOSYS;
-#endif
-            if (result < 0) {
-                err("setsockopt SO_REUSEPORT failed on binder socket: %s", strerror(errno));
-                rc = result;
-                goto error;
-            }
-        }
-
-        /* IPV6_V6ONLY is passed to the binder and set before bind(),
-         * since Linux rejects setsockopt(IPV6_V6ONLY) after bind. */
+        /* IPV6_V6ONLY and SO_REUSEPORT are passed to the binder and set
+         * before bind(): Linux rejects IPV6_V6ONLY after bind, and
+         * SO_REUSEPORT applied after bind would not allow further
+         * processes to share the port. */
     } else if (result < 0) {
         err("bind %s failed: %s",
             display_address(listener->address, address, sizeof(address)),

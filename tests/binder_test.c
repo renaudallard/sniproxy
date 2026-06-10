@@ -36,6 +36,7 @@
 #include "binder.h"
 
 static int test_binder(int);
+static int test_binder_reuseport(int);
 
 int main(void) {
     int i;
@@ -49,7 +50,42 @@ int main(void) {
     for (i = 8080; i <= 8084; i++)
         test_binder(i);
 
+    test_binder_reuseport(8085);
+
     stop_binder();
+
+    return 0;
+}
+
+/* Two binder-bound sockets with reuseport must be able to share a
+ * port, which requires the binder to set SO_REUSEPORT before bind. */
+static int
+test_binder_reuseport(int port) {
+#ifdef SO_REUSEPORT
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_port = htons(port),
+    };
+
+    int rc = binder_register_allowed_address((struct sockaddr *)&addr, sizeof(addr));
+    assert(rc == 0);
+
+    int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM,
+            0, 1);
+    assert(fd >= 0);
+    assert(listen(fd, 5) == 0);
+
+    int fd2 = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM,
+            0, 1);
+    assert(fd2 >= 0);
+    assert(listen(fd2, 5) == 0);
+
+    close(fd2);
+    close(fd);
+#else
+    (void)port;
+#endif
 
     return 0;
 }
@@ -65,7 +101,8 @@ test_binder(int port) {
     int rc = binder_register_allowed_address((struct sockaddr *)&addr, sizeof(addr));
     assert(rc == 0);
 
-    int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM, 0);
+    int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM,
+            0, 0);
 
     assert(fd >= 0);
 
@@ -88,7 +125,8 @@ test_binder(int port) {
     }
 
     /* Test error handling: bind same port while still held */
-    int fd2 = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM, 0);
+    int fd2 = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM,
+            0, 0);
     assert(fd2 == -1);
 
     close(fd);
