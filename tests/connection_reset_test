@@ -38,7 +38,7 @@ sub simple_server($) {
 
         $client->send("HTTP/1.1 200 OK\r\n" .
                       "Content-Type: text/plain\r\n" .
-                      "Context-Length: 16777216\r\n" .
+                      "Content-Length: 16777216\r\n" .
                       "\r\n");
 
         # Send a bunch of data (more that will be buffered by the kernel
@@ -65,10 +65,6 @@ sub bad_client($) {
                                        Type => SOCK_STREAM)
         or die "couldn't connect $!";
 
-    # This causes the socket to terminate abnormally and
-    # replicates the select invalid file descriptor error
-    kill 9, $$;
-
     $socket->send("GET / HTTP/1.1\r\n" .
                   "UserAgent: bad_client/0.1\r\n" .
                   "Host: localhost:$port\r\n" .
@@ -77,12 +73,12 @@ sub bad_client($) {
 
     my $buffer;
     $socket->recv($buffer, 16384);
-    $socket->recv($buffer, 16384);
-    $socket->recv($buffer, 16384);
 
-    $socket->close();
-
-    exit(0);
+    # Die while the server is still sending: the kernel sends a reset
+    # for the unread data, so the proxy has to handle a connection
+    # reset in the middle of the transfer, not a client that vanished
+    # before its request.
+    kill 9, $$;
 }
 
 sub main {
