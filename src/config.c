@@ -1833,6 +1833,8 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
     const char *value = nameserver;
     char *dot_target_copy = NULL;
     int is_dot = 0;
+    int has_sni = 0;
+    int sni_insecure = 0;
 
     const char *scheme_sep = strstr(nameserver, "://");
     if (scheme_sep != NULL) {
@@ -1930,7 +1932,10 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
                     return -1;
                 }
                 free(sni_address);
+            } else {
+                sni_insecure = 1;
             }
+            has_sni = 1;
         }
     }
 
@@ -1940,10 +1945,31 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
         return -1;
     }
 
+    /* Mirror the resolver child's rules so an entry it would refuse is
+     * rejected at config load instead of crashing the child at startup:
+     * an IP literal needs a TLS hostname (or an explicit /insecure),
+     * and /insecure makes no sense with a hostname target. */
     int valid = 0;
     if (is_dot) {
-        if (address_is_sockaddr(ns_address) || address_is_hostname(ns_address))
+        if (address_is_sockaddr(ns_address)) {
+            if (!has_sni) {
+                err("resolver nameserver '%s' must specify a TLS hostname "
+                        "or '/insecure' when using an IP literal", nameserver);
+                free(ns_address);
+                free(dot_target_copy);
+                return -1;
+            }
             valid = 1;
+        } else if (address_is_hostname(ns_address)) {
+            if (sni_insecure) {
+                err("resolver nameserver '%s' cannot use '/insecure' with "
+                        "a hostname; specify a TLS hostname instead", nameserver);
+                free(ns_address);
+                free(dot_target_copy);
+                return -1;
+            }
+            valid = 1;
+        }
     } else if (address_is_sockaddr(ns_address)) {
         valid = 1;
     }
