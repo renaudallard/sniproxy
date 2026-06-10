@@ -266,8 +266,9 @@ brew link --force gettext      # GNU gettext is needed for autogen.sh
 
 A config file has a small set of **global** directives followed by one or
 more `listener <addr>` and `table <name>` blocks. SIGHUP triggers a
-zero-downtime reload; SIGUSR1 dumps the live connection table to
-`/tmp/sniproxy-status`.
+zero-downtime reload; SIGUSR1 dumps the live connection table to a
+temporary `connections-XXXXXX` file under `$XDG_RUNTIME_DIR/sniproxy`,
+`/var/run/sniproxy`, or `/tmp/sniproxy-<uid>` (tried in that order).
 
 ### Global directives
 
