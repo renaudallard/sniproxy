@@ -82,12 +82,16 @@ sub reap_children {
         $attempts++;
     }
 
-    # Check that all our children exited cleanly
-    my @failures = grep($_->{'exit_code'} != 0 || $_->{'core_dumped'}, values %children);
+    # Check that all our children exited cleanly. The harness itself only
+    # sends SIGTERM and SIGKILL, so death from any other signal is a crash
+    # even when no core was dumped (core dumps may be disabled).
+    my @failures = grep($_->{'exit_code'} != 0 || $_->{'core_dumped'} ||
+            ($_->{'signal'} && $_->{'signal'} != 15 && $_->{'signal'} != 9),
+            values %children);
     if (@failures) {
         print "Test failed.\n";
         foreach (@failures) {
-            if ($_->{'core_dumped'}) {
+            if ($_->{'signal'}) {
                 printf "%s died with signal %d, %s coredump\n", $_->{'type'}, $_->{'signal'}, $_->{'core_dumped'} ? 'with' : 'without';
             } else {
                 print "$_->{'type'} failed with exit code $_->{'exit_code'}\n";
