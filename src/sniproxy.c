@@ -127,6 +127,30 @@ static char *pidfile_basename = NULL;
 #endif
 static const char *pidfile_path_at_exit = NULL;
 
+/* Remove a leftover pidfile only when the process it names is gone.
+ * Returns -1 when the pid is alive, meaning another instance runs. */
+static int
+pidfile_remove_stale(const char *path) {
+    FILE *fp = fopen(path, "r");
+    if (fp == NULL)
+        return 0;
+
+    long pid = 0;
+    int matched = fscanf(fp, "%ld", &pid);
+    fclose(fp);
+
+    /* Treat an existing pid as live; EPERM means it exists but belongs
+     * to another user. A recycled pid is indistinguishable from a live
+     * instance, in that case the operator must remove the file. */
+    if (matched == 1 && pid > 0 &&
+            (kill((pid_t)pid, 0) == 0 || errno == EPERM))
+        return -1;
+
+    notice("removing stale PID file %s", path);
+    (void)remove(path);
+    return 0;
+}
+
 static void
 pidfile_cleanup(void) {
     if (pidfile_path_at_exit == NULL)
@@ -480,8 +504,10 @@ main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
 
     if (background_flag) {
-        if (config->pidfile != NULL)
-            remove(config->pidfile);
+        if (config->pidfile != NULL &&
+                pidfile_remove_stale(config->pidfile) < 0)
+            fatal("PID file %s names a running process; "
+                    "is another instance already running?", config->pidfile);
 
         daemonize();
 
