@@ -3,7 +3,11 @@ binder_test
 buffer_test
 cfg_tokenizer_test
 config_test
+dtls_test
 http_test
+ipc_crypto_debug_test
+ipc_crypto_rekey_test
+ipc_crypto_time_rekey_test
 minecraft_test
 resolv_test
 seccomp_test
