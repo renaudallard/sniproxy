@@ -55,6 +55,7 @@ struct Config {
         int dnssec_validation_mode;
     } resolver;
     struct Logger *access_log;
+    struct Logger *error_log;
     double per_ip_connection_rate;
     size_t per_ip_max_connections;
     size_t max_connections;

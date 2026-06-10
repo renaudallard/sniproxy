@@ -641,6 +641,10 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         }
     }
 
+    /* The parsed config is valid; only now switch the error log. */
+    if (config != NULL && config->error_log != NULL)
+        set_default_logger(config->error_log);
+
     return(config);
 }
 
@@ -657,6 +661,7 @@ free_config(struct Config *config, struct ev_loop *loop) {
     config->resolver.search = NULL;
 
     logger_ref_put(config->access_log);
+    logger_ref_put(config->error_log);
     free_listeners(&config->listeners, loop);
     free_tables(&config->tables);
 
@@ -1664,7 +1669,7 @@ accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
 }
 
 static int
-end_error_logger_stanza(struct Config *config __attribute__ ((unused)), struct LoggerBuilder *lb) {
+end_error_logger_stanza(struct Config *config, struct LoggerBuilder *lb) {
     struct Logger *logger = NULL;
 
     if (lb->filename != NULL && lb->syslog_facility == NULL)
@@ -1680,7 +1685,11 @@ end_error_logger_stanza(struct Config *config __attribute__ ((unused)), struct L
         return -1;
 
     set_logger_priority(logger, lb->priority);
-    set_default_logger(logger);
+    /* Stage the logger in the config; it becomes the default error
+     * logger only once the whole file has parsed and validated, so a
+     * failed reload does not switch the running error log. */
+    logger_ref_put(config->error_log);
+    config->error_log = logger_ref_get(logger);
 
     cleanup_logger_builder(lb);
     return 1;
