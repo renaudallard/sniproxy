@@ -194,14 +194,17 @@ jobs:
               return trimmed or [versions_sorted[-1].split(".")[0]]
 
           def latest_opensuse_leap():
+              # The result selects the opensuse/leap container image, so
+              # only versions with a published tag are usable. Query the
+              # registry rather than the download server: the latter also
+              # lists unreleased versions and the legacy 42.x series.
               import re
               try:
-                  data = fetch_text("https://download.opensuse.org/distribution/leap/")
-                  versions = []
-                  for line in data.splitlines():
-                      match = re.search(r'href=\"([0-9]+(?:\\.[0-9]+)?)/\"', line)
-                      if match:
-                          versions.append(match.group(1))
+                  data = fetch_text("https://hub.docker.com/v2/repositories/opensuse/leap/tags?page_size=100")
+                  tags = [t.get("name", "") for t in json.loads(data).get("results", [])]
+                  versions = [t for t in tags
+                              if re.fullmatch(r"[0-9]+\.[0-9]+", t)
+                              and not t.startswith("42.")]
                   if versions:
                       versions_sorted = sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
                       return versions_sorted[-1]
