@@ -14,9 +14,10 @@ sniproxy.conf - sniproxy configuration file
 Statements are separated by either a new line or semi-colon.
 Lines starting with \&# are comments.
 The configuration is broken down into stanzas delimited by
-curly braces. Characters may be escaped using \&\\. Configuration
-directives may be shortened as long as they are unambiguous e.g. user
-daemon instead of username daemon.
+curly braces. Characters may be escaped using \&\\. Directives must be
+spelled out in full; only the explicit aliases user (username),
+group (groupname), listen (listener) and proto (protocol) are
+recognized.
 
 .SS USERNAME
 
