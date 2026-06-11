@@ -1,3 +1,35 @@
+sniproxy 0.13.4 (2026-06-11)
+===============================
+
+Fixes from a deep source, documentation, build and CI audit.
+Highlights:
+
+* Linux seccomp: helper processes restarted at runtime were killed by
+  the inherited main filter before they could install their own, so a
+  single resolver crash permanently disabled DNS resolution.
+
+* DNS over TLS: resolver sockets are now non-blocking, so an
+  unreachable or stalling DoT server can no longer freeze all DNS
+  resolution, failover and shutdown.
+
+* The privileged binder confines root-created unix sockets to /run
+  and /var/run only when actually binding, so unix listeners in
+  user-writable directories start again. Unix listeners clean up
+  their socket files, stale leftovers are replaced on the next start,
+  and reuseport now works for listeners bound through the binder.
+
+* Configuration handling: the last directive of a file without a
+  trailing newline is no longer dropped, duplicate table names and
+  undefined table references are rejected at load, a failed reload
+  no longer switches the error log, and invalid dot:// nameserver
+  entries fail config test instead of crash-looping the resolver
+  child.
+
+* Released tarballs ship the Perl integration tests again, plus many
+  smaller logger, pidfile, HTTP/2, idle timer, buffer limit,
+  documentation and CI fixes; see the ChangeLog for the full list.
+
+
 sniproxy 0.13.3 (2026-05-30)
 ===============================
 

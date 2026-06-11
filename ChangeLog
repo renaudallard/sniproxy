@@ -1,3 +1,68 @@
+2026-06-11  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.13.4
+	Fixes from a deep source, documentation, build and CI audit:
+	- seccomp: allow the seccomp syscall in the main process filter;
+	  helper children forked at runtime to replace a dead resolver,
+	  logger or binder inherited the main filter and were killed with
+	  SIGSYS before they could install their own, so a single
+	  resolver crash permanently disabled DNS resolution.
+	- resolver: create c-ares sockets non-blocking; with DNS over TLS
+	  the single-threaded resolver child could stall for the whole
+	  kernel SYN retry cycle in connect(), or indefinitely inside TLS
+	  calls against a stalling server, freezing all DNS resolution,
+	  failover and even shutdown.
+	- binder: confine root-created unix socket nodes to /run and
+	  /var/run, applied only when actually binding so unix listeners
+	  in user-writable directories outside those prefixes still
+	  start; set SO_REUSEPORT before bind in the binder child so port
+	  sharing works for privileged listeners; treat an IPC end of
+	  stream as a dead binder child and restart it instead of
+	  consulting a stale errno.
+	- listener: remove unix socket files on shutdown and replace
+	  stale leftovers at the next start instead of failing with
+	  EADDRINUSE until the file is deleted by hand.
+	- config: finalize the last directive of a file without a
+	  trailing newline instead of silently dropping it; reject
+	  duplicate table names, which flipped routing between the
+	  duplicates on reload; validate listener table references at
+	  load; switch the error log only after a successful parse so a
+	  failed reload keeps the running error log; validate dot://
+	  nameserver entries so an entry the resolver child refuses
+	  fails config test instead of crash-looping the child, and
+	  throttle resolver child restart storms.
+	- logger: keep the working log file when a reopen fails instead
+	  of silently disabling logging; tolerate transient EAGAIN on
+	  control messages instead of killing the healthy logger child;
+	  send privileges to a restarted logger child so it tightens its
+	  sandbox like the original one.
+	- http2: do not reject clients advertising a header table larger
+	  than 64 KiB; the setting describes the client's own decoder
+	  and places no constraint on parsing its requests.
+	- connection: use ev_timer_remaining() for the idle timer
+	  hysteresis; comparing the watcher's private monotonic deadline
+	  against the wall clock disabled it and caused timer churn on
+	  every read and write event.
+	- buffer: honor the documented 1 GiB connection buffer limit;
+	  configured values above 10 MiB were silently clamped.
+	- pidfile: check liveness instead of unconditionally removing
+	  the pidfile at startup, so a second instance no longer deletes
+	  the running instance's pidfile.
+	- resolver: drop the dead res_init() call; the guarding macro
+	  was never defined and the call cannot be compiled as written.
+	- docs: correct the SIGUSR1 dump location in the README, drop
+	  the false directive abbreviation claim from sniproxy.conf.5
+	  and document that tcp_fastopen is a fatal configuration error
+	  on builds without TFO support.
+	- tests: distribute the Perl integration tests and harness
+	  modules in the tarball so make check works from a release and
+	  make distcheck passes; flag unexpected signal deaths of test
+	  children; make connection_reset_test reset during the transfer
+	  again; stop tracking compiled test binaries.
+	- ci: fix openSUSE Leap version detection for package builds,
+	  carry the fuzzing corpus across nightly runs and use the bare
+	  major.minor Ubuntu version for package builds.
+
 2026-05-30  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.13.3

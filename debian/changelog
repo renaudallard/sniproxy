@@ -1,3 +1,17 @@
+sniproxy (0.13.4) unstable; urgency=medium
+
+  * Fixes from a deep source and build audit: runtime-restarted helper
+    processes are no longer killed by the seccomp filter, DNS-over-TLS
+    sockets are non-blocking so a stalling server cannot freeze
+    resolution, unix listeners outside /run start again and clean up
+    their socket files, reuseport works through the privileged binder,
+    config parsing fixes (final line without newline, duplicate tables,
+    table references, error_log staging, dot:// validation), logger and
+    pidfile robustness fixes, and released tarballs ship the
+    integration tests again. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 11 Jun 2026 09:00:00 +0200
+
 sniproxy (0.13.3) unstable; urgency=medium
 
   * Security and correctness fixes from a multi-pass audit: reject
