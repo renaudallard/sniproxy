@@ -1,3 +1,15 @@
+sniproxy (0.13.5) unstable; urgency=medium
+
+  * Fixes and one new option from a deep security audit: new
+    per_ip_ipv6_prefix option (default 64) so the per-IP rate limit and
+    connection cap group native IPv6 clients by prefix instead of the
+    full /128, closing an address-rotation bypass; the per-IP
+    connection cap now fails closed on a full hash chain; the encrypted
+    logger channel is torn down on a partial send instead of desyncing;
+    and backend lists are swapped safely on reload. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 02 Jul 2026 18:00:00 +0200
+
 sniproxy (0.13.4) unstable; urgency=medium
 
   * Fixes from a deep source and build audit: runtime-restarted helper

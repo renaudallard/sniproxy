@@ -1,3 +1,24 @@
+2026-07-02  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.13.5
+	Fixes and one new option from a deep security audit:
+	- connection: add the per_ip_ipv6_prefix option (default 64) to
+	  group native IPv6 clients by prefix for the per-IP rate limit and
+	  connection cap. Keying on the full /128 let a client rotate
+	  through its allocation (a /64 is the usual assignment) to evade
+	  both limits. IPv4 clients keep exact matching; set the prefix to
+	  128 to restore the old per-address behaviour.
+	- connection: reject connections when the per-IP connection-count
+	  hash chain is full. The count check previously failed open while
+	  the rate limiter failed closed, so once a chain saturated the
+	  per-IP connection cap could be bypassed by colliding addresses.
+	- ipc_crypto: report a distinct error on a partial send to the
+	  logger so a desynced encrypted channel is torn down and restarted
+	  instead of being written to again.
+	- table: swap backend lists on reload with STAILQ_CONCAT instead of
+	  copying the list head by value, which left a dangling tail pointer
+	  when a reloaded table ended up with no backends.
+
 2026-06-11  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.13.4

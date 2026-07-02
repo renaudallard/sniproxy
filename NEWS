@@ -1,3 +1,24 @@
+sniproxy 0.13.5 (2026-07-02)
+===============================
+
+Fixes and one new option from a deep security audit.
+Highlights:
+
+* New per_ip_ipv6_prefix option (default 64): the per-IP rate limit
+  and connection cap now group native IPv6 clients by prefix, so a
+  client cannot rotate through its allocation (typically a /64) to
+  evade them. IPv4 is unaffected; set the prefix to 128 for the old
+  per-address behaviour.
+
+* The per-IP connection cap now fails closed when its hash chain is
+  full, closing a bypass where the count check kept allowing colliding
+  addresses that it could no longer track.
+
+* Smaller robustness fixes: the encrypted logger channel is torn down
+  on a partial send instead of desyncing, and backend lists are
+  swapped safely on reload. See the ChangeLog for details.
+
+
 sniproxy 0.13.4 (2026-06-11)
 ===============================
 
