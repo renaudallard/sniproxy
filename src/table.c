@@ -305,10 +305,17 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
 
         struct Table *existing = table_lookup(tables, iter->name);
         if (existing) {
-            /* Swap table contents */
-            struct Backend_head temp = existing->backends;
-            existing->backends = iter->backends;
-            iter->backends = temp;
+            /* Swap table contents.  A STAILQ head cannot be swapped by
+             * value: an empty list's tail pointer refers back into its own
+             * head, so a struct copy would leave existing->backends with a
+             * tail pointer dangling into the freed iter.  Move the lists with
+             * STAILQ_CONCAT, which fixes up the tail pointers.  iter keeps the
+             * old backends and frees them when it is released below. */
+            struct Backend_head temp;
+            STAILQ_INIT(&temp);
+            STAILQ_CONCAT(&temp, &existing->backends);
+            STAILQ_CONCAT(&existing->backends, &iter->backends);
+            STAILQ_CONCAT(&iter->backends, &temp);
             existing->backend_affinity = iter->backend_affinity;
             table_cache_clear(existing);
         } else {
