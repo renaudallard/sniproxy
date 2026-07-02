@@ -1620,8 +1620,10 @@ conn_count_allow(const struct sockaddr_storage *addr) {
     uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
     size_t bucket_index = hash % CONN_COUNT_TABLE_SIZE;
     struct ConnCountBucket *b = conn_count_table[bucket_index];
+    size_t chain_length = 0;
 
     while (b != NULL) {
+        chain_length++;
         if (b->addr_hash == hash) {
             if (is_v4 && b->is_v4 && b->addr_v4 == addr_v4)
                 return b->count < per_ip_max_connections_limit;
@@ -1631,6 +1633,13 @@ conn_count_allow(const struct sockaddr_storage *addr) {
         }
         b = b->next;
     }
+
+    /* A full hash chain means conn_count_increment can no longer add a
+     * bucket for this address, so an untracked address would escape the
+     * per-IP cap. Fail closed to prevent the bypass, matching the rate
+     * limiter's behaviour on a saturated chain. */
+    if (chain_length >= CONN_COUNT_MAX_CHAIN_LENGTH)
+        return 0;
 
     return 1;
 }
