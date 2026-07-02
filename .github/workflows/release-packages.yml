@@ -245,15 +245,26 @@ jobs:
               return "latest"
 
           def latest_freebsd():
+              # The cross-platform-actions build action can only boot a FreeBSD
+              # release it ships a VM image for. download.freebsd.org lists new
+              # releases before that image exists (e.g. 15.1 while the pinned
+              # builder still tops out at 15.0), and the missing image 404s the
+              # VM download. Pick the highest version the pinned builder
+              # actually provides an x86-64 image for. Keep FREEBSD_BUILDER_TAG
+              # in sync with the builder bundled by the cross-platform-actions
+              # action version used in the build-freebsd job below.
+              FREEBSD_BUILDER_TAG = "v0.13.1"
+              url = ("https://github.com/cross-platform-actions/freebsd-builder"
+                     f"/releases/expanded_assets/{FREEBSD_BUILDER_TAG}")
               try:
-                  data = fetch_text("https://download.freebsd.org/releases/VM-IMAGES/")
-                  versions = re.findall(r'(\d+\.\d+)-RELEASE', data)
+                  data = fetch_text(url)
+                  versions = re.findall(r"freebsd-(\d+\.\d+)-x86-64\.qcow2", data)
                   if versions:
                       versions.sort(key=lambda v: [int(x) for x in v.split(".")])
                       return versions[-1]
               except Exception:
                   pass
-              return "14.2"
+              return "15.0"
 
           ubuntu_stable = latest_ubuntu_non_lts()
           ubuntu_lts = latest_ubuntu_lts()
