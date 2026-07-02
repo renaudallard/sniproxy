@@ -97,6 +97,7 @@ void init_secure_temp_dir(void);
 
 void connections_set_per_ip_connection_rate(double rate);
 void connections_set_per_ip_max_connections(size_t limit);
+void connections_set_per_ip_ipv6_prefix(unsigned int prefix);
 void connections_set_dns_query_limit(size_t limit);
 void connections_set_dns_query_per_client_limit(size_t limit);
 

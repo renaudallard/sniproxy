@@ -91,6 +91,7 @@ static int accept_groupname(struct Config *, const char *);
 static int accept_pidfile(struct Config *, const char *);
 static int accept_per_ip_connection_rate(struct Config *, const char *);
 static int accept_per_ip_max_connections(struct Config *, const char *);
+static int accept_per_ip_ipv6_prefix(struct Config *, const char *);
 static int accept_max_connections(struct Config *, const char *);
 static int accept_io_collect_interval(struct Config *, const char *);
 static int accept_timeout_collect_interval(struct Config *, const char *);
@@ -206,6 +207,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_groupname, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_pidfile, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_per_ip_connection_rate, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_per_ip_max_connections, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_per_ip_ipv6_prefix, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_max_connections, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_io_collect_interval, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_timeout_collect_interval, struct Config)
@@ -387,6 +389,10 @@ static struct Keyword global_grammar[] = {
         .parse_arg=kw_parse_accept_per_ip_max_connections,
     },
     {
+        .keyword="per_ip_ipv6_prefix",
+        .parse_arg=kw_parse_accept_per_ip_ipv6_prefix,
+    },
+    {
         .keyword="max_connections",
         .parse_arg=kw_parse_accept_max_connections,
     },
@@ -504,6 +510,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     config->resolver.dnssec_validation_mode = DEFAULT_DNSSEC_VALIDATION_MODE;
     config->per_ip_connection_rate = DEFAULT_PER_IP_CONNECTION_RATE;
     config->per_ip_max_connections = DEFAULT_PER_IP_MAX_CONNECTIONS;
+    config->per_ip_ipv6_prefix = DEFAULT_PER_IP_IPV6_PREFIX;
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
     config->http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
@@ -739,6 +746,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     config->per_ip_max_connections = new_config->per_ip_max_connections;
     connections_set_per_ip_max_connections(config->per_ip_max_connections);
 
+    config->per_ip_ipv6_prefix = new_config->per_ip_ipv6_prefix;
+    connections_set_per_ip_ipv6_prefix(config->per_ip_ipv6_prefix);
+
     config->max_connections = new_config->max_connections;
 
     config->io_collect_interval = new_config->io_collect_interval;
@@ -787,6 +797,9 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->per_ip_max_connections > 0)
         fprintf(file, "per_ip_max_connections %zu\n\n", config->per_ip_max_connections);
+
+    if (config->per_ip_ipv6_prefix != DEFAULT_PER_IP_IPV6_PREFIX)
+        fprintf(file, "per_ip_ipv6_prefix %u\n\n", config->per_ip_ipv6_prefix);
 
     if (config->max_connections > 0)
         fprintf(file, "max_connections %zu\n\n", config->max_connections);
@@ -1441,6 +1454,33 @@ accept_per_ip_max_connections(struct Config *config, const char *value) {
     }
 
     config->per_ip_max_connections = (size_t)limit;
+    return 1;
+}
+
+static int
+accept_per_ip_ipv6_prefix(struct Config *config, const char *value) {
+    if (value == NULL)
+        return 0;
+
+    if (strchr(value, '-') != NULL) {
+        err("Invalid per_ip_ipv6_prefix '%s'", value);
+        return 0;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long prefix = strtoul(value, &end, 10);
+    if (errno != 0 || end == value || (end != NULL && *end != '\0')) {
+        err("Unable to parse per_ip_ipv6_prefix '%s'", value);
+        return 0;
+    }
+
+    if (prefix > 128) {
+        err("per_ip_ipv6_prefix must be between 0 and 128: %s", value);
+        return 0;
+    }
+
+    config->per_ip_ipv6_prefix = (unsigned int)prefix;
     return 1;
 }
 

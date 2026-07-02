@@ -32,6 +32,7 @@
 #define DEFAULT_MAX_CONNECTIONS 0
 #define DEFAULT_PER_IP_MAX_CONNECTIONS 0
 #define DEFAULT_PER_IP_CONNECTION_RATE 30.0
+#define DEFAULT_PER_IP_IPV6_PREFIX 64
 #define MIN_CONNECTION_BUFFER_LIMIT (8U * 1024)
 #define MAX_CONNECTION_BUFFER_LIMIT (1024U * 1024 * 1024U)
 #define MIN_HTTP_MAX_HEADERS 1
@@ -58,6 +59,7 @@ struct Config {
     struct Logger *error_log;
     double per_ip_connection_rate;
     size_t per_ip_max_connections;
+    unsigned int per_ip_ipv6_prefix;
     size_t max_connections;
     double io_collect_interval;
     double timeout_collect_interval;

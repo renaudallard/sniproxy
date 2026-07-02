@@ -186,6 +186,10 @@ static size_t rate_limit_free_count;
 static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 static uint32_t rate_limit_hash_seed;
+/* Prefix length used to group native IPv6 clients for the per-IP limits.
+ * Default /64 (the usual single-subscriber allocation); overridden at
+ * startup and reload from per_ip_ipv6_prefix (DEFAULT_PER_IP_IPV6_PREFIX). */
+static unsigned int per_ip_ipv6_prefix_bits = 64;
 
 static enum ListenerACLMode backend_acl_mode = LISTENER_ACL_MODE_DISABLED;
 static struct ListenerACLRule_head backend_acl_rules =
@@ -1244,6 +1248,28 @@ hash_ipv4(uint32_t value, uint32_t *out_v4) {
     return value;
 }
 
+/* Copy an IPv6 address with the host bits below the configured per-IP
+ * prefix zeroed, so that clients sharing a prefix hash and compare as one
+ * source for the per-IP limits. */
+static void
+mask_ipv6_prefix(const struct in6_addr *src, uint8_t out[16]) {
+    unsigned int prefix = per_ip_ipv6_prefix_bits;
+    if (prefix > 128)
+        prefix = 128;
+
+    for (int i = 0; i < 16; i++) {
+        if (prefix >= 8) {
+            out[i] = src->s6_addr[i];
+            prefix -= 8;
+        } else if (prefix > 0) {
+            out[i] = src->s6_addr[i] & (uint8_t)(0xFF << (8 - prefix));
+            prefix = 0;
+        } else {
+            out[i] = 0;
+        }
+    }
+}
+
 static uint32_t
 hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
         int *out_is_v4) {
@@ -1273,8 +1299,10 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
                 return hash_ipv4(ntohl(v4), out_v4);
             }
 
+            uint8_t masked[16];
+            mask_ipv6_prefix(&in6->sin6_addr, masked);
             uint32_t words[4];
-            memcpy(words, &in6->sin6_addr, sizeof(words));
+            memcpy(words, masked, sizeof(words));
             uint64_t acc = ((uint64_t)rate_limit_hash_seed << 32) |
                     (uint64_t)rate_limit_hash_seed;
             acc ^= (uint64_t)in6->sin6_scope_id;
@@ -1307,7 +1335,10 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
         if (in_a->sin6_scope_id != in_b->sin6_scope_id)
             return 0;
 
-        return memcmp(&in_a->sin6_addr, &in_b->sin6_addr, sizeof(struct in6_addr)) == 0;
+        uint8_t ma[16], mb[16];
+        mask_ipv6_prefix(&in_a->sin6_addr, ma);
+        mask_ipv6_prefix(&in_b->sin6_addr, mb);
+        return memcmp(ma, mb, sizeof(ma)) == 0;
     }
 
     return 0;
@@ -1566,6 +1597,30 @@ connections_set_per_ip_connection_rate(double rate) {
 
     per_ip_connection_rate_limit = rate;
     rate_limit_reset();
+}
+
+void
+connections_set_per_ip_ipv6_prefix(unsigned int prefix) {
+    if (prefix > 128)
+        prefix = 128;
+
+    if (prefix == per_ip_ipv6_prefix_bits)
+        return;
+
+    per_ip_ipv6_prefix_bits = prefix;
+
+    /* The existing buckets are keyed on the old prefix, so drop them to
+     * avoid stale grouping after a reload changes the prefix. */
+    rate_limit_reset();
+    for (size_t i = 0; i < CONN_COUNT_TABLE_SIZE; i++) {
+        struct ConnCountBucket *b = conn_count_table[i];
+        while (b != NULL) {
+            struct ConnCountBucket *next = b->next;
+            conn_count_bucket_release(b);
+            b = next;
+        }
+        conn_count_table[i] = NULL;
+    }
 }
 
 void

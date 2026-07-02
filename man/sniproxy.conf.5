@@ -102,6 +102,24 @@ This is distinct from \fBper_ip_connection_rate\fR, which limits the rate
 of new connections per second. \fBper_ip_max_connections\fR limits how
 many connections may be open at the same time.
 
+.SS PER_IP_IPV6_PREFIX
+
+.PP
+.nf
+per_ip_ipv6_prefix 64
+.fi
+.PP
+
+Set the prefix length, in bits, used to group native IPv6 clients for
+both \fBper_ip_connection_rate\fR and \fBper_ip_max_connections\fR. A
+single subscriber is typically routed a whole prefix (a /64 is the
+common allocation), so keying the per-IP limits on the full /128 address
+would let a client rotate through its allocation to evade them. All
+source addresses sharing the configured prefix are treated as one source
+for the per-IP limits. The value must be between 0 and 128; the default
+is 64. Set it to 128 to key on the exact address. This setting does not
+affect IPv4 clients, which are always keyed on the full address.
+
 .SS CONNECTION_BUFFER_LIMIT
 
 .PP
