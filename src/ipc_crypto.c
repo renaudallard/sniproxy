@@ -899,9 +899,13 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
     if (sent < 0)
         return -1;
 
-    /* Detect partial write (unlikely for small AF_UNIX messages) */
-    if ((size_t)sent != sizeof(frame_len_net) + frame_len)
+    /* A partial write leaves a half-frame in the stream, desyncing the
+     * channel.  Report a non-EAGAIN error so the caller tears the channel
+     * down rather than treating it as a transient, droppable failure. */
+    if ((size_t)sent != sizeof(frame_len_net) + frame_len) {
+        errno = EPROTO;
         return -1;
+    }
 
     return 0;
 }
