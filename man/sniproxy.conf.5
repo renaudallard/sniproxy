@@ -299,6 +299,12 @@ system resolver. If that lookup fails the resolver refuses to start rather
 than falling back to the cleartext servers in \fBresolv.conf\fR(5), so a
 configured DNS-over-TLS upstream is never silently downgraded.
 
+All configured nameservers form a single failover pool. Listing a cleartext
+nameserver alongside a \fBdot://\fR one therefore allows queries to fall back
+to unauthenticated DNS if the TLS handshake fails; a warning is logged for
+such a configuration. List only \fBdot://\fR entries to require
+DNS-over-TLS.
+
 Four modes are supported:
 
 ipv4_only: query for any A records, use the first A record returned

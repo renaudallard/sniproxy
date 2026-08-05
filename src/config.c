@@ -2116,6 +2116,23 @@ accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const ch
 
 static int
 end_resolver_stanza(struct Config *config, struct ResolverConfig *resolver) {
+    /* c-ares treats all configured servers as one failover pool, so a
+     * cleartext entry alongside a dot:// one lets a broken TLS handshake
+     * fall back to unauthenticated DNS without any further notice. */
+    int have_dot = 0;
+    int have_cleartext = 0;
+    for (int i = 0; resolver->nameservers != NULL &&
+            resolver->nameservers[i] != NULL; i++) {
+        if (strncasecmp(resolver->nameservers[i], "dot://", 6) == 0)
+            have_dot = 1;
+        else
+            have_cleartext = 1;
+    }
+    if (have_dot && have_cleartext)
+        warn("resolver: mixing dot:// and cleartext nameservers allows "
+                "fallback to unauthenticated DNS; list only dot:// entries "
+                "to require DNS-over-TLS");
+
     free_string_vector(config->resolver.nameservers);
     config->resolver.nameservers = NULL;
     free_string_vector(config->resolver.search);
