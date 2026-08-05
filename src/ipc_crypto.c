@@ -832,22 +832,33 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
 int
 ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
         const void *payload, size_t payload_len, int fd_to_send) {
-    if (state == NULL || (payload_len > 0 && payload == NULL))
+    /* Callers distinguish a droppable failure from one that requires
+     * tearing the channel down by inspecting errno, so every failure
+     * path here has to set it rather than leave a stale value behind. */
+    if (state == NULL || (payload_len > 0 && payload == NULL)) {
+        errno = EINVAL;
         return -1;
+    }
 
-    if (payload_len > INT_MAX)
+    if (payload_len > INT_MAX) {
+        errno = EMSGSIZE;
         return -1;
+    }
 
     size_t overhead = IPC_CRYPTO_HEADER_LEN + IPC_CRYPTO_TAG_LEN;
-    if (payload_len > SIZE_MAX - overhead)
+    if (payload_len > SIZE_MAX - overhead) {
+        errno = EMSGSIZE;
         return -1;
+    }
 
     size_t frame_len = overhead + payload_len;
 
     if (frame_len > state->send_buf_cap) {
         uint8_t *newbuf = realloc(state->send_buf, frame_len);
-        if (newbuf == NULL)
+        if (newbuf == NULL) {
+            errno = ENOMEM;
             return -1;
+        }
         state->send_buf = newbuf;
         state->send_buf_cap = frame_len;
     }
@@ -857,6 +868,7 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
         /* Wipe any partial ciphertext written before the failure so it
          * does not linger in the cached buffer until the next send. */
         secure_memzero(state->send_buf, frame_len);
+        errno = EPROTO;
         return -1;
     }
 
