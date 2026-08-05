@@ -317,20 +317,27 @@ listeners_reload(struct Listener_head *existing_listeners,
                 iter_existing = SLIST_NEXT(iter_existing, entries);
                 iter_new = SLIST_NEXT(iter_new, entries);
 
+                /* Bind the replacement before dropping the old socket, so
+                 * a failure here leaves the address served instead of
+                 * silently unserved. The two sockets differ in type, so
+                 * their binds do not conflict. */
+                SLIST_REMOVE(new_listeners, added, Listener, entries);
+                add_listener(existing_listeners, added);
+                if (init_listener(added, tables, loop) < 0) {
+                    err("Failed to initialize replacement listener %s; "
+                            "keeping the existing one",
+                            display_address(added->address,
+                                    address, sizeof(address)));
+                    remove_listener(existing_listeners, added, loop);
+                    listener_ref_put(added);
+                    continue;
+                }
+
                 notice("Listener %s replaced (socket type changed).",
                         display_address(removed->address,
                                 address, sizeof(address)));
 
                 remove_listener(existing_listeners, removed, loop);
-
-                SLIST_REMOVE(new_listeners, added, Listener, entries);
-                add_listener(existing_listeners, added);
-                if (init_listener(added, tables, loop) < 0) {
-                    err("Failed to initialize replacement listener %s",
-                            display_address(added->address,
-                                    address, sizeof(address)));
-                    remove_listener(existing_listeners, added, loop);
-                }
                 listener_ref_put(added);
                 continue;
             }
