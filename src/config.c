@@ -734,6 +734,12 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     logger_ref_put(config->access_log);
     config->access_log = logger_ref_get(new_config->access_log);
 
+    /* init_config() already made the new error log the default logger;
+     * adopt it here too so the one from the previous config is released
+     * instead of being pinned for the lifetime of the process. */
+    logger_ref_put(config->error_log);
+    config->error_log = logger_ref_get(new_config->error_log);
+
     reload_tables(&config->tables, &new_config->tables);
 
     /* Register new listener addresses with the binder before reload so
