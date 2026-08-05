@@ -2576,12 +2576,16 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         struct addrinfo *results = NULL;
         int rc = getaddrinfo(hostname, port_str, &hints, &results);
         if (rc != 0) {
-            warn("resolver child: unable to resolve DoT nameserver '%s': %s; skipping this entry",
+            /* Skipping the entry would leave c-ares with no configured
+             * server, falling back to the cleartext servers in
+             * resolv.conf.  An operator who asked for DoT must never be
+             * downgraded silently, so fail closed instead. */
+            err("resolver child: unable to resolve DoT nameserver '%s': %s",
                     hostname, gai_strerror(rc));
             free(addr);
             free(address_copy);
             free(sni_override);
-            return 0;
+            return -1;
         }
 
         struct addrinfo *selected = results;

@@ -294,6 +294,11 @@ default minimum; append \fI/tls1.3\fR to require TLS 1.3 on builds that support
 it. On OpenSSL without TLS 1.3, \fI/tls1.3\fR is ignored with a warning and
 TLS 1.2 is enforced.
 
+When ADDRESS is a hostname it is resolved once at resolver startup using the
+system resolver. If that lookup fails the resolver refuses to start rather
+than falling back to the cleartext servers in \fBresolv.conf\fR(5), so a
+configured DNS-over-TLS upstream is never silently downgraded.
+
 Four modes are supported:
 
 ipv4_only: query for any A records, use the first A record returned
