@@ -1634,6 +1634,17 @@ end_backend(struct Table *table, struct Backend *backend) {
         return -1;
     }
 
+    /* Compile the pattern now rather than leaving it to init_table(), so
+     * that a pattern which does not compile is a configuration error that
+     * "sniproxy -t" reports, instead of a backend silently dropped at
+     * startup with its traffic falling through to the fallback. */
+    if (!init_backend(backend)) {
+        err("Invalid backend pattern \"%s\" in table \"%s\"",
+                backend->pattern != NULL ? backend->pattern : "(null)",
+                table_name);
+        return -1;
+    }
+
     add_backend(&table->backends, backend);
 
     return 1;
