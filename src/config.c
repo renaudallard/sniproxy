@@ -703,6 +703,20 @@ reload_config(struct Config *config, struct ev_loop *loop) {
         warn("ignoring changed group directive on reload "
              "(privilege drop is irreversible)");
 
+    /* The pidfile was written, and is removed at exit, using the path from
+     * the startup config; a new path would orphan the existing file. */
+    if ((config->pidfile == NULL) != (new_config->pidfile == NULL) ||
+            (config->pidfile != NULL && new_config->pidfile != NULL &&
+             strcmp(config->pidfile, new_config->pidfile) != 0))
+        warn("ignoring changed pidfile directive on reload "
+             "(requires restart)");
+
+    /* TCP_FASTOPEN is set on the listening socket when it is created, so a
+     * change only reaches listeners that are created by this reload. */
+    if (config->tcp_fastopen != new_config->tcp_fastopen)
+        warn("ignoring changed tcp_fastopen directive on reload for existing "
+             "listeners (requires restart)");
+
     /* Warn if resolver config changed since the resolver child is not
      * restarted on reload. Nameserver, search domain, mode, and DNSSEC
      * changes require a full restart to take effect. */
