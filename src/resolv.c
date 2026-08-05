@@ -263,6 +263,12 @@ static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 
 static int resolver_restart_in_progress = 0;
 static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
+/* Delay before retrying a restart that was throttled or that failed. The
+ * retry runs from the event loop so a crash-looping or unstartable child
+ * never blocks the proxy and never leaves the resolver permanently down. */
+#define RESOLVER_RESTART_RETRY_DELAY 1.0
+static struct ev_timer resolver_restart_timer;
+static int resolver_restart_timer_active = 0;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
 static pthread_mutex_t resolver_pending_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ResolverDotServer *child_dot_servers = NULL;
@@ -301,6 +307,7 @@ static struct ResolverPending *resolver_detach_pending_queries(void);
 static void resolver_cleanup_pending_queries(void);
 static void resolver_free_pending_list(struct ResolverPending *list, int notify_clients);
 static int resolver_restart(void);
+static void resolver_cancel_scheduled_restart(void);
 static void resolver_resubmit_pending_queries(void);
 static void resolver_fail_pending_restart_list(void);
 
@@ -621,6 +628,8 @@ resolv_parent_capsicum_limit_rights(void) {
 
 void
 resolv_shutdown(struct ev_loop *loop) {
+    resolver_cancel_scheduled_restart();
+
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);
         /* Only send SHUTDOWN if not restarting (socket may be dead during restart) */
@@ -1309,6 +1318,36 @@ resolver_fail_pending_restart_list(void) {
 }
 
 
+static void
+resolver_restart_timer_cb(struct ev_loop *loop, struct ev_timer *w,
+        int revents __attribute__((unused))) {
+    ev_timer_stop(loop, w);
+    resolver_restart_timer_active = 0;
+
+    if (resolver_restart() < 0)
+        err("scheduled resolver restart failed");
+}
+
+static void
+resolver_schedule_restart(void) {
+    if (resolver_loop_ref == NULL || resolver_restart_timer_active)
+        return;
+
+    ev_timer_init(&resolver_restart_timer, resolver_restart_timer_cb,
+            RESOLVER_RESTART_RETRY_DELAY, 0.0);
+    ev_timer_start(resolver_loop_ref, &resolver_restart_timer);
+    resolver_restart_timer_active = 1;
+}
+
+static void
+resolver_cancel_scheduled_restart(void) {
+    if (!resolver_restart_timer_active || resolver_loop_ref == NULL)
+        return;
+
+    ev_timer_stop(resolver_loop_ref, &resolver_restart_timer);
+    resolver_restart_timer_active = 0;
+}
+
 static int
 resolver_restart(void) {
     if (resolver_loop_ref == NULL)
@@ -1329,23 +1368,32 @@ resolver_restart(void) {
     static struct timespec last_restart;
     static int rapid_restarts;
     struct timespec now_ts = {0, 0};
+    int throttled = 0;
     clock_gettime(CLOCK_MONOTONIC, &now_ts);
     if (last_restart.tv_sec != 0 &&
             now_ts.tv_sec - last_restart.tv_sec < 2) {
-        if (++rapid_restarts >= 3) {
-            warn("resolver child keeps failing; throttling restarts");
-            sleep(1);
-        }
+        if (++rapid_restarts >= 3)
+            throttled = 1;
     } else {
         rapid_restarts = 0;
     }
     clock_gettime(CLOCK_MONOTONIC, &last_restart);
 
     notice("resolver child restarting after IPC failure");
+    /* Tear the dead channel down first either way: it stops the IPC
+     * watcher, so a deferred retry cannot spin on a socket at EOF. */
     resolv_shutdown(resolver_loop_ref);
-    int rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
-            resolver_saved_search, resolver_saved_mode,
-            resolver_saved_dnssec_mode);
+
+    int rc;
+    if (throttled) {
+        warn("resolver child keeps failing; retrying in %.0f seconds",
+                (double)RESOLVER_RESTART_RETRY_DELAY);
+        rc = -1;
+    } else {
+        rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
+                resolver_saved_search, resolver_saved_mode,
+                resolver_saved_dnssec_mode);
+    }
 
     if (rc >= 0)
         resolver_resubmit_pending_queries();
@@ -1355,6 +1403,13 @@ resolver_restart(void) {
     pthread_mutex_lock(&resolver_restart_lock);
     resolver_restart_in_progress = 0;
     pthread_mutex_unlock(&resolver_restart_lock);
+
+    /* Retry from the event loop rather than blocking it here, and so that
+     * a failed restart cannot leave the resolver down for good: nothing
+     * else would ever call back into this function once the IPC watcher
+     * is gone and resolv_query() fails fast on a closed socket. */
+    if (rc < 0)
+        resolver_schedule_restart();
 
     return rc;
 }
