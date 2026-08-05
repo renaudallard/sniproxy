@@ -215,8 +215,12 @@ init_backend(struct Backend *backend) {
                     backend->pattern, anchored);
         }
 
+        /* Hostnames are case insensitive, and the parsers lowercase them
+         * before lookup, so a pattern written with any uppercase letter
+         * would otherwise never match. */
         backend->pattern_re =
-            pcre2_compile((const uint8_t *)compile_pat, PCRE2_ZERO_TERMINATED, 0, &reerr, &reerroffset, NULL);
+            pcre2_compile((const uint8_t *)compile_pat, PCRE2_ZERO_TERMINATED,
+                    PCRE2_CASELESS, &reerr, &reerroffset, NULL);
         free(anchored);
         if (backend->pattern_re == NULL) {
             err("Regex compilation of \"%s\" failed: %d, offset %zu",

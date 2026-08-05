@@ -42,6 +42,7 @@ static void test_tables_reload(void);
 static int count_tables(const struct Table_head *);
 static void test_table_validation(void);
 static void test_literal_auto_anchor(void);
+static void test_pattern_case_insensitive(void);
 
 
 int main(void) {
@@ -52,6 +53,34 @@ int main(void) {
     test_invalid_regex_backend_removed();
     test_table_validation();
     test_literal_auto_anchor();
+    test_pattern_case_insensitive();
+}
+
+/* Hostnames reach the table lowercased, so a pattern spelled with
+ * uppercase letters must still match. */
+static void
+test_pattern_case_insensitive(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+    table_ref_get(table);
+    accept_table_arg(table, "case");
+
+    append_entry(table, "EXAMPLE.com", "192.0.2.10");
+    append_entry(table, "^MAIL\\.example\\.NET$", "192.0.2.20");
+
+    init_table(table);
+
+    struct LookupResult result;
+
+    result = table_lookup_server_address(table, "example.com",
+            strlen("example.com"));
+    assert(result.address != NULL);
+
+    result = table_lookup_server_address(table, "mail.example.net",
+            strlen("mail.example.net"));
+    assert(result.address != NULL);
+
+    table_ref_put(table);
 }
 
 static void

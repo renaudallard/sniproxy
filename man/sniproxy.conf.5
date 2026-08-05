@@ -510,6 +510,8 @@ auto-anchoring is applied a notice-level log message is emitted showing
 the original and rewritten pattern. Entries that contain any regex
 metacharacter are compiled as-is, giving full PCRE2 regex control.
 
+Patterns are matched case insensitively, since hostnames are.
+
 The optional proxy_protocol option will prepend a HAProxy PROXY v1 (text)
 protocol header to the proxied connection, allowing supporting
 webservers to obtain the source and destination IP and port of the
