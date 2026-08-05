@@ -1,9 +1,3 @@
-sniproxy (0.14.0+git.24.gd535305) UNRELEASED; urgency=medium
-
-  * New git revision
-
- -- Renaud Allard <r@sam.arnor.org>  Wed, 05 Aug 2026 12:36:23 +0200
-
 sniproxy (0.14.0) unstable; urgency=medium
 
   * Fixes from a deep audit of the whole source tree, plus stricter
