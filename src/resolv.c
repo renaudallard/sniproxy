@@ -1493,6 +1493,33 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     notice("resolver child starting (pid=%d)", getpid());
     debug_log("resolver child: debug logging ENABLED");
 
+    /* The parent starts its libev signal watchers before forking us, so we
+     * inherit its signal disposition: the watched signals are blocked (and
+     * routed to a signalfd we do not own), or on platforms without
+     * signalfd left pointing at a handler that writes to the parent's
+     * event pipe, whose descriptor we have already closed. Restore the
+     * default disposition and unblock everything so the child answers to
+     * signals as an ordinary process. */
+    struct sigaction reset_sa;
+    memset(&reset_sa, 0, sizeof(reset_sa));
+    reset_sa.sa_handler = SIG_DFL;
+    sigemptyset(&reset_sa.sa_mask);
+    sigaction(SIGHUP, &reset_sa, NULL);
+    sigaction(SIGUSR1, &reset_sa, NULL);
+    sigaction(SIGINT, &reset_sa, NULL);
+    sigaction(SIGTERM, &reset_sa, NULL);
+    sigaction(SIGCHLD, &reset_sa, NULL);
+
+    sigset_t empty_mask;
+    sigemptyset(&empty_mask);
+    if (pthread_sigmask(SIG_SETMASK, &empty_mask, NULL) != 0)
+        warn("resolver child: unable to reset signal mask: %s",
+                strerror(errno));
+
+    /* SIGPIPE stays ignored: writes to a dead parent socket are handled
+     * by the send() error paths. */
+    signal(SIGPIPE, SIG_IGN);
+
     /* Install crash handlers to log what went wrong */
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
