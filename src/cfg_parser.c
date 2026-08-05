@@ -37,6 +37,18 @@ static int parse_config_depth(void *, FILE *, const struct Keyword *, const char
 static const struct Keyword *find_keyword(const struct Keyword *, const char *);
 static void cleanup_keyword_context(const struct Keyword *, void *, void *);
 
+/*
+ * A directive that takes an argument but opens no block is meaningless
+ * without one.  Accepting it silently leaves the default in place, so a
+ * value lost while editing the file passes even "sniproxy -t".
+ */
+static inline int
+keyword_missing_argument(const struct Keyword *keyword, int args) {
+    return keyword != NULL && keyword->keyword != NULL &&
+            keyword->parse_arg != NULL && keyword->block_grammar == NULL &&
+            args == 0;
+}
+
 
 int
 parse_config(void *context, FILE *cfg, const struct Keyword *grammar,
@@ -50,6 +62,7 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
     char buffer[256];
     const struct Keyword *keyword = NULL;
     void *sub_context = NULL;
+    int keyword_args = 0;
     int result;
     const char *active_context = (context_name && *context_name) ?
             context_name : "global";
@@ -73,6 +86,7 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                         cleanup_keyword_context(keyword, context, sub_context);
                         return result;
                     }
+                    keyword_args++;
 
                 } else {
                     const struct Keyword *next_keyword =
@@ -86,6 +100,7 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                         }
 
                         keyword = next_keyword;
+                        keyword_args = 0;
                         if (keyword->create) {
                             sub_context = keyword->create();
                             if (sub_context == NULL) {
@@ -104,6 +119,7 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                                 cleanup_keyword_context(keyword, context, sub_context);
                                 return result;
                             }
+                            keyword_args++;
                         }
 
                         break;
@@ -142,6 +158,13 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                 }
                 break;
             case TOKEN_EOL:
+                if (keyword_missing_argument(keyword, keyword_args)) {
+                    err("%s: %s requires an argument", __func__,
+                            keyword->keyword);
+                    cleanup_keyword_context(keyword, context, sub_context);
+                    return -1;
+                }
+
                 if (keyword && sub_context && keyword->finalize) {
                     result = keyword->finalize(context, sub_context);
                     if (result <= 0) {
@@ -160,6 +183,13 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                     cleanup_keyword_context(keyword, context, sub_context);
                     return -1;
                 }
+                if (keyword_missing_argument(keyword, keyword_args)) {
+                    err("%s: %s requires an argument", __func__,
+                            keyword->keyword);
+                    cleanup_keyword_context(keyword, context, sub_context);
+                    return -1;
+                }
+
                 if (keyword && sub_context && keyword->finalize) {
                     result = keyword->finalize(context, sub_context);
                     if (result <= 0) {
