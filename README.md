@@ -293,9 +293,12 @@ per_ip_connection_rate 50
 # Per-IP cap on simultaneous connections (default 0, disabled).
 per_ip_max_connections 100
 
-# Prefix length used to group native IPv6 clients for the two per-IP
-# limits above, so a client cannot rotate addresses within its allocation
-# to evade them. Default 64; set to 128 to key on the exact address.
+# Prefix length used to group native IPv6 clients for every limit keyed on
+# the client address, so a client cannot rotate addresses within its
+# allocation to evade them. This covers the two per-IP limits above plus
+# max_concurrent_queries_per_client and the backend_affinity hash, so
+# clients sharing a prefix also share a DNS query budget and a backend.
+# Default 64; set to 128 to key on the exact address.
 per_ip_ipv6_prefix 64
 
 # Per-side buffer caps. The shared form sets both at once; the per-side

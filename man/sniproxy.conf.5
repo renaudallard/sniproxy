@@ -110,15 +110,20 @@ per_ip_ipv6_prefix 64
 .fi
 .PP
 
-Set the prefix length, in bits, used to group native IPv6 clients for
-both \fBper_ip_connection_rate\fR and \fBper_ip_max_connections\fR. A
-single subscriber is typically routed a whole prefix (a /64 is the
-common allocation), so keying the per-IP limits on the full /128 address
-would let a client rotate through its allocation to evade them. All
-source addresses sharing the configured prefix are treated as one source
-for the per-IP limits. The value must be between 0 and 128; the default
-is 64. Set it to 128 to key on the exact address. This setting does not
-affect IPv4 clients, which are always keyed on the full address.
+Set the prefix length, in bits, used to group native IPv6 clients for the
+per-source limits. A single subscriber is typically routed a whole prefix
+(a /64 is the common allocation), so keying the per-IP limits on the full
+/128 address would let a client rotate through its allocation to evade
+them. All source addresses sharing the configured prefix are treated as
+one source. The value must be between 0 and 128; the default is 64. Set
+it to 128 to key on the exact address. This setting does not affect IPv4
+clients, which are always keyed on the full address.
+
+The grouping applies to every limit keyed on the client address:
+\fBper_ip_connection_rate\fR, \fBper_ip_max_connections\fR,
+\fBmax_concurrent_queries_per_client\fR, and the client hash used by
+\fBbackend_affinity\fR. Clients that share a prefix therefore also share
+one DNS query budget and select the same backend.
 
 .SS CONNECTION_BUFFER_LIMIT
 
