@@ -1,3 +1,66 @@
+2026-08-05  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.14.0
+	Fixes from a deep audit of the whole source tree, plus stricter
+	configuration validation that rejects files earlier releases
+	accepted. Check an existing configuration with "sniproxy -t"
+	before upgrading.
+	- resolver: refuse to start when a dot:// nameserver given as a
+	  hostname cannot be resolved. The entry was skipped instead,
+	  which left c-ares with no configured server, so it fell back to
+	  the cleartext nameservers in resolv.conf and every lookup ran
+	  over plain UDP for the lifetime of the resolver child.
+	- config: warn when dot:// and cleartext nameservers are mixed.
+	  They share one failover pool, so a failed TLS handshake silently
+	  falls back to unauthenticated DNS.
+	- resolver: restart the child from a timer instead of sleeping in
+	  the event loop, and keep retrying after a failed restart. A
+	  crash-looping child froze all proxy traffic one second at a
+	  time, and a restart whose initialisation failed was never
+	  retried, leaving DNS down until the daemon was restarted.
+	- resolver: wait for room on the IPC socket instead of dropping a
+	  result frame, bounded so a socket reported writable that cannot
+	  take the frame does not spin. A dropped result left the client
+	  stuck until its idle timeout, or forever with the timeout off.
+	- resolver: set the child's own signal disposition rather than
+	  inheriting the parent's libev state, which left the child deaf
+	  to SIGTERM, and signal it before waiting on shutdown so a child
+	  still resolving a dot:// hostname cannot hold up exit.
+	- backend: match table patterns case insensitively. Hostnames
+	  reach the table lowercased, so a pattern containing an uppercase
+	  letter could never match and its traffic fell through to the
+	  fallback.
+	- config: compile backend patterns while parsing, so a pattern
+	  that does not compile is a configuration error rather than a
+	  backend silently dropped at startup.
+	- cfg_parser: reject a directive that is missing its argument
+	  instead of silently keeping the default.
+	- config: reject duplicate error_log, access_log and resolver
+	  blocks, which previously replaced the first block silently.
+	- connection: keep the per-IP rate limit buckets when the rate is
+	  unchanged, so a reload no longer hands every throttled client a
+	  full token bucket, and re-count open connections when
+	  per_ip_ipv6_prefix changes so their close cannot decrement
+	  buckets they never incremented.
+	- listener: bind a replacement listener before closing the old
+	  one, so a failure to rebind after a socket type change leaves
+	  the address served.
+	- config: adopt the new error log on reload instead of pinning the
+	  one from startup, and warn about pidfile and tcp_fastopen
+	  changes that a reload cannot apply.
+	- binder: drop the IPC channel after a partial send, which leaves
+	  the stream desynced.
+	- ipc_crypto: set errno on every send failure path so callers can
+	  tell a droppable failure from one needing a teardown.
+	- sniproxy: on OpenBSD unveil the configuration file after parsing
+	  it. Unveiling beforehand hid every other path while the log
+	  files named in the configuration were being opened, so a file
+	  based error_log or access_log made startup fail.
+	- doc: explain that a backslash meant for a table pattern must be
+	  doubled, since the parser consumes one as an escape, and record
+	  that per_ip_ipv6_prefix also groups the per-client DNS query
+	  budget and the backend_affinity hash.
+
 2026-07-02  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.13.5

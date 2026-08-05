@@ -1,3 +1,26 @@
+sniproxy (0.14.0+git.24.gd535305) UNRELEASED; urgency=medium
+
+  * New git revision
+
+ -- Renaud Allard <r@sam.arnor.org>  Wed, 05 Aug 2026 12:36:23 +0200
+
+sniproxy (0.14.0) unstable; urgency=medium
+
+  * Fixes from a deep audit of the whole source tree, plus stricter
+    configuration validation. A dot:// nameserver hostname that cannot
+    be resolved no longer downgrades DNS to the cleartext servers in
+    resolv.conf; the resolver child restarts from a timer instead of
+    sleeping in the event loop and keeps retrying after a failed
+    restart; table patterns match case insensitively; file based
+    error_log and access_log work again on OpenBSD; and several reload
+    paths were corrected. Configurations that earlier releases accepted
+    may now be rejected: a directive missing its argument, a duplicate
+    error_log, access_log or resolver block, and a table pattern that
+    does not compile are all errors now. Check with "sniproxy -t"
+    before upgrading. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 05 Aug 2026 12:00:00 +0200
+
 sniproxy (0.13.5) unstable; urgency=medium
 
   * Fixes and one new option from a deep security audit: new

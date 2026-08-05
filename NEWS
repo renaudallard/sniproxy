@@ -1,3 +1,49 @@
+sniproxy 0.14.0 (2026-08-05)
+===============================
+
+Fixes from a deep audit of the whole source tree, plus stricter
+configuration validation.
+
+Upgrade note: configurations that earlier releases accepted may now be
+rejected. A directive missing its argument, a duplicate error_log,
+access_log or resolver block, and a table pattern that does not compile
+are all configuration errors now, where each was previously ignored or
+silently dropped. Check an existing configuration with "sniproxy -t"
+before upgrading.
+
+Highlights:
+
+* A dot:// nameserver given as a hostname that cannot be resolved no
+  longer downgrades the resolver to the cleartext servers in
+  resolv.conf: it now refuses to start. Mixing dot:// and cleartext
+  nameservers, which allows the same downgrade through c-ares
+  failover, is warned about at configuration time.
+
+* The resolver child is restarted from a timer rather than by sleeping
+  inside the event loop, and a failed restart keeps being retried. A
+  crash-looping child no longer freezes proxy traffic, and a restart
+  that fails no longer leaves DNS down permanently.
+
+* Table patterns are matched case insensitively. Hostnames reach the
+  table lowercased, so any pattern written with an uppercase letter
+  previously could not match and its traffic fell through to the
+  fallback.
+
+* On OpenBSD, a file based error_log or access_log works again. The
+  configuration file was unveiled before it was parsed, which hid the
+  log paths it names and made startup fail.
+
+* Reload fixes: the per-IP rate limit survives an unchanged rate,
+  connection counts are rebuilt when per_ip_ipv6_prefix changes, a
+  replacement listener is bound before the old one is closed, the new
+  error log is adopted, and pidfile or tcp_fastopen changes that a
+  reload cannot apply are reported.
+
+* Note that a backslash meant for a table pattern must be doubled: the
+  configuration parser consumes one as an escape character, so the
+  singly escaped form reaches the regular expression engine with its
+  backslashes stripped.
+
 sniproxy 0.13.5 (2026-07-02)
 ===============================
 
