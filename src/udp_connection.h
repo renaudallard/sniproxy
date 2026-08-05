@@ -33,6 +33,7 @@ struct Listener;
 
 void udp_init_sessions(void);
 void udp_free_sessions(struct ev_loop *);
+void udp_sessions_recount_per_ip(void);
 void udp_recv_cb(struct ev_loop *, struct ev_io *, int);
 void udp_print_sessions(FILE *);
 

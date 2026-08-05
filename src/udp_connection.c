@@ -134,6 +134,16 @@ udp_free_sessions(struct ev_loop *loop) {
     session_count = 0;
 }
 
+/* Re-add every live session to the per-IP connection counts. Used after
+ * the counts have been dropped because their keying changed, so that the
+ * sessions still hold a reference when they are later torn down. */
+void
+udp_sessions_recount_per_ip(void) {
+    for (size_t i = 0; i < UDP_SESSION_BUCKETS; i++)
+        for (struct UDPSession *s = session_table[i]; s != NULL; s = s->next)
+            connections_conn_count_increment(&s->client_addr);
+}
+
 void
 udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Listener *listener = (struct Listener *)w->data;

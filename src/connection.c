@@ -1627,6 +1627,17 @@ connections_set_per_ip_ipv6_prefix(unsigned int prefix) {
         }
         conn_count_table[i] = NULL;
     }
+
+    /* Re-count the connections that are still open. Without this their
+     * eventual close would decrement buckets they never incremented,
+     * letting a client hold more than per_ip_max_connections at once.
+     * Both containers are statically zeroed, so this is also safe when
+     * the startup config sets a prefix before they are initialized. */
+    struct Connection *con;
+    TAILQ_FOREACH(con, &connections, entries)
+        conn_count_increment(&con->peer_addr);
+
+    udp_sessions_recount_per_ip();
 }
 
 void
