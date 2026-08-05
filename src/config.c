@@ -1732,6 +1732,12 @@ static int
 end_error_logger_stanza(struct Config *config, struct LoggerBuilder *lb) {
     struct Logger *logger = NULL;
 
+    if (config->seen_error_log) {
+        err("Duplicate error_log block");
+        return -1;
+    }
+    config->seen_error_log = 1;
+
     if (lb->filename != NULL && lb->syslog_facility == NULL)
         logger = new_file_logger(lb->filename);
     else if (lb->syslog_facility != NULL && lb->filename == NULL)
@@ -1758,6 +1764,12 @@ end_error_logger_stanza(struct Config *config, struct LoggerBuilder *lb) {
 static int
 end_global_access_logger_stanza(struct Config *config, struct LoggerBuilder *lb) {
     struct Logger *logger = NULL;
+
+    if (config->seen_access_log) {
+        err("Duplicate access_log block");
+        return -1;
+    }
+    config->seen_access_log = 1;
 
     if (lb->filename != NULL && lb->syslog_facility == NULL)
         logger = new_file_logger(lb->filename);
@@ -2136,6 +2148,12 @@ accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const ch
 
 static int
 end_resolver_stanza(struct Config *config, struct ResolverConfig *resolver) {
+    if (config->seen_resolver) {
+        err("Duplicate resolver block");
+        return -1;
+    }
+    config->seen_resolver = 1;
+
     /* c-ares treats all configured servers as one failover pool, so a
      * cleartext entry alongside a dot:// one lets a broken TLS handshake
      * fall back to unauthenticated DNS without any further notice. */

@@ -250,6 +250,9 @@ messages should be logged. Accepted priorities are the standard
 syslog priorities, in increasing verbosity: emergency, alert,
 critical, error, warning, notice, info, and debug.
 
+Only one \fBerror_log\fR block may be given; a second one is a
+configuration error.
+
 .SS ACCESS_LOG
 
 .PP
@@ -264,6 +267,10 @@ Specify how connections should be logged, and this may be overridden in
 a specific listener. Connections are logged after both the client and
 server sockets have been closed. The syslog and priority directive may
 be used here as in error_log.
+
+Only one global \fBaccess_log\fR block may be given; a second one is a
+configuration error. This does not affect the per-listener
+\fBaccess_log\fR, which overrides the global one.
 
 .SS RESOLVER
 
@@ -304,6 +311,9 @@ nameserver alongside a \fBdot://\fR one therefore allows queries to fall back
 to unauthenticated DNS if the TLS handshake fails; a warning is logged for
 such a configuration. List only \fBdot://\fR entries to require
 DNS-over-TLS.
+
+Only one \fBresolver\fR block may be given; a second one is a
+configuration error.
 
 Four modes are supported:
 

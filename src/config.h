@@ -71,6 +71,11 @@ struct Config {
     struct ListenerACLRule_head backend_acl_rules;
     struct Listener_head listeners;
     struct Table_head tables;
+    /* Set once the corresponding stanza has been parsed, so that a second
+     * one is rejected instead of silently replacing the first. */
+    int seen_error_log;
+    int seen_access_log;
+    int seen_resolver;
 };
 
 struct Config *init_config(const char *, struct ev_loop *, int);
