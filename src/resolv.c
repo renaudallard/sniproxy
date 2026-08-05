@@ -1333,8 +1333,10 @@ resolver_restart_timer_cb(struct ev_loop *loop, struct ev_timer *w,
     ev_timer_stop(loop, w);
     resolver_restart_timer_active = 0;
 
-    if (resolver_restart() < 0)
-        err("scheduled resolver restart failed");
+    /* resolver_restart() reports the reason and schedules the next attempt
+     * itself, so a failure here needs no further logging: this fires once
+     * a second while the child stays unstartable. */
+    (void)resolver_restart();
 }
 
 static void
