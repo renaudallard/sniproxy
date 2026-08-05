@@ -372,9 +372,11 @@ main(int argc, char **argv) {
             config_file = config_path_buf;
     }
 
-#ifdef __OpenBSD__
-    openbsd_unveil_path(config_file, "r", 0);
-#endif
+    /* The config file is unveiled together with every other resource once
+     * it has been parsed.  Unveiling it here instead would start
+     * restricting the process before init_config() opens the log files it
+     * names, and those paths are only known after parsing, so opening them
+     * would fail with ENOENT. */
 
     /* Config file permissions are checked in init_config() using fstat() */
 
@@ -434,6 +436,9 @@ main(int argc, char **argv) {
         };
         struct Listener *listener;
         struct Table *table;
+
+        /* Readable so that a SIGHUP reload can parse it again. */
+        openbsd_unveil_path(config_file, "r", 0);
 
         if (config->pidfile != NULL)
             openbsd_unveil_path(config->pidfile, "rwc", 1);
