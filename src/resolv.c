@@ -269,8 +269,9 @@ static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
  * never blocks the proxy and never leaves the resolver permanently down. */
 #define RESOLVER_RESTART_RETRY_DELAY 1.0
 /* How long the child waits for room on the IPC socket before giving up on
- * a result frame. */
+ * a result frame, and how many times it retries the wait. */
 #define RESOLVER_CHILD_SEND_TIMEOUT_MS 1000
+#define RESOLVER_CHILD_SEND_ATTEMPTS 5
 static struct ev_timer resolver_restart_timer;
 static int resolver_restart_timer_active = 0;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
@@ -2008,6 +2009,10 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
     }
 
     ssize_t written;
+    /* A socket reported writable still rejects a datagram larger than the
+     * space actually available, so bound the retries rather than trusting
+     * poll() to make progress. */
+    int send_attempts = RESOLVER_CHILD_SEND_ATTEMPTS;
     for (;;) {
         written = send(child_sock, frame, frame_len, 0);
         if (written >= 0)
@@ -2016,6 +2021,10 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
             continue;
         if (errno != EAGAIN && errno != EWOULDBLOCK)
             break;
+        if (--send_attempts <= 0) {
+            errno = EAGAIN;
+            break;
+        }
 
         /* The parent has not drained the socket yet. Waiting for room is
          * better than dropping the frame: the query is already off the
