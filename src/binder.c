@@ -141,6 +141,16 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
 
     if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
             buffer, sizeof(*req) + addr_len, -1) < 0) {
+        /* A partial frame desyncs the stream. Drop the channel so the next
+         * bind request respawns the child rather than talking to a child
+         * that is still waiting for the rest of this frame. Restarting here
+         * would recurse, since the restart re-sends the allowlist. */
+        if (errno == EPROTO) {
+            err("binder registration send desynced the channel; "
+                    "dropping it");
+            close(binder_sock);
+            binder_sock = -1;
+        }
         return -1;
     }
 
@@ -355,7 +365,9 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
 
         if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
                 buffer, request_len, -1) < 0) {
-            if ((errno == EPIPE || errno == ECONNRESET) &&
+            /* EPROTO means a partial frame reached the child, leaving the
+             * stream desynced; only a fresh channel recovers from that. */
+            if ((errno == EPIPE || errno == ECONNRESET || errno == EPROTO) &&
                     binder_restart_child() == 0)
                 continue;
             err("binder request send failed: %s", strerror(errno));
