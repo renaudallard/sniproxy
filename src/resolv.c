@@ -48,6 +48,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <poll.h>
 #include <sys/uio.h>
 #include <ares.h>
 #include <ares_dns.h>
@@ -267,6 +268,9 @@ static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
  * retry runs from the event loop so a crash-looping or unstartable child
  * never blocks the proxy and never leaves the resolver permanently down. */
 #define RESOLVER_RESTART_RETRY_DELAY 1.0
+/* How long the child waits for room on the IPC socket before giving up on
+ * a result frame. */
+#define RESOLVER_CHILD_SEND_TIMEOUT_MS 1000
 static struct ev_timer resolver_restart_timer;
 static int resolver_restart_timer_active = 0;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
@@ -1973,9 +1977,26 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
     }
 
     ssize_t written;
-    do {
+    for (;;) {
         written = send(child_sock, frame, frame_len, 0);
-    } while (written < 0 && errno == EINTR);
+        if (written >= 0)
+            break;
+        if (errno == EINTR)
+            continue;
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+            break;
+
+        /* The parent has not drained the socket yet. Waiting for room is
+         * better than dropping the frame: the query is already off the
+         * child's list, so a dropped result leaves the client hanging
+         * until its idle timeout expires. */
+        struct pollfd pfd;
+        pfd.fd = child_sock;
+        pfd.events = POLLOUT;
+        pfd.revents = 0;
+        if (poll(&pfd, 1, RESOLVER_CHILD_SEND_TIMEOUT_MS) <= 0)
+            break;
+    }
 
     if (written == (ssize_t)frame_len) {
         free(frame);
