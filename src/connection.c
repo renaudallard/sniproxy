@@ -1595,6 +1595,12 @@ connections_set_per_ip_connection_rate(double rate) {
     if (rate < 0.0)
         rate = 0.0;
 
+    /* Reloads call this on every SIGHUP. Dropping the buckets when the
+     * rate has not changed would hand every throttled client a full
+     * token bucket, so only reset when the limit actually changes. */
+    if (rate == per_ip_connection_rate_limit)
+        return;
+
     per_ip_connection_rate_limit = rate;
     rate_limit_reset();
 }
