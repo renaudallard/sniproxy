@@ -512,6 +512,14 @@ metacharacter are compiled as-is, giving full PCRE2 regex control.
 
 Patterns are matched case insensitively, since hostnames are.
 
+The configuration parser consumes a single backslash as an escape
+character, so a backslash intended for the regex must be doubled. Write
+\fB.*\e\e.example\e\e.com$\fR to match a literal dot: the singly escaped
+\fB.*\e.example\e.com$\fR reaches PCRE2 as \fB.*.example.com$\fR, where
+every dot matches any character and the pattern therefore also matches
+hostnames such as "aexample-com.example.org". Literal hostnames need no
+backslashes at all, since their dots are escaped automatically.
+
 The optional proxy_protocol option will prepend a HAProxy PROXY v1 (text)
 protocol header to the proxied connection, allowing supporting
 webservers to obtain the source and destination IP and port of the
