@@ -1502,18 +1502,24 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
      * inherit its signal disposition: the watched signals are blocked (and
      * routed to a signalfd we do not own), or on platforms without
      * signalfd left pointing at a handler that writes to the parent's
-     * event pipe, whose descriptor we have already closed. Restore the
-     * default disposition and unblock everything so the child answers to
-     * signals as an ordinary process. */
-    struct sigaction reset_sa;
-    memset(&reset_sa, 0, sizeof(reset_sa));
-    reset_sa.sa_handler = SIG_DFL;
-    sigemptyset(&reset_sa.sa_mask);
-    sigaction(SIGHUP, &reset_sa, NULL);
-    sigaction(SIGUSR1, &reset_sa, NULL);
-    sigaction(SIGINT, &reset_sa, NULL);
-    sigaction(SIGTERM, &reset_sa, NULL);
-    sigaction(SIGCHLD, &reset_sa, NULL);
+     * event pipe, whose descriptor we have already closed. Neither is
+     * usable here, so set our own disposition. */
+    struct sigaction child_sa;
+    memset(&child_sa, 0, sizeof(child_sa));
+    sigemptyset(&child_sa.sa_mask);
+
+    /* Reload and the connection dump are the parent's business. Ignore
+     * them rather than dying, so that signalling the whole process group,
+     * as "pkill -HUP sniproxy" does, does not cost a resolver restart. */
+    child_sa.sa_handler = SIG_IGN;
+    sigaction(SIGHUP, &child_sa, NULL);
+    sigaction(SIGUSR1, &child_sa, NULL);
+
+    /* Termination must work, and the parent signals us on shutdown. */
+    child_sa.sa_handler = SIG_DFL;
+    sigaction(SIGINT, &child_sa, NULL);
+    sigaction(SIGTERM, &child_sa, NULL);
+    sigaction(SIGCHLD, &child_sa, NULL);
 
     sigset_t empty_mask;
     sigemptyset(&empty_mask);
