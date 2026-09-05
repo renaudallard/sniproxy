@@ -93,7 +93,7 @@ new_address(const char *hostname_or_ip) {
     int has_port = 0;
 
     for (;;) {
-        char *port;
+        const char *port;
         size_t len;
 
         /* IPv6 address */
@@ -629,7 +629,7 @@ valid_hostname(const char *hostname) {
     const char *hostname_end = hostname + hostname_len;
     for (const char *label = hostname; label < hostname_end;) {
         size_t label_len = (size_t)(hostname_end - label);
-        char *next_dot = strchr(label, '.');
+        const char *next_dot = strchr(label, '.');
         if (next_dot != NULL)
             label_len = (size_t)(next_dot - label);
         if (label + label_len > hostname_end)
