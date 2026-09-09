@@ -1,3 +1,23 @@
+sniproxy 0.14.2 (2026-09-09)
+===============================
+
+Follow-up fixes from the regression pass over 0.14.1.
+
+* The SIGUSR1 connection dump works on OpenBSD; it failed with
+  "mkstemp failed: Invalid argument" because of a flag OpenBSD does not
+  accept for mkostemp().
+
+* Unix socket listeners and backends no longer log a TCP_NODELAY warning
+  for every connection.
+
+* A daemon started with stdout or stderr closed now points them at
+  /dev/null itself, so nothing can end up written to the descriptors
+  that would otherwise have taken their place.
+
+* Two valgrind reports were silenced: the padding of the control buffer
+  used to pass log file descriptors is zeroed, and the buffer used while
+  splitting a port off an address is initialised.
+
 sniproxy 0.14.1 (2026-09-09)
 ===============================
 

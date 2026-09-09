@@ -1,3 +1,14 @@
+sniproxy (0.14.2) unstable; urgency=medium
+
+  * Follow-up fixes from the regression pass over 0.14.1: the SIGUSR1
+    connection dump works on OpenBSD again, unix socket listeners and
+    backends no longer log a TCP_NODELAY warning per connection, closed
+    standard descriptors are pointed at /dev/null at startup, and two
+    valgrind reports about uninitialised memory were addressed. See
+    ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 09 Sep 2026 15:00:00 +0200
+
 sniproxy (0.14.1) unstable; urgency=medium
 
   * Fixes from another audit of the whole source tree. On OpenBSD,

@@ -1,5 +1,26 @@
 2026-09-09  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.14.2
+	Follow-up fixes from the regression pass over 0.14.1.
+	- sniproxy: open the standard descriptors at startup. A daemon
+	  started with stdout or stderr closed let the event loop's
+	  descriptors take their place, and the helper children, which
+	  keep fd 1 and 2 since 0.14.1, inherited them.
+	- connection: the SIGUSR1 connection dump never worked on OpenBSD.
+	  mkostemp() was given O_NOFOLLOW, which OpenBSD rejects with
+	  EINVAL; the flag added nothing since the file is created with
+	  O_EXCL.
+	- connection: TCP_NODELAY and TCP_FASTOPEN_CONNECT are only set on
+	  TCP sockets. On a unix listener or a unix backend the failing
+	  call logged a warning for every connection.
+	- ipc_crypto: zero the control buffer used to pass a descriptor
+	  over the logger channel; its padding was sent uninitialised.
+	- address: initialise the buffer used while splitting off a port.
+	  The compiler may compare more bytes than the string holds, which
+	  valgrind reported as a use of uninitialised memory.
+
+2026-09-09  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.14.1
 	Fixes from another audit of the whole source tree. Two of them
 	only affect OpenBSD, where they were severe.
