@@ -122,8 +122,8 @@ new_address(const char *hostname_or_ip) {
                     has_port, parsed_port);
         }
 
-        /* Trailing port */
-        if ((port = strrchr(input, ':')) != NULL &&
+        /* Trailing port, at most one */
+        if (!has_port && (port = strrchr(input, ':')) != NULL &&
                 is_numeric(port + 1)) {
             len = (size_t)(port - input);
             errno = 0;
@@ -158,10 +158,11 @@ new_address(const char *hostname_or_ip) {
                     has_port, parsed_port);
         }
 
-        /* [IPv6 address] */
+        /* [IPv6 address], nothing may follow the closing bracket once the
+         * port has been split off */
         memset(&s, 0, sizeof(s));
         if (input[0] == '[' &&
-                (port = strchr(input, ']')) != NULL) {
+                (port = strchr(input, ']')) != NULL && port[1] == '\0') {
             len = (size_t)(port - input - 1);
             if (len >= sizeof(ip_buf))
                 return NULL;

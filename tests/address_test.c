@@ -78,7 +78,13 @@ static const char *bad[] = {
     "example.com:999999999999999999999999",
     "example.com:+443",
     "example.com:-1",
-    "example.com: 80"
+    "example.com: 80",
+    /* only one trailing port, and nothing after a closing bracket */
+    "192.0.2.10:80:81",
+    "example.com:443:8080",
+    "[::1]:80:81",
+    "[::1]junk",
+    "[::1]:80x"
 };
 
 int compare_address_strings(const char *a, const char *b) {
