@@ -298,6 +298,21 @@ main(int argc, char **argv) {
     uint8_t min_tls_minor = 3;
     struct ev_loop *loop = NULL;
 
+    /* Make sure the standard descriptors are open. Otherwise the first
+     * descriptor this process creates takes the place of stdin, stdout or
+     * stderr, and later output, from this process or from the helper
+     * children that keep fd 1 and 2, would land on that descriptor. */
+    for (int fd = 0; fd <= 2; fd++) {
+        if (fcntl(fd, F_GETFD) != -1)
+            continue;
+
+        int devnull = open("/dev/null", fd == 0 ? O_RDONLY : O_WRONLY);
+        if (devnull >= 0 && devnull != fd) {
+            (void)dup2(devnull, fd);
+            close(devnull);
+        }
+    }
+
     logger_prepare_process_title(argc, argv);
 
     if (ipc_crypto_system_init() < 0) {
