@@ -886,6 +886,9 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
 
     char control_buf[CMSG_SPACE(sizeof(int))];
     if (fd_to_send >= 0) {
+        /* CMSG_SPACE includes padding after the descriptor that the
+         * macros never write; hand the kernel a fully defined buffer. */
+        memset(control_buf, 0, sizeof(control_buf));
         msg.msg_control = control_buf;
         msg.msg_controllen = sizeof(control_buf);
         struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
