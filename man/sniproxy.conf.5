@@ -441,8 +441,9 @@ the initial client request. If no table directive is specified the
 default, unnamed, table will be used.
 
 The fallback directive specifies a server to be used if the client
-request cannot be parsed, a server cannot be found in the table for the
-hostname, or the hostname cannot be resolved. This should be an IP
+request cannot be parsed or no table entry matches the hostname. It is
+not used when the address of a matching table entry fails to resolve;
+that connection is closed instead. This should be an IP
 address and port or a unix socket path. When using TLS listeners the
 fallback still terminates the client TLS handshake and forwards the
 traffic unmodified to the configured destination. Issuing a second
