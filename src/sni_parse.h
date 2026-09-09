@@ -238,7 +238,11 @@ sni_parse_supported_versions_extension(const uint8_t *data, size_t data_len,
 
     for (size_t i = 0; i < list_len; i += 2) {
         uint16_t version = ((uint16_t)data[i] << 8) | data[i + 1];
-        if (version >= required) {
+        /* Only real TLS versions count: GREASE values such as 0x0a0a and
+         * other unknown codes compare higher than any TLS version and
+         * would otherwise satisfy a TLS 1.3 minimum for a client that
+         * only speaks 1.2. */
+        if ((version >> 8) == required_major && version >= required) {
             *version_ok = 1;
             break;
         }
