@@ -163,7 +163,12 @@ static int splice_progressed(struct Connection *);
 static void splice_account(struct Connection *, ev_tstamp);
 #endif
 
-#define RATE_LIMIT_TABLE_SIZE 1024
+/* A bucket lives for RATE_LIMIT_IDLE_TTL after its last connection and a
+ * chain longer than RATE_LIMIT_MAX_CHAIN_LENGTH refuses the connection, so
+ * the table has to keep chains short for as many distinct clients as a
+ * busy instance sees in that window: 1024 buckets started refusing
+ * legitimate clients at a few tens of thousands of sources. */
+#define RATE_LIMIT_TABLE_SIZE 65536
 #define RATE_LIMIT_IDLE_TTL 300.0
 #define RATE_LIMIT_CLEANUP_INTERVAL 60.0
 #define RATE_LIMIT_MAX_CHAIN_LENGTH 32
@@ -198,7 +203,8 @@ static struct ListenerACLRule_head backend_acl_rules =
     SLIST_HEAD_INITIALIZER(backend_acl_rules);
 static int tcp_fastopen_enabled;
 
-#define CONN_COUNT_TABLE_SIZE 1024
+/* Sized like the rate limiter table: a full chain refuses connections. */
+#define CONN_COUNT_TABLE_SIZE 65536
 #define CONN_COUNT_MAX_CHAIN_LENGTH 32
 
 struct ConnCountBucket {
