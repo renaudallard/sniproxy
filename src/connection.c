@@ -714,12 +714,13 @@ print_connections(void) {
 
         mode_t old_umask = umask(077);
 #ifdef HAVE_MKOSTEMP
+        /* O_CREAT | O_EXCL, which mkostemp() uses, already refuses to
+         * follow a symlink at the chosen name. O_NOFOLLOW would add
+         * nothing and OpenBSD rejects it, and any flag other than
+         * O_APPEND, O_CLOEXEC, O_CLOFORK and O_SYNC, with EINVAL. */
         int mkostemp_flags = 0;
 #ifdef O_CLOEXEC
         mkostemp_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-        mkostemp_flags |= O_NOFOLLOW;
 #endif
         fd = mkostemp(filename, mkostemp_flags);
 #ifdef O_CLOEXEC
