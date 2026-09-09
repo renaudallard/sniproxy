@@ -87,7 +87,12 @@ new_address(const char *hostname_or_ip) {
         struct sockaddr_un un;
         struct sockaddr_storage s;
     } s;
-    char ip_buf[ADDRESS_BUFFER_SIZE];
+    /* Once a port has been split off, input points into this buffer and
+     * only the copied bytes have been written. The compiler knows how
+     * large the buffer is and may compare more bytes at a time than the
+     * string holds, which valgrind then reports as a use of uninitialised
+     * memory, so start from a defined buffer. */
+    char ip_buf[ADDRESS_BUFFER_SIZE] = "";
     const char *input = hostname_or_ip;
     uint16_t parsed_port = 0;
     int has_port = 0;
