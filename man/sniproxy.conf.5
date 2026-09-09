@@ -443,8 +443,9 @@ default, unnamed, table will be used.
 The fallback directive specifies a server to be used if the client
 request cannot be parsed or no table entry matches the hostname. It is
 not used when the address of a matching table entry fails to resolve;
-that connection is closed instead. This should be an IP
-address and port or a unix socket path. When using TLS listeners the
+that connection is closed instead, as is a ClientHello refused by the
+TLS version policy or one that attempts a renegotiation. This should be
+an IP address and port or a unix socket path. When using TLS listeners the
 fallback still terminates the client TLS handshake and forwards the
 traffic unmodified to the configured destination. Issuing a second
 \fBfallback\fR directive with the literal argument \fBproxy_protocol\fR after the

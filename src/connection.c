@@ -2783,12 +2783,15 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
                         client, sizeof(client)),
                     buffer_size(con->client.buffer));
         } else if (result == TLS_ERR_CLIENT_RENEGOTIATION) {
+            /* A renegotiation hello cannot open a connection, so the
+             * fallback would only receive a handshake it cannot finish. */
             warn("Client from %s attempted TLS renegotiation, rejecting",
                     display_sockaddr(&con->client.addr,
                         con->client.addr_len,
                         client, sizeof(client)));
+            fatal_parse_error = 1;
         } else if (result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO) {
-            warn("Client from %s sent a ClientHello version that cannot carry SNI, rejecting",
+            warn("Client from %s sent a ClientHello version that is not accepted (SSL 2.0, SSL 3.0 or below the -T minimum), rejecting",
                     display_sockaddr(&con->client.addr,
                         con->client.addr_len,
                         client, sizeof(client)));
