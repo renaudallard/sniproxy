@@ -37,6 +37,7 @@
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -59,6 +60,7 @@
 #define LISTENER_ACCEPT_YIELD_BATCH 16
 
 static void close_listener(struct ev_loop *, struct Listener *);
+static int bind_listener(int, const struct Listener *);
 static int unix_listener_path(const struct Listener *, char *, size_t);
 static int unix_listener_is_stale(const struct Listener *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
@@ -868,8 +870,7 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         }
     }
 
-    result = bind(sockfd, address_sa(listener->address),
-            address_sa_len(listener->address));
+    result = bind_listener(sockfd, listener);
     if (result < 0 && errno == EADDRINUSE &&
             address_sa(listener->address)->sa_family == AF_UNIX) {
         /* A unix socket file survives its listener, so a file left
@@ -881,8 +882,7 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
                 unix_listener_path(listener, path, sizeof(path)) &&
                 unlink(path) == 0) {
             notice("removed stale unix socket %s", path);
-            result = bind(sockfd, address_sa(listener->address),
-                    address_sa_len(listener->address));
+            result = bind_listener(sockfd, listener);
         } else {
             errno = bind_errno;
         }
@@ -1156,6 +1156,30 @@ print_listener_config(FILE *file, const struct Listener *listener) {
     }
 
     fprintf(file, "}\n\n");
+}
+
+/*
+ * bind() creates the node of an AF_UNIX listener with the process umask,
+ * 077 once the daemon has detached, which lets only its own user connect.
+ * A listener is meant to be reachable, so create the node with mode 0666
+ * whatever the umask; the permissions of the directory holding it decide
+ * who can get there.
+ */
+static int
+bind_listener(int sockfd, const struct Listener *listener) {
+    const struct sockaddr *sa = address_sa(listener->address);
+    socklen_t sa_len = address_sa_len(listener->address);
+
+    if (sa->sa_family != AF_UNIX)
+        return bind(sockfd, sa, sa_len);
+
+    mode_t old_umask = umask(0111);
+    int result = bind(sockfd, sa, sa_len);
+    int saved_errno = errno;
+    umask(old_umask);
+    errno = saved_errno;
+
+    return result;
 }
 
 /* Copy the filesystem path of an AF_UNIX listener address into buf.

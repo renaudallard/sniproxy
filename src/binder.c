@@ -38,6 +38,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
@@ -690,9 +691,15 @@ binder_main(int sockfd) {
 #endif
         }
 
-        if (bind(fd, req->address, req->address_len) < 0) {
+        /* Like the main process, create a unix socket node that anyone
+         * may connect to, whatever umask the daemon runs with. */
+        mode_t old_umask = umask(0111);
+        int bound = bind(fd, req->address, req->address_len);
+        int bind_errno = errno;
+        umask(old_umask);
+        if (bound < 0) {
             char errbuf[128];
-            snprintf(errbuf, sizeof(errbuf), "bind(): %s", strerror(errno));
+            snprintf(errbuf, sizeof(errbuf), "bind(): %s", strerror(bind_errno));
             close(fd);
             ipc_crypto_send_msg(&binder_crypto_child, sockfd,
                     errbuf, strlen(errbuf), -1);
