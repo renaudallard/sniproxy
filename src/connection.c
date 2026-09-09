@@ -160,6 +160,7 @@ static ev_tstamp connection_last_activity(const struct Connection *);
 static int try_splice(struct Connection *, struct ev_loop *);
 static void splice_cb(struct ev_loop *, struct ev_io *, int);
 static int splice_progressed(struct Connection *);
+static void splice_account(struct Connection *, ev_tstamp);
 #endif
 
 #define RATE_LIMIT_TABLE_SIZE 1024
@@ -2108,6 +2109,9 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
 
 #ifdef SO_SPLICE
     if (con->spliced) {
+        /* Nothing moved during the last idle period, so the connection
+         * went quiet about one period ago. */
+        splice_account(con, ev_now(loop) - connection_idle_timeout);
         setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
         setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
     }
@@ -3624,12 +3628,30 @@ splice_progressed(struct Connection *con) {
 }
 
 /*
+ * Fold the bytes the kernel moved while spliced into the buffer counters
+ * the access log reports, and record when the connection was last active.
+ */
+static void
+splice_account(struct Connection *con, ev_tstamp last_activity) {
+    (void)splice_progressed(con);
+
+    con->client.buffer->rx_bytes += (size_t)con->splice_client_bytes;
+    con->client.buffer->tx_bytes += (size_t)con->splice_client_bytes;
+    con->server.buffer->rx_bytes += (size_t)con->splice_server_bytes;
+    con->server.buffer->tx_bytes += (size_t)con->splice_server_bytes;
+    con->client.buffer->last_recv = last_activity;
+    con->server.buffer->last_recv = last_activity;
+}
+
+/*
  * Callback for spliced connections.  Fires when splice terminates
  * (peer close, error, or idle timeout).
  */
 static void
 splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unused))) {
     struct Connection *con = (struct Connection *)w->data;
+
+    splice_account(con, ev_now(loop));
 
     /* Unsplice both directions. EPROTO is expected: the kernel already
      * tore down the splice (which is why this callback fired). */
