@@ -1,3 +1,41 @@
+sniproxy 0.14.1 (2026-09-09)
+===============================
+
+Fixes from another audit of the whole source tree. Two of them only
+affect OpenBSD, where they were severe.
+
+Upgrade note: a listener or backend address with more than one trailing
+port, such as 1.2.3.4:80:90, is now a configuration error; earlier
+releases silently used the first port. Unix socket listeners are created
+with mode 0666 rather than with the daemon's umask, so restrict access
+through the directory if needed. The resolver and binder processes send
+their own messages to syslog when error_log is a file.
+
+Highlights:
+
+* On OpenBSD, starting as root with a file based error_log or
+  access_log works again. The privilege drop chowns the log files to the
+  target user, which the pledge sets in force at that point did not
+  allow, so startup died with a pledge violation.
+
+* On OpenBSD, connections spliced in the kernel are no longer closed
+  after 60 seconds of silence in one direction while data still flows
+  in the other; any download longer than the idle timeout used to die.
+  The access log also reports the bytes moved by the kernel instead of
+  only those relayed before the splice was set up.
+
+* Diagnostics from the resolver and binder processes, such as
+  DNS-over-TLS handshake failures, reach syslog when the error log is a
+  file. They were written to a closed descriptor before.
+
+* The per-IP rate limiter and connection counter tables are 64 times
+  larger, so a busy instance no longer refuses legitimate clients once
+  it has seen a few tens of thousands of distinct sources within five
+  minutes.
+
+* A TLS 1.3 minimum set with -T is only satisfied by real TLS versions
+  in supported_versions, not by GREASE or other unknown values.
+
 sniproxy 0.14.0 (2026-08-05)
 ===============================
 

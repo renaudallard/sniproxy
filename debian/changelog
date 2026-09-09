@@ -1,3 +1,19 @@
+sniproxy (0.14.1) unstable; urgency=medium
+
+  * Fixes from another audit of the whole source tree. On OpenBSD,
+    starting as root with a file based error_log or access_log no longer
+    aborts on a pledge violation, spliced connections are no longer cut
+    after 60 seconds of silence in one direction, and the access log
+    reports the bytes the kernel moved. Resolver and binder diagnostics
+    reach syslog when the error log is a file; the per-IP hash tables
+    are large enough for busy instances; a TLS 1.3 minimum is only met
+    by real TLS versions; renegotiation hellos are rejected outright;
+    unix socket nodes are created with mode 0666; and an address with
+    more than one trailing port is rejected instead of silently using
+    the first. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 09 Sep 2026 14:00:00 +0200
+
 sniproxy (0.14.0) unstable; urgency=medium
 
   * Fixes from a deep audit of the whole source tree, plus stricter

@@ -1,3 +1,48 @@
+2026-09-09  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.14.1
+	Fixes from another audit of the whole source tree. Two of them
+	only affect OpenBSD, where they were severe.
+	- sniproxy: starting as root with a file based error_log or
+	  access_log aborted on OpenBSD with a pledge violation. The
+	  privilege drop chowns the log files to the target user and none
+	  of the pledge sets in force at that point allowed chown.
+	- connection: on OpenBSD a spliced connection was closed after 60
+	  seconds of silence in one direction while data still flowed in
+	  the other, so any download longer than the idle timeout died.
+	  The kernel idle timeout is no longer used; the connection idle
+	  timer polls the splice byte counters of both directions instead.
+	- connection: the access log counted only the bytes relayed before
+	  a splice was set up. The kernel byte counters are added when the
+	  splice ends.
+	- logger: the resolver and binder children wrote their own
+	  messages to a descriptor number the parent had used for the log
+	  file and the child had closed, so with a file error_log the
+	  resolver's DNS-over-TLS failures and its -d output were lost.
+	  Helper processes log through syslog when the error log is a file
+	  and keep the parent's stderr otherwise.
+	- connection: the per-IP rate limiter and connection counter hash
+	  tables grow from 1024 to 65536 buckets. A chain longer than 32
+	  entries refuses connections, and with buckets kept for five
+	  minutes a busy instance started refusing legitimate clients at a
+	  few tens of thousands of distinct sources.
+	- tls: a TLS 1.3 minimum set with -T was satisfied by any
+	  supported_versions value of 0x0304 or higher, including the
+	  GREASE values sent by clients that only speak 1.2. Only real TLS
+	  versions count now.
+	- connection: a ClientHello attempting a renegotiation is rejected
+	  even when a fallback is configured, as the log already claimed,
+	  and the message for hellos refused by the version policy no
+	  longer says they cannot carry SNI.
+	- listener, binder: unix socket nodes are created with mode 0666
+	  regardless of the umask. In the background the daemon's umask of
+	  077 produced a node only its own user could connect to.
+	- address: only one trailing port is accepted, and a bracketed
+	  IPv6 address must end at its bracket, so 1.2.3.4:80:90 is a
+	  configuration error instead of silently meaning 1.2.3.4:80.
+	- doc: the fallback is not used when the address of a matching
+	  table entry cannot be resolved; the manual claimed it was.
+
 2026-08-05  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.14.0
