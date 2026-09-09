@@ -28,6 +28,7 @@
 #define CONNECTION_H
 
 #include <stddef.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
 #include <ev.h>
@@ -78,6 +79,10 @@ struct Connection {
     enum proxy_protocol_mode use_proxy_header;
 #ifdef SO_SPLICE
     int spliced;
+    /* Bytes the kernel had moved out of each socket at the last idle
+     * check; the buffer timestamps do not advance while spliced. */
+    off_t splice_client_bytes;
+    off_t splice_server_bytes;
 #endif
 
     TAILQ_ENTRY(Connection) entries;

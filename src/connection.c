@@ -159,6 +159,7 @@ static ev_tstamp connection_last_activity(const struct Connection *);
 #ifdef SO_SPLICE
 static int try_splice(struct Connection *, struct ev_loop *);
 static void splice_cb(struct ev_loop *, struct ev_io *, int);
+static int splice_progressed(struct Connection *);
 #endif
 
 #define RATE_LIMIT_TABLE_SIZE 1024
@@ -2090,6 +2091,17 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
     struct Connection *con = w->data;
     char client[INET6_ADDRSTRLEN + 8];
 
+#ifdef SO_SPLICE
+    /* The kernel moves the data while spliced, so the buffer timestamps
+     * never reset this timer; the byte counters tell whether either
+     * direction was active since the previous check. */
+    if (con->spliced && splice_progressed(con)) {
+        ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
+        ev_timer_start(loop, &con->idle_timer);
+        return;
+    }
+#endif
+
     warn("Closing idle connection from %s after %.0f seconds without activity",
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
             connection_idle_timeout);
@@ -3530,23 +3542,20 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     int client_fd = con->client.watcher.fd;
     int server_fd = con->server.watcher.fd;
 
-    /* Set up splice with idle timeout matching the connection timeout */
+    /* No kernel idle timeout: it is kept per direction, so a client that
+     * stays silent while it receives a long response would be cut off
+     * after connection_idle_timeout with data still flowing the other
+     * way. Idle detection stays with the connection's own timer, which
+     * polls the splice byte counters instead. */
     struct splice sp;
     memset(&sp, 0, sizeof(sp));
-    sp.sp_max = 0;  /* unlimited */
 
-    if (connection_idle_timeout > 0.0) {
-        sp.sp_idle.tv_sec = (time_t)connection_idle_timeout;
-        sp.sp_idle.tv_usec = (suseconds_t)
-            ((connection_idle_timeout - (double)sp.sp_idle.tv_sec) * 1e6);
-    }
-
-    /* Splice client → server */
+    /* Splice client -> server */
     sp.sp_fd = server_fd;
     if (setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, &sp, sizeof(sp)) < 0)
         return 0;
 
-    /* Splice server → client */
+    /* Splice server -> client */
     sp.sp_fd = client_fd;
     if (setsockopt(server_fd, SOL_SOCKET, SO_SPLICE, &sp, sizeof(sp)) < 0) {
         /* Undo first splice */
@@ -3556,9 +3565,11 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     }
 
     con->spliced = 1;
+    con->splice_client_bytes = 0;
+    con->splice_server_bytes = 0;
 
     /* Both buffers are empty (checked before calling try_splice) and will
-     * never be used again — the kernel handles all forwarding.  Shrink them
+     * never be used again, the kernel handles all forwarding. Shrink them
      * to reclaim memory; only the Buffer struct metadata (timestamps, byte
      * counters) is kept for log_connection(). */
     buffer_resize(con->client.buffer, 4096);
@@ -3579,12 +3590,37 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     con->server.watcher.data = con;
     ev_io_start(loop, &con->server.watcher);
 
-    /* The kernel splice has its own idle timeout (sp.sp_idle) that resets
-     * on data flow.  Stop the libev idle timer: it is not activity-aware
-     * and would kill active connections after a fixed delay. */
-    stop_idle_timer(con, loop);
+    /* Keep the idle timer running; connection_idle_cb() checks the
+     * splice counters before it declares the connection idle. */
+    reset_idle_timer(con, loop);
 
     return 1;
+}
+
+/*
+ * Read how many bytes the kernel has moved out of each spliced socket and
+ * report whether either direction carried data since the previous call.
+ */
+static int
+splice_progressed(struct Connection *con) {
+    off_t client_bytes = con->splice_client_bytes;
+    off_t server_bytes = con->splice_server_bytes;
+    socklen_t len;
+
+    len = sizeof(client_bytes);
+    (void)getsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE,
+            &client_bytes, &len);
+    len = sizeof(server_bytes);
+    (void)getsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE,
+            &server_bytes, &len);
+
+    int progressed = client_bytes != con->splice_client_bytes ||
+            server_bytes != con->splice_server_bytes;
+
+    con->splice_client_bytes = client_bytes;
+    con->splice_server_bytes = server_bytes;
+
+    return progressed;
 }
 
 /*
@@ -3595,7 +3631,7 @@ static void
 splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unused))) {
     struct Connection *con = (struct Connection *)w->data;
 
-    /* Unsplice both directions.  EPROTO is expected: the kernel already
+    /* Unsplice both directions. EPROTO is expected: the kernel already
      * tore down the splice (which is why this callback fired). */
     if (setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0
             && errno != EPROTO)
@@ -3608,9 +3644,8 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
     ev_io_stop(loop, &con->client.watcher);
     ev_io_stop(loop, &con->server.watcher);
 
-    /* Close the connection — after splice we don't attempt to
-     * fall back to user-space forwarding since both directions
-     * are effectively finished. */
+    /* Close the connection: after a splice ends there is no attempt to
+     * fall back to user-space forwarding, both directions are finished. */
     close_connection(con, loop);
 
     TAILQ_REMOVE(&connections, con, entries);

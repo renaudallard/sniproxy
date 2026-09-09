@@ -87,8 +87,9 @@ fuzzing, and active maintenance.
   rebuilds tables without dropping live connections. Reference counting
   keeps old tables alive while connections that pinned them drain.
 - **Zero-copy on OpenBSD** &mdash; SO_SPLICE moves data in the kernel after the
-  handshake is parsed, user buffers shrink to 4 KiB and the splice timeout
-  handles idle detection.
+  handshake is parsed, user buffers shrink to 4 KiB and the idle timer
+  checks the kernel byte counters, so one silent direction does not end
+  a live connection.
 - **Bounded memory** &mdash; per-connection buffer caps, a global soft limit
   that aggressively trims idle buffers, and a 4096-entry shrink queue stop
   slow clients from pinning unbounded RAM.
@@ -538,7 +539,8 @@ upstream query volume.
 - **TCP_NODELAY** on both sides to avoid Nagle coalescing delays.
 - **SO_SPLICE zero-copy on OpenBSD** &mdash; once the handshake is parsed the
   kernel splices client and server sockets directly; user-space buffers
-  shrink to 4 KiB and the splice timeout handles idle detection.
+  shrink to 4 KiB and the idle timer polls the kernel byte counters of
+  both directions before closing a quiet connection.
 - **JIT regex** &mdash; PCRE2 JIT compilation is used where available
   (typically 2&ndash;10&times; faster backend matching).
 - **HPACK ring buffer** &mdash; HTTP/2 dynamic table inserts are O(1).
