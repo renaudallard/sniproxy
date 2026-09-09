@@ -1273,14 +1273,9 @@ ensure_logger_process(void) {
         return 0;
     } else if (pid == 0) {
         close(sockets[0]);
-        int child_fd = fd_preserve_only(sockets[1]);
-        if (child_fd < 0) {
+        int child_fd = fd_child_setup(sockets[1]);
+        if (child_fd < 0)
             _exit(EXIT_FAILURE);
-        }
-        /* Point stdio at /dev/null so a stray fprintf(stderr) in an error
-         * path cannot write to a log file fd that reused fd 1/2 after the
-         * sink files are opened. */
-        fd_redirect_std_to_devnull(child_fd);
         logger_child_main(child_fd);
     }
 
@@ -2133,19 +2128,47 @@ logger_parent_capsicum_limit_rights(void) {
 }
 
 /*
- * Reset logger IPC state inherited from the parent.  Called by sibling
- * children (binder, resolver) right after fd_preserve_only() closes the
- * logger socket fd.  Without this, any err()/warn()/notice() in the
- * child would attempt IPC on a closed fd, hit EBADF, fall through to
+ * Reset the logging state inherited from the parent. Called by sibling
+ * children (binder, resolver) right after fd_child_setup() has closed
+ * the inherited descriptors. Without this, any err()/warn()/notice() in
+ * the child would attempt IPC on a closed fd, hit EBADF, fall through to
  * disable_logger_process(), and SIGKILL the parent's logger child.
+ *
+ * The parent's log files are closed in this process as well, so a file
+ * sink left in place would write into whatever descriptor later reuses
+ * that number. Detach them, and when the default logger was such a file
+ * switch it to syslog so the child's own diagnostics stay visible; a
+ * syslog or stderr default logger keeps working as it is.
  */
 void
 logger_post_fork_child_disinherit(void) {
+    struct LogSink *sink;
+
     logger_sock = -1;
     logger_pid = -1;
     logger_process_enabled = 0;
     logger_process_failed = 1;
     ipc_crypto_state_clear(&logger_crypto_parent);
+
+    SLIST_FOREACH(sink, &sinks, entries) {
+        if (sink->type == LOG_SINK_FILE) {
+            sink->fd = NULL;
+            sink->fd_owned = 0;
+        }
+    }
+
+    if (default_logger == NULL || default_logger->sink == NULL ||
+            default_logger->sink->type != LOG_SINK_FILE)
+        return;
+
+    struct Logger *fallback = new_syslog_logger("daemon");
+    if (fallback == NULL)
+        return;
+
+    /* Connect now, while the sandbox still allows it. */
+    openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
+    set_logger_priority(fallback, default_logger->priority);
+    set_default_logger(fallback);
 }
 
 /*

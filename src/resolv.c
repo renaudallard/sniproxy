@@ -587,17 +587,19 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
         goto fail_crypto;
     } else if (pid == 0) {
         close(sockets[0]);
-        /* Disinherit parent's logger IPC state before any err() so a
-         * later log call cannot SIGKILL the parent's logger child. */
+        /* Close the inherited descriptors first and only then detach the
+         * parent's logging state: the detach opens this child's own
+         * syslog connection, which has to survive the cleanup, and it
+         * must run before anything logs, or a failed IPC send would
+         * SIGKILL the parent's logger child. */
+        int child_fd = fd_child_setup(sockets[1]);
+        int setup_errno = errno;
         logger_post_fork_child_disinherit();
-        int child_fd = fd_preserve_only(sockets[1]);
         if (child_fd < 0) {
-            err("resolver child: failed to preserve IPC socket: %s", strerror(errno));
+            err("resolver child: failed to set up IPC socket: %s",
+                    strerror(setup_errno));
             resolver_child_exit(EXIT_FAILURE);
         }
-        /* Point stdio at /dev/null so later log lines or the crash handler
-         * cannot write into a socket that reused fd 1/2. */
-        fd_redirect_std_to_devnull(child_fd);
         resolver_child_main(child_fd, nameservers, search, mode,
                 dnssec_mode);
     }

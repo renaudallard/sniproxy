@@ -258,6 +258,13 @@ critical, error, warning, notice, info, and debug.
 Only one \fBerror_log\fR block may be given; a second one is a
 configuration error.
 
+The main process owns a log file, so the binder and resolver helper
+processes cannot write to it. Their own messages, for example
+DNS-over-TLS handshake failures, go to syslog with the daemon facility
+when \fBfilename\fR is configured. With \fBsyslog\fR they use the
+configured facility, and with the default stderr log they share the
+standard error of the main process.
+
 .SS ACCESS_LOG
 
 .PP

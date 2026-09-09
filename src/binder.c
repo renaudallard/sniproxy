@@ -255,17 +255,16 @@ binder_spawn_child(void) {
         return -1;
     } else if (pid == 0) { /* child */
         close(sockets[0]);
-        /* Disinherit parent's logger IPC state before any err() so a
-         * later log call cannot SIGKILL the parent's logger child. */
+        /* Close the inherited descriptors first and only then detach the
+         * parent's logging state, see the resolver child for why. */
+        int child_fd = fd_child_setup(sockets[1]);
+        int setup_errno = errno;
         logger_post_fork_child_disinherit();
-        int child_fd = fd_preserve_only(sockets[1]);
         if (child_fd < 0) {
-            err("binder child: failed to preserve IPC socket: %s", strerror(errno));
+            err("binder child: failed to set up IPC socket: %s",
+                    strerror(setup_errno));
             binder_child_exit(EXIT_FAILURE);
         }
-        /* Point stdio at /dev/null so later log lines or the crash handler
-         * cannot write into a socket that reused fd 1/2. */
-        fd_redirect_std_to_devnull(child_fd);
 
         binder_main(child_fd);
         binder_child_exit(EXIT_SUCCESS);

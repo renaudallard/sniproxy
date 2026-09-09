@@ -58,61 +58,53 @@ set_cloexec(int fd)
 #endif
 }
 
+/*
+ * Prepare a freshly forked helper process: move the IPC socket to fd 0,
+ * close every other inherited descriptor except stdout and stderr, and
+ * point stdout or stderr at /dev/null when the parent did not have them
+ * open. Keeping fd 1 and 2 occupied means a stray fprintf(stderr) or the
+ * crash handler write in a sandboxed child can never land on a socket
+ * that reused those numbers, while the child's messages still reach the
+ * parent's stderr in foreground mode. Returns the IPC descriptor, which
+ * is always 0, or -1 on failure. Nothing here logs: the caller has not
+ * detached the parent's logging state yet.
+ */
 static inline int
-fd_preserve_only(int fd)
+fd_child_setup(int fd)
 {
-#ifdef HAVE_CLOSEFROM
-    if (fd < 0) {
-        closefrom(0);
+    if (fd < 0)
         return -1;
-    }
 
     if (fd != 0) {
         if (dup2(fd, 0) < 0)
             return -1;
         close(fd);
-        fd = 0;
     }
 
-    closefrom(1);
-    return fd;
+#ifdef HAVE_CLOSEFROM
+    closefrom(3);
 #else
     long max_fd = sysconf(_SC_OPEN_MAX);
     if (max_fd < 0)
         max_fd = 256;
 
-    for (int current = (int)max_fd - 1; current >= 0; current--) {
-        if (current == fd)
-            continue;
+    for (int current = (int)max_fd - 1; current >= 3; current--)
         close(current);
-    }
-
-    return fd;
 #endif
-}
 
-/*
- * After fd_preserve_only() has closed stdin/stdout/stderr (keeping only the
- * IPC descriptor), point fd 0/1/2 at /dev/null - except keep_fd, the
- * preserved IPC descriptor.  Without this a stray fprintf(stderr) or a
- * crash-handler write(STDERR_FILENO) in a sandboxed child could land on a
- * socket descriptor that later reused fd 1 or 2.  open() returns the lowest
- * free descriptor and the IPC fd is never free, so it is never clobbered.
- */
-static inline void
-fd_redirect_std_to_devnull(int keep_fd)
-{
-    int devnull = open("/dev/null", O_RDWR);
-    if (devnull < 0)
-        return;
-
-    for (int target = 0; target <= 2; target++) {
-        if (target == keep_fd || target == devnull)
+    for (int target = 1; target <= 2; target++) {
+        if (fcntl(target, F_GETFD) != -1)
             continue;
-        (void)dup2(devnull, target);
+
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull < 0)
+            continue;
+        if (devnull != target) {
+            (void)dup2(devnull, target);
+            close(devnull);
+        }
     }
 
-    if (devnull > 2)
-        close(devnull);
+    return 0;
 }
 #endif /* FD_UTIL_H */

@@ -625,7 +625,9 @@ sniproxy -f -d -c /etc/sniproxy.conf
 ```
 
 `-f` keeps the process in the foreground; `-d` turns on verbose resolver
-tracing on stderr / the configured error log.
+tracing. The resolver process writes it to stderr or to syslog: it cannot
+write to a file error log owned by the main process, so with `error_log {
+filename ... }` its messages go to syslog with the daemon facility.
 
 ## Project status
 

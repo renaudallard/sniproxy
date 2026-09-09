@@ -70,7 +70,10 @@ is 1.2.
 
 .TP
 -d
-Enable verbose resolver debug logging to stderr and the error log to aid DNS troubleshooting\&.
+Enable verbose resolver debug logging to aid DNS troubleshooting\&. The
+messages follow the error log\&. When the error log is a file the resolver
+process sends them to syslog instead, see the ERROR_LOG section of
+\fBsniproxy.conf\fR(5)\&.
 
 .SH SIGNALS
 
