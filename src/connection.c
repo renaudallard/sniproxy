@@ -381,7 +381,9 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     }
 #endif
 
-    {
+    /* TCP options only exist on TCP sockets; on a unix listener the call
+     * fails and would log a warning for every connection. */
+    if (address_sa(listener->address)->sa_family != AF_UNIX) {
         int on = 1;
         if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0)
             warn("setsockopt TCP_NODELAY failed: %s", strerror(errno));
@@ -3133,19 +3135,20 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
     }
 #endif
 
-    {
+    /* TCP options only exist on TCP sockets; a unix backend would log a
+     * failure for every connection. */
+    if (con->server.addr.ss_family != AF_UNIX) {
         int on = 1;
         if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0)
             warn("setsockopt TCP_NODELAY failed: %s", strerror(errno));
-    }
 
 #ifdef TCP_FASTOPEN_CONNECT
-    if (tcp_fastopen_enabled) {
-        int on = 1;
-        if (setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &on, sizeof(on)) < 0)
+        if (tcp_fastopen_enabled &&
+                setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &on,
+                    sizeof(on)) < 0)
             info("setsockopt TCP_FASTOPEN_CONNECT failed: %s", strerror(errno));
-    }
 #endif
+    }
 
     if (con->listener->transparent_proxy &&
             con->client.addr.ss_family == con->server.addr.ss_family) {
