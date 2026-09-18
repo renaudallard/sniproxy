@@ -131,9 +131,33 @@ static const char *pidfile_path_at_exit = NULL;
  * Returns -1 when the pid is alive, meaning another instance runs. */
 static int
 pidfile_remove_stale(const char *path) {
-    FILE *fp = fopen(path, "r");
-    if (fp == NULL)
+    int open_flags = O_RDONLY | O_NONBLOCK;
+#ifdef O_CLOEXEC
+    open_flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    open_flags |= O_NOFOLLOW;
+#endif
+
+    /* O_NONBLOCK so a FIFO left at this path cannot hang the open,
+     * O_NOFOLLOW so a symlink cannot point us at another file. */
+    int fd = open(path, open_flags);
+    if (fd < 0)
         return 0;
+
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        /* Not a pidfile we could have written; leave it alone and let
+         * write_pidfile() refuse the path. */
+        close(fd);
+        return 0;
+    }
+
+    FILE *fp = fdopen(fd, "r");
+    if (fp == NULL) {
+        close(fd);
+        return 0;
+    }
 
     long pid = 0;
     int matched = fscanf(fp, "%ld", &pid);
