@@ -129,8 +129,9 @@ SNIProxy runs as four cooperating processes:
 All IPC channels are encrypted with ChaCha20-Poly1305 keys derived once in
 the parent and inherited across `fork()`, so children never have to read
 key material from disk or call `mlock()` after `pledge()`. Each helper
-process drops privileges immediately and enters its platform sandbox
-(pledge/unveil, Capsicum, or seccomp) before reading any tainted input.
+process drops privileges immediately and, on a platform that provides one
+(pledge/unveil, Capsicum, or seccomp), enters its sandbox before reading
+any tainted input.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and process
 boundaries, and [SANITIZERS.md](SANITIZERS.md) for how to build under
@@ -493,6 +494,14 @@ afterthought.
   is not supported in capability mode; set `SNIPROXY_DISABLE_CAPSICUM=1`
   for debugging.
 - **Linux sandboxing** &mdash; seccomp BPF filters per process type.
+- **macOS has no sandbox** &mdash; `sandbox_init(3)` and its named profiles
+  are deprecated, and a process opting into one is killed outright when
+  built against the macOS 27.0 SDK or later, so adopting them would buy a
+  hard failure rather than protection. Apple's replacement, App Sandbox,
+  is built around entitlements and a per-application container and does
+  not fit a daemon that binds a privileged port and writes system logs.
+  Everything that does not need kernel support still applies: privilege
+  separation, the privilege drop, encrypted IPC and the resource limits.
 - **Continuous fuzzing** &mdash; protocol fuzzers under `tests/fuzz/` run in
   CI and on a dedicated continuous-fuzzing job. The job only files an
   issue when a real crash/leak/timeout artifact is produced (build
