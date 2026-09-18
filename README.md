@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="sniproxy-banner-dark.svg" alt="sniproxy &mdash; hardened SNI routing" width="640"/>
+  <img src="sniproxy-banner-dark.svg" alt="sniproxy: hardened SNI routing" width="640"/>
 </p>
 
 <h3 align="center">Hardened SNI Proxy</h3>
 
 <p align="center">
-  <em>Route HTTP, TLS, DTLS, XMPP and Minecraft connections by hostname &mdash; without decrypting traffic.</em>
+  <em>Route HTTP, TLS, DTLS, XMPP and Minecraft connections by hostname, without decrypting traffic.</em>
 </p>
 
 <p align="center">
@@ -54,47 +54,47 @@ fuzzing, and active maintenance.
 
 ## Highlights
 
-- **Name-based proxying without decryption** &mdash; TLS/DTLS SNI, HTTP/1 Host,
+- **Name-based proxying without decryption**: TLS/DTLS SNI, HTTP/1 Host,
   HTTP/2 HPACK `:authority`, XMPP stream `to`, Minecraft handshake. No
   certificates or private keys on the proxy.
-- **Five protocols, one binary** &mdash; TLS, DTLS (UDP), HTTP/1 + HTTP/2, XMPP
+- **Five protocols, one binary**: TLS, DTLS (UDP), HTTP/1 + HTTP/2, XMPP
   (with STARTTLS), Minecraft Java Edition (FML and BungeeCord markers
   stripped automatically).
-- **Pattern matching** &mdash; exact hostnames or PCRE2 (JIT-compiled where
+- **Pattern matching**: exact hostnames or PCRE2 (JIT-compiled where
   available), per-table backend selection with optional client-IP affinity.
-- **Wildcard backends** &mdash; route to the dynamically resolved hostname the
+- **Wildcard backends**: route to the dynamically resolved hostname the
   client asked for (`*:443`).
-- **HAProxy PROXY protocol** &mdash; emit v1 or v2 headers to backends; accept v1
+- **HAProxy PROXY protocol**: emit v1 or v2 headers to backends; accept v1
   or v2 from upstream load balancers (auto-detected).
-- **Privilege separation** &mdash; four cooperating processes:
+- **Privilege separation**: four cooperating processes:
   `sniproxy-mainloop`, `sniproxy-binder`, `sniproxy-logger`,
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
-- **Per-platform sandboxing** &mdash; pledge(2) + unveil(2) on OpenBSD, Capsicum
+- **Per-platform sandboxing**: pledge(2) + unveil(2) on OpenBSD, Capsicum
   capability mode on FreeBSD, seccomp BPF on Linux.
-- **DTLS source validation** &mdash; a new UDP session is held until a
+- **DTLS source validation**: a new UDP session is held until a
   retransmission arrives from the same source address and port before any
   backend traffic is sent, so spoofed sources cannot turn the proxy into a
   reflection amplifier.
-- **Per-IP rate limiting** &mdash; FNV-1a hashed, arc4random-seeded token
+- **Per-IP rate limiting**: FNV-1a hashed, arc4random-seeded token
   buckets cap new TCP connections and UDP sessions; short-chain cutoffs
   defeat hash spraying.
-- **Backend ACLs** &mdash; `deny_except` or `allow_except` CIDR policies stop
+- **Backend ACLs**: `deny_except` or `allow_except` CIDR policies stop
   abuse as an open proxy to reach internal hosts.
-- **Listener ACLs** &mdash; the same CIDR policies, applied to inbound clients.
-- **DNS-over-TLS upstreams** &mdash; `nameserver dot://9.9.9.9/dns.quad9.net/tls1.2`
+- **Listener ACLs**: the same CIDR policies, applied to inbound clients.
+- **DNS-over-TLS upstreams**: `nameserver dot://9.9.9.9/dns.quad9.net/tls1.2`
   inside the `resolver` block; IP literals require a TLS hostname or an
   explicit `/insecure`. TLS 1.2 is enforced by default.
-- **Hot reload** &mdash; SIGHUP re-reads the config, re-resolves backends and
+- **Hot reload**: SIGHUP re-reads the config, re-resolves backends and
   rebuilds tables without dropping live connections. Reference counting
   keeps old tables alive while connections that pinned them drain.
-- **Zero-copy on OpenBSD** &mdash; SO_SPLICE moves data in the kernel after the
+- **Zero-copy on OpenBSD**: SO_SPLICE moves data in the kernel after the
   handshake is parsed, user buffers shrink to 4 KiB and the idle timer
   checks the kernel byte counters, so one silent direction does not end
   a live connection.
-- **Bounded memory** &mdash; per-connection buffer caps, a global soft limit
+- **Bounded memory**: per-connection buffer caps, a global soft limit
   that aggressively trims idle buffers, and a 4096-entry shrink queue stop
   slow clients from pinning unbounded RAM.
-- **Continuous fuzzing** &mdash; dedicated harnesses for TLS, DTLS, HTTP/2,
+- **Continuous fuzzing**: dedicated harnesses for TLS, DTLS, HTTP/2,
   XMPP, Minecraft, hostname, address, config, listener ACL, IPC crypto and
   resolver responses run in CI and on a separate continuous-fuzzing job.
 
@@ -113,17 +113,17 @@ fuzzing, and active maintenance.
 
 SNIProxy runs as four cooperating processes:
 
-1. **`sniproxy-mainloop`** &mdash; accepts connections, parses the first protocol
+1. **`sniproxy-mainloop`**: accepts connections, parses the first protocol
    header, picks a backend and forwards bidirectionally.
-2. **`sniproxy-binder`** &mdash; the only process that keeps the privilege to
+2. **`sniproxy-binder`**: the only process that keeps the privilege to
    `bind()` low ports. It hands listening sockets back to the main loop on
    startup and on every SIGHUP reload, then idles. Allowlisted to the
    listener addresses present in the config; root-bound Unix-socket
    listeners are confined to `/run` or `/var/run`.
-3. **`sniproxy-logger`** &mdash; owns the log files. The main loop sends log
+3. **`sniproxy-logger`**: owns the log files. The main loop sends log
    lines over an encrypted Unix socket, so a compromised main loop cannot
    forge or replay log writes.
-4. **`sniproxy-resolver`** &mdash; runs c-ares for async DNS, with arc4random
+4. **`sniproxy-resolver`**: runs c-ares for async DNS, with arc4random
    query IDs, mutex-guarded restart state, and per-client concurrency caps.
 
 All IPC channels are encrypted with ChaCha20-Poly1305 keys derived once in
@@ -457,44 +457,44 @@ address.
 SNIProxy is built with defense-in-depth as a design goal, not an
 afterthought.
 
-- **TLS 1.2+ by default** &mdash; older clients can be re-enabled with
+- **TLS 1.2+ by default**: older clients can be re-enabled with
   `-T 1.1` or `-T 1.0`, or you can lock the listener to `-T 1.3`.
-- **Cryptographically random IDs** &mdash; DNS query IDs and per-IP rate
+- **Cryptographically random IDs**: DNS query IDs and per-IP rate
   limiter buckets are seeded from arc4random; hash chains are kept short
   to defeat spraying.
-- **Bounded parsers** &mdash; TLS rejects SSL 2.0/3.0 ClientHellos and NUL
+- **Bounded parsers**: TLS rejects SSL 2.0/3.0 ClientHellos and NUL
   bytes in server names; HTTP caps headers (default 100); TLS extension
   count is capped at 64 on every code path; HTTP/2 HPACK is bounded per
   connection (64 KiB) and globally (4 MiB).
-- **Regex DoS mitigation** &mdash; PCRE2 match limits scale with hostname
+- **Regex DoS mitigation**: PCRE2 match limits scale with hostname
   length so a crafted SNI cannot trigger catastrophic backtracking.
-- **DTLS amplification defense** &mdash; a new UDP session is held until a
+- **DTLS amplification defense**: a new UDP session is held until a
   retransmission arrives from the same source address and port, which a
   spoofed source never sends, so no backend is connected on its behalf.
   DTLS clients retransmit by design (RFC 6347 section 4.2.4). No
   HelloVerifyRequest is sent; nothing is returned to the client until its
   source is confirmed.
-- **Privilege separation** &mdash; the privileged binder, the log writer
+- **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages.
-- **Strict config and pidfile checks** &mdash; config files must not be
+- **Strict config and pidfile checks**: config files must not be
   group/other-readable (unless `-g` is passed); all path directives must
   be absolute; resolver search domains are treated as literal suffixes,
   not re-parsed by the system resolver. Pidfiles refuse to be written
   over stale sockets, FIFOs or symlinks.
-- **Privilege drop verification** &mdash; startup aborts if real or effective
+- **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`.
-- **OpenBSD sandboxing** &mdash; unveil(2) restricts the visible filesystem
+- **OpenBSD sandboxing**: unveil(2) restricts the visible filesystem
   to declared paths; per-process pledge(2) promise sets are pared down
   in two stages (startup vs. steady state) for each helper.
-- **FreeBSD sandboxing** &mdash; Capsicum capability mode is entered after
+- **FreeBSD sandboxing**: Capsicum capability mode is entered after
   the resolver loads its CA bundle, the logger has its log dirfds
   pre-opened, and the main loop has its config dir + temp dir
   pre-opened for `openat()`. Adding a new log path during SIGHUP reload
   is not supported in capability mode; set `SNIPROXY_DISABLE_CAPSICUM=1`
   for debugging.
-- **Linux sandboxing** &mdash; seccomp BPF filters per process type.
-- **macOS has no sandbox** &mdash; `sandbox_init(3)` and its named profiles
+- **Linux sandboxing**: seccomp BPF filters per process type.
+- **macOS has no sandbox**: `sandbox_init(3)` and its named profiles
   are deprecated, and a process opting into one is killed outright when
   built against the macOS 27.0 SDK or later, so adopting them would buy a
   hard failure rather than protection. Apple's replacement, App Sandbox,
@@ -502,7 +502,7 @@ afterthought.
   not fit a daemon that binds a privileged port and writes system logs.
   Everything that does not need kernel support still applies: privilege
   separation, the privilege drop, encrypted IPC and the resource limits.
-- **Continuous fuzzing** &mdash; protocol fuzzers under `tests/fuzz/` run in
+- **Continuous fuzzing**: protocol fuzzers under `tests/fuzz/` run in
   CI and on a dedicated continuous-fuzzing job. The job only files an
   issue when a real crash/leak/timeout artifact is produced (build
   errors are not treated as false-positive crashes).
@@ -537,30 +537,30 @@ That gives:
   with DNSSEC/Trust-AD support and will fail to resolve unsigned zones.
 
 For production, run a local validating resolver (Unbound, dnsmasq) and
-point sniproxy at it &mdash; that reduces both spoofing exposure and
+point sniproxy at it, which reduces both spoofing exposure and
 upstream query volume.
 
 ## Performance
 
 - **Event-driven I/O** via libev; thousands of concurrent connections per
   process.
-- **Small per-connection footprint** &mdash; buffers start at 16 KiB (client)
+- **Small per-connection footprint**: buffers start at 16 KiB (client)
   / 32 KiB (server), grow on demand, shrink when idle. Typical resident
   usage is 1&ndash;2 MiB per process plus 2&ndash;8 KiB per active connection.
-- **Memory-pressure trimming** &mdash; a global soft limit drives an
+- **Memory-pressure trimming**: a global soft limit drives an
   aggressive shrink pass against idle buffers before total RAM balloons;
   the shrink candidate queue is itself bounded (4096 entries).
 - **TCP_NODELAY** on both sides to avoid Nagle coalescing delays.
-- **SO_SPLICE zero-copy on OpenBSD** &mdash; once the handshake is parsed the
+- **SO_SPLICE zero-copy on OpenBSD**: once the handshake is parsed the
   kernel splices client and server sockets directly; user-space buffers
   shrink to 4 KiB and the idle timer polls the kernel byte counters of
   both directions before closing a quiet connection.
-- **JIT regex** &mdash; PCRE2 JIT compilation is used where available
+- **JIT regex**: PCRE2 JIT compilation is used where available
   (typically 2&ndash;10&times; faster backend matching).
-- **HPACK ring buffer** &mdash; HTTP/2 dynamic table inserts are O(1).
-- **SO_REUSEPORT** &mdash; bind multiple sniproxy workers to the same port
+- **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1).
+- **SO_REUSEPORT**: bind multiple sniproxy workers to the same port
   for kernel-level load balancing across cores.
-- **Hot reload** &mdash; SIGHUP rebuilds routing tables in place; in-flight
+- **Hot reload**: SIGHUP rebuilds routing tables in place; in-flight
   connections finish on the old table.
 
 ## Troubleshooting
@@ -600,7 +600,7 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 - The configured `user`/`group` must exist.
 - Log directories must be writable by that user.
 - On OpenBSD, every path that will be opened (logs, pidfile, config
-  directory) must already exist before launch &mdash; unveil cannot reveal
+  directory) must already exist before launch, because unveil cannot reveal
   what is not there.
 
 **HTTP/2 connection coalescing routes to the wrong backend**
@@ -611,7 +611,7 @@ the server certificate is valid for both (typical wildcard cert
 `*.example.com`). Since every name proxied by sniproxy resolves to the
 sniproxy IP, condition (1) is always satisfied. If the backend serves a
 shared cert, the browser will multiplex requests for different names
-over one connection &mdash; sniproxy routes once per TCP connection from
+over one connection, and sniproxy routes once per TCP connection from
 the SNI and cannot see the encrypted HTTP/2 frames, so subsequent
 requests are sent to the wrong backend.
 
@@ -631,7 +631,7 @@ Workarounds (in order of cleanness):
    HTTP/2 performance but eliminates coalescing.
 
 For third-party services where you control neither the cert nor the
-backend (CDNs, hosted SaaS), there is no in-proxy workaround &mdash; use a
+backend (CDNs, hosted SaaS), there is no in-proxy workaround; use a
 TLS-terminating reverse proxy for those names.
 
 ### Debug mode
@@ -713,7 +713,7 @@ opening a pull request. ASan and UBSan run automatically on every PR.
 - **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Sanitizers**: [SANITIZERS.md](SANITIZERS.md)
 - **Issues**: GitHub Issues
-- **License**: BSD 2-Clause &mdash; see [COPYING](COPYING)
+- **License**: BSD 2-Clause, see [COPYING](COPYING)
 - **Donate**: [PayPal](https://www.paypal.me/RenaudAllard)
 
 ## Credits
@@ -732,9 +732,9 @@ imlonghao, Christopher Galtenberg, Bram Gotink, Arni Birgisson.
 
 Built on:
 
-- [libev](http://software.schmorp.de/pkg/libev.html) &mdash; event loop
-- [PCRE2](https://www.pcre.org/) &mdash; regular expressions
-- [c-ares](https://c-ares.org) &mdash; asynchronous DNS
+- [libev](http://software.schmorp.de/pkg/libev.html): event loop
+- [PCRE2](https://www.pcre.org/): regular expressions
+- [c-ares](https://c-ares.org): asynchronous DNS
 
 All production testing is performed on OpenBSD. Patches and bug reports
 for other platforms are welcome.
