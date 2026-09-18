@@ -504,10 +504,11 @@ Run the regression suite with:
 make check
 ```
 
-ASan and UBSan run on every pull request via the
+ASan, MSan, UBSan and a combined ASan+UBSan build all run on every push
+and pull request via the
 [Sanitizers](https://github.com/renaudallard/sniproxy/actions/workflows/sanitizers.yml)
-workflow; MSan and TSan are available locally through configure flags
-(see [SANITIZERS.md](SANITIZERS.md)).
+workflow. TSan is available locally through a configure flag (see
+[SANITIZERS.md](SANITIZERS.md)).
 
 ## DNS resolution
 
