@@ -1,5 +1,15 @@
 #!/usr/bin/env perl
 
+# sniproxy is started with a deliberately tiny descriptor limit so the
+# workers below drive it out of file descriptors. Running out is the
+# condition under test, not a failure of it: the proxy is expected to
+# log the exhaustion, stop accepting on that listener for a couple of
+# seconds, and carry on afterwards. Connections it cannot service while
+# that happens are closed by design, so an individual request failing is
+# expected and the workers do not treat it as fatal. What the test
+# checks is that the limit was actually reached and that the proxy still
+# serves a request once the pressure is off.
+
 use strict;
 use warnings;
 use File::Basename;
@@ -7,6 +17,7 @@ use lib dirname (__FILE__);
 use TestUtils;
 use TestHTTPD;
 use File::Temp;
+use IO::Socket::INET;
 
 sub proxy {
     my $config = shift;
@@ -14,12 +25,44 @@ sub proxy {
     exec(@_, '../src/sniproxy', '-f', '-c', $config, '-n', '16');
 }
 
+sub make_fd_limit_config($$$) {
+    my ($proxy_port, $httpd_port, $logfile) = @_;
+
+    my ($fh, $filename) = File::Temp::tempfile();
+
+    print $fh <<END;
+# Minimal file descriptor limit test configuration
+
+user @{[test_user()]}
+group @{[test_group()]}
+
+error_log {
+    filename $logfile
+    priority notice
+}
+
+listen 127.0.0.1 $proxy_port {
+    proto http
+}
+
+table {
+    localhost 127.0.0.1 $httpd_port
+}
+END
+
+    close ($fh);
+
+    return $filename;
+}
+
 sub worker($$$$) {
     my ($hostname, $path, $port, $requests) = @_;
+    my $refused = 0;
 
     for (my $i = 0; $i < $requests; $i++) {
         system('curl',
                 '-s', '-S',
+                '-m', '10',
                 '-H', "Host: $hostname",
                 '-o', '/dev/null',
                 "http://localhost:$port/$path");
@@ -27,16 +70,45 @@ sub worker($$$$) {
         if ($? == -1) {
             die "failed to execute: $!\n";
         } elsif ($? & 127) {
-            printf STDERR "child died with signal %d, %s coredump\n", ($? & 127), ($? & 128) ? 'with' : 'without';
+            printf STDERR "curl died with signal %d, %s coredump\n", ($? & 127), ($? & 128) ? 'with' : 'without';
             exit 255;
         } elsif ($? >> 8) {
-            exit $? >> 8;
+            # The proxy closes connections it has no descriptors for.
+            $refused++;
         }
     }
-    # Success
+
+    printf STDERR "worker: %d of %d requests refused\n", $refused, $requests
+            if $refused;
+
     exit 0;
 }
 
+# One request straight from the test process, so no child status has to be
+# collected while the reaper is armed. Returns true on a complete response.
+sub served($) {
+    my $port = shift;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => "tcp",
+                                       Type => SOCK_STREAM,
+                                       Timeout => 5);
+    return undef unless $socket;
+
+    my $buffer;
+    eval {
+        local $SIG{ALRM} = sub { die "timeout\n" };
+        alarm 10;
+        $socket->send("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n");
+        $socket->recv($buffer, 16384);
+        alarm 0;
+    };
+    alarm 0;
+    $socket->close();
+
+    return defined($buffer) && $buffer =~ m{^HTTP/1\.[01] 200};
+}
 
 sub main {
     my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
@@ -45,7 +117,10 @@ sub main {
     my $iterations = $ENV{ITERATIONS} || 3;
     my $local_httpd = $ENV{LOCAL_HTTPD_PORT};
 
-    my $config = make_config($proxy_port, $local_httpd || $httpd_port);
+    my ($unused, $logfile) = File::Temp::tempfile();
+    my $config = make_fd_limit_config($proxy_port, $local_httpd || $httpd_port,
+            $logfile);
+
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
     my $httpd_pid = start_child('server', \&TestHTTPD::httpd, port => $httpd_port) unless $local_httpd;
 
@@ -60,26 +135,52 @@ sub main {
     # Wait for all our children to finish
     wait_for_type('worker');
 
-    # Give the proxy a second to flush buffers and close server connections
-    sleep 1;
-
-    # For troubleshooting connections stuck in CLOSE_WAIT state
-    #kill 10, $proxy_pid;
-    #system("netstat -ptn | grep $proxy_pid\/sniproxy");
-
-    # For troubleshooting 100% CPU usage
-    #system("top -n 1 -p $proxy_pid -b");
+    # Descriptors are released as the worker connections close, but the
+    # listener stays suspended for two seconds at a time, so give it a few
+    # tries before deciding it never came back.
+    my $recovered = undef;
+    for (my $i = 0; $i < 15; $i++) {
+        if (served($proxy_port)) {
+            $recovered = 1;
+            last;
+        }
+        sleep 1;
+    }
 
     # Orderly shutdown of the server
     kill 15, $proxy_pid;
     kill 15, $httpd_pid unless $local_httpd;
     sleep 1;
 
+    # Copy the proxy's own log into the test output, and note whether it
+    # ever reported running out of descriptors.
+    my $hit_limit = undef;
+    if (open(my $fh, '<', $logfile)) {
+        while (my $line = <$fh>) {
+            print STDERR $line;
+            $hit_limit = 1 if $line =~ /File descriptor limit reached/;
+        }
+        close($fh);
+    }
+
     # Delete our test configuration
     unlink($config);
+    unlink($logfile);
 
     # Kill off any remaining children
     reap_children();
+
+    if (!$hit_limit) {
+        print STDERR "proxy never ran out of descriptors, so nothing was " .
+                "tested; raise WORKERS or lower the -n argument\n";
+        exit 1;
+    }
+
+    if (!$recovered) {
+        print STDERR "proxy did not serve a request after the descriptor " .
+                "pressure cleared\n";
+        exit 1;
+    }
 }
 
 main();
