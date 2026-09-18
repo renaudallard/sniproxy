@@ -636,6 +636,35 @@ tracing. The resolver process writes it to stderr or to syslog: it cannot
 write to a file error log owned by the main process, so with `error_log {
 filename ... }` its messages go to syslog with the daemon facility.
 
+## How it compares
+
+All five of these can route a connection by the name the client asked
+for without decrypting it. They differ in what else they are, and in
+what they bring to that job.
+
+| | sniproxy (this fork) | sniproxy (upstream) | HAProxy | nginx `stream` | Envoy |
+| --- | --- | --- | --- | --- | --- |
+| Routes by name, no decryption | yes | yes | yes (`req.ssl_sni`, `mode tcp`) | yes (`ssl_preread`) | yes (TLS inspector) |
+| Protocols routed by name | TLS, HTTP/1, HTTP/2, XMPP, Minecraft, DTLS | TLS, HTTP | TLS, HTTP | TLS (SNI, ALPN) | TLS, HTTP |
+| Name-based UDP / DTLS | yes, with source validation | no | no | no, `ssl_preread` is TCP only | no, sessions are keyed on the 4-tuple |
+| Process model | 4 processes, separate privileges | single process | master + workers | master + workers | single process, threaded |
+| Sandbox shipped with it | pledge/unveil, Capsicum, seccomp | none | chroot, privilege drop | privilege drop (`user`) | left to the deployment |
+| Encrypted IPC between its own processes | ChaCha20-Poly1305 | n/a | n/a | n/a | n/a |
+| What else it is | an SNI router | an SNI router | a full L4/L7 load balancer | a web server and L4 proxy | a full service proxy |
+
+The table covers the name-routing path only. HAProxy, nginx and Envoy
+are general-purpose proxies with far larger feature sets, and on a host
+where you already run one of them, adding sniproxy buys you little. It
+earns its own process when you want name-based routing on its own, with
+a small attack surface, on a machine that terminates no TLS at all.
+
+Third-party cells come from each project's own documentation:
+[ssl_preread](https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html),
+[HAProxy configuration manual](https://docs.haproxy.org/3.0/configuration.html),
+[Envoy TLS inspector](https://www.envoyproxy.io/docs/envoy/latest/configuration/listeners/listener_filters/tls_inspector),
+[Envoy UDP proxy](https://www.envoyproxy.io/docs/envoy/latest/configuration/listeners/udp_filters/udp_proxy),
+[upstream sniproxy](https://github.com/dlundquist/sniproxy).
+
 ## Project status
 
 SNIProxy is actively maintained with a focus on security, stability and
