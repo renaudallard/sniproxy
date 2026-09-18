@@ -234,7 +234,7 @@ Hardening flags are disabled automatically when sanitizers are enabled. You shou
 ASAN/MSAN/TSAN are mutually exclusive; configure aborts with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously` if you try to combine them.
 
 ### Tests fail with sanitizers but pass normally
-This is expected—sanitizers reveal bugs that don't always cause immediate failures. Investigate and fix the issues.
+This is expected: sanitizers reveal bugs that don't always cause immediate failures. Investigate and fix the issues.
 
 ## References
 

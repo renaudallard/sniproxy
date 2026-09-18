@@ -3592,7 +3592,7 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     buffer_resize(con->client.buffer, 4096);
     buffer_resize(con->server.buffer, 4096);
 
-    /* Stop normal read/write watchers — kernel handles forwarding */
+    /* Stop normal read/write watchers, the kernel handles forwarding */
     ev_io_stop(loop, &con->client.watcher);
     ev_io_stop(loop, &con->server.watcher);
 
