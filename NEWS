@@ -1,3 +1,15 @@
+sniproxy 0.14.3 (2026-09-18)
+===============================
+
+* A FIFO left at the pidfile path no longer hangs startup. The check for
+  a stale pidfile opened the path with fopen(), which waits on a FIFO
+  until a writer turns up, so a daemonized start blocked there instead
+  of refusing the path. The file is opened without blocking now and only
+  read once it is known to be a regular file; anything else is left
+  alone and refused when the pidfile is written. A symlink at that path
+  is no longer followed either, which matches what writing the pidfile
+  has always done.
+
 sniproxy 0.14.2 (2026-09-09)
 ===============================
 

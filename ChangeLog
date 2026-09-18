@@ -1,3 +1,13 @@
+2026-09-18  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.14.3
+	- sniproxy: the check for a stale pidfile no longer blocks on a
+	  FIFO left at the pidfile path. fopen() waits there for a writer,
+	  so a daemonized start hung instead of refusing the path. It is
+	  opened with O_NONBLOCK and O_NOFOLLOW now and only read once
+	  fstat() says it is a regular file; anything else is left for
+	  write_pidfile() to refuse.
+
 2026-09-09  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.14.2
