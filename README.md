@@ -71,9 +71,10 @@ fuzzing, and active maintenance.
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
 - **Per-platform sandboxing** &mdash; pledge(2) + unveil(2) on OpenBSD, Capsicum
   capability mode on FreeBSD, seccomp BPF on Linux.
-- **DTLS source validation** &mdash; new UDP sessions must complete a HelloVerify
-  retransmission before any backend traffic is sent, so spoofed sources
-  cannot turn the proxy into a reflection amplifier.
+- **DTLS source validation** &mdash; a new UDP session is held until a
+  retransmission arrives from the same source address and port before any
+  backend traffic is sent, so spoofed sources cannot turn the proxy into a
+  reflection amplifier.
 - **Per-IP rate limiting** &mdash; FNV-1a hashed, arc4random-seeded token
   buckets cap new TCP connections and UDP sessions; short-chain cutoffs
   defeat hash spraying.
@@ -102,7 +103,7 @@ fuzzing, and active maintenance.
 | Protocol | Hostname source | Notes |
 | --- | --- | --- |
 | TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
-| DTLS | SNI extension in UDP ClientHello | Source-address validation via HelloVerify retransmission |
+| DTLS | SNI extension in UDP ClientHello | Source-address validation by waiting for a retransmission |
 | HTTP/1.x | `Host:` request header | Per-listener `bad_requests log` records malformed input |
 | HTTP/2 | HPACK `:authority` pseudo-header | Bounded HPACK table (per-conn 64 KiB / global 4 MiB) |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
@@ -466,9 +467,12 @@ afterthought.
   connection (64 KiB) and globally (4 MiB).
 - **Regex DoS mitigation** &mdash; PCRE2 match limits scale with hostname
   length so a crafted SNI cannot trigger catastrophic backtracking.
-- **DTLS amplification defense** &mdash; new UDP sessions must complete a
-  HelloVerify retransmission before any backend connect, so spoofed
-  source addresses cannot be amplified.
+- **DTLS amplification defense** &mdash; a new UDP session is held until a
+  retransmission arrives from the same source address and port, which a
+  spoofed source never sends, so no backend is connected on its behalf.
+  DTLS clients retransmit by design (RFC 6347 section 4.2.4). No
+  HelloVerifyRequest is sent; nothing is returned to the client until its
+  source is confirmed.
 - **Privilege separation** &mdash; the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages.
