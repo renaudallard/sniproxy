@@ -16,6 +16,12 @@ my %children;
 my %early_exits; # status of children that exited before start_child registered them
 
 sub REAPER {
+    # A second SIGCHLD can be dispatched between the waitpid below and the
+    # read of $?, and the nested call leaves $? at -1 when its own waitpid
+    # finds nothing, which decodes as "signal 127, with coredump". Saving
+    # $? here makes the nested call restore it before we look at it.
+    local $!;
+    local $?;
     my $stiff;
     while (($stiff = waitpid(-1, &WNOHANG)) > 0) {
         my $status = $?;
