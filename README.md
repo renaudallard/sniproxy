@@ -233,10 +233,16 @@ arm64 tarball.
 ```sh
 sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev \
     gettext libev-dev libpcre2-dev libc-ares-dev libssl-dev libbsd-dev \
-    pkg-config fakeroot devscripts
-./autogen.sh && dpkg-buildpackage
+    libseccomp-dev pkg-config fakeroot
+dpkg-buildpackage -us -uc -b --rules-requires-root
 sudo dpkg -i ../sniproxy_<version>_<arch>.deb
 ```
+
+The build runs autoreconf itself, so there is no need for `autogen.sh`,
+which would also add a `+git` entry to `debian/changelog` on any commit
+that is not a release tag when devscripts is installed.
+`--rules-requires-root` is needed with dpkg 1.22.13 or later, which no
+longer runs the packaging steps under fakeroot unless told to.
 
 ### Alpine
 
