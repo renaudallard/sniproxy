@@ -258,6 +258,9 @@ static int logger_send_privileges(uid_t uid, gid_t gid);
 static void logger_child_handle_message(int, struct logger_ipc_header *, int, char *);
 static struct ChildSink *child_sink_lookup(struct ChildSink_head *, uint32_t);
 static void child_sink_free(struct ChildSink_head *, struct ChildSink *);
+#ifdef __OpenBSD__
+static void logger_child_unveil(void);
+#endif
 static FILE *logger_child_open_file(const char *filepath, int dirfd,
         const char *file_basename);
 static int logger_register_sink(struct LogSink *sink);
@@ -1615,6 +1618,35 @@ logger_child_warn(struct ChildSink_head *head, const char *fmt, ...) {
     }
 }
 
+#ifdef __OpenBSD__
+/* The logger is forked before the main process locks its unveil view, so
+ * it restricts its own to the log files it writes; "c" lets a file moved
+ * away by log rotation be created again. The pledge that follows drops
+ * the unveil promise, so this runs once. */
+static void
+logger_child_unveil(void) {
+    static int unveiled;
+    struct ChildSink *sink;
+
+    if (unveiled)
+        return;
+    SLIST_FOREACH(sink, &child_sink_head, entries) {
+        if (sink->filepath == NULL)
+            continue;
+        if (unveil(sink->filepath, "rwc") == -1) {
+            fprintf(stderr, "logger: unveil %s failed: %s\n",
+                    sink->filepath, strerror(errno));
+            logger_child_exit(EXIT_FAILURE);
+        }
+    }
+    if (unveil(NULL, NULL) == -1) {
+        fprintf(stderr, "logger: unveil lock failed: %s\n", strerror(errno));
+        logger_child_exit(EXIT_FAILURE);
+    }
+    unveiled = 1;
+}
+#endif
+
 static FILE *
 logger_child_open_file(const char *filepath, int dirfd,
         const char *file_basename) {
@@ -1958,11 +1990,12 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 }
             }
 #ifdef __OpenBSD__
-            /* Tighten pledge - no longer need id. Runs whether or not the
-             * child was root when the message arrived, so the logger drops
-             * the id promise even when sniproxy was started directly as the
-             * unprivileged target user (the geteuid()==0 block is skipped
-             * there). */
+            /* Tighten pledge - no longer need id or unveil. Runs whether
+             * or not the child was root when the message arrived, so the
+             * logger drops these promises even when sniproxy was started
+             * directly as the unprivileged target user (the geteuid()==0
+             * block is skipped there). */
+            logger_child_unveil();
             if (pledge("stdio rpath wpath cpath fattr unix recvfd",
                         NULL) == -1) {
                 fprintf(stderr,
@@ -2061,8 +2094,10 @@ logger_child_main(int sockfd) {
     }
 
 #ifdef __OpenBSD__
-    /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
-    if (pledge("stdio rpath wpath cpath fattr id unix recvfd", NULL) == -1) {
+    /* 'id' for setuid/setgid/setgroups and 'unveil' for the log files,
+     * both only until privileges are dropped */
+    if (pledge("stdio rpath wpath cpath fattr id unix recvfd unveil",
+            NULL) == -1) {
         fprintf(stderr, "logger: pledge failed: %s\n", strerror(errno));
         logger_child_exit(EXIT_FAILURE);
     }

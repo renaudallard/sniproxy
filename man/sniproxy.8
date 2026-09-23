@@ -109,9 +109,9 @@ and
 \fBunveil\fR(2)
 to restrict each process to the minimum set of system calls and
 filesystem paths required\&. The logger process is forked before the
-filesystem view is locked and runs under
-\fBpledge\fR(2)
-only\&.
+filesystem view is locked and unveils only its own log files once
+privileges are dropped, so a log file first named by a reload is only
+opened after a restart\&.
 .PP
 On FreeBSD,
 \fBsniproxy\fR
