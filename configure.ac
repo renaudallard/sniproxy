@@ -272,6 +272,8 @@ case "$host_os" in
     ])
     AS_IF([test "x$sniproxy_have_seccomp" != "xyes"],
       [AC_MSG_WARN([libseccomp not found: building without the seccomp sandbox])])
+    # Needed to keep CAP_NET_RAW for "source client" after dropping root.
+    AC_CHECK_HEADERS([linux/capability.h])
     ;;
 esac
 AC_SUBST([LIBSECCOMP_LIBS])

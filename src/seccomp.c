@@ -298,3 +298,99 @@ seccomp_install_filter(enum seccomp_process_type type) {
 }
 
 #endif
+
+/*
+ * Linux capabilities. A listener with "source client" needs CAP_NET_RAW
+ * for IP_TRANSPARENT after the main process has dropped root, so the main
+ * process keeps that single capability across setuid(). Helpers forked
+ * once privileges are dropped give it up again.
+ */
+#if defined(__linux__) && defined(HAVE_LINUX_CAPABILITY_H)
+
+#include <linux/capability.h>
+#include <string.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+static int
+caps_set(int keep_net_raw) {
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct data[_LINUX_CAPABILITY_U32S_3];
+
+    memset(&hdr, 0, sizeof(hdr));
+    memset(data, 0, sizeof(data));
+    hdr.version = _LINUX_CAPABILITY_VERSION_3;
+    if (keep_net_raw) {
+        data[CAP_TO_INDEX(CAP_NET_RAW)].permitted = CAP_TO_MASK(CAP_NET_RAW);
+        data[CAP_TO_INDEX(CAP_NET_RAW)].effective = CAP_TO_MASK(CAP_NET_RAW);
+    }
+    return (int)syscall(SYS_capset, &hdr, data);
+}
+
+int
+caps_keep_on_setuid(void) {
+    return prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
+}
+
+int
+caps_limit_to_net_raw(void) {
+    if (caps_set(1) < 0)
+        return -1;
+    return prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0);
+}
+
+int
+caps_drop_all(void) {
+    return caps_set(0);
+}
+
+int
+caps_drop_net_raw(void) {
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct data[_LINUX_CAPABILITY_U32S_3];
+    int i = CAP_TO_INDEX(CAP_NET_RAW);
+
+    memset(&hdr, 0, sizeof(hdr));
+    memset(data, 0, sizeof(data));
+    hdr.version = _LINUX_CAPABILITY_VERSION_3;
+    if (syscall(SYS_capget, &hdr, data) < 0)
+        return -1;
+    data[i].effective &= ~CAP_TO_MASK(CAP_NET_RAW);
+    data[i].permitted &= ~CAP_TO_MASK(CAP_NET_RAW);
+    data[i].inheritable &= ~CAP_TO_MASK(CAP_NET_RAW);
+    return (int)syscall(SYS_capset, &hdr, data);
+}
+
+#else /* !(__linux__ && HAVE_LINUX_CAPABILITY_H) */
+
+#include <errno.h>
+
+int
+caps_keep_on_setuid(void) {
+#ifdef __linux__
+    /* Only reached with a "source client" listener, which cannot work
+     * without keeping CAP_NET_RAW. */
+    errno = ENOSYS;
+    return -1;
+#else
+    return 0;
+#endif
+}
+
+int
+caps_limit_to_net_raw(void) {
+    return 0;
+}
+
+int
+caps_drop_all(void) {
+    return 0;
+}
+
+int
+caps_drop_net_raw(void) {
+    return 0;
+}
+
+#endif

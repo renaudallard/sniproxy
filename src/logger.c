@@ -2053,6 +2053,13 @@ logger_child_main(int sockfd) {
      * it would deliver SIGPIPE and kill the child. */
     signal(SIGPIPE, SIG_IGN);
 
+    /* A logger restarted after the privilege drop must not inherit the
+     * CAP_NET_RAW the main process may keep for "source client". */
+    if (getuid() != 0 && geteuid() != 0 && caps_drop_all() < 0) {
+        fprintf(stderr, "logger: capset failed: %s\n", strerror(errno));
+        logger_child_exit(EXIT_FAILURE);
+    }
+
 #ifdef __OpenBSD__
     /* Need 'id' promise for setuid/setgid/setgroups when dropping privileges */
     if (pledge("stdio rpath wpath cpath fattr id unix recvfd", NULL) == -1) {

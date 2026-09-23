@@ -448,6 +448,15 @@ binder_main(int sockfd) {
     setproctitle("sniproxy-binder");
 #endif
 
+    /* A binder restarted after the privilege drop must not inherit the
+     * CAP_NET_RAW the main process may keep for "source client". Only
+     * that one goes: started without root but with file capabilities,
+     * the binder still needs CAP_NET_BIND_SERVICE. */
+    if (getuid() != 0 && geteuid() != 0 && caps_drop_net_raw() < 0) {
+        err("binder: capset failed: %s", strerror(errno));
+        binder_child_exit(EXIT_FAILURE);
+    }
+
 #ifdef __OpenBSD__
     if (pledge("stdio unix inet sendfd", NULL) == -1) {
         err("binder: pledge failed: %s", strerror(errno));

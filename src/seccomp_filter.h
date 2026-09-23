@@ -36,4 +36,10 @@ enum seccomp_process_type {
 int seccomp_available(void);
 int seccomp_install_filter(enum seccomp_process_type type);
 
+/* Linux capabilities; no-ops elsewhere. */
+int caps_keep_on_setuid(void);
+int caps_limit_to_net_raw(void);
+int caps_drop_all(void);
+int caps_drop_net_raw(void);
+
 #endif /* SNIPROXY_SECCOMP_FILTER_H */

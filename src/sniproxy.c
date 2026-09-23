@@ -86,6 +86,7 @@ static void daemonize(void);
 static int write_pidfile(const char *, pid_t);
 static void set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
+static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void sigchld_cb(struct ev_loop *, struct ev_signal *, int revents);
@@ -112,6 +113,9 @@ static void openbsd_unveil_address(const struct Address *address,
 static const char *sniproxy_version = PACKAGE_VERSION;
 static const char *default_username = "daemon";
 static struct Config *config;
+/* Cleared when root was dropped without keeping CAP_NET_RAW, so a
+ * "source client" added by a reload cannot work until a restart. */
+static int transparent_proxy_capable = 1;
 static rlim_t configured_fd_limit;
 static struct ev_signal sighup_watcher;
 static struct ev_signal sigusr1_watcher;
@@ -896,6 +900,14 @@ drop_perms(const char *username, const char *groupname) {
     if (setgid(gid) < 0)
         fatal("setgid(): %s", strerror(errno));
 
+    /* "source client" needs CAP_NET_RAW for IP_TRANSPARENT once root
+     * is gone; keep the capabilities across setuid() and cut them down
+     * to that one right after. */
+    int keep_net_raw = config_uses_transparent_proxy(config);
+    transparent_proxy_capable = keep_net_raw;
+    if (keep_net_raw && caps_keep_on_setuid() < 0)
+        fatal("keeping CAP_NET_RAW for source client: %s", strerror(errno));
+
     /* set the main uid - this is irreversible */
     if (setuid(user->pw_uid) < 0)
         fatal("setuid(): %s", strerror(errno));
@@ -904,9 +916,22 @@ drop_perms(const char *username, const char *groupname) {
     if (getuid() == 0 || geteuid() == 0 || getgid() == 0 || getegid() == 0)
         fatal("Failed to drop privileges");
 
+    if (keep_net_raw && caps_limit_to_net_raw() < 0)
+        fatal("limiting capabilities to CAP_NET_RAW: %s", strerror(errno));
+
     /* Now that main process is unprivileged, tell logger child to drop too */
     if (logger_drop_privileges(user->pw_uid, gid) < 0)
         fatal("logger_drop_privileges(): %s", strerror(errno));
+}
+
+static int
+config_uses_transparent_proxy(const struct Config *cfg) {
+    const struct Listener *listener;
+
+    SLIST_FOREACH(listener, &cfg->listeners, entries)
+        if (listener->transparent_proxy)
+            return 1;
+    return 0;
 }
 
 static void
@@ -1092,6 +1117,10 @@ signal_cb(struct ev_loop *loop, struct ev_signal *w, int revents) {
             case SIGHUP:
                 reopen_loggers();
                 reload_config(config, loop);
+                if (!transparent_proxy_capable &&
+                        config_uses_transparent_proxy(config))
+                    warn("source client needs a restart: CAP_NET_RAW "
+                            "was given up when privileges were dropped");
                 apply_mainloop_settings(loop, config);
                 connections_set_global_limit(effective_max_connections(config));
                 break;

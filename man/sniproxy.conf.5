@@ -490,9 +490,14 @@ address automatically. Do not include a port number in this address,
 because doing so will limit the proxy to one simultaneous connection to
 each server at a time. The special argument \fBclient\fR enables
 transparent proxy mode (IP_TRANSPARENT) where supported, preserving the
-original source address when connecting to the backend. This mode
-requires root privileges and an operating system that implements
-transparent sockets (such as Linux). For safety \fBsource client\fR
+original source address when connecting to the backend. This mode is
+only available on Linux and needs CAP_NET_RAW: when sniproxy is started
+as root and a listener uses it, the main process keeps that single
+capability after dropping to the configured user, and the helper
+processes started later give it up. Adding it to a listener with a
+reload does not work until sniproxy is restarted. The routing and
+firewall rules that deliver the backend's replies back to sniproxy are
+up to the administrator. For safety \fBsource client\fR
 cannot be combined with the proxy_protocol directive on the same
 listener: the PROXY header is untrusted, so letting it choose the
 transparent bind address would let a client spoof its source address

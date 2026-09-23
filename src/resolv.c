@@ -1546,6 +1546,13 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     setproctitle("sniproxy-resolver");
 #endif
 
+    /* Forked after the privilege drop: give up the CAP_NET_RAW the main
+     * process may keep for "source client". */
+    if (getuid() != 0 && geteuid() != 0 && caps_drop_all() < 0) {
+        err("resolver: capset failed: %s", strerror(errno));
+        resolver_child_exit(EXIT_FAILURE);
+    }
+
 #ifndef SOCK_CLOEXEC
     (void)set_cloexec(child_sock);
 #endif

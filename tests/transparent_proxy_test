@@ -32,12 +32,19 @@ sub make_config($$) {
     my ($fh, $filename) = File::Temp::tempfile();
     my ($unused, $logfile) = File::Temp::tempfile();
 
+    # The test runs as root, and sniproxy refuses to keep running as
+    # root, so drop to an unprivileged user as a real deployment would;
+    # "source client" then relies on the CAP_NET_RAW kept across setuid.
+    my $user = $ENV{SNI_PROXY_USER} || 'nobody';
+    my @pw = getpwnam($user) or die "unknown user $user\n";
+    my $group = getgrgid($pw[3]) || $pw[3];
+
     # Write out a test config file
     print $fh <<END;
 # Minimal test configuration
 
-user @{[test_user()]}
-group @{[test_group()]}
+user $user
+group $group
 
 listen 192.0.2.5 $proxy_port {
     proto http

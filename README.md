@@ -436,7 +436,9 @@ listener [::]:443 {
     # Multi-process scale-out via SO_REUSEPORT
     reuseport yes
 
-    # Preserve the client source IP on outbound (IP_TRANSPARENT)
+    # Preserve the client source IP on outbound (IP_TRANSPARENT, Linux
+    # only). The main process keeps CAP_NET_RAW for it after dropping
+    # root; replies must be routed back to sniproxy by the host.
     source client
 
     # Add a debug line with the size and parser result of each request
@@ -561,7 +563,9 @@ afterthought.
   are treated as literal suffixes, not re-parsed by the system resolver.
   Pidfiles refuse to be written over stale sockets, FIFOs or symlinks.
 - **Privilege drop verification**: startup aborts if real or effective
-  UID is still 0 after `setuid()`.
+  UID is still 0 after `setuid()`. The only capability that survives
+  the drop is CAP_NET_RAW, on Linux, and only when a listener uses
+  `source client`.
 - **OpenBSD sandboxing**: every process runs under pledge(2), and the
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it
