@@ -194,6 +194,17 @@ logger_prepare_process_title(int argc, char **argv) {
         logger_title_argc = 0;
     }
 }
+#elif defined(HAVE_SETPROCTITLE_INIT)
+extern char **environ;
+
+/* libbsd's setproctitle() writes over the memory holding argv and the
+ * environment, and does nothing until it knows where that is. It copies
+ * argv[1] onwards and the environment elsewhere first, which is why this
+ * runs before getopt() keeps pointers into argv. */
+void
+logger_prepare_process_title(int argc, char **argv) {
+    setproctitle_init(argc, argv, environ);
+}
 #else
 void
 logger_prepare_process_title(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
