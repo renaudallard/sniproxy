@@ -331,9 +331,12 @@ A config file has a small set of **global** directives followed by one or
 more `listener <addr>` and `table <name>` blocks. SIGHUP triggers a
 zero-downtime reload. A few settings only change on restart, and the
 reload logs a warning when it ignores one: `user`, `group`, `pidfile`,
-the `resolver` block, and, for listeners that already exist,
-`tcp_fastopen`, `reuseport` and `ipv6_v6only`. SIGUSR1 dumps the live
-connection table to a temporary `connections-XXXXXX` file under
+the resolver's `nameserver`, `search`, `mode` and `dnssec_validation`
+(its query limits do change), and, for listeners that already exist,
+`tcp_fastopen`, `reuseport` and `ipv6_v6only`. So does a `source client`
+added by a reload when sniproxy was started as root with no listener
+using it. SIGUSR1 dumps the live connection table to a temporary
+`connections-XXXXXX` file under
 `$XDG_RUNTIME_DIR/sniproxy`, `/var/run/sniproxy`, or
 `/tmp/sniproxy-<uid>` (tried in that order).
 
