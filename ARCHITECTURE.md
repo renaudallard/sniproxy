@@ -162,17 +162,22 @@ Connections represent active proxied sessions between client and server.
 
 **State machine:**
 ```
-NEW -> ACCEPTED -> PARSED -> RESOLVING -> RESOLVED -> CONNECTED
-                      |                                    |
-                      +-> (fallback) -> RESOLVED --------->+
+NEW -> ACCEPTED -> PARSED -+-> RESOLVING -> RESOLVED -> CONNECTED
+                           |                   ^            |
+                           +-------------------+            v
+                             IP address backend      SERVER_CLOSED or
+                             or fallback              CLIENT_CLOSED
                                                             |
-                      +-------------------------------------+
-                      v
-               SERVER_CLOSED or CLIENT_CLOSED
-                      |
-                      v
-                   CLOSED
+                                                            v
+                                                         CLOSED
 ```
+
+A backend or fallback given as a hostname goes through RESOLVING, an IP
+address or unix socket straight to RESOLVED. Before CONNECTED a connection
+can be aborted (unparsable request without a fallback, failed lookup,
+backend refused by `backend_acl`): the protocol's abort message is queued
+for the client and it enters SERVER_CLOSED. A client that closes before
+CONNECTED goes straight to CLOSED.
 
 **States:**
 - `NEW`: Before successful accept
