@@ -439,7 +439,10 @@ reopen_loggers(void) {
                         disable_logger_process();
                     }
                 }
-                if (!logger_parent_fs_locked && sink->fd != NULL && sink->fd_owned) {
+                /* A file this process opened itself is still reachable
+                 * once the filesystem is locked: on OpenBSD its path is
+                 * unveiled and the main process keeps wpath and cpath. */
+                if (sink->fd != NULL && sink->fd_owned) {
                     FILE *file = open_log_file_checked(sink->filepath);
                     if (file == NULL) {
                         /* Keep the current mirror open rather than
@@ -454,7 +457,8 @@ reopen_loggers(void) {
                     }
                 }
             } else {
-                if (!logger_parent_fs_locked) {
+                if (!logger_parent_fs_locked ||
+                        (sink->fd != NULL && sink->fd_owned)) {
                     FILE *file = open_log_file_checked(sink->filepath);
                     if (file == NULL) {
                         /* Only swap when reopen produced a new file;
