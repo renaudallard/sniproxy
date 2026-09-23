@@ -148,6 +148,9 @@ struct ResolverDotServer {
     char *sni_hostname;
     int verify_certificate;
     enum dot_min_tls_version min_tls_version;
+    /* Set for a server given by hostname until its address is known */
+    char *lookup_hostname;
+    uint16_t lookup_port;
 };
 
 struct ResolverChildDotSocket {
@@ -281,6 +284,9 @@ static size_t child_dot_server_count = 0;
 static size_t child_dot_server_capacity = 0;
 static SSL_CTX *child_dot_ssl_ctx = NULL;
 static struct ResolverChildDotSocket *child_dot_socket_list = NULL;
+/* Nameserver list waiting for the DoT server names to be looked up */
+static char **child_pending_nameservers = NULL;
+static size_t child_dot_lookups_pending = 0;
 
 static const char *resolver_cafile_fallbacks[] = {
     "/etc/ssl/cert.pem",
@@ -353,6 +359,10 @@ static char *resolver_child_nameservers_csv(char **nameservers);
 static int resolver_child_process_nameservers(char **nameservers, char ***processed_out);
 static void resolver_child_exit(int status) __attribute__((noreturn));
 static void resolver_child_free_processed_nameservers(char **list);
+static int resolver_child_apply_nameservers(char **processed);
+static size_t resolver_child_start_dot_bootstrap(struct ev_loop *loop);
+static void resolver_child_dot_lookup_cb(void *arg, int status, int timeouts,
+        struct ares_addrinfo *result);
 static void resolver_child_free_dot_servers(void);
 static int resolver_child_handle_dot_server(const char *target, char **converted);
 static struct ResolverDotServer *resolver_child_find_dot_server_sa(const struct sockaddr *addr, ares_socklen_t addrlen);
@@ -1587,7 +1597,6 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 #endif
 
     ev_io_init(&child_ipc_watcher, resolver_child_ipc_cb, child_sock, EV_READ);
-    ev_io_start(child_loop, &child_ipc_watcher);
 
     /* Install seccomp filter after all initialization is complete */
     if (seccomp_available()) {
@@ -1618,6 +1627,11 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
         }
     }
 #endif
+
+    /* Queries from the main process are read once the nameservers are
+     * set, which waits for any DoT server names to be looked up. */
+    if (resolver_child_start_dot_bootstrap(child_loop) == 0)
+        ev_io_start(child_loop, &child_ipc_watcher);
 
     ev_run(child_loop, 0);
 
@@ -1689,20 +1703,20 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         resolver_child_exit(EXIT_FAILURE);
     }
 
-    if (processed_nameservers != NULL && processed_nameservers[0] != NULL) {
-        char *csv = resolver_child_nameservers_csv(processed_nameservers);
-        if (csv == NULL) {
-            resolver_child_free_processed_nameservers(processed_nameservers);
-            err("resolver child: failed to allocate nameserver list");
-            resolver_child_exit(EXIT_FAILURE);
-        }
-        status = ares_set_servers_csv(child_channel, csv);
-        free(csv);
+    int lookups_needed = 0;
+    for (size_t i = 0; i < child_dot_server_count; i++)
+        if (child_dot_servers[i].lookup_hostname != NULL)
+            lookups_needed = 1;
+
+    if (processed_nameservers != NULL && lookups_needed) {
+        /* Until the DoT server names are known the channel keeps the
+         * system servers, which only the bootstrap lookups use. */
+        child_pending_nameservers = processed_nameservers;
+    } else if (processed_nameservers != NULL && processed_nameservers[0] != NULL) {
+        int rc = resolver_child_apply_nameservers(processed_nameservers);
         resolver_child_free_processed_nameservers(processed_nameservers);
-        if (status != ARES_SUCCESS) {
-            err("resolver child: ares_set_servers_csv failed: %s", ares_strerror(status));
+        if (rc < 0)
             resolver_child_exit(EXIT_FAILURE);
-        }
     } else {
         resolver_child_free_processed_nameservers(processed_nameservers);
     }
@@ -1728,6 +1742,9 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
 
 static void
 resolver_child_shutdown_dns(struct ev_loop *loop) {
+    resolver_child_free_processed_nameservers(child_pending_nameservers);
+    child_pending_nameservers = NULL;
+
     for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
         if (child_dns_watchers[i].active) {
             ev_io_stop(loop, &child_dns_watchers[i].watcher);
@@ -2399,6 +2416,137 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
     /* Query lifetime is managed by the caller once pending lookups finish. */
 }
 
+/* Fill the empty entries left for DoT servers given by hostname with the
+ * addresses found for them, in order, and hand the list to c-ares. */
+static int
+resolver_child_apply_nameservers(char **processed) {
+    size_t next = 0;
+
+    if (processed == NULL)
+        return -1;
+
+    for (size_t i = 0; processed[i] != NULL; i++) {
+        if (processed[i][0] != '\0')
+            continue;
+        while (next < child_dot_server_count &&
+                child_dot_servers[next].lookup_hostname == NULL)
+            next++;
+        if (next == child_dot_server_count)
+            return -1;
+
+        const struct ResolverDotServer *server = &child_dot_servers[next++];
+        char buffer[ADDRESS_BUFFER_SIZE];
+        display_sockaddr(&server->addr, server->addr_len, buffer, sizeof(buffer));
+        char *entry = strdup(buffer);
+        if (entry == NULL)
+            return -1;
+        free(processed[i]);
+        processed[i] = entry;
+    }
+
+    char *csv = resolver_child_nameservers_csv(processed);
+    if (csv == NULL) {
+        err("resolver child: failed to allocate nameserver list");
+        return -1;
+    }
+    debug_log("resolver child: nameservers %s", csv);
+    int status = ares_set_servers_csv(child_channel, csv);
+    free(csv);
+    if (status != ARES_SUCCESS) {
+        err("resolver child: ares_set_servers_csv failed: %s", ares_strerror(status));
+        return -1;
+    }
+    return 0;
+}
+
+/* Look up the DoT servers given by hostname. This runs once the process is
+ * sandboxed, through the same c-ares channel as every other query, which
+ * still uses the system servers at this point. Returns the number of
+ * lookups started; queries from the main process are only read once all of
+ * them have succeeded. */
+static size_t
+resolver_child_start_dot_bootstrap(struct ev_loop *loop) {
+    size_t count = 0;
+
+    for (size_t i = 0; i < child_dot_server_count; i++)
+        if (child_dot_servers[i].lookup_hostname != NULL &&
+                child_dot_servers[i].addr_len == 0)
+            count++;
+    if (count == 0)
+        return 0;
+
+    /* Set before the first lookup: c-ares may call back synchronously,
+     * for instance on a hosts file match. */
+    child_dot_lookups_pending = count;
+    for (size_t i = 0; i < child_dot_server_count; i++) {
+        const struct ResolverDotServer *server = &child_dot_servers[i];
+        if (server->lookup_hostname == NULL || server->addr_len != 0)
+            continue;
+
+        char port_str[6];
+        snprintf(port_str, sizeof(port_str), "%u", (unsigned)server->lookup_port);
+        struct ares_addrinfo_hints hints = {
+            .ai_flags = ARES_AI_NUMERICSERV,
+            .ai_family = AF_UNSPEC,
+            .ai_socktype = SOCK_STREAM,
+            .ai_protocol = IPPROTO_TCP,
+        };
+        debug_log("resolver child: looking up DoT nameserver %s",
+                server->lookup_hostname);
+        ares_getaddrinfo(child_channel, server->lookup_hostname, port_str,
+                &hints, resolver_child_dot_lookup_cb, (void *)(uintptr_t)i);
+    }
+
+    resolver_child_schedule_timeout(loop);
+    return count;
+}
+
+static void
+resolver_child_dot_lookup_cb(void *arg, int status,
+        int timeouts __attribute__((unused)), struct ares_addrinfo *result) {
+    const struct ares_addrinfo_node *node = NULL;
+
+    /* The channel is being destroyed on the way out */
+    if (status == ARES_EDESTRUCTION) {
+        if (result != NULL)
+            ares_freeaddrinfo(result);
+        return;
+    }
+
+    struct ResolverDotServer *server = &child_dot_servers[(size_t)(uintptr_t)arg];
+
+    if (status == ARES_SUCCESS && result != NULL) {
+        node = result->nodes;
+        while (node != NULL && (size_t)node->ai_addrlen > sizeof(server->addr))
+            node = node->ai_next;
+    }
+    if (node == NULL) {
+        /* Going on without this server would leave c-ares with the
+         * cleartext system servers. An operator who asked for DoT must
+         * never be downgraded silently, so fail closed instead. */
+        err("resolver child: unable to resolve DoT nameserver '%s': %s",
+                server->lookup_hostname, status == ARES_SUCCESS ?
+                "no usable address" : ares_strerror(status));
+        if (result != NULL)
+            ares_freeaddrinfo(result);
+        resolver_child_exit(EXIT_FAILURE);
+    }
+
+    memcpy(&server->addr, node->ai_addr, node->ai_addrlen);
+    server->addr_len = (socklen_t)node->ai_addrlen;
+    ares_freeaddrinfo(result);
+
+    if (--child_dot_lookups_pending > 0)
+        return;
+
+    int rc = resolver_child_apply_nameservers(child_pending_nameservers);
+    resolver_child_free_processed_nameservers(child_pending_nameservers);
+    child_pending_nameservers = NULL;
+    if (rc < 0)
+        resolver_child_exit(EXIT_FAILURE);
+    ev_io_start(child_loop, &child_ipc_watcher);
+}
+
 static char *
 resolver_child_nameservers_csv(char **nameservers) {
     size_t total_len = 0;
@@ -2679,56 +2827,30 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             free(sni_override);
             return -1;
         }
-        char port_str[6];
-        snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
-        struct addrinfo hints;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-
-        struct addrinfo *results = NULL;
-        int rc = getaddrinfo(hostname, port_str, &hints, &results);
-        if (rc != 0) {
-            /* Skipping the entry would leave c-ares with no configured
-             * server, falling back to the cleartext servers in
-             * resolv.conf.  An operator who asked for DoT must never be
-             * downgraded silently, so fail closed instead. */
-            err("resolver child: unable to resolve DoT nameserver '%s': %s",
-                    hostname, gai_strerror(rc));
+        /* The address is looked up through c-ares once the sandbox is
+         * in place, see resolver_child_start_dot_bootstrap(). */
+        server.lookup_hostname = strdup(hostname);
+        if (server.lookup_hostname == NULL) {
             free(addr);
             free(address_copy);
             free(sni_override);
             return -1;
         }
-
-        struct addrinfo *selected = results;
-        while (selected != NULL && selected->ai_addrlen > (socklen_t)sizeof(server.addr))
-            selected = selected->ai_next;
-        if (selected == NULL) {
-            freeaddrinfo(results);
-            free(addr);
-            free(address_copy);
-            free(sni_override);
-            return -1;
-        }
-
-        memcpy(&server.addr, selected->ai_addr, selected->ai_addrlen);
-        server.addr_len = (socklen_t)selected->ai_addrlen;
+        server.lookup_port = port;
         if (sni_override != NULL) {
             server.sni_hostname = sni_override;
             sni_override = NULL;
         } else {
             server.sni_hostname = strdup(hostname);
             if (server.sni_hostname == NULL) {
+                free(server.lookup_hostname);
                 free(addr);
                 free(address_copy);
                 free(sni_override);
-                freeaddrinfo(results);
                 return -1;
             }
         }
         server.verify_certificate = 1;
-        freeaddrinfo(results);
     } else {
         free(addr);
         free(address_copy);
@@ -2748,23 +2870,30 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             new_cap = 4;
         else if (child_dot_server_capacity > SIZE_MAX / 2) {
             free(server.sni_hostname);
+            free(server.lookup_hostname);
             return -1;
         } else
             new_cap = child_dot_server_capacity * 2;
         struct ResolverDotServer *tmp = reallocarray(child_dot_servers, new_cap, sizeof(*tmp));
         if (tmp == NULL) {
             free(server.sni_hostname);
+            free(server.lookup_hostname);
             return -1;
         }
         child_dot_servers = tmp;
         child_dot_server_capacity = new_cap;
     }
 
-    char buffer[ADDRESS_BUFFER_SIZE];
-    display_sockaddr(&server.addr, server.addr_len, buffer, sizeof(buffer));
+    /* A server still to be looked up keeps its place in the nameserver
+     * list with an empty entry, filled in by
+     * resolver_child_apply_nameservers(). */
+    char buffer[ADDRESS_BUFFER_SIZE] = "";
+    if (server.lookup_hostname == NULL)
+        display_sockaddr(&server.addr, server.addr_len, buffer, sizeof(buffer));
     *converted = strdup(buffer);
     if (*converted == NULL) {
         free(server.sni_hostname);
+        free(server.lookup_hostname);
         return -1;
     }
 
@@ -2785,6 +2914,8 @@ resolver_child_free_dot_servers(void) {
     for (size_t i = 0; i < child_dot_server_count; i++) {
         free(child_dot_servers[i].sni_hostname);
         child_dot_servers[i].sni_hostname = NULL;
+        free(child_dot_servers[i].lookup_hostname);
+        child_dot_servers[i].lookup_hostname = NULL;
         child_dot_servers[i].addr_len = 0;
     }
 

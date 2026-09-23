@@ -413,8 +413,9 @@ resolver {
 
 **Security note**: prefer IP literals with an explicit TLS hostname for
 DoT servers. A hostname-only entry is looked up in cleartext through the
-system resolver when the resolver process starts, which reveals the name
-and lets anyone who can tamper with that lookup break name resolution.
+servers in `/etc/resolv.conf` when the resolver process starts (after it
+has entered its sandbox), which reveals the name and lets anyone who can
+tamper with that lookup break name resolution.
 The certificate is still checked against the name, so a forged answer
 cannot redirect queries to another server:
 
