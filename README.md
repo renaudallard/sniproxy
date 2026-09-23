@@ -65,7 +65,8 @@ fuzzing, and active maintenance.
 - **Wildcard backends**: route to the dynamically resolved hostname the
   client asked for (`*:443`).
 - **HAProxy PROXY protocol**: emit v1 or v2 headers to backends; accept v1
-  or v2 from upstream load balancers (auto-detected).
+  or v2 from upstream load balancers on listeners with
+  `proxy_protocol on` (the version is auto-detected).
 - **Privilege separation**: four cooperating processes:
   `sniproxy-mainloop`, `sniproxy-binder`, `sniproxy-logger`,
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
