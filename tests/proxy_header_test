@@ -9,13 +9,6 @@ use TestHTTPD;
 use File::Temp;
 use IO::Socket::INET;
 
-BEGIN {
-    if ($> != 0) {
-        print "proxy_header_test requires root privileges; skipping\n";
-        exit 77;
-    }
-}
-
 sub proxy {
     my $config = shift;
 

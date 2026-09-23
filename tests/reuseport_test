@@ -8,13 +8,6 @@ use TestUtils;
 use TestHTTPD;
 use File::Temp;
 
-BEGIN {
-    if ($> != 0) {
-        print "reuseport_test requires root privileges; skipping\n";
-        exit 77;
-    }
-}
-
 sub proxy {
     my $config = shift;
 
