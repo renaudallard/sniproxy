@@ -363,7 +363,9 @@ Abstraction for network addresses supporting both IP addresses and hostnames.
 - Numeric IPv4/IPv6 addresses with port
 - Hostnames with port (requires DNS resolution)
 - Unix domain sockets (if configured)
-- Wildcard addresses for listening
+- Wildcard `*`, optionally with a port, valid only as a table backend,
+  where it means the hostname the client asked for; listeners and
+  fallbacks refuse it
 
 **Features:**
 - Unified representation for configuration and runtime
