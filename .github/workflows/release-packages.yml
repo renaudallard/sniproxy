@@ -67,45 +67,29 @@ jobs:
               m = re.match(r"\s*(\d+\.\d+)", version)
               return m.group(1) if m else version.split()[0]
 
-          def latest_ubuntu_non_lts():
+          def latest_ubuntu(meta, default, exclude=None):
+              # Newest release marked Supported in a meta-release file, oldest
+              # first in the file. There is no LTS field: meta-release lists
+              # every release and meta-release-lts only the LTS ones.
               try:
-                  data = fetch_text("https://changelogs.ubuntu.com/meta-release")
+                  data = fetch_text(f"https://changelogs.ubuntu.com/{meta}")
                   versions = []
                   block = {}
                   for line in data.splitlines() + [""]:
                       if not line.strip():
-                          if block.get("Supported") == "1" and block.get("Lts", "0") == "0" and "Version" in block:
+                          if block.get("Supported") == "1" and "Version" in block:
                               versions.append(ubuntu_major_minor(block["Version"]))
                           block = {}
                           continue
                       if ":" in line:
                           k, v = line.split(":", 1)
                           block[k.strip()] = v.strip()
+                  versions = [v for v in versions if v != exclude]
                   if versions:
                       return versions[-1]
               except Exception:
                   pass
-              return "latest"
-
-          def latest_ubuntu_lts():
-              try:
-                  data = fetch_text("https://changelogs.ubuntu.com/meta-release-lts")
-                  versions = []
-                  block = {}
-                  for line in data.splitlines() + [""]:
-                      if not line.strip():
-                          if block.get("Supported") == "1" and block.get("Lts") == "1" and "Version" in block:
-                              versions.append(ubuntu_major_minor(block["Version"]))
-                          block = {}
-                          continue
-                      if ":" in line:
-                          k, v = line.split(":", 1)
-                          block[k.strip()] = v.strip()
-                  if versions:
-                      return versions[-1]
-              except Exception:
-                  pass
-              return "22.04"
+              return default
 
           def debian_codename(track):
               url = f"https://deb.debian.org/debian/dists/{track}/Release"
@@ -262,8 +246,10 @@ jobs:
                   pass
               return "15.0"
 
-          ubuntu_stable = latest_ubuntu_non_lts()
-          ubuntu_lts = latest_ubuntu_lts()
+          # The newest release can itself be an LTS; build the LTS before it
+          # then rather than the same release twice.
+          ubuntu_stable = latest_ubuntu("meta-release", "latest")
+          ubuntu_lts = latest_ubuntu("meta-release-lts", "24.04", exclude=ubuntu_stable)
           debian_stable = debian_codename("stable")
           debian_oldstable = debian_codename("oldstable")
           fedora_release = latest_fedora_release()
