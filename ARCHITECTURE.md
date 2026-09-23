@@ -377,8 +377,10 @@ Abstraction for network addresses supporting both IP addresses and hostnames.
 
 2. **Parse**: Read initial data from client
    - Protocol parser extracts hostname
-   - Sanitizes hostname (removes control chars, trailing dots)
-   - Validates hostname length and format
+   - Sanitizes hostname: rejects control characters, spaces, non-ASCII
+     bytes and anything but letters, digits, '-', '_' and '.', lowercases
+     it and strips trailing dots
+   - Validates hostname length and format, with labels of at most 63 bytes
    - Transitions to PARSED
 
 3. **Lookup**: Find backend for hostname
@@ -442,7 +444,8 @@ Once CONNECTED, the connection enters steady-state proxying:
 
 ### Input Validation
 
-- **Hostname sanitization**: Removes control characters, validates length
+- **Hostname sanitization**: Rejects hostnames containing control characters
+  or other unexpected bytes rather than removing them, validates length
 - **NUL byte rejection**: The TLS, DTLS, HTTP, HTTP/2 and XMPP parsers reject
   embedded NUL bytes; the Minecraft parser cuts the address at the first NUL,
   after which FML and BungeeCord add their own data
