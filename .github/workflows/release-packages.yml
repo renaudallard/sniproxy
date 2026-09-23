@@ -56,8 +56,9 @@ jobs:
           import json
           import re
 
-          def fetch_text(url):
-              with urllib.request.urlopen(url, timeout=10) as resp:
+          def fetch_text(url, headers=None):
+              req = urllib.request.Request(url, headers=headers or {})
+              with urllib.request.urlopen(req, timeout=10) as resp:
                   return resp.read().decode()
 
           def ubuntu_major_minor(version):
@@ -193,19 +194,23 @@ jobs:
               return "15.6"
 
           def latest_suse_bci():
+              # Newest SLE 15 service pack. The Leap job already covers the
+              # 16 series, and this job is the only SLE 15 package. The
+              # registry wants a bearer token even for anonymous pulls.
               try:
-                  data = fetch_text("https://registry.suse.com/v2/bci/bci-base/tags/list")
+                  auth = ("https://scc.suse.com/api/registry/authorize"
+                          "?service=SUSE+Linux+Docker+Registry"
+                          "&scope=repository:bci/bci-base:pull")
+                  token = json.loads(fetch_text(auth))["token"]
+                  data = fetch_text("https://registry.suse.com/v2/bci/bci-base/tags/list",
+                                    {"Authorization": f"Bearer {token}"})
                   tags = json.loads(data).get("tags", [])
-                  versions = []
-                  for t in tags:
-                      if all(ch.isdigit() or ch == "." for ch in t):
-                          versions.append(t)
+                  versions = [int(t[3:]) for t in tags if re.fullmatch(r"15\.[0-9]+", t)]
                   if versions:
-                      versions_sorted = sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
-                      return versions_sorted[-1]
+                      return f"15.{max(versions)}"
               except Exception:
                   pass
-              return "15.6"
+              return "15.7"
 
           def latest_alpine():
               try:
