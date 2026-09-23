@@ -197,16 +197,19 @@ END
 }
 
 1;
+# sniproxy refuses to keep running as root, so a run as root drops to
+# nobody unless SNI_PROXY_USER says otherwise, as a real deployment would.
 my $TEST_USER = $ENV{SNI_PROXY_USER};
-$TEST_USER = getpwuid($>) unless defined $TEST_USER && $TEST_USER ne '';
+unless (defined $TEST_USER && $TEST_USER ne '') {
+    $TEST_USER = $> == 0 ? 'nobody' : getpwuid($>);
+}
 my $gid_list_env = $ENV{SNI_PROXY_GROUP};
 my $TEST_GROUP;
 if (defined $gid_list_env && $gid_list_env ne '') {
     $TEST_GROUP = $gid_list_env;
 } else {
-    my $gid_list = $);
-    my ($primary_gid) = split(/\s+/, $gid_list);
-    $TEST_GROUP = getgrgid($primary_gid) || $primary_gid;
+    my @pw = getpwnam($TEST_USER) or die "unknown user $TEST_USER\n";
+    $TEST_GROUP = getgrgid($pw[3]) || $pw[3];
 }
 
 sub test_user { $TEST_USER }
