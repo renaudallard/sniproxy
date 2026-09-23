@@ -486,12 +486,15 @@ Once CONNECTED, the connection enters steady-state proxying:
 - **Rate limiting**:
   - Per-IP connection rate limiting with token bucket algorithm
   - **Performance optimization (0.9.0)**: IPv4 fast path with cached 32-bit address
-    comparison and LRU eviction moves recently-used entries to front of hash chains
-  - **Collision defense (0.9.6)**: buckets are hashed with an arc4random()
-    seed (a multiply-xorshift mix for IPv4, a SplitMix64-derived mixer over
-    the masked prefix for IPv6) with 32-entry chain cutoffs, immediately
-    rejecting duplicate hashes so collision spraying cannot bypass the
-    limiter
+    comparison, and a bucket that is hit moves to the front of its hash chain.
+    Buckets are only evicted by age: at most once a minute a sweep drops
+    those idle for more than 300 seconds
+  - **Collision defense (0.9.6)**: the 65536 buckets are hashed with an
+    arc4random() seed (a multiply-xorshift mix for IPv4, a SplitMix64-derived
+    mixer over the masked prefix for IPv6). Entries with equal hashes are
+    told apart by their address, and a connection is refused only when a
+    lookup walks past 32 entries of one chain, so collision spraying cannot
+    bypass the limiter
   - Accept backoff timer on repeated errors
   - Idle connection timeouts
 - **Configuration hardening (0.9.7)**: sniproxy refuses to load
@@ -579,8 +582,8 @@ buffer assembly, reducing the number of buffer operations required
   header names eliminate strlen calls and linear table scans
 - **Buffer management**: Periodic shrink timer reduces per-event operations,
   eliminating unnecessary timestamp checks on every I/O callback
-- **Rate limiting**: IPv4 fast path with 32-bit integer comparison and LRU hash
-  chain management improves high-volume connection acceptance
+- **Rate limiting**: IPv4 fast path with 32-bit integer comparison and
+  move-to-front hash chains improves high-volume connection acceptance
 - **Protocol parsers**: TLS, HTTP, and HTTP/2 parsers use compile-time length
   constants and optimized data structures to minimize per-request overhead
 - **PROXY protocol**: Single-pass header composition reduces buffer operations
