@@ -154,7 +154,8 @@ listener 0.0.0.0:443 {
     protocol tls
     table https_hosts
 
-    # Used when the ClientHello has no usable SNI
+    # Used when the ClientHello has no usable SNI, cannot be parsed, or
+    # names a host that matches no table entry
     fallback 192.0.2.50:443
 
     access_log {
@@ -388,7 +389,10 @@ listener [::]:443 {
         2001:db8::/32
     }
 
-    # Fallback (used when no SNI / Host / etc. is present) with v1 header
+    # Fallback for requests with no hostname, that cannot be parsed, or
+    # that match no table entry, sent with a PROXY v1 header. When a
+    # matching backend's name fails to resolve, the connection is closed
+    # instead.
     fallback 192.0.2.50:443
     fallback proxy_protocol
     # ...or v2:
