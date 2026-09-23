@@ -5,5 +5,4 @@
     rotate 90
     compress
     notifempty
-    create 640 daemon adm
 }
