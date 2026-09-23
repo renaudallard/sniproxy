@@ -153,7 +153,8 @@ and limit the rights of their IPC descriptors with
 instead; the binder is not confined\&.
 Set
 .B SNIPROXY_DISABLE_CAPSICUM
-in the environment to disable Capsicum sandboxing\&.
+to any non-empty value in the environment to disable Capsicum
+sandboxing\&.
 .PP
 On Linux,
 \fBsniproxy\fR
@@ -161,7 +162,7 @@ uses seccomp-bpf to restrict available system calls per process when it
 was built with libseccomp\&.
 Set
 .B SNIPROXY_DISABLE_SECCOMP
-in the environment to disable it\&.
+to any non-empty value in the environment to disable it\&.
 
 .SH FILES
 .TP
