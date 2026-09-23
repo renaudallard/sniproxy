@@ -247,12 +247,13 @@ Protocol handlers parse application-layer headers to extract hostnames.
 **Supported protocols:**
 
 1. **TLS**: Extracts SNI from ClientHello (TCP)
-   - Supports TLS 1.0 through 1.3
+   - Parses TLS 1.0 through 1.3 ClientHellos, but refuses those below TLS 1.2
+     unless `-T` lowers the minimum
    - Validates extension format
    - Limits ClientHello extension lists to 64 entries (0.9.6) to stop CPU
      exhaustion from thousands of tiny extensions
    - Rejects embedded NUL bytes in server names
-   - Minimum client version can be configured
+   - Minimum client version can be configured with `-T`
    - Detects and rejects client renegotiation attempts
 
 2. **DTLS**: Extracts SNI from DTLS ClientHello (UDP)
