@@ -1,13 +1,14 @@
 # Memory Sanitizers Guide
 
-This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer with sniproxy. Sanitizer support is built into `./configure` and is exercised by GitHub Actions on every push and pull request via `.github/workflows/sanitizers.yml`.
+This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBehaviorSanitizer, and ThreadSanitizer with sniproxy. Sanitizer support is built into `./configure`; GitHub Actions runs ASAN, UBSAN and MSAN on branch pushes and pull requests via `.github/workflows/sanitizers.yml`, and Valgrind via `.github/workflows/valgrind.yml`.
 
 ## Quick facts
 - Configure flags: `--enable-asan`, `--enable-msan`, `--enable-ubsan`, `--enable-tsan`; `--enable-asan --enable-ubsan` is supported for combined coverage.
 - Mutual exclusions: ASAN, MSAN, and TSAN cannot be combined. Configure fails fast with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously`.
 - Hardening: when a sanitizer is enabled, configure drops every hardening flag it added (`_FORTIFY_SOURCE`, stack protector, PIE, RELRO and the others), since some of them conflict.
-- CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on every push/PR. MSAN builds and caches instrumented dependencies so the first run can take ~60 minutes; cached runs finish in ~5 minutes.
-- CI toolchain: clang plus libev, pcre2, c-ares, openssl, libbsd, autotools. Tests run with `SKIP_BAD_REQUEST_TEST=1`.
+- CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on pushes to branches whose names contain no `/`, and on pull requests; there is no TSAN job. MSAN builds and caches instrumented dependencies, so a run without the cache takes about 20 minutes, while cached runs finish in about 2 minutes.
+- CI toolchain: clang plus libev, pcre2, c-ares, OpenSSL (LibreSSL for MSAN), libbsd, autotools. No sanitizer job installs libseccomp, so the seccomp sandbox is not built there. Tests run with `SKIP_BAD_REQUEST_TEST=1`.
+- Valgrind: `.github/workflows/valgrind.yml` runs twelve of the unit test binaries under memcheck on the same triggers and uploads the logs.
 - Local smoke test: run `./test-sanitizer-build.sh` to validate the configure flags and conflict detection without installing every dependency.
 
 ## Available Sanitizers
@@ -86,20 +87,20 @@ make -j$(nproc)
 make check
 ```
 
-For local use, build instrumented libraries and point `PKG_CONFIG_PATH`, `CFLAGS`, `CXXFLAGS`, and `LDFLAGS` at them as shown in `.github/workflows/sanitizers.yml`. Expect the first build of the instrumented toolchain to take about an hour; reuse the same prefix to avoid rebuilding.
+For local use, build instrumented libraries and point `PKG_CONFIG_PATH`, `CFLAGS`, `CXXFLAGS`, and `LDFLAGS` at them as shown in `.github/workflows/sanitizers.yml`. Expect the first build of the instrumented toolchain to take a while (about 20 minutes on a CI runner); reuse the same prefix to avoid rebuilding.
 
 ## CI/CD Usage
 
 - Workflow: `.github/workflows/sanitizers.yml`
-- Triggers: every push and pull request
+- Triggers: pushes to branches whose names contain no `/`, and pull requests
 - Jobs:
   - **AddressSanitizer**: `./configure --enable-asan`
   - **UndefinedBehaviorSanitizer**: `./configure --enable-ubsan`
   - **ASAN+UBSAN**: `./configure --enable-asan --enable-ubsan`
-  - **MemorySanitizer**: fully enabled; builds and caches instrumented dependencies, then configures with MSAN flags
+  - **MemorySanitizer**: builds and caches instrumented dependencies, then runs a plain `./configure` with `-fsanitize=memory` in `CFLAGS` and `LDFLAGS` rather than `--enable-msan`, so the hardening flags stay on in that job
 - Each job builds with `make -j$(nproc)` and runs `make check`, uploading `tests/*.log` on failure.
 
-MSAN caching: the cache key includes the workflow file; the first run compiles all instrumented libraries (~60 minutes), while cache hits finish in ~5 minutes.
+MSAN caching: the cache key includes the workflow file; a run without the cache compiles all instrumented libraries (about 20 minutes), while cache hits finish in about 2 minutes.
 
 ## Environment Variables
 
