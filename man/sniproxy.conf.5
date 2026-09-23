@@ -255,7 +255,7 @@ timeout_collect_interval 0.005
 .fi
 .PP
 
-Tune how libev batches readiness notifications. \fBio_collect_interval\fR delays the next poll by up to the specified number of seconds so that multiple sockets can become ready before the kernel is queried again. \fBtimeout_collect_interval\fR performs the same batching for timers. Small non-zero values reduce system call pressure and improve throughput on busy instances at the cost of a few hundred microseconds of additional latency. Set either value to 0 to disable batching.
+Tune how libev batches readiness notifications. \fBio_collect_interval\fR delays the next poll by up to the specified number of seconds so that multiple sockets can become ready before the kernel is queried again. \fBtimeout_collect_interval\fR performs the same batching for timers. Small non-zero values reduce system call pressure and improve throughput on busy instances at the cost of a few hundred microseconds of additional latency. The defaults are the values shown above. Set either value to 0 to disable batching. Larger values than 0.1 for \fBio_collect_interval\fR and 0.5 for \fBtimeout_collect_interval\fR are lowered to those with a warning.
 
 .SS ERROR_LOG
 
