@@ -318,7 +318,8 @@ connection_buffer_limit 4M
 # client_buffer_limit   4M
 # server_buffer_limit   8M
 
-# Cap accepted HTTP headers per request (default 100).
+# Cap accepted HTTP/1 headers per request (default 100). HTTP/2
+# requests have a fixed limit of 100.
 http_max_headers 200
 
 # Only connect to backends in these ranges, so a wildcard backend cannot

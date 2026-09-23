@@ -175,10 +175,11 @@ http_max_headers 200
 .fi
 .PP
 
-Limit how many HTTP headers are accepted per request. The default is
+Limit how many HTTP/1 headers are accepted per request. The default is
 100. Setting this value prevents CPU exhaustion attacks that send
 requests with an excessive number of headers. Values must be between
-1 and 4096.
+1 and 4096. HTTP/2 requests have a fixed limit of 100 headers that this
+directive does not change.
 
 .SS BACKEND_ACL
 
