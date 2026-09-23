@@ -56,9 +56,15 @@ whether it is valid without starting the proxy\&.
 
 .TP
 -n \fIfile-descriptor-limit\fR
-Specify the maximum file descriptor resource limit\&. SNIProxy will
-attempt to set the maximum file descriptor limit to the value
-specified\&.
+Set both the soft and the hard file descriptor limit to this value
+before privileges are dropped\&. The default is 65536, which is also
+applied without this option and can lower a higher inherited limit\&.
+If the limit cannot be set sniproxy logs a warning and goes on; the
+default connection limit (see
+.B max_connections
+in
+.BR sniproxy.conf (5))
+is still derived from this value\&.
 
 .TP
 -V
