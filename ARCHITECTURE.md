@@ -512,12 +512,17 @@ buffer assembly, reducing the number of buffer operations required
 
 ### Initial Load
 
-1. Parse configuration file
-2. Create tables and backends, compile regexes
-3. Create listeners, bind sockets
-4. Initialize resolver
-5. Drop privileges
-6. Enter event loop
+1. Parse the configuration file, creating tables and backends (compiling
+   their regexes) and the loggers; the logger process is forked here
+2. On OpenBSD, unveil the paths the process needs and pledge
+3. Daemonize and write the pidfile, unless running with `-f`
+4. Start the binder process
+5. Apply the file descriptor and connection limits
+6. Create listeners, bind sockets
+7. Drop privileges
+8. Start the resolver process
+9. Install the seccomp filter (Linux) or limit descriptor rights
+   (FreeBSD), then enter the event loop
 
 ### Reload (SIGHUP)
 
