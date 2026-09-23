@@ -321,10 +321,12 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
 - Thread-safe query list with mutex protection
 - DNS-over-TLS upstreams via `dot://address/hostname` entries with certificate
   verification against the system trust store
-- **Security enhancements (0.9.0 -> 0.9.6)**: DNS query IDs moved from linear
-  counters to xorshift32 and now to arc4random() with OS entropy, while query
-  handles store explicit acquisition state so leaked or double-freed entries are
-  caught immediately.
+- **Security enhancements (0.9.0 -> 0.9.6)**: The IDs that match resolver
+  requests and results between the main process and the resolver process
+  moved from linear counters to xorshift32 and now to arc4random(), unique
+  among queries in flight; the IDs in the DNS packets themselves come from
+  c-ares. Each connection records whether it holds a slot of the DNS query
+  limits (`dns_query_acquired`), so a slot is released exactly once.
 - **Robustness (0.9.0 -> 0.9.6)**: Async-signal-safe signal handlers and
   overflow guards remain, and resolver restart/shutdown now uses
   mutex-protected flags plus dedicated release helpers to prevent counter drift
