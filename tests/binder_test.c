@@ -38,6 +38,28 @@
 static int test_binder(int);
 static int test_binder_reuseport(int);
 
+/* A loopback port nothing is bound to right now, so the test does not
+ * depend on fixed ports being free. */
+static int
+free_port(void) {
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_port = 0,
+    };
+    socklen_t len = sizeof(addr);
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd >= 0);
+    int rc = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    assert(rc == 0);
+    rc = getsockname(fd, (struct sockaddr *)&addr, &len);
+    assert(rc == 0);
+    close(fd);
+
+    return ntohs(addr.sin_port);
+}
+
 int main(void) {
     int i;
 
@@ -47,10 +69,10 @@ int main(void) {
     }
 
     start_binder();
-    for (i = 8080; i <= 8084; i++)
-        test_binder(i);
+    for (i = 0; i < 5; i++)
+        test_binder(free_port());
 
-    test_binder_reuseport(8085);
+    test_binder_reuseport(free_port());
 
     stop_binder();
 
