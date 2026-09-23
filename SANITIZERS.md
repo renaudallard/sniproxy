@@ -9,7 +9,6 @@ This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBe
 - CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on pushes to branches whose names contain no `/`, and on pull requests; there is no TSAN job. MSAN builds and caches instrumented dependencies, so a run without the cache takes about 20 minutes, while cached runs finish in about 2 minutes.
 - CI toolchain: clang plus libev, pcre2, c-ares, OpenSSL (LibreSSL for MSAN), libbsd, autotools. No sanitizer job installs libseccomp, so the seccomp sandbox is not built there. Tests run with `SKIP_BAD_REQUEST_TEST=1`.
 - Valgrind: `.github/workflows/valgrind.yml` runs twelve of the unit test binaries under memcheck on the same triggers and uploads the logs.
-- Local smoke test: run `./test-sanitizer-build.sh` to validate the configure flags and conflict detection without installing every dependency.
 
 ## Available Sanitizers
 
