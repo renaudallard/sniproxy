@@ -268,8 +268,9 @@ Protocol handlers parse application-layer headers to extract hostnames.
      the method nor an absolute URI plays a part
    - Case-insensitive header matching
    - Rejects a second Host header and strips a port from the value
-   - Enforces `HTTP_MAX_HEADERS` (100) (0.9.6) to prevent CPU exhaustion from
-     adversarial header floods
+   - Enforces a header count limit (0.9.6), `HTTP_DEFAULT_MAX_HEADERS` (100)
+     unless `http_max_headers` sets another value from 1 to 4096, to prevent
+     CPU exhaustion from adversarial header floods
 
 4. **HTTP/2**: Extracts :authority pseudo-header from HTTP/2 requests, as part
    of the HTTP protocol when a request starts with the HTTP/2 preface
@@ -454,8 +455,8 @@ Once CONNECTED, the connection enters steady-state proxying:
   - Prevents catastrophic backtracking
 
 - **Request guardrails (0.9.6)**:
-  - HTTP parsers enforce `HTTP_MAX_HEADERS` (100) so attacker-controlled header
-    floods cannot pin CPU in linear scans
+  - HTTP parsers enforce `http_max_headers` (default 100) so
+    attacker-controlled header floods cannot pin CPU in linear scans
   - TLS ClientHello parsers cap extension lists at 64 entries to avoid walking
     unbounded extension tables
 
