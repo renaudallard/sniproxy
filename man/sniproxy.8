@@ -22,9 +22,12 @@ to separate backend servers without installing the private key on the proxy
 machine\&. By default TLS 1.2 (and newer) client hellos are
 accepted\&.
 
-For security reasons the configuration file must not be readable or
-executable by group/other users. sniproxy verifies the permissions after
-opening the file and aborts startup if it detects broader access.
+For security reasons the configuration file must grant no permission to
+other users, and none to its group unless
+.B -g
+allows group read\&. sniproxy verifies the permissions after
+opening the file and aborts startup if it detects broader access; a
+reload with such a file is refused and keeps the running configuration\&.
 
 .SH OPTIONS
 
@@ -40,9 +43,9 @@ Do not daemonize, and run in foreground\&.
 .TP
 -g
 Allow group-read (0640) permissions on the configuration file\&.
-By default sniproxy requires mode 0600\&. This flag relaxes the check
-to 0640 so the unprivileged process can re-read the config on SIGHUP
-reload\&. The config file should be owned by root with its group set to
+By default the mode may be at most 0600\&. This flag relaxes the check
+to at most 0640 so the unprivileged process can re-read the config on
+SIGHUP reload\&. The config file should be owned by root with its group set to
 the sniproxy user group (e\&.g\&. root:_sniproxy)\&. A security warning is
 logged at startup when this flag is used\&.
 
