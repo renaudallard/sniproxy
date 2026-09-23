@@ -220,11 +220,9 @@ For CI/CD, this is acceptable. For production, build without sanitizers.
 
 ### Sanitizer library not found
 
-```bash
-# Install sanitizer libraries (Ubuntu/Debian)
-sudo apt-get install libasan6 libubsan1 libtsan0
+On Debian and Ubuntu the gcc runtimes (`libasanN`, `libubsan1`, `libtsanN`, whose numbers follow the gcc version) come in with the compiler through `libgcc-N-dev`, so installing `gcc` is normally enough. Otherwise use clang, which bundles them:
 
-# Or use clang which bundles them
+```bash
 CC=clang ./configure --enable-asan
 ```
 
