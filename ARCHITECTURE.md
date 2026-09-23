@@ -126,7 +126,8 @@ Tables contain routing rules that map hostnames to backend addresses.
 **Lookup behavior:**
 - Backends are evaluated in order
 - First matching pattern wins
-- Supports exact string matching and PCRE2 regular expressions
+- Every pattern is a PCRE2 regular expression; literal hostnames are
+  anchored first so that they match exactly
 - Regex match limits scale with hostname length to prevent ReDoS
 
 ### Backend
@@ -139,12 +140,16 @@ Backends represent destination servers with pattern-based routing rules.
 - `use_proxy_header`: Send a PROXY protocol v1 or v2 header to this backend
 
 **Runtime fields:**
-- `pattern_re`: Compiled PCRE2 regex (if pattern contains wildcards)
+- `pattern_re`: Compiled PCRE2 regex; every pattern is compiled, case
+  insensitively, and JIT compiled when possible
 - `pattern_match_data`: PCRE2 match data structure
 
 **Pattern matching:**
-- Literal strings: Exact hostname match
-- Regular expressions: PCRE2 patterns with wildcards (*, ., etc.)
+- Literal hostnames (no metacharacter other than '.'): rewritten as an
+  anchored regex with the dots escaped, so they only match that hostname
+- Other patterns: compiled as they are, as unanchored PCRE2 regular
+  expressions rather than glob wildcards
+- All patterns match case insensitively
 - Security: Regex match limits prevent algorithmic complexity attacks
 - NUL bytes in patterns are rejected
 
