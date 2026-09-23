@@ -167,11 +167,13 @@ table https_hosts {
     # "example.com" only, never "sub.example.com".
     example.com         192.0.2.10:443
 
-    # PCRE2 regular expression
-    .*\.example\.net    192.0.2.11:443
+    # PCRE2 regular expression. The config parser consumes one
+    # backslash, so double them, and end with $: a regex is not
+    # anchored and would also match "example.net.attacker.org".
+    .*\\.example\\.net$     192.0.2.11:443
 
     # Wildcard backend: connect to whatever the client asked for
-    .*\.cdn\.example    *:443
+    .*\\.cdn\\.example$     *:443
 }
 ```
 
@@ -399,7 +401,7 @@ table secure_hosts {
     # Same client IP always reaches the same backend when DNS returns
     # multiple records for that hostname
     backend_affinity on
-    .*\.cdn\.example\.com *:443
+    .*\\.cdn\\.example\\.com$ *:443
 }
 ```
 
@@ -420,7 +422,7 @@ listener 0.0.0.0:5222 {
 table xmpp_servers {
     example.com      192.0.2.10:5222
     chat.example.org 192.0.2.11:5222
-    .*\.xmpp\.net    *:5222
+    .*\\.xmpp\\.net$ *:5222
 }
 ```
 
@@ -443,7 +445,7 @@ listener 0.0.0.0:25565 {
 table minecraft_servers {
     mc.example.com   192.0.2.10:25565
     play.example.org 192.0.2.11:25565
-    .*\.mc\.net      *:25565
+    .*\\.mc\\.net$   *:25565
 }
 ```
 
@@ -575,8 +577,10 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 
 - Confirm the listener references the right `table <name>`.
 - Verify the pattern is a valid regex when it contains metacharacters
-  (`.*\.example\.com`, not `*.example.com`). Bare hostnames are
-  auto-anchored.
+  (`.*\\.example\\.com$`, not `*.example.com`). The config parser
+  consumes one backslash, so a backslash meant for the regex must be
+  doubled; `sniproxy -t` prints each pattern as it will be compiled.
+  Bare hostnames are auto-anchored, regexes are not.
 - Enable `bad_requests log` on the listener to see what the parser
   decided was malformed.
 
