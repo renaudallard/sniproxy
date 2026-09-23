@@ -460,9 +460,11 @@ Once CONNECTED, the connection enters steady-state proxying:
   - Per-IP connection rate limiting with token bucket algorithm
   - **Performance optimization (0.9.0)**: IPv4 fast path with cached 32-bit address
     comparison and LRU eviction moves recently-used entries to front of hash chains
-  - **Collision defense (0.9.6)**: arc4random()-seeded buckets use FNV-1a hashes
-    with 32-entry chain cutoffs, immediately rejecting duplicate hashes so
-    collision spraying cannot bypass the limiter
+  - **Collision defense (0.9.6)**: buckets are hashed with an arc4random()
+    seed (a multiply-xorshift mix for IPv4, a SplitMix64-derived mixer over
+    the masked prefix for IPv6) with 32-entry chain cutoffs, immediately
+    rejecting duplicate hashes so collision spraying cannot bypass the
+    limiter
   - Accept backoff timer on repeated errors
   - Idle connection timeouts
 - **Configuration hardening (0.9.7)**: sniproxy refuses to load
