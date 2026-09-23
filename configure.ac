@@ -257,6 +257,7 @@ AC_ARG_ENABLE([rfc3339-timestamps],
 LIBSECCOMP_LIBS=""
 case "$host_os" in
   linux*)
+    sniproxy_have_seccomp=no
     AC_CHECK_HEADER([seccomp.h], [sniproxy_have_seccomp_h=yes],
         [sniproxy_have_seccomp_h=no])
     AS_IF([test "x$sniproxy_have_seccomp_h" = "xyes"], [
@@ -266,8 +267,11 @@ case "$host_os" in
           [LIBSECCOMP_LIBS=""])
         AC_DEFINE([HAVE_SECCOMP], 1,
             [Define to 1 if libseccomp and seccomp.h are available])
+        sniproxy_have_seccomp=yes
       ])
     ])
+    AS_IF([test "x$sniproxy_have_seccomp" != "xyes"],
+      [AC_MSG_WARN([libseccomp not found: building without the seccomp sandbox])])
     ;;
 esac
 AC_SUBST([LIBSECCOMP_LIBS])

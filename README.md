@@ -217,7 +217,7 @@ arm64 tarball.
 - autoconf 2.71 or later and automake
 - libev, libpcre2-8, c-ares, OpenSSL (or LibreSSL) development headers
 - On Linux, libseccomp: optional, but without it the build has no
-  seccomp sandbox, and configure does not warn about it
+  seccomp sandbox (configure warns when it is missing)
 - libbsd, only where libc lacks `arc4random` or `strlcpy`, such as
   glibc before 2.38 (OpenBSD, FreeBSD and macOS have both)
 - Perl and cURL for the test suite
