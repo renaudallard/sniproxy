@@ -802,7 +802,8 @@ Contributions are welcome. Areas of particular interest:
 - Bug reports with reproducers
 
 Please build with the sanitizers and run `make check` locally before
-opening a pull request. ASan and UBSan run automatically on every PR.
+opening a pull request. The ASan, MSan, UBSan and Valgrind workflows
+run automatically on every push and pull request.
 
 ## Resources
 
