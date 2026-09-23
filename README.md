@@ -59,7 +59,7 @@ fuzzing, and active maintenance.
   certificates or private keys on the proxy.
 - **Five protocols, one binary**: TLS, DTLS (UDP), HTTP/1 + HTTP/2, XMPP
   (with STARTTLS), Minecraft Java Edition (FML and BungeeCord markers
-  stripped automatically).
+  ignored when routing).
 - **Pattern matching**: exact hostnames or PCRE2 (JIT-compiled where
   available), per-table backend selection with optional client-IP affinity.
 - **Wildcard backends**: route to the dynamically resolved hostname the
@@ -109,7 +109,7 @@ fuzzing, and active maintenance.
 | HTTP/1.x | `Host:` request header | Header count capped by `http_max_headers` (default 100) |
 | HTTP/2 | HPACK `:authority` pseudo-header | Bounded HPACK table (per-conn 64 KiB / global 4 MiB) |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
-| Minecraft (Java Edition) | Server address in handshake packet | FML and BungeeCord NUL-delimited trailers stripped |
+| Minecraft (Java Edition) | Server address in handshake packet | FML and BungeeCord NUL-delimited trailers ignored when routing, forwarded unchanged |
 
 ## Architecture
 
@@ -476,9 +476,10 @@ table minecraft_servers {
 ```
 
 The handshake packet is the very first data in the TCP stream, so
-sniproxy reads it, strips any Forge Mod Loader or BungeeCord forwarding
-trailer appended after a NUL byte, and routes on the clean server
-address.
+sniproxy reads it, cuts the server address at the first NUL byte to
+drop any Forge Mod Loader or BungeeCord forwarding trailer, and routes
+on what is left. The packet itself reaches the backend unchanged,
+trailer included.
 
 ## Security and hardening
 
