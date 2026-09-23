@@ -375,7 +375,8 @@ Abstraction for network addresses supporting both IP addresses and hostnames.
    - Queries listener's routing table
    - Evaluates backend patterns in order
    - Uses fallback address if no match
-   - Records whether to use PROXY header
+   - Records whether to use PROXY header, and if one may be needed puts it
+     in front of the buffered client data
 
 4. **Resolve**: Obtain backend IP address
    - If backend is IP address: transitions to RESOLVED immediately
@@ -386,12 +387,14 @@ Abstraction for network addresses supporting both IP addresses and hostnames.
      - Transitions to RESOLVED on completion
 
 5. **Connect**: Establish server connection
+   - Checks the backend address against `backend_acl`, closing the
+     connection if it is denied
    - Creates outbound socket
    - Optionally binds to source address
-   - Initiates non-blocking connect
-   - Sends buffered client data (including parsed header)
-   - Sends PROXY protocol header if configured
-   - Transitions to CONNECTED
+   - Drops the PROXY header again if this backend does not take one
+   - Initiates non-blocking connect and transitions to CONNECTED at once
+   - Once the socket is writable, sends the buffered client data, which
+     starts with the PROXY header when there is one
 
 ### Data Transfer
 
