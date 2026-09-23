@@ -247,13 +247,23 @@ longer runs the packaging steps under fakeroot unless told to.
 ### Alpine
 
 ```sh
-apk add build-base abuild autoconf automake libtool pkgconf \
-    libev-dev pcre2-dev c-ares-dev openssl-dev libbsd-dev
+doas apk add build-base abuild autoconf automake libtool pkgconf \
+    libev-dev pcre2-dev c-ares-dev openssl-dev libbsd-dev libseccomp-dev
+doas addgroup "$USER" abuild # then log in again
+abuild-keygen -a -i -n
 ./autogen.sh && ./configure && make dist
-cp alpine/APKBUILD /tmp/aport/ && cp sniproxy-*.tar.gz /tmp/aport/
-cd /tmp/aport && abuild checksum && abuild -r
-apk add --allow-untrusted ~/packages/<arch>/sniproxy-<version>.apk
+mkdir -p ~/aports/sniproxy
+cp alpine/APKBUILD sniproxy-<version>.tar.gz ~/aports/sniproxy/
+cd ~/aports/sniproxy
+sed -i -e 's/^pkgver=.*/pkgver=<version>/' \
+    -e 's/^source=.*/source="sniproxy-<version>.tar.gz"/' APKBUILD
+abuild checksum && abuild -r
+doas apk add ~/packages/aports/<arch>/sniproxy-<version>-r0.apk
 ```
+
+abuild refuses to run as root, and the APKBUILD carries a placeholder
+version that the two `sed` expressions replace, as the release workflow
+does.
 
 ### Fedora / RHEL
 
