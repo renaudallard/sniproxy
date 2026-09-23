@@ -307,7 +307,12 @@ access_log {
 Specify how connections should be logged, and this may be overridden in
 a specific listener. Connections are logged after both the client and
 server sockets have been closed. The syslog and priority directive may
-be used here as in error_log.
+be used here as in error_log. Each entry is logged at notice priority,
+so a priority of warning or stricter turns the access log off. DTLS
+sessions are not written to the access log.
+
+Inside a listener the file may also be given on one line, as
+\fBaccess_log /var/log/sniproxy/access.log\fR.
 
 Only one global \fBaccess_log\fR block may be given; a second one is a
 configuration error. This does not affect the per-listener
