@@ -117,23 +117,27 @@ SNIProxy runs as four cooperating processes:
 
 1. **`sniproxy-mainloop`**: accepts connections, parses the first protocol
    header, picks a backend and forwards bidirectionally.
-2. **`sniproxy-binder`**: the only process that keeps the privilege to
-   `bind()` low ports. It hands listening sockets back to the main loop on
-   startup and on every SIGHUP reload, then idles. Allowlisted to the
-   listener addresses present in the config; root-bound Unix-socket
-   listeners are confined to `/run` or `/var/run`.
-3. **`sniproxy-logger`**: owns the log files. The main loop sends log
-   lines over an encrypted Unix socket, so a compromised main loop cannot
-   forge or replay log writes.
-4. **`sniproxy-resolver`**: runs c-ares for async DNS, with arc4random
-   query IDs, mutex-guarded restart state, and per-client concurrency caps.
+2. **`sniproxy-binder`**: keeps root so that a listener added by a
+   SIGHUP reload can still bind a privileged port once the main loop has
+   dropped its privileges; the initial listeners are bound by the main
+   loop before it drops root. It idles otherwise, and only binds Unix
+   socket paths under `/run` or `/var/run`.
+3. **`sniproxy-logger`**: writes the log files. The main loop sends it
+   log lines over an encrypted, authenticated Unix socket.
+4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.
+   The main loop caps the queries in flight, overall and per client, and
+   restarts the resolver if it exits.
 
-All IPC channels are encrypted with ChaCha20-Poly1305 keys derived once in
-the parent and inherited across `fork()`, so children never have to read
-key material from disk or call `mlock()` after `pledge()`. Each helper
-process drops privileges immediately and, on a platform that provides one
-(pledge/unveil, Capsicum, or seccomp), enters its sandbox before reading
-any tainted input.
+All IPC channels are encrypted with ChaCha20-Poly1305. The master key is
+generated and locked in memory once in the parent and inherited across
+`fork()`, and each channel's keys are derived from it with a fresh salt
+when its child starts, so children never have to read key material from
+disk or call `mlock()` after `pledge()`. The logger drops root once the
+listeners are bound and the resolver is started after that, so both run
+unprivileged; the binder keeps root, which is its purpose. On a platform
+that provides one (pledge/unveil, Capsicum, or seccomp), each process
+enters its sandbox before it handles client traffic; the FreeBSD
+exceptions are listed under Installation.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and process
 boundaries, and [SANITIZERS.md](SANITIZERS.md) for how to build under
