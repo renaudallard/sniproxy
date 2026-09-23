@@ -42,7 +42,7 @@ Note: TSAN cannot be used simultaneously with ASAN or MSAN.
 
 ## Local Development Usage
 
-Use `clang` for best sanitizer support.
+Use `clang` for best sanitizer support. configure does not check that the compiler accepts the sanitizer flags, so an unsupported one only fails once `make` runs.
 
 ### Quick Start with AddressSanitizer
 
@@ -79,10 +79,10 @@ make check
 
 ### MemorySanitizer (Advanced)
 
-MSAN needs instrumented versions of all dependencies (libc++/libc++abi, libmd, libev, PCRE2, c-ares, LibreSSL, libbsd).
+MSAN needs clang, since gcc has no MemorySanitizer, and instrumented versions of all dependencies (libc++/libc++abi, libmd, libev, PCRE2, c-ares, LibreSSL, libbsd).
 
 ```bash
-./configure --enable-msan
+CC=clang ./configure --enable-msan
 make -j$(nproc)
 make check
 ```
