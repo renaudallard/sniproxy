@@ -92,6 +92,11 @@ process sends them to syslog instead, see the ERROR_LOG section of
 \fBsniproxy.conf\fR(5)\&.
 
 .SH SIGNALS
+Signals are handled by the main process\&. The logger, binder and
+resolver helper processes ignore SIGHUP and SIGUSR1, so signalling every
+sniproxy process, as
+.B pkill -HUP sniproxy
+does, is safe\&.
 
 .TP
 .B SIGHUP

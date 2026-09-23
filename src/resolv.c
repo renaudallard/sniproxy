@@ -1504,36 +1504,8 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     notice("resolver child starting (pid=%d)", getpid());
     debug_log("resolver child: debug logging ENABLED");
 
-    /* The parent starts its libev signal watchers before forking us, so we
-     * inherit its signal disposition: the watched signals are blocked (and
-     * routed to a signalfd we do not own), or on platforms without
-     * signalfd left pointing at a handler that writes to the parent's
-     * event pipe, whose descriptor we have already closed. Neither is
-     * usable here, so set our own disposition. */
-    struct sigaction child_sa;
-    memset(&child_sa, 0, sizeof(child_sa));
-    sigemptyset(&child_sa.sa_mask);
-
-    /* Reload and the connection dump are the parent's business. Ignore
-     * them rather than dying, so that signalling the whole process group,
-     * as "pkill -HUP sniproxy" does, does not cost a resolver restart. */
-    child_sa.sa_handler = SIG_IGN;
-    sigaction(SIGHUP, &child_sa, NULL);
-    sigaction(SIGUSR1, &child_sa, NULL);
-
-    /* Termination must work, and the parent signals us on shutdown. */
-    child_sa.sa_handler = SIG_DFL;
-    sigaction(SIGINT, &child_sa, NULL);
-    sigaction(SIGTERM, &child_sa, NULL);
-    sigaction(SIGCHLD, &child_sa, NULL);
-
-    sigset_t empty_mask;
-    sigemptyset(&empty_mask);
-    if (pthread_sigmask(SIG_SETMASK, &empty_mask, NULL) != 0)
-        warn("resolver child: unable to reset signal mask: %s",
-                strerror(errno));
-
-    /* SIGPIPE stays ignored: writes to a dead parent socket are handled
+    /* fd_child_setup() has set the other signal dispositions.
+     * SIGPIPE stays ignored: writes to a dead parent socket are handled
      * by the send() error paths. */
     signal(SIGPIPE, SIG_IGN);
 

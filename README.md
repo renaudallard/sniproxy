@@ -338,7 +338,9 @@ added by a reload when sniproxy was started as root with no listener
 using it. SIGUSR1 dumps the live connection table to a temporary
 `connections-XXXXXX` file under
 `$XDG_RUNTIME_DIR/sniproxy`, `/var/run/sniproxy`, or
-`/tmp/sniproxy-<uid>` (tried in that order).
+`/tmp/sniproxy-<uid>` (tried in that order). Both signals are meant for
+the main process; the helper processes ignore them, so signalling them
+all, as `pkill -HUP sniproxy` does, is safe.
 
 ### Global directives
 

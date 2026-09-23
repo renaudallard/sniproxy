@@ -28,6 +28,8 @@
 #define FD_UTIL_H
 
 #include <fcntl.h>
+#include <signal.h>
+#include <string.h>
 #include <unistd.h>
 
 /*
@@ -59,19 +61,44 @@ set_cloexec(int fd)
 }
 
 /*
- * Prepare a freshly forked helper process: move the IPC socket to fd 0,
- * close every other inherited descriptor except stdout and stderr, and
- * point stdout or stderr at /dev/null when the parent did not have them
- * open. Keeping fd 1 and 2 occupied means a stray fprintf(stderr) or the
- * crash handler write in a sandboxed child can never land on a socket
- * that reused those numbers, while the child's messages still reach the
- * parent's stderr in foreground mode. Returns the IPC descriptor, which
- * is always 0, or -1 on failure. Nothing here logs: the caller has not
- * detached the parent's logging state yet.
+ * Prepare a freshly forked helper process. Its signal disposition is set
+ * first: a helper forked after the parent started its libev signal
+ * watchers inherits them, the watched signals either blocked for a
+ * signalfd it does not own or pointing at a handler that writes to the
+ * parent's event pipe, which is closed below. Reload and the connection
+ * dump are the parent's business, so SIGHUP and SIGUSR1 are ignored and
+ * signalling the whole process group, as "pkill -HUP sniproxy" does,
+ * kills no helper; SIGINT, SIGTERM and SIGCHLD get their default action
+ * back so that termination works.
+ *
+ * Then move the IPC socket to fd 0, close every other inherited
+ * descriptor except stdout and stderr, and point stdout or stderr at
+ * /dev/null when the parent did not have them open. Keeping fd 1 and 2
+ * occupied means a stray fprintf(stderr) or the crash handler write in a
+ * sandboxed child can never land on a socket that reused those numbers,
+ * while the child's messages still reach the parent's stderr in
+ * foreground mode. Returns the IPC descriptor, which is always 0, or -1
+ * on failure. Nothing here logs: the caller has not detached the
+ * parent's logging state yet.
  */
 static inline int
 fd_child_setup(int fd)
 {
+    struct sigaction sa;
+    sigset_t empty_mask;
+
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = SIG_IGN;
+    (void)sigaction(SIGHUP, &sa, NULL);
+    (void)sigaction(SIGUSR1, &sa, NULL);
+    sa.sa_handler = SIG_DFL;
+    (void)sigaction(SIGINT, &sa, NULL);
+    (void)sigaction(SIGTERM, &sa, NULL);
+    (void)sigaction(SIGCHLD, &sa, NULL);
+    sigemptyset(&empty_mask);
+    (void)sigprocmask(SIG_SETMASK, &empty_mask, NULL);
+
     if (fd < 0)
         return -1;
 
