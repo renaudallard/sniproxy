@@ -131,3 +131,54 @@ jobs:
             echo "::warning::Some integration tests failed (best-effort platform)"
             cat tests/test-suite.log 2>/dev/null || true
           fi
+
+  build-freebsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build and test on FreeBSD
+        uses: cross-platform-actions/action@v0.31.0
+        with:
+          operating_system: freebsd
+          # Highest version the pinned builder ships an image for; see
+          # FREEBSD_BUILDER_TAG in release-packages.yml
+          version: "15.0"
+          run: |
+            set -eux
+            sudo pkg install -y autoconf automake libtool pkgconf \
+              libev pcre2 c-ares curl perl5
+
+            ./autogen.sh
+            ./configure LDFLAGS="-L/usr/local/lib" \
+              CPPFLAGS="-I/usr/local/include"
+            make -j$(sysctl -n hw.ncpu)
+
+            # Proxy one request to a backend given by name, so both the
+            # resolver and the main process have to connect out with
+            # the FreeBSD sandbox in place.
+            mkdir -p live
+            printf 'user %s\nlistener 127.0.0.1:18080 {\n    protocol http\n    table t\n}\ntable t {\n    example.test github.com:80\n}\n' \
+              "$(id -un)" > live/sniproxy.conf
+            chmod 600 live/sniproxy.conf
+            ./src/sniproxy -f -c live/sniproxy.conf > live/sniproxy.log 2>&1 &
+            proxy=$!
+            sleep 5
+            code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' \
+              -H 'Host: example.test' http://127.0.0.1:18080/ || true)
+            kill "$proxy" || true
+            wait "$proxy" || true
+            cat live/sniproxy.log
+            echo "proxied request: HTTP $code"
+
+            status=0
+            [ "$code" = 301 ] || status=1
+            # Skipped in the Linux and macOS jobs too
+            export SKIP_BAD_REQUEST_TEST=1
+            if ! make check; then
+              cat tests/test-suite.log || true
+              status=1
+            fi
+            exit $status
