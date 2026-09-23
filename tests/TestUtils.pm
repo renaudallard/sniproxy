@@ -14,6 +14,23 @@ $SIG{CHLD} = \&REAPER;
 
 my %children;
 my %early_exits; # status of children that exited before start_child registered them
+my $MAIN_PID = $$;
+
+# A test that dies before reap_children() would leave its proxy and
+# servers running. Stop whatever is left when the test process exits;
+# the children run END as well, so only the test process does this.
+END {
+    if ($$ == $MAIN_PID) {
+        local $?;
+        for my $signal (15, 9) {
+            my @left = grep($children{$_}->{'running'}, keys %children);
+            last unless @left;
+            kill $signal, @left;
+            sleep 1;
+            REAPER();
+        }
+    }
+}
 
 sub REAPER {
     # A second SIGCHLD can be dispatched between the waitpid below and the
