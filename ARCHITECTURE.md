@@ -115,7 +115,8 @@ Tables contain routing rules that map hostnames to backend addresses.
 
 **Configuration fields:**
 - `name`: Unique table identifier
-- `use_proxy_header`: Send PROXY protocol v1/v2 header to backends
+- `backend_affinity`: Choose among several resolved addresses by client
+  address instead of at random
 
 **Runtime fields:**
 - `reference_count`: For safe updates during reload
@@ -134,7 +135,7 @@ Backends represent destination servers with pattern-based routing rules.
 **Configuration fields:**
 - `pattern`: Hostname pattern (literal or regex)
 - `address`: Backend server address (hostname or IP:port)
-- `use_proxy_header`: Override table's PROXY header setting
+- `use_proxy_header`: Send a PROXY protocol v1 or v2 header to this backend
 
 **Runtime fields:**
 - `pattern_re`: Compiled PCRE2 regex (if pattern contains wildcards)
@@ -484,7 +485,8 @@ Once CONNECTED, the connection enters steady-state proxying:
 ### PROXY Protocol Support
 
 SNIProxy can prepend PROXY protocol v1/v2 headers to backend connections,
-preserving original client IP and port. Configurable per-table or per-backend.
+preserving original client IP and port. Configurable per backend in a table,
+and for each listener's fallback.
 
 **Use cases:**
 - Passing client source info to backend servers
