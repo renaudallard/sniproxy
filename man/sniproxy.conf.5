@@ -211,11 +211,12 @@ backend_acl deny_except {
 .fi
 .PP
 
-Restrict which backend addresses sniproxy is allowed to connect to after
-DNS resolution. The directive takes a policy of \fBallow_except\fR
-(allow all backends except those listed) or \fBdeny_except\fR (deny all
-backends except the listed ranges). When omitted all resolved addresses
-are permitted.
+Restrict which backend addresses sniproxy is allowed to connect to:
+addresses resolved from hostnames as well as literal table addresses and
+the fallback. The directive takes a policy of \fBallow_except\fR
+(allow all backends except those listed), which is the default when the
+policy is left out, or \fBdeny_except\fR (deny all backends except the
+listed ranges). When the block is omitted all addresses are permitted.
 
 This prevents abuse of sniproxy as an open proxy: the example above only
 lets it reach the private ranges, and \fBallow_except\fR with the same
