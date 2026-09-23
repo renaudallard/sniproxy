@@ -57,6 +57,7 @@ sub make_reuseport_config($$) {
 
 user @{[test_user()]}
 group @{[test_group()]}
+per_ip_connection_rate 0
 
 listen :: $proxy_port {
     proto http

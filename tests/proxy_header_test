@@ -36,6 +36,7 @@ sub make_proxy_config($$$) {
 
 user @{[test_user()]}
 group @{[test_group()]}
+per_ip_connection_rate 0
 
 listen 127.0.0.1 $proxy_port {
     proto http

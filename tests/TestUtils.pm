@@ -181,6 +181,7 @@ sub make_config($$) {
 
 user $user
 group $group
+per_ip_connection_rate 0
 
 listen 127.0.0.1 $proxy_port {
     proto http
