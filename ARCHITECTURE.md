@@ -508,9 +508,9 @@ Once CONNECTED, the connection enters steady-state proxying:
     ENFILE, growing from 2 to 60 seconds
   - Idle connection timeouts
 - **Configuration hardening (0.9.7)**: sniproxy refuses to load
-  configuration files that are readable or writable by group/other users,
-  ensuring accidental chmod mistakes do not leak secrets when starting or
-  reloading the daemon.
+  configuration files that grant any permission to group or other users,
+  except group read when started with `-g`, ensuring accidental chmod
+  mistakes do not leak secrets when starting or reloading the daemon.
 - **Configuration hardening (0.9.8)**: Reloads repeat the permission checks,
   all configured paths must be absolute, resolver cancellation takes the
   query list mutex, and temporary connection dumps are created by
