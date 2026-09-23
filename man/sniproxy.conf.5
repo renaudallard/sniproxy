@@ -343,12 +343,17 @@ them: a hostname with at least as many dots as the ndots option there
 appended in turn only if that fails; a hostname with fewer dots is
 tried with the search domains first.
 
-Nameservers may point at DNS-over-TLS upstreams using the
-\fBdot://ADDRESS/SNI[/tls1.2|tls1.3]\fR form. ADDRESS can be an IP literal
+A plain \fBnameserver\fR must be an IP address. Nameservers may also
+point at DNS-over-TLS upstreams using the
+\fBdot://ADDRESS[/SNI[/tls1.2|tls1.3]]\fR form, where ADDRESS may carry
+a port and defaults to port 853. ADDRESS can be an IP literal
 or hostname; when using an IP literal you must also supply a TLS hostname or
-the literal \fIinsecure\fR segment to disable verification. TLS 1.2 is the
-default minimum; append \fI/tls1.3\fR to require TLS 1.3 on builds that support
-it. On OpenSSL without TLS 1.3, \fI/tls1.3\fR is ignored with a warning and
+the literal \fIinsecure\fR segment to disable verification, while a
+hostname is used as the TLS hostname unless SNI names another. TLS 1.2 is
+the default minimum; append \fI/tls1.3\fR after the SNI segment, which is
+then needed even for a hostname, to require TLS 1.3 on builds that
+support it: \fBdot://dns.example/tls1.3\fR would take tls1.3 as the TLS
+hostname. On OpenSSL without TLS 1.3, \fI/tls1.3\fR is ignored with a warning and
 TLS 1.2 is enforced.
 
 When ADDRESS is a hostname it is resolved once at resolver startup, after
