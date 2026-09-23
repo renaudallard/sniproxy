@@ -89,6 +89,7 @@ jobs:
             tests/fuzz/crash-*
             tests/fuzz/leak-*
             tests/fuzz/timeout-*
+            tests/fuzz/oom-*
             tests/fuzz/bin/*.log
           if-no-files-found: ignore
 
@@ -113,7 +114,8 @@ jobs:
         run: |
           if compgen -G "tests/fuzz/crash-*" > /dev/null || \
              compgen -G "tests/fuzz/leak-*" > /dev/null || \
-             compgen -G "tests/fuzz/timeout-*" > /dev/null; then
+             compgen -G "tests/fuzz/timeout-*" > /dev/null || \
+             compgen -G "tests/fuzz/oom-*" > /dev/null; then
             echo "has_crash=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_crash=false" >> "$GITHUB_OUTPUT"

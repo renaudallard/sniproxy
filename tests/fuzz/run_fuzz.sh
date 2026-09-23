@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 OUT_DIR=${OUT_DIR:-"$ROOT_DIR/tests/fuzz/bin"}
 CORPUS_ROOT=${CORPUS_ROOT:-"$ROOT_DIR/tests/fuzz/corpus"}
+# libFuzzer writes crash-*, leak-*, timeout-* and oom-* files to its
+# working directory unless told otherwise; the CI workflows look here.
+ARTIFACT_DIR=${ARTIFACT_DIR:-"$ROOT_DIR/tests/fuzz"}
 FUZZ_CC=${FUZZ_CC:-clang}
 FUZZ_OPTIONAL=${FUZZ_OPTIONAL:-1}
 FUZZ_RUNTIME=${FUZZ_RUNTIME:-30}
@@ -259,9 +262,11 @@ run_single_fuzzer() {
     local log_file="$OUT_DIR/${fuzzer}.log"
 
     if [[ "${FUZZ_VERBOSE}" -ne 0 ]]; then
-        "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/$corpus" 2>&1 | tee "$log_file"
+        "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME \
+            -artifact_prefix="$ARTIFACT_DIR/" "$CORPUS_ROOT/$corpus" 2>&1 | tee "$log_file"
     else
-        "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/$corpus" >"$log_file" 2>&1
+        "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME \
+            -artifact_prefix="$ARTIFACT_DIR/" "$CORPUS_ROOT/$corpus" >"$log_file" 2>&1
     fi
 
     local exit_code=$?
@@ -309,7 +314,8 @@ else
 
     for target in "${FUZZ_TARGETS[@]}"; do
         IFS=':' read -r fuzzer corpus <<< "$target"
-        run_with_optional_quiet "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME "$CORPUS_ROOT/$corpus"
+        run_with_optional_quiet "$OUT_DIR/$fuzzer" -max_total_time=$FUZZ_RUNTIME \
+            -artifact_prefix="$ARTIFACT_DIR/" "$CORPUS_ROOT/$corpus"
     done
 
     vlog "Fuzzing complete. No crashes detected."

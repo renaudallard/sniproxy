@@ -76,6 +76,7 @@ jobs:
             tests/fuzz/crash-*
             tests/fuzz/leak-*
             tests/fuzz/timeout-*
+            tests/fuzz/oom-*
             tests/fuzz/bin/*.log
           if-no-files-found: ignore
 
