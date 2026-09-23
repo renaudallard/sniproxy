@@ -212,6 +212,14 @@ latest Rocky Linux releases, openSUSE Leap and SUSE Linux Enterprise
 15, an x86_64 `.apk` for Alpine, a FreeBSD amd64 tarball and a macOS
 arm64 tarball.
 
+The `.deb` and `.rpm` packages install a default `/etc/sniproxy.conf`
+(mode 0640, group `daemon`), the `/var/log/sniproxy` directory, a
+logrotate file and a systemd unit that is not enabled. The unit starts
+sniproxy as root, which binds its listeners and drops to the `user` in
+the configuration, and passes `-g` so that user can read the
+configuration again on reload. Enable it with
+`systemctl enable --now sniproxy`.
+
 ### Prerequisites
 
 - autoconf 2.71 or later and automake
