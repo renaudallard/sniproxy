@@ -324,11 +324,12 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
   validation failures for split-horizon environments.
 
 **Modes:**
-- `RESOLV_MODE_DEFAULT`: System default behavior
+- `RESOLV_MODE_DEFAULT`: No `mode` configured; A and AAAA are queried in
+  parallel and the first family to answer with records is used
 - `RESOLV_MODE_IPV4_ONLY`: A records only
 - `RESOLV_MODE_IPV6_ONLY`: AAAA records only
-- `RESOLV_MODE_IPV4_FIRST`: Prefer A records
-- `RESOLV_MODE_IPV6_FIRST`: Prefer AAAA records
+- `RESOLV_MODE_IPV4_FIRST`: Prefer A records, answering as soon as they arrive
+- `RESOLV_MODE_IPV6_FIRST`: Prefer AAAA records, answering as soon as they arrive
 
 ### Logger
 
