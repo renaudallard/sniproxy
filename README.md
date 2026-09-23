@@ -252,12 +252,19 @@ apk add --allow-untrusted ~/packages/<arch>/sniproxy-<version>.apk
 ### Fedora / RHEL
 
 ```sh
-sudo yum install autoconf automake curl gettext-devel libev-devel pcre2-devel \
-    pkgconfig rpm-build c-ares-devel openssl-devel libbsd-devel
+sudo dnf install gcc make rpm-build autoconf automake curl gettext-devel \
+    libev-devel pcre2-devel c-ares-devel openssl-devel libbsd-devel \
+    libseccomp-devel systemd-rpm-macros
 ./autogen.sh && ./configure && make dist
-rpmbuild --define "_sourcedir `pwd`" -ba redhat/sniproxy.spec
-sudo yum install ../sniproxy-<version>.<arch>.rpm
+rpmbuild --define "_sourcedir $(pwd)" -ba redhat/sniproxy.spec
+sudo dnf install ~/rpmbuild/RPMS/<arch>/sniproxy-<version>-1.<dist>.<arch>.rpm
 ```
+
+Build from a release tag: on any other commit `autogen.sh` gives the
+spec a `+git` version that `make dist` does not use, and rpmbuild then
+cannot find the tarball. On RHEL and its rebuilds, enable EPEL and CRB
+first (`libbsd-devel` comes from EPEL); RHEL 9 also ships autoconf
+2.69, older than the 2.71 that `configure.ac` requires.
 
 ### FreeBSD
 
