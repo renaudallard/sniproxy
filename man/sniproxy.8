@@ -130,8 +130,11 @@ uses
 \fBpledge\fR(2)
 and
 \fBunveil\fR(2)
-to restrict each process to the minimum set of system calls and
-filesystem paths required\&. The logger process is forked before the
+to restrict each process to the system calls it needs and the files it
+uses\&. The main process and the binder and resolver it forks see the
+configuration, the resolver files, the certificate bundle, and the
+directories holding the log files, the pidfile, listening Unix sockets
+and connection dumps, in which they may create files\&. The logger process is forked before the
 filesystem view is locked and unveils only its own log files once
 privileges are dropped, so a log file first named by a reload is only
 opened after a restart\&.
