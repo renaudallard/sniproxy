@@ -214,10 +214,12 @@ arm64 tarball.
 
 ### Prerequisites
 
-- Autotools (autoconf, automake, gettext, libtool)
+- autoconf 2.71 or later and automake
 - libev, libpcre2-8, c-ares, OpenSSL (or LibreSSL) development headers
-- libbsd for `arc4random` and `strlcpy` (not needed on OpenBSD/FreeBSD/macOS,
-  which ship them natively)
+- On Linux, libseccomp: optional, but without it the build has no
+  seccomp sandbox, and configure does not warn about it
+- libbsd, only where libc lacks `arc4random` or `strlcpy`, such as
+  glibc before 2.38 (OpenBSD, FreeBSD and macOS have both)
 - Perl and cURL for the test suite
 
 ### From source
