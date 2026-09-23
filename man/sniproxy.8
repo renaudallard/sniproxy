@@ -144,7 +144,8 @@ directories holding the log files, the pidfile, listening Unix sockets
 and connection dumps, in which they may create files\&. The logger process is forked before the
 filesystem view is locked and unveils only its own log files once
 privileges are dropped, so a log file first named by a reload is only
-opened after a restart\&.
+opened after a restart\&. A logger restarted by the health check runs
+within the view and promises of the main process instead\&.
 .PP
 On FreeBSD,
 \fBsniproxy\fR

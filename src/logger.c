@@ -212,6 +212,11 @@ static int logger_process_enabled = 0;
 static int logger_process_failed = 0;
 static int logger_parent_fs_locked = 0;
 
+/* Set in a logger child restarted after the main process pledged, which
+ * only gets the promises needed to write its files, see
+ * logger_child_main(). */
+static int logger_child_reduced_pledge = 0;
+
 /* Credentials sent with LOGGER_CMD_PRIVILEGES, kept so a logger child
  * restarted by the health check tightens its sandbox like the original. */
 static uid_t logger_priv_uid;
@@ -1682,7 +1687,7 @@ logger_child_open_file(const char *filepath, int dirfd,
         return NULL;
     }
 
-    if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0)
+    if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0 && !logger_child_reduced_pledge)
         (void)fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH));
 
     FILE *file = fdopen(fd, "a");
@@ -1995,13 +2000,15 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
              * logger drops these promises even when sniproxy was started
              * directly as the unprivileged target user (the geteuid()==0
              * block is skipped there). */
-            logger_child_unveil();
-            if (pledge("stdio rpath wpath cpath fattr unix recvfd",
-                        NULL) == -1) {
-                fprintf(stderr,
-                        "logger: pledge tighten failed: %s\n",
-                        strerror(errno));
-                logger_child_exit(EXIT_FAILURE);
+            if (!logger_child_reduced_pledge) {
+                logger_child_unveil();
+                if (pledge("stdio rpath wpath cpath fattr unix recvfd",
+                            NULL) == -1) {
+                    fprintf(stderr,
+                            "logger: pledge tighten failed: %s\n",
+                            strerror(errno));
+                    logger_child_exit(EXIT_FAILURE);
+                }
             }
 #endif
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
@@ -2095,11 +2102,20 @@ logger_child_main(int sockfd) {
 
 #ifdef __OpenBSD__
     /* 'id' for setuid/setgid/setgroups and 'unveil' for the log files,
-     * both only until privileges are dropped */
+     * both only until privileges are dropped. A logger restarted after
+     * the main process pledged cannot ask for promises the main process
+     * no longer has, and pledge() fails with EPERM. Such a logger already
+     * runs unprivileged within the main process's unveil view, so it
+     * keeps what writing its files needs, without fattr, and skips its
+     * own unveil and the tighter pledge. */
     if (pledge("stdio rpath wpath cpath fattr id unix recvfd unveil",
             NULL) == -1) {
-        fprintf(stderr, "logger: pledge failed: %s\n", strerror(errno));
-        logger_child_exit(EXIT_FAILURE);
+        if (errno != EPERM ||
+                pledge("stdio rpath wpath cpath unix recvfd", NULL) == -1) {
+            fprintf(stderr, "logger: pledge failed: %s\n", strerror(errno));
+            logger_child_exit(EXIT_FAILURE);
+        }
+        logger_child_reduced_pledge = 1;
     }
 #endif
 

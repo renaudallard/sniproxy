@@ -591,7 +591,8 @@ afterthought.
   `/etc/resolv.conf` and `/etc/hosts` read only for the resolver. The
   logger is forked before that and unveils only its own log files once
   privileges are dropped, so a log file first named by a reload is only
-  opened after a restart.
+  opened after a restart. A logger restarted by the health check runs
+  within the main loop's view and promises instead.
 - **FreeBSD sandboxing**: the logger enters Capsicum capability mode
   with its log directories pre-opened for `openat()`. The main process
   and the resolver stay out of it, since capability mode forbids
