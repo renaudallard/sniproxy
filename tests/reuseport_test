@@ -49,7 +49,11 @@ sub make_reuseport_config($$) {
     my $httpd_port = shift;
 
     my ($fh, $filename) = File::Temp::tempfile();
-    my ($unused, $logfile) = File::Temp::tempfile();
+    # Both instances open this log. Keep it out of the sticky /tmp: once
+    # the first instance has handed the file to the unprivileged user, the
+    # second, still root, would be refused under fs.protected_regular.
+    my $logdir = File::Temp::tempdir(CLEANUP => 1);
+    my $logfile = "$logdir/access.log";
 
     # Write out a test config file
     print $fh <<END;
