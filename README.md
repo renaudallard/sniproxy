@@ -104,7 +104,7 @@ fuzzing, and active maintenance.
 | --- | --- | --- |
 | TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
 | DTLS | SNI extension in UDP ClientHello | Source-address validation by waiting for a retransmission |
-| HTTP/1.x | `Host:` request header | Per-listener `bad_requests log` records malformed input |
+| HTTP/1.x | `Host:` request header | Header count capped by `http_max_headers` (default 100) |
 | HTTP/2 | HPACK `:authority` pseudo-header | Bounded HPACK table (per-conn 64 KiB / global 4 MiB) |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
 | Minecraft (Java Edition) | Server address in handshake packet | FML and BungeeCord NUL-delimited trailers stripped |
@@ -380,7 +380,8 @@ listener [::]:443 {
     # Preserve the client source IP on outbound (IP_TRANSPARENT)
     source client
 
-    # Log malformed / rejected requests
+    # Add a debug line with the size and parser result of each request
+    # that fails to parse (the contents are not logged)
     bad_requests log
 
     # Allow listener: every CIDR not listed is blocked
@@ -588,8 +589,8 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   consumes one backslash, so a backslash meant for the regex must be
   doubled; `sniproxy -t` prints each pattern as it will be compiled.
   Bare hostnames are auto-anchored, regexes are not.
-- Enable `bad_requests log` on the listener to see what the parser
-  decided was malformed.
+- Check the error log: a request without a hostname or one that fails
+  to parse is logged as a warning, with the client address.
 
 **DNS is not working**
 

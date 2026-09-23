@@ -460,8 +460,10 @@ header whenever the fallback path is taken, allowing the backend to recover
 the original client IP and port. Use \fBproxy_protocol_v2\fR instead to send
 the binary v2 format.
 
-The bad_requests directive allows logging the contents of the client
-request if it is not parsable. This is useful for debugging.
+The bad_requests directive adds a debug level line giving the size and
+the parser result of each request that cannot be parsed. The request
+contents are not logged. The parse failure itself is logged as a warning
+whether or not this directive is set.
 
 The proxy_protocol directive enables acceptance of incoming HAProxy PROXY
 protocol headers (both v1 text and v2 binary formats are auto-detected).
