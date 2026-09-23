@@ -1,5 +1,29 @@
 2026-09-23  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.15.0
+	- freebsd: only the logger enters capability mode; connect() is not
+	  permitted there, so proxying and resolving failed. CI now builds,
+	  tests and runs sniproxy on FreeBSD.
+	- sniproxy: every helper process ignores SIGHUP and SIGUSR1, and one
+	  restarted while running stops on SIGTERM again.
+	- openbsd: the logger unveils its log files, a restarted logger comes
+	  up with a reduced pledge, and the main process reopens its log
+	  files on rotation.
+	- sniproxy: server buffers grow up to server_buffer_limit, but not
+	  while connections use more than 64 MiB.
+	- sniproxy: setproctitle_init() is called where libbsd provides it.
+	- config: an unknown syslog facility and PROXY options on a dtls
+	  listener are errors; a dtls listener's table with PROXY entries
+	  warns. ipv6_v6only no clears IPV6_V6ONLY.
+	- packaging: the Alpine package ships the default config, the log
+	  directory, the logrotate file and an OpenRC service.
+	- build: configure keeps -Werror=format-security with gcc.
+	- tests: TestUtils stops leftover children when a test dies.
+	  test-sanitizer-build.sh is removed.
+	- docs: man pages, ARCHITECTURE.md and SANITIZERS.md corrected.
+
+2026-09-23  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.14.5
 	- openbsd: the resolver process can read /etc/resolv.conf and
 	  /etc/hosts. Under unveil it read neither and asked 127.0.0.1, so

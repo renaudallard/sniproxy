@@ -1,3 +1,52 @@
+sniproxy 0.15.0 (2026-09-23)
+===============================
+
+The man pages, ARCHITECTURE.md and SANITIZERS.md were checked claim by
+claim against the code, which turned up bugs as well as wrong
+documentation.
+
+Upgrade note: some configurations earlier releases accepted are now
+refused: a syslog facility that is not recognised, which silently became
+user; proxy_protocol or a PROXY fallback on a dtls listener, which were
+ignored; and, on OpenBSD, ipv6_v6only no, which OpenBSD cannot honour
+and which left the listener IPv6 only. Server buffers now grow up to
+server_buffer_limit (1 MiB by default), so a connection whose client
+reads slower than its backend sends uses more memory than before;
+growth stops once all connections together use 64 MiB.
+
+Highlights:
+
+* FreeBSD: capability mode forbids connect(), so no name resolved and,
+  unless a Unix socket was configured, proxied connections failed with
+  "Not permitted in capability mode". Only the logger stays in
+  capability mode now, and a new CI job runs sniproxy on FreeBSD.
+
+* "pkill -HUP sniproxy" killed the logger, and SIGUSR1 sent to every
+  process killed the binder. All helper processes now ignore both, and
+  a helper restarted while sniproxy runs stops on SIGTERM again.
+
+* OpenBSD: the logger unveils only its own log files, so a log file
+  first named by a reload is opened after a restart. A logger restarted
+  by the health check comes up again instead of failing its pledge, and
+  the main process reopens its log files on rotation.
+
+* Server buffers grow up to server_buffer_limit as documented, while the
+  client reads slower than the backend sends; they stayed at 32 KiB.
+
+* ipv6_v6only no makes an IPv6 listener accept IPv4 as well; it did
+  nothing before.
+
+* Builds that use libbsd, such as the Alpine, Debian bookworm and Rocky
+  9 packages, set their process titles and no longer print
+  "setproctitle not initialized".
+
+* The Alpine package installs /etc/sniproxy.conf, /var/log/sniproxy, the
+  logrotate file and an OpenRC service that is not enabled.
+
+* configure keeps -Werror=format-security with gcc, a test that dies no
+  longer leaves sniproxy running, and test-sanitizer-build.sh, which
+  could not work, is gone.
+
 sniproxy 0.14.5 (2026-09-23)
 ===============================
 

@@ -1,3 +1,11 @@
+sniproxy (0.15.0) unstable; urgency=medium
+
+  * FreeBSD proxying and resolution, helpers killed by SIGHUP or SIGUSR1,
+    OpenBSD logger restarts and rotation, server buffers that grow as
+    documented, and stricter checks of the configuration. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 23 Sep 2026 20:11:35 +0200
+
 sniproxy (0.14.5) unstable; urgency=medium
 
   * Resolution on OpenBSD without a resolver block, source client after
