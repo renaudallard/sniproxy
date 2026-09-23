@@ -75,9 +75,9 @@ fuzzing, and active maintenance.
 - **DTLS source check**: a new UDP session is held until a second
   datagram arrives from the same source address and port before any
   backend traffic is sent, so a single spoofed packet reaches no backend.
-- **Per-IP rate limiting**: FNV-1a hashed, arc4random-seeded token
-  buckets cap new TCP connections and UDP sessions; short-chain cutoffs
-  defeat hash spraying.
+- **Per-IP rate limiting**: token buckets in a hash table keyed with an
+  arc4random seed cap new TCP connections and UDP sessions; short-chain
+  cutoffs defeat hash spraying.
 - **Backend ACLs**: `deny_except` or `allow_except` CIDR policies stop
   abuse as an open proxy to reach internal hosts.
 - **Listener ACLs**: the same CIDR policies, applied to inbound clients.
@@ -486,9 +486,12 @@ afterthought.
 
 - **TLS 1.2+ by default**: older clients can be re-enabled with
   `-T 1.1` or `-T 1.0`, or you can lock the listener to `-T 1.3`.
-- **Cryptographically random IDs**: DNS query IDs and per-IP rate
-  limiter buckets are seeded from arc4random; hash chains are kept short
-  to defeat spraying.
+- **Cryptographically random seeds**: the per-IP hashes (rate limiter,
+  connection counts, DNS client tracking, backend affinity) are keyed
+  with an arc4random seed, and the rate limiter and connection count
+  tables refuse clients whose hash chain grows too long, to defeat
+  spraying. Request IDs between the main loop and the resolver come from
+  arc4random as well.
 - **Bounded parsers**: TLS rejects SSL 2.0/3.0 ClientHellos and NUL
   bytes in server names; HTTP caps headers (default 100); TLS extension
   count is capped at 64 on every code path; HTTP/2 HPACK is bounded per
