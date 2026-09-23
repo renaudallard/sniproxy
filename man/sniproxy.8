@@ -109,8 +109,10 @@ it\&.
 
 .TP
 .B SIGUSR1
-Dump all active TCP connections and UDP sessions to a temporary file
-for debugging\&. The file is created in
+Dump all active TCP connections and UDP sessions to a new
+.I connections-XXXXXX
+file for debugging, and log its path at notice priority\&. The file is
+created in
 .I $XDG_RUNTIME_DIR/sniproxy\fR,
 .I /var/run/sniproxy\fR,
 or
