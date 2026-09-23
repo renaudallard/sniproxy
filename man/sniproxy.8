@@ -155,8 +155,26 @@ Enable with
 .B sysrc sniproxy_enable=YES
 and control with
 .B service sniproxy start|stop|reload\fR\&.
+.TP
+.I /etc/init.d/sniproxy
+On Alpine, the OpenRC service installed by the package\&.
+Enable with
+.B rc-update add sniproxy
+and control with
+.B rc-service sniproxy start|stop|reload\fR\&.
+.TP
+.I /etc/conf.d/sniproxy
+Optional settings for the OpenRC service:
+.B SNIPROXY_CONFIG
+(default
+.IR /etc/sniproxy.conf )
+and
+.B SNIPROXY_OPTS
+(default
+.BR -g )\&.
 
 .SH "SEE ALSO"
 .PP
 \fBsniproxy.conf\fR(5)\fR,
-\fBrc.subr\fR(8)
+\fBrc.subr\fR(8)\fR,
+\fBopenrc-run\fR(8)

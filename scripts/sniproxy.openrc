@@ -1,0 +1,39 @@
+#!/sbin/openrc-run
+#
+# Enable with: rc-update add sniproxy
+#
+# Settings may be overridden in /etc/conf.d/sniproxy:
+#
+# SNIPROXY_CONFIG (path):	Configuration file.
+#				Default: "/etc/sniproxy.conf"
+# SNIPROXY_OPTS (str):		Extra options.
+#				Default: "-g"
+#
+# sniproxy starts as root, binds its listeners and drops to the user named
+# in the configuration. -g lets that user read the configuration again on
+# reload, which needs it to be 0640 and owned by that user's group.
+
+name="sniproxy"
+description="Proxy routing TLS and HTTP connections by hostname"
+
+: ${SNIPROXY_CONFIG:="/etc/sniproxy.conf"}
+: ${SNIPROXY_OPTS:="-g"}
+
+command="/usr/sbin/sniproxy"
+command_args="-f -c $SNIPROXY_CONFIG $SNIPROXY_OPTS"
+command_background=true
+pidfile="/run/$RC_SVCNAME.pid"
+required_files="$SNIPROXY_CONFIG"
+extra_started_commands="reload"
+
+depend() {
+	need net
+	use dns logger
+	after firewall
+}
+
+reload() {
+	ebegin "Reloading $name"
+	start-stop-daemon --signal HUP --pidfile "$pidfile"
+	eend $?
+}

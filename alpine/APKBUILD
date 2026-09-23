@@ -42,4 +42,10 @@ check() {
 
 package() {
 	make DESTDIR="$pkgdir" install
+	install -D -m 755 scripts/sniproxy.openrc "$pkgdir"/etc/init.d/$pkgname
+	install -D -m 640 -g daemon scripts/sniproxy.conf \
+		"$pkgdir"/etc/sniproxy.conf
+	install -D -m 644 scripts/sniproxy.logrotate \
+		"$pkgdir"/etc/logrotate.d/$pkgname
+	install -d -m 750 -o daemon -g adm "$pkgdir"/var/log/$pkgname
 }
