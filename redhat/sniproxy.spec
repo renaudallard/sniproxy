@@ -31,6 +31,9 @@ make %{?_smp_mflags}
 rm -rf $RPM_BUILD_ROOT
 make install DESTDIR=$RPM_BUILD_ROOT
 install -D -m 0644 scripts/sniproxy.service $RPM_BUILD_ROOT%{_unitdir}/sniproxy.service
+install -D -m 0640 scripts/sniproxy.conf $RPM_BUILD_ROOT%{_sysconfdir}/sniproxy.conf
+install -D -m 0644 scripts/sniproxy.logrotate $RPM_BUILD_ROOT%{_sysconfdir}/logrotate.d/sniproxy
+install -d -m 0750 $RPM_BUILD_ROOT%{_localstatedir}/log/sniproxy
 
 
 %clean
@@ -44,6 +47,11 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sniproxy.8.gz
 %{_mandir}/man5/sniproxy.conf.5.gz
 %{_unitdir}/sniproxy.service
+# 0640 root:daemon: sniproxy refuses a config readable by others, and the
+# daemon user it drops to must read it again on reload (the unit passes -g)
+%config(noreplace) %attr(0640,root,daemon) %{_sysconfdir}/sniproxy.conf
+%config(noreplace) %{_sysconfdir}/logrotate.d/sniproxy
+%dir %attr(0750,daemon,daemon) %{_localstatedir}/log/sniproxy
 
 %post
 if [ -x /usr/bin/systemctl ]; then
