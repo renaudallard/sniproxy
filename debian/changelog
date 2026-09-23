@@ -1,3 +1,10 @@
+sniproxy (0.15.1) unstable; urgency=medium
+
+  * The last messages before exit, such as the reason for a failed
+    start, reach the log again. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 23 Sep 2026 20:45:16 +0200
+
 sniproxy (0.15.0) unstable; urgency=medium
 
   * FreeBSD proxying and resolution, helpers killed by SIGHUP or SIGUSR1,

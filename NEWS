@@ -1,3 +1,13 @@
+sniproxy 0.15.1 (2026-09-23)
+===============================
+
+* Messages logged just before sniproxy exits reach the log again. At
+  exit the logger process was killed as soon as it had been told to
+  stop, before it had written what was still queued, so with a file
+  error log the reason for a failed start, such as a listener whose
+  port is taken, was usually missing and sniproxy exited with status 1
+  and an empty log. It now gets up to a second to finish.
+
 sniproxy 0.15.0 (2026-09-23)
 ===============================
 
