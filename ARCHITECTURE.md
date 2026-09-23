@@ -224,8 +224,10 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 - Shrinking when underutilized
 - Zero-copy operations where possible
 - Overflow protection: `buf->len + min_room` wraparound detection
-- **Performance optimization (0.9.0)**: Periodic shrink timer reduces per-event
-  timestamp operations, eliminating unnecessary buffer size checks on every I/O event
+- **Performance optimization (0.9.0)**: Buffers are shrunk by a timer that runs
+  every second rather than on each I/O event; an event only moves the
+  connection within a deadline-ordered queue of shrink candidates, and only
+  when both of its buffers are empty
 - **Memory tracking (0.9.0)**: A global memory observer, called on every buffer
   allocation, resize and free, tracks total buffer memory across all
   connections. Above 64 MiB it also shrinks idle buffers, at most every 0.25
@@ -582,8 +584,8 @@ buffer assembly, reducing the number of buffer operations required
   eliminates repeated PCRE2 regex evaluations for the same hostname
 - **HTTP/2 HPACK**: Precomputed static table entry lengths and binary search for
   header names eliminate strlen calls and linear table scans
-- **Buffer management**: Periodic shrink timer reduces per-event operations,
-  eliminating unnecessary timestamp checks on every I/O callback
+- **Buffer management**: A once-per-second shrink timer does the resizing; I/O
+  callbacks only keep the connection's place in the shrink candidate queue
 - **Rate limiting**: IPv4 fast path with 32-bit integer comparison and
   move-to-front hash chains improves high-volume connection acceptance
 - **Protocol parsers**: TLS, HTTP, and HTTP/2 parsers use compile-time length
