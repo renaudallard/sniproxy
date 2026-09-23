@@ -337,15 +337,18 @@ resolver {
     # ipv4_only | ipv6_only | ipv4_first | ipv6_first | default
     mode ipv4_first
 
-    nameserver 8.8.8.8
-    nameserver 2001:4860:4860::8888
-
     # DNS-over-TLS upstream.
     # IP literals require either a TLS verification hostname after the
     # slash, or an explicit "/insecure" to opt out of verification.
     # The optional third segment pins the minimum TLS version
     # (tls1.2 default, tls1.3 if your OpenSSL supports it).
     nameserver dot://9.9.9.9/dns.quad9.net/tls1.2
+
+    # Or cleartext upstreams. Do not mix them with dot:// entries: c-ares
+    # uses all servers as one failover pool, so a cleartext entry lets a
+    # failed TLS handshake fall back to unauthenticated DNS.
+    # nameserver 8.8.8.8
+    # nameserver 2001:4860:4860::8888
 
     max_concurrent_queries 512
     max_concurrent_queries_per_client 16
