@@ -353,8 +353,9 @@ resolver {
     max_concurrent_queries 512
     max_concurrent_queries_per_client 16
 
-    # off | relaxed (default) | strict
-    dnssec_validation strict
+    # off | relaxed (default) | strict; this does not validate DNSSEC,
+    # see "DNS resolution" below
+    dnssec_validation relaxed
 }
 ```
 
@@ -547,14 +548,16 @@ That gives:
   system resolver
 - **IPv4/IPv6 preference modes** for mixed-stack deployments
 - **Concurrency caps**, globally and per client, to bound resolver memory
-- **DNSSEC validation** in `relaxed` mode by default (trust upstream AD
-  flag, fall back to unsigned), with `strict` to require AD on every
-  reply and `off` to disable entirely. `strict` needs a c-ares build
-  with DNSSEC/Trust-AD support and will fail to resolve unsigned zones.
+
+sniproxy does not validate DNSSEC itself. `dnssec_validation relaxed`
+(the default) and `strict` only turn on EDNS0 in c-ares, and `off`
+leaves c-ares at its defaults. Nothing checks the AD flag: `strict`
+relies on c-ares flags that do not exist, so it is treated as `relaxed`
+and a notice is logged.
 
 For production, run a local validating resolver (Unbound, dnsmasq) and
-point sniproxy at it, which reduces both spoofing exposure and
-upstream query volume.
+point sniproxy at it. That is what provides DNSSEC protection, and it
+also reduces spoofing exposure and upstream query volume.
 
 ## Performance
 

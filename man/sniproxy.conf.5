@@ -356,11 +356,11 @@ DNS lookups a single source IP may have in flight at once (default 16). Set to
 0 to disable the per-client guard.
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
-default is relaxed, which requests DNSSEC data but falls back to unsigned
-answers when your resolver cannot authenticate the response. The strict mode
-requires the AD flag, so unsigned zones fail to resolve and a c-ares build
-with DNSSEC/Trust AD support is mandatory. Use 'off' to disable DNSSEC
-entirely if your upstream resolvers do not support it.
+default is relaxed, which turns on EDNS0 in c-ares; 'off' leaves c-ares at
+its defaults. sniproxy does not validate DNSSEC itself and never checks the
+AD flag. The strict mode relies on c-ares flags that do not exist, so it
+is treated as relaxed and a notice is logged. For DNSSEC protection, point
+sniproxy at a validating resolver.
 
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is
