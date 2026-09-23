@@ -11,7 +11,9 @@ AC_DEFUN([SNIPROXY_APPEND_CFLAG], [
   AS_VAR_PUSHDEF([cachevar], [sniproxy_cv_cflag_$2])
   AC_CACHE_CHECK([whether $CC supports $1], cachevar, [
     sniproxy_save_CFLAGS="$CFLAGS"
-    CFLAGS="$CFLAGS $1"
+    # Test along with the flags already accepted: gcc rejects
+    # -Werror=format-security on its own, without -Wformat.
+    CFLAGS="$CFLAGS $HARDEN_CFLAGS $1"
     AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [[return 0;]])],
       [AS_VAR_SET(cachevar, [yes])],
       [AS_VAR_SET(cachevar, [no])])
