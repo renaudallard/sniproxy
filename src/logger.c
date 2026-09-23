@@ -235,6 +235,11 @@ static gid_t logger_priv_gid;
 static int logger_priv_recorded = 0;
 
 /* Health check state */
+/* How long the main process waits at exit for the logger to write what
+ * is queued, in steps of LOGGER_SHUTDOWN_STEP_NS */
+#define LOGGER_SHUTDOWN_STEPS 100
+#define LOGGER_SHUTDOWN_STEP_NS 10000000L
+
 #define LOGGER_HEALTH_CHECK_INTERVAL 30.0
 #define LOGGER_HEALTH_CHECK_TIMEOUT 5.0
 static struct ev_timer logger_health_timer;
@@ -1358,9 +1363,16 @@ logger_process_shutdown(void) {
     }
 
     if (logger_pid > 0) {
-        /* Use WNOHANG to avoid blocking if the child is stuck on
-         * filesystem I/O; SIGKILL ensures it terminates */
+        /* The child writes everything queued before the SHUTDOWN message
+         * and exits. Give it up to a second, so that the last messages,
+         * such as the reason for a fatal exit, reach the log, and kill it
+         * if it is stuck, on filesystem I/O for instance. */
+        const struct timespec step = { 0, LOGGER_SHUTDOWN_STEP_NS };
         int wr = waitpid(logger_pid, NULL, WNOHANG);
+        for (int i = 0; wr == 0 && i < LOGGER_SHUTDOWN_STEPS; i++) {
+            nanosleep(&step, NULL);
+            wr = waitpid(logger_pid, NULL, WNOHANG);
+        }
         if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);
