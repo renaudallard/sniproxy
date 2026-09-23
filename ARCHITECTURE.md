@@ -171,8 +171,8 @@ NEW -> ACCEPTED -> PARSED -> RESOLVING -> RESOLVED -> CONNECTED
 - `RESOLVING`: DNS lookup in progress (if backend is hostname)
 - `RESOLVED`: Backend address obtained
 - `CONNECTED`: Bidirectional proxy active
-- `SERVER_CLOSED`: Server closed, draining client-to-server buffer
-- `CLIENT_CLOSED`: Client closed, draining server-to-client buffer
+- `SERVER_CLOSED`: Server closed, draining server-to-client buffer
+- `CLIENT_CLOSED`: Client closed, draining client-to-server buffer
 - `CLOSED`: Both sockets closed, connection can be freed
 
 **Fields:**
