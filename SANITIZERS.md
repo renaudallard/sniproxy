@@ -38,7 +38,7 @@ Detects:
 Detects:
 - Data races and deadlocks
 - Use of destroyed mutexes
-Note: TSAN cannot be used simultaneously with ASAN or MSAN.
+Note: TSAN cannot be used simultaneously with ASAN or MSAN. Every sniproxy process is single threaded, so it has little to check here.
 
 ## Local Development Usage
 
@@ -202,9 +202,8 @@ This indicates a variable was read before being initialized.
 1. Run sanitizers regularly (CI already does)
 2. Fix issues immediately to avoid regressions
 3. Combine ASAN + UBSAN for broad coverage
-4. Use TSAN for concurrency testing
-5. Test with realistic workloads so sanitizers exercise real code paths
-6. Minimize false positives; use suppression files only after investigation
+4. Test with realistic workloads so sanitizers exercise real code paths
+5. Minimize false positives; use suppression files only after investigation
 
 ## Performance Impact
 
