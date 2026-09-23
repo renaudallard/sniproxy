@@ -567,7 +567,8 @@ buffer assembly, reducing the number of buffer operations required
 - **Event-driven**: libev for efficient I/O multiplexing
 - **Minimal copying**: Ring buffers and vectored I/O; SO_SPLICE zero-copy on OpenBSD
 - **SO_REUSEPORT**: Multiple processes can accept on same port
-- **Connection pooling**: Reuses connection structures
+- **Buffer pooling**: Freed 8, 16 and 32 KiB buffer blocks are kept for
+  reuse; connection structures themselves are allocated and freed each time
 - **Compiled regexes**: One-time compilation, cached for all lookups
 
 ### Performance Optimizations in 0.9.0
