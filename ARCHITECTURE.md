@@ -315,9 +315,10 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
   overflow guards remain, and resolver restart/shutdown now uses
   mutex-protected flags plus dedicated release helpers to prevent counter drift
   or use-after-free bugs during teardown.
-- **DNSSEC default (0.9.7)**: Resolver blocks now default to `dnssec_validation
-  relaxed`, requesting authenticated data whenever upstream resolvers support
-  it without requiring explicit configuration.
+- **DNSSEC default (0.9.7)**: Resolver blocks default to `dnssec_validation
+  relaxed`, which only turns on EDNS0 in c-ares. Nothing requests or checks
+  the AD flag, which c-ares cannot report, and `strict` is accepted but
+  treated as relaxed.
 - **Search domains (0.9.8)**: Entries are treated as literal suffixes appended
   during lookups; they are no longer parsed as hostnames, avoiding surprise
   validation failures for split-horizon environments.
