@@ -142,10 +142,14 @@ in the environment to disable it\&.
 .SH FILES
 .TP
 .I /etc/sniproxy.conf
-Default configuration file (Linux)\&.
+Default configuration file\&.
 .TP
 .I /usr/local/etc/sniproxy.conf
-Default configuration file (FreeBSD)\&.
+Configuration file passed with
+.B -c
+by the FreeBSD rc.d script\&. The script also expects the configuration
+to set
+.B pidfile /var/run/sniproxy.pid\fR\&.
 .TP
 .I /usr/local/etc/rc.d/sniproxy
 FreeBSD rc.d startup script\&.

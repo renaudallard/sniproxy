@@ -293,6 +293,11 @@ sudo sysrc sniproxy_enable=YES
 sudo service sniproxy start
 ```
 
+The rc script runs sniproxy with `-c /usr/local/etc/sniproxy.conf`
+(change it with `sysrc sniproxy_config=...`), and its `stop` and
+`reload` find the process through `/var/run/sniproxy.pid`, so the
+config needs `pidfile /var/run/sniproxy.pid`.
+
 The logger and resolver always run in Capsicum capability mode. The
 main process enters it too unless a listener, fallback or backend is a
 Unix domain socket. The binder never does, since it may have to bind
