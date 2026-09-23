@@ -776,8 +776,10 @@ code:
 ## Project status
 
 SNIProxy is actively maintained with a focus on security, stability and
-standards compliance. Recent releases have concentrated on protocol
-parser hardening, sandboxing portability and continuous fuzzing.
+standards compliance. Recent releases have mostly carried fixes from
+repeated audits of the whole source tree, in the resolver and
+DNS-over-TLS, configuration handling, the per-IP limits and logging,
+along with sandboxing fixes for OpenBSD, FreeBSD and Linux.
 
 Common deployments:
 
