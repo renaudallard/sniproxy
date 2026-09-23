@@ -336,8 +336,12 @@ backends. If not specified, the name servers from \fBresolv.conf\fR(5)
 are used in the default mode described below.
 
 Multiple \fBnameserver\fR directives may be supplied. Optional
-\fBsearch\fR directives append the given domain to hostnames that do not
-already end with a trailing dot before resolution.
+\fBsearch\fR directives replace the search domains of
+\fBresolv.conf\fR(5), and are used the way the system resolver uses
+them: a hostname with at least as many dots as the ndots option there
+(1 by default) is first looked up as it is, and the search domains are
+appended in turn only if that fails; a hostname with fewer dots is
+tried with the search domains first.
 
 Nameservers may point at DNS-over-TLS upstreams using the
 \fBdot://ADDRESS/SNI[/tls1.2|tls1.3]\fR form. ADDRESS can be an IP literal
