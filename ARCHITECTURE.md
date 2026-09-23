@@ -180,7 +180,9 @@ NEW -> ACCEPTED -> PARSED -> RESOLVING -> RESOLVED -> CONNECTED
 - `server`: Server socket, buffer, and address info
 - `listener`: Reference to parent listener
 - `hostname`: Extracted hostname from protocol headers (with length)
-- `header_len`: Length of inspected protocol header
+- `header_len`: Length of the PROXY header prepended to the client buffer,
+  which the parser skips and which is dropped again for a backend that does
+  not take it
 - `query_handle`: DNS resolution handle (if needed)
 - `idle_timer`: Connection timeout watcher
 - `established_timestamp`: For connection duration logging
