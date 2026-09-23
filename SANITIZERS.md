@@ -171,7 +171,7 @@ make check
 ## Interpreting Results
 
 ### No Errors
-If the tests pass without any sanitizer output, the code is clean!
+If the tests pass without any sanitizer output, the sanitizer found nothing on the code paths the tests exercise; code the tests do not reach is not checked.
 
 ### AddressSanitizer Error Example
 ```
