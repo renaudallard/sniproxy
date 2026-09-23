@@ -72,10 +72,9 @@ fuzzing, and active maintenance.
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
 - **Per-platform sandboxing**: pledge(2) + unveil(2) on OpenBSD, Capsicum
   capability mode on FreeBSD, seccomp BPF on Linux.
-- **DTLS source validation**: a new UDP session is held until a
-  retransmission arrives from the same source address and port before any
-  backend traffic is sent, so spoofed sources cannot turn the proxy into a
-  reflection amplifier.
+- **DTLS source check**: a new UDP session is held until a second
+  datagram arrives from the same source address and port before any
+  backend traffic is sent, so a single spoofed packet reaches no backend.
 - **Per-IP rate limiting**: FNV-1a hashed, arc4random-seeded token
   buckets cap new TCP connections and UDP sessions; short-chain cutoffs
   defeat hash spraying.
@@ -105,7 +104,7 @@ fuzzing, and active maintenance.
 | Protocol | Hostname source | Notes |
 | --- | --- | --- |
 | TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
-| DTLS | SNI extension in UDP ClientHello | Source-address validation by waiting for a retransmission |
+| DTLS | SNI extension in UDP ClientHello | Session held until a second datagram arrives from the same source |
 | HTTP/1.x | `Host:` request header | Header count capped by `http_max_headers` (default 100) |
 | HTTP/2 | HPACK `:authority` pseudo-header | Bounded HPACK table (per-conn 64 KiB / global 4 MiB) |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
@@ -497,11 +496,13 @@ afterthought.
 - **Regex DoS mitigation**: PCRE2 match limits scale with hostname
   length so a crafted SNI cannot trigger catastrophic backtracking.
 - **DTLS amplification defense**: a new UDP session is held until a
-  retransmission arrives from the same source address and port, which a
-  spoofed source never sends, so no backend is connected on its behalf.
-  DTLS clients retransmit by design (RFC 6347 section 4.2.4). No
-  HelloVerifyRequest is sent; nothing is returned to the client until its
-  source is confirmed.
+  second datagram arrives from the same source address and port within
+  3 seconds, and nothing is sent to the client or a backend before that.
+  Real DTLS clients retransmit by design (RFC 6347 section 4.2.4), so a
+  single spoofed packet never reaches a backend. The second datagram is
+  not compared with the first and no HelloVerifyRequest is sent, so an
+  attacker who sends two spoofed packets does get through; from there it
+  is the backend's own DTLS cookie exchange that limits amplification.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages.
@@ -687,7 +688,7 @@ what they bring to that job.
 | --- | --- | --- | --- | --- | --- |
 | Routes by name, no decryption | yes | yes | yes (`req.ssl_sni`, `mode tcp`) | yes (`ssl_preread`) | yes (TLS inspector) |
 | Protocols routed by name | TLS, HTTP/1, HTTP/2, XMPP, Minecraft, DTLS | TLS, HTTP | TLS, HTTP | TLS (SNI, ALPN) | TLS, HTTP |
-| Name-based UDP / DTLS | yes, with source validation | no | no | no, `ssl_preread` is TCP only | no, sessions are keyed on the 4-tuple |
+| Name-based UDP / DTLS | yes, with a source address check | no | no | no, `ssl_preread` is TCP only | no, sessions are keyed on the 4-tuple |
 | Process model | 4 processes, separate privileges | single process | master + workers | master + workers | single process, threaded |
 | Sandbox shipped with it | pledge/unveil, Capsicum, seccomp | none | chroot, privilege drop | privilege drop (`user`) | left to the deployment |
 | Encrypted IPC between its own processes | ChaCha20-Poly1305 | n/a | n/a | n/a | n/a |
