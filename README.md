@@ -332,7 +332,9 @@ backend_acl deny_except {
     192.168.0.0/16
 }
 
-# Enable TCP Fast Open (Linux 3.7+/4.11+, FreeBSD 12+).
+# Enable TCP Fast Open (Linux 3.7+/4.11+, FreeBSD 12+). On a platform
+# built without TFO support, such as OpenBSD, this line is a
+# configuration error.
 tcp_fastopen on
 ```
 
