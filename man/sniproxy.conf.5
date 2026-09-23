@@ -453,17 +453,18 @@ listener 0.0.0.0 4443 {
 Define a listening address to accept new connections from clients on.
 Addresses may be specified as an IPv4 literal followed by a port
 number, an IPv6 literal followed by a port number, a bare port
-number, or a unix socket path prefixed with 'unix:'. A unix-socket
-listener whose directory is not writable by the configured user is
-bound by the privileged binder helper; for safety the binder only
+number, or a unix socket path prefixed with 'unix:'. Listeners are
+bound at startup before privileges are dropped. A unix-socket listener
+added by a reload whose directory is not writable by the configured user
+is bound by the privileged binder helper; for safety the binder only
 creates such root-bound unix sockets under \fI/run\fR or \fI/var/run\fR.
 The socket file is created with mode 0666 regardless of the umask, so any
 local user may connect to it; restrict access through the permissions of
 the directory that holds it.
-The socket file is removed when the listener shuts down, and a stale
-socket file left behind by an unclean shutdown is detected and replaced
-on the next start as long as no other process is accepting connections
-on it.
+The socket file is removed when the listener shuts down if the
+configured user can write its directory. A socket file left behind, by
+that or by an unclean shutdown, is detected as stale and replaced on the
+next start as long as no other process is accepting connections on it.
 
 Protocol defines how the client request should be parsed to obtain the
 requested hostname. Five protocols are supported: tls, http, xmpp,
