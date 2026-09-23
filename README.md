@@ -315,8 +315,10 @@ connection_buffer_limit 4M
 # Cap accepted HTTP headers per request (default 100).
 http_max_headers 200
 
-# Restrict outbound connections so sniproxy cannot be used as an open
-# proxy into internal address space.
+# Only connect to backends in these ranges, so a wildcard backend cannot
+# be used to reach arbitrary hosts. allow_except does the opposite:
+# everything except the listed ranges, e.g. to keep a wildcard backend
+# out of internal address space. Unix socket backends match no range.
 backend_acl deny_except {
     10.0.0.0/8
     172.16.0.0/12

@@ -198,8 +198,11 @@ DNS resolution. The directive takes a policy of \fBallow_except\fR
 backends except the listed ranges). When omitted all resolved addresses
 are permitted.
 
-This prevents abuse of sniproxy as an open proxy to reach arbitrary
-internal hosts. Only one backend_acl block may appear in the
+This prevents abuse of sniproxy as an open proxy: the example above only
+lets it reach the private ranges, and \fBallow_except\fR with the same
+ranges would instead keep it out of internal address space. Unix socket
+backends match no range, so \fBdeny_except\fR refuses them. Only one
+backend_acl block may appear in the
 configuration. IPv4 and IPv6 ranges may be mixed freely, and
 IPv4-mapped IPv6 addresses are matched against IPv4 rules.
 Connections denied by the backend ACL are logged and closed immediately.
