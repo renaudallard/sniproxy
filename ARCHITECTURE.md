@@ -259,7 +259,9 @@ Protocol handlers parse application-layer headers to extract hostnames.
 2. **DTLS**: Extracts SNI from DTLS ClientHello (UDP)
    - Parses DTLS 1.0 and 1.2 record layer format
    - Shares SNI extension parsing with TLS via `sni_parse.h`
-   - Rejects fragmented ClientHellos
+   - Cannot read SNI from a fragmented ClientHello, which is treated as a
+     request without a hostname: it goes to the fallback, or is dropped
+     when there is none
    - Per-session connected server sockets with idle timeout
    - Supports source address binding and transparent proxy mode
 
