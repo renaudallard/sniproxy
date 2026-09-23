@@ -72,5 +72,8 @@ static inline size_t buffer_len(const struct Buffer *b) {
 static inline size_t buffer_room(const struct Buffer *b) {
     return buffer_size(b) - b->len;
 }
+static inline int buffer_can_double(const struct Buffer *b) {
+    return buffer_size(b) <= b->max_size / 2;
+}
 
 #endif

@@ -228,7 +228,10 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 
 **Features:**
 - Power-of-2 sizing for fast modulo operations
-- Automatic growth when full (up to max_size)
+- Growth up to max_size in two places: the server buffer doubles while the
+  client reads slower than the backend sends, and the client buffer grows to
+  hold a request that is still being parsed. At max_size, sniproxy stops
+  reading from that side instead
 - Shrinking when underutilized
 - Zero-copy operations where possible
 - Overflow protection: `buf->len + min_room` wraparound detection
@@ -240,9 +243,11 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
   allocation, resize and free, tracks total buffer memory across all
   connections. Above 64 MiB it also shrinks idle buffers, at most every 0.25
   seconds
-- **Reliability (0.9.6)**: Buffer growth refuses to exceed SIZE_MAX/2 and now
-  closes the offending connection instead of silently leaving buffers in an
-  inconsistent state.
+- **Reliability (0.9.6)**: A buffer never grows past its limit
+  (`client_buffer_limit` or `server_buffer_limit`, 1 MiB by default and
+  1 GiB at most). A full server buffer at its limit stops reads from the
+  backend, and a request that outgrows the client buffer is handled as
+  unparsable.
 - **Bounded shrink queues (0.9.6)**: Shrink candidate lists stay capped at 4096
   entries and force-shrink the oldest 10% once full, preventing internal
   bookkeeping from consuming unbounded RAM.
@@ -494,8 +499,8 @@ Once CONNECTED, the connection enters steady-state proxying:
   - DNS query concurrency limits
   - Shrink candidate queues capped at 4096 entries with forced trimming when
     full (0.9.6)
-  - Buffer growth refuses to exceed SIZE_MAX/2 and closes the offending
-    connection (0.9.6)
+  - A full buffer at its limit stops reads from that side rather than
+    growing further (0.9.6)
 
 - **Rate limiting**:
   - Per-IP connection rate limiting with token bucket algorithm

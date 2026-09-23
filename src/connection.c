@@ -110,7 +110,7 @@ static size_t shrink_candidates_count = 0;
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
 
-static void reactivate_watcher(struct ev_loop *, struct ev_io *,
+static void reactivate_watcher(struct ev_loop *, struct ev_io *, int,
         const struct Buffer *, const struct Buffer *);
 
 static void connection_cb(struct ev_loop *, struct ev_io *, int);
@@ -857,44 +857,20 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         int client_open = client_socket_open(con);
     int server_open = server_socket_open(con);
     
-    /* Receive first in case the socket was closed */
-    if (revents & EV_READ && buffer_room(input_buffer) == 0) {
-        if (!is_client) {
-            size_t current = buffer_size(input_buffer);
-            size_t desired = current;
-            /* Prevent integer overflow when doubling buffer size */
-            if (current > SIZE_MAX / 2) {
-                /* Cannot safely double - buffer has reached maximum size */
-                char server[INET6_ADDRSTRLEN + 8];
+    /* A full server buffer only has a read pending when
+     * reactivate_watcher() allowed it to double: grow it before reading.
+     * If that fails, keep this size, so that the backend simply waits for
+     * the client instead of the read being retried. */
+    if (revents & EV_READ && !is_client && buffer_room(input_buffer) == 0 &&
+            client_open && buffer_can_double(input_buffer) &&
+            buffer_resize(input_buffer, buffer_size(input_buffer) * 2) < 0) {
+        char server[INET6_ADDRSTRLEN + 8];
 
-                warn("Response from %s exceeded maximum buffer size (%zu bytes)",
-                        display_sockaddr(&con->server.addr,
-                            con->server.addr_len,
-                            server, sizeof(server)),
-                        current);
-
-                close_server_socket(con, loop);
-                server_open = 0;
-                revents = 0;
-            } else {
-                if (current > 0)
-                    desired = current << 1;
-
-                if (buffer_resize(input_buffer, desired) < 0) {
-                    char server[INET6_ADDRSTRLEN + 8];
-
-                    warn("Response from %s exceeded %zu byte buffer size",
-                            display_sockaddr(&con->server.addr,
-                                con->server.addr_len,
-                                server, sizeof(server)),
-                            buffer_size(input_buffer));
-
-                    close_server_socket(con, loop);
-                    server_open = 0;
-                    revents = 0;
-                }
-            }
-        }
+        warn("Unable to grow the buffer for %s beyond %zu bytes: %s",
+                display_sockaddr(&con->server.addr, con->server.addr_len,
+                        server, sizeof(server)),
+                buffer_size(input_buffer), strerror(errno));
+        buffer_set_max_size(input_buffer, buffer_size(input_buffer));
     }
 
     if (revents & EV_READ && buffer_room(input_buffer)) {
@@ -1075,11 +1051,13 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
 
     /* Reactivate watchers */
     if (client_open)
-        reactivate_watcher(loop, client_watcher,
+        reactivate_watcher(loop, client_watcher, 0,
                 con->client.buffer, con->server.buffer);
 
+    /* The server buffer grows, up to server_buffer_limit, while the client
+     * reads slower than the backend sends. */
     if (server_open)
-        reactivate_watcher(loop, server_watcher,
+        reactivate_watcher(loop, server_watcher, client_open,
                 con->server.buffer, con->client.buffer);
 
     /* Validate watcher state consistency */
@@ -1100,12 +1078,13 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
 }
 
 static void
-reactivate_watcher(struct ev_loop *loop, struct ev_io *w,
+reactivate_watcher(struct ev_loop *loop, struct ev_io *w, int may_grow,
         const struct Buffer *input_buffer,
         const struct Buffer *output_buffer) {
     int events = 0;
 
-    if (buffer_room(input_buffer))
+    if (buffer_room(input_buffer) ||
+            (may_grow && buffer_can_double(input_buffer)))
         events |= EV_READ;
 
     if (buffer_len(output_buffer))

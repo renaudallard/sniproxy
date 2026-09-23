@@ -707,7 +707,9 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 
 - Look for connections stuck in DNS resolution with a flaky upstream;
   lower `max_concurrent_queries` and `max_concurrent_queries_per_client`.
-- Lower `connection_buffer_limit` or the per-side caps.
+- Lower `connection_buffer_limit` or `server_buffer_limit`: every
+  connection whose client reads slower than its backend sends can buffer
+  up to that much.
 
 **Permission errors on start**
 
