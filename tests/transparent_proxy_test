@@ -10,6 +10,22 @@ use File::Temp;
 
 my $PROXY_NAMESPACE  = 'ns-test-proxy';
 my $CLIENT_NAMESPACE = 'ns-test-clt';
+my $MAIN_PID = $$;
+my $network_created = 0;
+
+# A failed setup step exits through checked_system() before any child is
+# started; remove what was created so far instead of leaving namespaces,
+# veth pairs and a route behind on the host. Children run END too, so
+# only the test process itself cleans up.
+END {
+    if ($$ == $MAIN_PID && $network_created) {
+        local $?;
+        system('sh', '-c', "ip netns del $CLIENT_NAMESPACE >/dev/null 2>&1");
+        system('sh', '-c', "ip netns del $PROXY_NAMESPACE >/dev/null 2>&1");
+        system('sh', '-c', 'ip link del veth-srv-proxy >/dev/null 2>&1');
+        system('sh', '-c', 'ip link del veth-proxy-clt >/dev/null 2>&1');
+    }
+}
 
 
 sub checked_system {
@@ -110,6 +126,12 @@ sub main {
     # before attempting to exercise the transparent proxy scenario.  Some
     # container runtimes drop the CAP_SYS_ADMIN capability which prevents
     # `ip netns` from configuring the shared mount point under /run/netns.
+    # The routing set up below relies on iptables' socket match
+    if (system('sh', '-c', 'command -v iptables >/dev/null 2>&1') != 0) {
+        print STDERR "Skipping transparent proxy test: iptables is not installed\n";
+        exit 77;
+    }
+
     system('sh', '-c', "ip netns del $proxy_namespace >/dev/null 2>&1");
     system('sh', '-c', "ip netns del $client_namespace >/dev/null 2>&1");
     if (system('sh', '-c', "ip netns add $proxy_namespace >/dev/null 2>&1") != 0) {
@@ -176,6 +198,7 @@ sub main {
     # IP route table 100:
     #   local default dev lo scope host
 
+    $network_created = 1;
     checked_system('ip', 'netns', 'add', $proxy_namespace);
     checked_system('ip', 'netns', 'add', $client_namespace);
 
