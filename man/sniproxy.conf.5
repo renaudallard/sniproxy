@@ -531,16 +531,19 @@ hostname, attempt a TLS renegotiation or offer a refused TLS version,
 which have their own warnings. The parse failure itself is logged as a
 warning whether or not this directive is set.
 
-The proxy_protocol directive enables acceptance of incoming HAProxy PROXY
-protocol headers (both v1 text and v2 binary formats are auto-detected).
+The directive \fBproxy_protocol yes\fR enables acceptance of incoming
+HAProxy PROXY protocol headers (both v1 text and v2 binary formats are
+auto-detected); like the other boolean directives it takes yes, true or
+on, and no, false or off.
 When enabled, sniproxy parses the PROXY header from the upstream proxy or
 load balancer, extracts the original client address, and uses it for
 access logging and any outgoing PROXY protocol headers to backends. This
 allows chaining sniproxy behind load balancers (e.g. AWS NLB, HAProxy)
 or other sniproxy instances while preserving the real client IP. Note
-that ACL and per-IP rate limiting are applied to the direct peer
-address (the upstream proxy for TCP, or the UDP source address for
-DTLS), not the address from the PROXY header.
+that the ACL, \fBper_ip_connection_rate\fR and
+\fBper_ip_max_connections\fR are applied to the direct peer address
+(the upstream proxy), while \fBmax_concurrent_queries_per_client\fR and
+\fBbackend_affinity\fR use the address from the PROXY header.
 
 The source directive allows specifying an address to bind to before
 connecting to the backend server. In most cases it is better to omit
