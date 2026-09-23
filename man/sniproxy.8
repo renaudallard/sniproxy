@@ -16,8 +16,8 @@ connections, including HTTP/2 requests, based on the hostname contained in
 the initial request. For TCP protocols (TLS, HTTP, XMPP, Minecraft) the
 hostname is extracted from the initial TCP stream. For DTLS the hostname is
 extracted from the SNI extension in the UDP ClientHello datagram, enabling
-proxying of WebRTC, OpenConnect VPN, and other UDP/DTLS protocols by
-hostname without decryption. This enables HTTPS name-based virtual hosting
+proxying by hostname without decryption of DTLS protocols whose clients
+send SNI, such as CoAP. This enables HTTPS name-based virtual hosting
 to separate backend servers without installing the private key on the proxy
 machine\&. By default TLS 1.2 (and newer) client hellos are
 accepted\&.

@@ -786,8 +786,9 @@ Common deployments:
 - CDN origin selection by hostname
 - XMPP federation routing with STARTTLS passthrough
 - Multi-server Minecraft Java Edition hosting behind one IP and port
-- DTLS / UDP routing for WebRTC, OpenConnect VPN, CoAP and other
-  UDP/DTLS protocols, by hostname, without decryption
+- DTLS routing by hostname, without decryption, for clients that send
+  SNI, such as CoAP over DTLS (WebRTC and OpenConnect clients send none,
+  so they can only be sent to the fallback)
 - Local development HTTPS routing
 - Lightweight SNI routing on IoT and embedded systems
 
