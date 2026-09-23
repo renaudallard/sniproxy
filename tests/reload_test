@@ -44,14 +44,18 @@ sub worker($$$$) {
     exit 0;
 }
 
-sub make_config($$$) {
+sub make_reload_config($$$) {
     my $proxy_port1 = shift;
     my $proxy_port2 = shift;
     my $httpd_port = shift;
 
     my ($fh, $filename) = File::Temp::tempfile();
     my ($unused, $logfile) = File::Temp::tempfile();
-    chmod(0644, $filename);
+    # 0600 and owned by the user sniproxy drops to, so that it can read
+    # the file again on SIGHUP.
+    my @pw = getpwnam(test_user()) or die "unknown user @{[test_user()]}\n";
+    chown($pw[2], $pw[3], $filename);
+    chmod(0600, $filename);
     chmod(0666, $logfile);
 
     # Write out a test config file
@@ -94,9 +98,14 @@ sub alter_config($$$$) {
     my $proxy_port2 = shift;
     my $httpd_port = shift;
 
+    # Rewrite in place: the file belongs to the user sniproxy runs as, and
+    # with fs.protected_regular even root may not open another user's file
+    # in /tmp with O_CREAT, which '>' implies.
     my $fh = undef;
-    open($fh, '>', $filename)
+    open($fh, '+<', $filename)
         or die("open(): $!");
+    truncate($fh, 0)
+        or die("truncate(): $!");
 
     # Write out a test config file
     print $fh <<END;
@@ -138,7 +147,7 @@ sub main {
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 10;
 
-    my $config = make_config($proxy_port1, $proxy_port2, $httpd_port1);
+    my $config = make_reload_config($proxy_port1, $proxy_port2, $httpd_port1);
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
     my $httpd_pid = start_child('server', \&TestHTTPD::httpd, port => $httpd_port1);
 
