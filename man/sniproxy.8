@@ -106,7 +106,9 @@ or
 
 .TP
 .B SIGINT\fR, \fBSIGTERM
-Shut down gracefully\&.
+Shut down: every connection and UDP session is closed at once without
+draining, the helper processes are stopped and the pidfile is
+removed\&.
 
 .SH SANDBOXING
 On OpenBSD,
