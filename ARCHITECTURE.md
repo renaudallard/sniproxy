@@ -91,7 +91,9 @@ Each listener operates independently with its own event loop watchers.
 - `fallback_address`: Default backend when no match found
 - `source_address`: Source address for outbound connections
 - `access_log`: Per-listener access log (overrides global)
-- `log_bad_requests`: Whether to log malformed requests
+- `log_bad_requests`: Whether to add a debug line with the size and parser
+  result, not the contents, of requests the parser rejects; incomplete,
+  oversized and hostname-less requests only get their usual warning
 - `reuseport`: Enable SO_REUSEPORT for parallel accept
 - `transparent_proxy`: Enable IP_TRANSPARENT for source IP preservation
 - `ipv6_v6only`: Enable IPV6_V6ONLY socket option
