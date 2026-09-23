@@ -1,3 +1,11 @@
+sniproxy (0.14.4) unstable; urgency=low
+
+  * Test suite fixes only: a spurious "signal 127" failure in the perl
+    tests, and fd_limit_test failing on requests refused while the proxy
+    is out of descriptors. No change to the daemon. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 23 Sep 2026 10:20:00 +0200
+
 sniproxy (0.14.3) unstable; urgency=medium
 
   * A FIFO left at the pidfile path no longer hangs startup, and a

@@ -1,3 +1,20 @@
+2026-09-23  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.14.4
+	- tests: the SIGCHLD handler in TestUtils.pm could record -1 as the
+	  status of a child it had just reaped when a second SIGCHLD was
+	  handled in between, so the run failed with "died with signal 127"
+	  for a child that exited normally. $! and $? are localised in the
+	  handler now.
+	- tests: fd_limit_test no longer requires every request to succeed
+	  while the proxy is deliberately out of descriptors. It counts the
+	  refused ones and checks instead that the limit was reached and that
+	  the proxy serves a request once the pressure is off.
+	- README: add a comparison with upstream sniproxy, HAProxy, nginx
+	  stream and Envoy, say that macOS runs without a sandbox, and stop
+	  calling the DTLS source check a HelloVerify exchange.
+	- No change to the daemon itself.
+
 2026-09-18  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.14.3
