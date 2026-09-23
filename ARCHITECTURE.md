@@ -443,7 +443,9 @@ Once CONNECTED, the connection enters steady-state proxying:
 ### Input Validation
 
 - **Hostname sanitization**: Removes control characters, validates length
-- **NUL byte rejection**: Protocol parsers reject embedded NUL bytes
+- **NUL byte rejection**: The TLS, DTLS, HTTP, HTTP/2 and XMPP parsers reject
+  embedded NUL bytes; the Minecraft parser cuts the address at the first NUL,
+  after which FML and BungeeCord add their own data
 - **Buffer overflow protection**: Strict bounds checking in all parsers
   - TLS: Validates ClientHello structure and extension lengths
   - HTTP: Limits the header count and the Host value length
