@@ -203,9 +203,14 @@ Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max fd>] [-V] [-T <min TLS>] [
 
 ## Installation
 
-Prebuilt Debian, Fedora and Alpine packages are produced by the
+Every [release](https://github.com/renaudallard/sniproxy/releases)
+carries prebuilt packages made by the
 [Release Packages](https://github.com/renaudallard/sniproxy/actions/workflows/release-packages.yml)
-workflow for every tagged release.
+workflow: x86_64 `.deb` packages for Debian stable and oldstable and
+for two Ubuntu releases, x86_64 `.rpm` packages for Fedora, the two
+latest Rocky Linux releases, openSUSE Leap and SUSE Linux Enterprise
+15, an x86_64 `.apk` for Alpine, a FreeBSD amd64 tarball and a macOS
+arm64 tarball.
 
 ### Prerequisites
 
