@@ -577,12 +577,15 @@ deny_except (deny every client except the listed ranges):
     }
 .fi
 
-When an acl block is omitted every client is accepted. Multiple
-statements may be provided in a block. IPv4 and IPv6 ranges may be mixed
+When an acl block is omitted every client is accepted, and a listener
+may have only one. Multiple statements may be provided in a block, each
+a range with its prefix length, optionally preceded by the keyword
+\fBcidr\fR. IPv4 and IPv6 ranges may be mixed
 freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges.
 The policy choice is shared by all listeners: mixing allow_except and
-deny_except acl blocks across listeners causes sniproxy to exit with a
-configuration error. The backend_acl policy is chosen independently.
+deny_except acl blocks across listeners is a configuration error, which
+stops sniproxy at startup and makes a reload keep the running
+configuration. The backend_acl policy is chosen independently.
 
 The access log configuration may be overridden on each listener.
 
