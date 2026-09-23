@@ -833,6 +833,12 @@ Built on:
 - [libev](http://software.schmorp.de/pkg/libev.html): event loop
 - [PCRE2](https://www.pcre.org/): regular expressions
 - [c-ares](https://c-ares.org): asynchronous DNS
+- [OpenSSL](https://www.openssl.org/) or [LibreSSL](https://www.libressl.org/):
+  IPC encryption and DNS-over-TLS
+- [libseccomp](https://github.com/seccomp/libseccomp): seccomp filters
+  on Linux
+- [libbsd](https://libbsd.freedesktop.org/): `arc4random` and `strlcpy`
+  where libc lacks them
 
 All production testing is performed on OpenBSD. Patches and bug reports
 for other platforms are welcome.
