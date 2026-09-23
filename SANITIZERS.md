@@ -5,7 +5,7 @@ This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBe
 ## Quick facts
 - Configure flags: `--enable-asan`, `--enable-msan`, `--enable-ubsan`, `--enable-tsan`; `--enable-asan --enable-ubsan` is supported for combined coverage.
 - Mutual exclusions: ASAN, MSAN, and TSAN cannot be combined. Configure fails fast with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously`.
-- Hardening: when a sanitizer is enabled, configure automatically disables conflicting hardening flags (`-fstack-protector-strong`, `-fcf-protection`, PIE).
+- Hardening: when a sanitizer is enabled, configure drops every hardening flag it added (`_FORTIFY_SOURCE`, stack protector, PIE, RELRO and the others), since some of them conflict.
 - CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on every push/PR. MSAN builds and caches instrumented dependencies so the first run can take ~60 minutes; cached runs finish in ~5 minutes.
 - CI toolchain: clang plus libev, pcre2, c-ares, openssl, libbsd, autotools. Tests run with `SKIP_BAD_REQUEST_TEST=1`.
 - Local smoke test: run `./test-sanitizer-build.sh` to validate the configure flags and conflict detection without installing every dependency.
@@ -228,7 +228,7 @@ CC=clang ./configure --enable-asan
 ```
 
 ### Conflicts with hardening flags
-Hardening flags are disabled automatically when sanitizers are enabled. You should see `Disabling hardening flags` in the configure output.
+Hardening flags are disabled automatically when sanitizers are enabled. configure says so with `WARNING: Clearing hardening flags due to sanitizer usage (some flags conflict)`.
 
 ### Incompatible sanitizer combination
 ASAN/MSAN/TSAN are mutually exclusive; configure aborts with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously` if you try to combine them.
