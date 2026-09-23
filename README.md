@@ -632,9 +632,11 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 
 **DNS is not working**
 
-- Confirm c-ares development headers were present at build time
-  (`./configure` output).
-- Check that `sniproxy-resolver` is alive (`ps`).
+- Check that the resolver process is alive: `pgrep -l sniproxy` lists
+  every sniproxy process by name. Linux truncates names to 15
+  characters, so it shows up there as `sniproxy-resolv`.
+- Run in the foreground with `-d` (see Debug mode below) to trace each
+  lookup.
 - Verify the `resolver { nameserver ... }` config and network
   reachability.
 
@@ -642,16 +644,18 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 
 - Look for connections stuck in DNS resolution with a flaky upstream;
   lower `max_concurrent_queries` and `max_concurrent_queries_per_client`.
-- Check the error log for regex backtracking warnings.
 - Lower `connection_buffer_limit` or the per-side caps.
 
 **Permission errors on start**
 
 - The configured `user`/`group` must exist.
-- Log directories must be writable by that user.
-- On OpenBSD, every path that will be opened (logs, pidfile, config
-  directory) must already exist before launch, because unveil cannot reveal
-  what is not there.
+- Log files are created at startup, before privileges are dropped, and
+  handed over to that user. If logs are rotated by renaming them, the
+  log directory must be writable by that user so SIGHUP can create the
+  new file.
+- On OpenBSD, the directories holding the log files and the pidfile
+  must already exist before launch, because unveil cannot reveal what is
+  not there. The files themselves may be missing.
 
 **HTTP/2 connection coalescing routes to the wrong backend**
 
