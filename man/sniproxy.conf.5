@@ -405,8 +405,10 @@ validating resolver.
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is
 predictable, leaving the query only protected from spoofed replies
-by the 16 bit query ID. Additionally, since no internal DNS caching
-is performed, a local resolver can improve performance.
+by the 16 bit query ID. sniproxy adds no DNS cache of its own: from
+c-ares 1.31.0 on, c-ares caches answers for up to their TTL, at most an
+hour, while with older versions every lookup reaches the name server,
+and a local caching resolver improves performance.
 
 .SS LISTENER
 
