@@ -1673,6 +1673,11 @@ accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
     if (lb == NULL)
         return 0;
 
+    if (!logger_syslog_facility_valid(facility)) {
+        err("Unknown syslog facility '%s'", facility);
+        return 0;
+    }
+
     char *new_facility = strdup(facility);
     if (new_facility == NULL) {
         err("%s: strdup", __func__);

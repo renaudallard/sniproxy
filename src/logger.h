@@ -42,6 +42,7 @@ struct ev_loop;
 #include <sys/types.h>
 
 struct Logger *new_syslog_logger(const char *facility);
+int logger_syslog_facility_valid(const char *facility);
 struct Logger *new_file_logger(const char *filepath);
 void set_default_logger(struct Logger *);
 void set_logger_priority(struct Logger *, int);

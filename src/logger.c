@@ -331,8 +331,10 @@ new_syslog_logger(const char *facility) {
             free(logger);
             return NULL;
         }
+        int facility_number = lookup_syslog_facility(facility);
+
         logger->priority = LOG_DEBUG;
-        logger->facility = lookup_syslog_facility(facility);
+        logger->facility = facility_number >= 0 ? facility_number : LOG_USER;
         logger->reference_count = 0;
 
         log_sink_ref_get(logger->sink);
@@ -798,15 +800,19 @@ lookup_syslog_facility(const char *facility) {
         { "uucp",   LOG_UUCP },
     };
 
-    if (facility == NULL || *facility == '\0')
+    if (facility == NULL)
         return LOG_USER;
 
     for (size_t i = 0; i < sizeof(facilities) / sizeof(facilities[0]); i++)
         if (strcasecmp(facilities[i].name, facility) == 0)
             return facilities[i].number;
 
-    /* fall back value */
-    return LOG_USER;
+    return -1;
+}
+
+int
+logger_syslog_facility_valid(const char *facility) {
+    return facility != NULL && lookup_syslog_facility(facility) >= 0;
 }
 
 static struct LogSink *
