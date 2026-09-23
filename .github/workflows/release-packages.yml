@@ -61,6 +61,12 @@ jobs:
               with urllib.request.urlopen(req, timeout=10) as resp:
                   return resp.read().decode()
 
+          def fallback(name, value):
+              # Put a failed lookup on the run page. A silent fallback kept
+              # building packages for an end of life release unnoticed.
+              print(f"::warning::{name} version detection failed, using {value}")
+              return value
+
           def ubuntu_major_minor(version):
               # The meta-release "Version" field can carry a " LTS" suffix and a
               # point release (e.g. "24.04.1 LTS"); a Docker tag needs the bare
@@ -90,7 +96,7 @@ jobs:
                       return versions[-1]
               except Exception:
                   pass
-              return default
+              return fallback(f"Ubuntu ({meta})", default)
 
           def debian_codename(track):
               url = f"https://deb.debian.org/debian/dists/{track}/Release"
@@ -101,7 +107,7 @@ jobs:
                           return line.split(":", 1)[1].strip()
               except Exception:
                   pass
-              return track
+              return fallback(f"Debian {track}", track)
 
           def latest_fedora_release():
               # releases.json is a flat list of release images. Pre-releases
@@ -114,7 +120,7 @@ jobs:
                       return str(max(versions))
               except Exception:
                   pass
-              return "44"
+              return fallback("Fedora", "44")
 
           def rocky_version_list():
               # Scrape dl.rockylinux.org directly. The mirror list API and
@@ -130,7 +136,7 @@ jobs:
                       return sorted(set(versions), key=lambda v: [int(x) for x in v.split(".")])
               except Exception:
                   pass
-              return ["9", "10"]
+              return fallback("Rocky", ["9", "10"])
 
           def rocky_container_tags(majors, count=2):
               # Rocky images moved to quay.io. Docker Hub is stale at 9.3.
@@ -160,7 +166,7 @@ jobs:
                           break
 
               if not chosen:
-                  chosen.append("9")
+                  chosen.append(fallback("Rocky container", "9"))
               while len(chosen) < count:
                   chosen.append(chosen[-1])
 
@@ -191,7 +197,7 @@ jobs:
                       return versions_sorted[-1]
               except Exception:
                   pass
-              return "15.6"
+              return fallback("openSUSE Leap", "15.6")
 
           def latest_suse_bci():
               # Newest SLE 15 service pack. The Leap job already covers the
@@ -210,7 +216,7 @@ jobs:
                       return f"15.{max(versions)}"
               except Exception:
                   pass
-              return "15.7"
+              return fallback("SUSE BCI", "15.7")
 
           def latest_alpine():
               try:
@@ -227,7 +233,7 @@ jobs:
                       return versions[-1]
               except Exception:
                   pass
-              return "latest"
+              return fallback("Alpine", "latest")
 
           def latest_freebsd():
               # The cross-platform-actions build action can only boot a FreeBSD
@@ -249,7 +255,7 @@ jobs:
                       return versions[-1]
               except Exception:
                   pass
-              return "15.0"
+              return fallback("FreeBSD", "15.0")
 
           # The newest release can itself be an LTS; build the LTS before it
           # then rather than the same release twice.
