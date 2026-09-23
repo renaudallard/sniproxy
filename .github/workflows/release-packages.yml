@@ -119,21 +119,17 @@ jobs:
               return track
 
           def latest_fedora_release():
+              # releases.json is a flat list of release images. Pre-releases
+              # carry a suffix ("45 Beta"), so only plain numbers count.
               try:
-                  data = fetch_text("https://getfedora.org/releases.json")
-                  releases = json.loads(data)
-                  versions = []
-                  for entry in releases.get("fedora", []):
-                      ver = entry.get("version")
-                      status = entry.get("status")
-                      edition = entry.get("edition")
-                      if edition == "Everything" and status == "Active" and ver is not None:
-                          versions.append(int(ver))
+                  data = fetch_text("https://fedoraproject.org/releases.json")
+                  versions = [int(e["version"]) for e in json.loads(data)
+                              if str(e.get("version", "")).isdigit()]
                   if versions:
                       return str(max(versions))
               except Exception:
                   pass
-              return "39"
+              return "44"
 
           def rocky_version_list():
               # Scrape dl.rockylinux.org directly. The mirror list API and
