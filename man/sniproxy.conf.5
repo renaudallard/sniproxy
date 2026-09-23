@@ -157,8 +157,9 @@ on the client side and 32 KiB on the server side and grow in powers of
 two, so the effective ceiling is the largest power of two not exceeding
 the configured limit, and never less than those starting sizes. The
 server buffer grows while the client reads slower than the backend
-sends; once it reaches its limit sniproxy stops reading from the
-backend until the client catches up. The client buffer only grows to
+sends, but only while all connections together use no more than 64 MiB;
+once it cannot grow sniproxy stops reading from the backend until the
+client catches up. The client buffer only grows to
 hold a request that is still being parsed, and a request that does not
 fit is treated as one that cannot be parsed. Tighter caps protect the
 proxy from slow clients pinning RAM.

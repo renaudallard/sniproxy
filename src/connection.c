@@ -112,6 +112,7 @@ static inline int server_socket_open(const struct Connection *);
 
 static void reactivate_watcher(struct ev_loop *, struct ev_io *, int,
         const struct Buffer *, const struct Buffer *);
+static int server_buffer_may_grow(int);
 
 static void connection_cb(struct ev_loop *, struct ev_io *, int);
 static void resolv_cb(struct Address *, void *);
@@ -862,7 +863,8 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
      * If that fails, keep this size, so that the backend simply waits for
      * the client instead of the read being retried. */
     if (revents & EV_READ && !is_client && buffer_room(input_buffer) == 0 &&
-            client_open && buffer_can_double(input_buffer) &&
+            server_buffer_may_grow(client_open) &&
+            buffer_can_double(input_buffer) &&
             buffer_resize(input_buffer, buffer_size(input_buffer) * 2) < 0) {
         char server[INET6_ADDRSTRLEN + 8];
 
@@ -1054,10 +1056,9 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
         reactivate_watcher(loop, client_watcher, 0,
                 con->client.buffer, con->server.buffer);
 
-    /* The server buffer grows, up to server_buffer_limit, while the client
-     * reads slower than the backend sends. */
     if (server_open)
-        reactivate_watcher(loop, server_watcher, client_open,
+        reactivate_watcher(loop, server_watcher,
+                server_buffer_may_grow(client_open),
                 con->server.buffer, con->client.buffer);
 
     /* Validate watcher state consistency */
@@ -1075,6 +1076,17 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
     }
 
     shrink_candidate_update(con, loop, 0.0);
+}
+
+/* The server buffer grows, up to server_buffer_limit, while the client
+ * reads slower than the backend sends. It does not once the connections
+ * use more memory than the pressure limit, above which idle buffers are
+ * shrunk, so that clients that stop reading cannot make every connection
+ * hold its full limit. */
+static int
+server_buffer_may_grow(int client_open) {
+    return client_open &&
+            connection_memory_in_use <= CONNECTION_MEMORY_PRESSURE_LIMIT;
 }
 
 static void

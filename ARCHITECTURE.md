@@ -229,9 +229,10 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 **Features:**
 - Power-of-2 sizing for fast modulo operations
 - Growth up to max_size in two places: the server buffer doubles while the
-  client reads slower than the backend sends, and the client buffer grows to
-  hold a request that is still being parsed. At max_size, sniproxy stops
-  reading from that side instead
+  client reads slower than the backend sends, as long as connections use no
+  more than the 64 MiB memory pressure limit, and the client buffer grows to
+  hold a request that is still being parsed. When a buffer cannot grow,
+  sniproxy stops reading from that side instead
 - Shrinking when underutilized
 - Zero-copy operations where possible
 - Overflow protection: `buf->len + min_room` wraparound detection
