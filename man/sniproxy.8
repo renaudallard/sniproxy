@@ -115,18 +115,16 @@ only\&.
 .PP
 On FreeBSD,
 \fBsniproxy\fR
-uses Capsicum capability mode
-(\fBcap_enter\fR(2))
-and per-fd rights
-(\fBcap_rights_limit\fR(2))
-to confine the main, logger and resolver processes after
-initialization\&. The binder stays outside capability mode because it
-may have to bind Unix socket paths, and the main process does too when
-a listener, fallback or backend is a Unix socket\&.
-Directories needed for config reload and log rotation are pre-opened
-so that
+runs the logger process in Capsicum capability mode
+(\fBcap_enter\fR(2)),
+with the directories it needs for log rotation pre-opened so that
 \fBopenat\fR(2)
-works inside capability mode\&.
+works there\&. The main and resolver processes stay out of capability
+mode, which does not permit
+\fBconnect\fR(2),
+and limit the rights of their IPC descriptors with
+\fBcap_rights_limit\fR(2)
+instead; the binder is not confined\&.
 Set
 .B SNIPROXY_DISABLE_CAPSICUM
 in the environment to disable Capsicum sandboxing\&.

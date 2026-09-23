@@ -71,7 +71,7 @@ fuzzing, and active maintenance.
   `sniproxy-mainloop`, `sniproxy-binder`, `sniproxy-logger`,
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
 - **Per-platform sandboxing**: pledge(2) + unveil(2) on OpenBSD, Capsicum
-  capability mode on FreeBSD, seccomp BPF on Linux.
+  on FreeBSD (capability mode for the logger), seccomp BPF on Linux.
 - **DTLS source check**: a new UDP session is held until a second
   datagram arrives from the same source address and port before any
   backend traffic is sent, so a single spoofed packet reaches no backend.
@@ -136,8 +136,8 @@ disk or call `mlock()` after `pledge()`. The logger drops root once the
 listeners are bound and the resolver is started after that, so both run
 unprivileged; the binder keeps root, which is its purpose. On a platform
 that provides one (pledge/unveil, Capsicum, or seccomp), each process
-enters its sandbox before it handles client traffic; the FreeBSD
-exceptions are listed under Installation.
+enters its sandbox before it handles client traffic; on FreeBSD only the
+logger enters capability mode (see Installation).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and process
 boundaries, and [SANITIZERS.md](SANITIZERS.md) for how to build under
@@ -300,10 +300,11 @@ The rc script runs sniproxy with `-c /usr/local/etc/sniproxy.conf`
 `reload` find the process through `/var/run/sniproxy.pid`, so the
 config needs `pidfile /var/run/sniproxy.pid`.
 
-The logger and resolver always run in Capsicum capability mode. The
-main process enters it too unless a listener, fallback or backend is a
-Unix domain socket. The binder never does, since it may have to bind
-Unix socket paths. `SNIPROXY_DISABLE_CAPSICUM=1` turns it off.
+Only the logger runs in Capsicum capability mode. The main process and
+the resolver have to connect() to backends and nameservers, which
+capability mode does not permit, so they only get limited rights on
+their IPC descriptors; the binder is not confined.
+`SNIPROXY_DISABLE_CAPSICUM=1` turns Capsicum off.
 
 ### macOS (best effort)
 
@@ -581,12 +582,12 @@ afterthought.
   forks afterwards, to the paths they need, which include
   `/etc/resolv.conf` and `/etc/hosts` read only for the resolver; the
   logger is forked before that and has no unveil.
-- **FreeBSD sandboxing**: Capsicum capability mode is entered after
-  the resolver loads its CA bundle, the logger has its log dirfds
-  pre-opened, and the main loop has its config dir + temp dir
-  pre-opened for `openat()`. Adding a new log path during SIGHUP reload
-  is not supported in capability mode; set `SNIPROXY_DISABLE_CAPSICUM=1`
-  for debugging.
+- **FreeBSD sandboxing**: the logger enters Capsicum capability mode
+  with its log directories pre-opened for `openat()`. The main process
+  and the resolver stay out of it, since capability mode forbids
+  connect(2) and they must reach backends and nameservers; the rights on
+  their IPC descriptors are limited with cap_rights_limit(2) instead.
+  `SNIPROXY_DISABLE_CAPSICUM=1` turns Capsicum off for debugging.
 - **Linux sandboxing**: seccomp BPF filters per process type, when
   built with libseccomp (configure uses it if it finds it, and the build
   has no seccomp otherwise). `SNIPROXY_DISABLE_SECCOMP=1` turns it off

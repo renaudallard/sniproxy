@@ -75,10 +75,6 @@
 #include "address.h"
 #include "table.h"
 #include "backend.h"
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-#include <sys/capsicum.h>
-#include <sys/un.h>
-#endif
 
 
 static void usage(void);
@@ -122,13 +118,6 @@ static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-/* Pre-opened parent dir + basename for the pidfile, used to remove it
- * via unlinkat() on shutdown after cap_enter() has forbidden plain
- * path-based removal. */
-static int pidfile_dirfd = -1;
-static char *pidfile_basename = NULL;
-#endif
 static const char *pidfile_path_at_exit = NULL;
 
 /* Remove a leftover pidfile only when the process it names is gone.
@@ -183,16 +172,7 @@ static void
 pidfile_cleanup(void) {
     if (pidfile_path_at_exit == NULL)
         return;
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-    if (pidfile_dirfd >= 0 && pidfile_basename != NULL) {
-        (void)unlinkat(pidfile_dirfd, pidfile_basename, 0);
-        close(pidfile_dirfd);
-        pidfile_dirfd = -1;
-        free(pidfile_basename);
-        pidfile_basename = NULL;
-    } else
-#endif
-        (void)remove(pidfile_path_at_exit);
+    (void)remove(pidfile_path_at_exit);
     pidfile_path_at_exit = NULL;
 }
 
@@ -677,93 +657,14 @@ main(int argc, char **argv) {
     }
 
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    /* The main process stays out of capability mode: connect() is not
+     * permitted there at all, and it has to reach arbitrary backends.
+     * Limit the rights on its end of the IPC sockets instead so they
+     * cannot be used to bind or connect elsewhere. */
     if (capsicum_available()) {
-        /* AF_UNIX connect/bind requires VFS path lookups that are
-         * forbidden in capability mode.  Skip cap_enter() if any
-         * listener or backend uses a Unix domain socket. */
-        int has_unix = 0;
-        struct Listener *l;
-        SLIST_FOREACH(l, &config->listeners, entries) {
-            const struct sockaddr *sa = address_sa(l->address);
-            if (sa != NULL && sa->sa_family == AF_UNIX) {
-                has_unix = 1;
-                break;
-            }
-            if (l->fallback_address != NULL) {
-                sa = address_sa(l->fallback_address);
-                if (sa != NULL && sa->sa_family == AF_UNIX) {
-                    has_unix = 1;
-                    break;
-                }
-            }
-        }
-        if (!has_unix) {
-            struct Table *t;
-            SLIST_FOREACH(t, &config->tables, entries) {
-                struct Backend *b;
-                STAILQ_FOREACH(b, &t->backends, entries) {
-                    if (b->address != NULL) {
-                        const struct sockaddr *sa = address_sa(b->address);
-                        if (sa != NULL && sa->sa_family == AF_UNIX) {
-                            has_unix = 1;
-                            break;
-                        }
-                    }
-                }
-                if (has_unix)
-                    break;
-            }
-        }
-        if (!has_unix) {
-            /* Pre-open directories needed after cap_enter() */
-            if (config_prepare_capsicum(config->filename) < 0)
-                warn("main: failed to pre-open config directory for capsicum");
-            /* Initialize temp dir (keeps dirfd open for debug dumps) */
-            init_secure_temp_dir();
-            /* Pre-open pidfile parent dir for unlinkat() on shutdown */
-            if (config->pidfile != NULL) {
-                char *copy = strdup(config->pidfile);
-                if (copy != NULL) {
-                    pidfile_dirfd = open(dirname(copy),
-                            O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-                    free(copy);
-                    if (pidfile_dirfd < 0) {
-                        warn("main: failed to pre-open pidfile dir: %s",
-                                strerror(errno));
-                    } else {
-                        copy = strdup(config->pidfile);
-                        if (copy == NULL) {
-                            close(pidfile_dirfd);
-                            pidfile_dirfd = -1;
-                        } else {
-                            pidfile_basename = strdup(basename(copy));
-                            free(copy);
-                            if (pidfile_basename == NULL) {
-                                close(pidfile_dirfd);
-                                pidfile_dirfd = -1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            /* Limit per-fd rights on the parent-side IPC sockets so a
-             * compromised main cannot bind/connect/fcntl them. */
-            logger_parent_capsicum_limit_rights();
-            resolv_parent_capsicum_limit_rights();
-            binder_parent_capsicum_limit_rights();
-
-            if (capsicum_enter() < 0) {
-                fatal("main: cap_enter failed: %s", strerror(errno));
-            }
-            /* Notify logger that the parent can no longer open files,
-             * matching the OpenBSD unveil path.  During SIGHUP reload
-             * new log sinks will be created without parent-side fds;
-             * the logger child uses pre-opened dirfds for reopening
-             * existing sinks. */
-            if (logger_process_is_active())
-                logger_parent_notify_fs_locked();
-        }
+        logger_parent_capsicum_limit_rights();
+        resolv_parent_capsicum_limit_rights();
+        binder_parent_capsicum_limit_rights();
     }
 #endif
 
