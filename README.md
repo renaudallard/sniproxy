@@ -592,9 +592,10 @@ also reduces spoofing exposure and upstream query volume.
 
 - **Event-driven I/O** via libev; thousands of concurrent connections per
   process.
-- **Small per-connection footprint**: buffers start at 16 KiB (client)
-  / 32 KiB (server), grow on demand, shrink when idle. Typical resident
-  usage is 1&ndash;2 MiB per process plus 2&ndash;8 KiB per active connection.
+- **Per-connection buffers**: each connection starts with a 16 KiB
+  client buffer and a 32 KiB server buffer, which grow on demand up to
+  the configured caps. Idle buffers shrink back, the client one down to
+  8 KiB and the server one to its initial 32 KiB.
 - **Memory-pressure trimming**: a global soft limit drives an
   aggressive shrink pass against idle buffers before total RAM balloons;
   the shrink candidate queue is itself bounded (4096 entries).
@@ -603,11 +604,10 @@ also reduces spoofing exposure and upstream query volume.
   kernel splices client and server sockets directly; user-space buffers
   shrink to 4 KiB and the idle timer polls the kernel byte counters of
   both directions before closing a quiet connection.
-- **JIT regex**: PCRE2 JIT compilation is used where available
-  (typically 2&ndash;10&times; faster backend matching).
+- **JIT regex**: PCRE2 JIT compilation is used where available.
 - **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1).
-- **SO_REUSEPORT**: bind multiple sniproxy workers to the same port
-  for kernel-level load balancing across cores.
+- **SO_REUSEPORT**: run several sniproxy instances on the same port;
+  on Linux 3.9+ the kernel spreads new connections across them.
 - **Hot reload**: SIGHUP updates routing tables in place; connections
   that are already routed keep their backend.
 
