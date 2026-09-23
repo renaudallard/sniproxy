@@ -453,7 +453,7 @@ new_listener(void) {
     listener->access_log = NULL;
     listener->log_bad_requests = 0;
     listener->reuseport = 0;
-    listener->ipv6_v6only = 0;
+    listener->ipv6_v6only = -1; /* unset: the system default applies */
     listener->transparent_proxy = 0;
     listener->fallback_use_proxy_header = PROXY_PROTOCOL_NONE;
     listener->acl_mode = LISTENER_ACL_MODE_DISABLED;
@@ -561,19 +561,17 @@ accept_listener_reuseport(struct Listener *listener, const char *reuseport) {
 
 int
 accept_listener_ipv6_v6only(struct Listener *listener, const char *ipv6_v6only) {
-    listener->ipv6_v6only = parse_boolean(ipv6_v6only);
-    if (listener->ipv6_v6only == -1) {
+    int value = parse_boolean(ipv6_v6only);
+    if (value == -1)
         return 0;
-    }
 
-#ifndef IPV6_V6ONLY
-    if (listener->ipv6_v6only == 1) {
-        err("IPV6_V6ONLY not supported in this build");
-        return 0;
-    }
-#endif
-
+#ifdef IPV6_V6ONLY
+    listener->ipv6_v6only = value;
     return 1;
+#else
+    err("IPV6_V6ONLY not supported in this build");
+    return 0;
+#endif
 }
 
 int
@@ -854,12 +852,13 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         }
     }
 
-    if (listener->ipv6_v6only == 1 &&
+    if (listener->ipv6_v6only != -1 &&
             address_sa(listener->address)->sa_family == AF_INET6) {
 #ifdef IPV6_V6ONLY
-        /* set IPV6_V6ONLY on server socket to only accept IPv6 connections on
-         * IPv6 listeners */
-        result = setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
+        /* yes accepts IPv6 connections only, no IPv4 ones as well */
+        int v6only = listener->ipv6_v6only;
+        result = setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only,
+                sizeof(v6only));
 #else
         result = -ENOSYS;
 #endif

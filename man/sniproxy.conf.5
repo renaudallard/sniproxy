@@ -459,7 +459,8 @@ listener 0.0.0.0 4443 {
 Define a listening address to accept new connections from clients on.
 Addresses may be specified as an IPv4 literal followed by a port
 number, an IPv6 literal followed by a port number, a bare port
-number, which listens on [::], or a unix socket path prefixed with
+number, which listens on [::] (IPv4 included only where ipv6_v6only
+allows it), or a unix socket path prefixed with
 \&'unix:'. The port may be left out when the listener has a protocol
 line, which then supplies its default port. Listeners are
 bound at startup before privileges are dropped. A unix-socket listener
@@ -502,7 +503,12 @@ to "yes" enables this functionality.
 
 The ipv6_v6only directive controls whether listening on the IPv6 any
 address '::' will accept connections to any IPv4 address as well as an
-IPv6 address. This is useful if the user wants different configurations
+IPv6 address: yes accepts IPv6 only, no accepts both, and without the
+directive the system default applies. That default is to accept both on
+Linux unless net.ipv6.bindv6only is set, and IPv6 only on FreeBSD by
+default and always on OpenBSD, which has no dual-stack sockets, so that
+no makes such a listener fail there. This is useful if the user wants
+different configurations
 for IPv4 and IPv6 or wishes to handle IPv4 traffic with another
 server/proxy entirely. This directive applies only to IPv6 listeners
 and is ignored on other listeners.

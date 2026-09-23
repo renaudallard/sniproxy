@@ -350,7 +350,8 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
     memset(request, 0, sizeof(*request));
     request->cmd = BINDER_CMD_BIND;
     request->reserved[0] = (sock_type == SOCK_DGRAM) ? 1 : 0;
-    request->reserved[1] = ipv6_v6only ? 1 : 0;
+    /* 0 leaves IPV6_V6ONLY at the system default, 1 sets it, 2 clears it */
+    request->reserved[1] = ipv6_v6only < 0 ? 0 : ipv6_v6only ? 1 : 2;
     request->reserved[2] = reuseport ? 1 : 0;
     request->address_len = addr_len;
     memcpy(&request->address, addr, addr_len);
@@ -656,10 +657,11 @@ binder_main(int sockfd) {
         }
 
 #ifdef IPV6_V6ONLY
-        if (req->reserved[1] &&
+        if (req->reserved[1] != 0 &&
                 req->address[0].sa_family == AF_INET6) {
+            int v6only = req->reserved[1] == 1;
             if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY,
-                    &on, sizeof(on)) < 0) {
+                    &v6only, sizeof(v6only)) < 0) {
                 char errbuf[128];
                 snprintf(errbuf, sizeof(errbuf),
                         "setsockopt IPV6_V6ONLY failed: %s",
