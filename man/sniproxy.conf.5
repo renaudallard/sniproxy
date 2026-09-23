@@ -152,9 +152,10 @@ connection_buffer_limit 4M
 Cap the amount of buffered data a single connection may hold on either
 side. The value applies to both the client and server buffers, accepts
 optional K, M, or G suffixes (powers of 1024), and must fall between
-8 KiB and 1 GiB. The default is 1 MiB per side. Buffers grow in powers
-of two, so the effective ceiling is the largest power of two not
-exceeding the configured limit. Tighter caps protect the proxy from
+8 KiB and 1 GiB. The default is 1 MiB per side. Buffers start at 16 KiB
+on the client side and 32 KiB on the server side and grow in powers of
+two, so the effective ceiling is the largest power of two not exceeding
+the configured limit, and never less than those starting sizes. Tighter caps protect the proxy from
 slow clients pinning unbounded RAM.
 
 .SS CLIENT_BUFFER_LIMIT
@@ -181,7 +182,8 @@ server_buffer_limit 8M
 Override the server-side buffer cap independently. This is useful for
 backends that return large responses relative to request size. Limits are
 applied to new connections immediately and propagated to existing
-connections during a configuration reload.
+connections during a configuration reload, though a buffer that has
+already grown past a lowered limit keeps its size.
 
 .SS HTTP_MAX_HEADERS
 
