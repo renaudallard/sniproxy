@@ -306,10 +306,18 @@ Unix socket paths. `SNIPROXY_DISABLE_CAPSICUM=1` turns it off.
 ### macOS (best effort)
 
 ```sh
-brew install libev pcre2 c-ares openssl autoconf automake gettext libtool
-brew link --force gettext      # GNU gettext is needed for autogen.sh
-./autogen.sh && ./configure && make
+brew install libev pcre2 c-ares openssl autoconf automake
+./autogen.sh
+inc= lib=
+for dep in libev pcre2 c-ares openssl; do
+    inc="$inc -I$(brew --prefix $dep)/include"
+    lib="$lib -L$(brew --prefix $dep)/lib"
+done
+./configure CPPFLAGS="$inc" LDFLAGS="$lib" && make
 ```
+
+configure only looks in the compiler's default paths, so it has to be
+told where Homebrew keeps each library, as the CI macOS jobs do.
 
 ## Configuration
 
