@@ -100,7 +100,8 @@ Each listener operates independently with its own event loop watchers.
 **Runtime fields:**
 - `reference_count`: For safe removal during reload
 - `watcher`: libev I/O watcher for accept events
-- `backoff_timer`: Exponential backoff for accept errors
+- `backoff_timer`: Pauses accepting when the process runs out of file
+  descriptors (EMFILE or ENFILE), for 2 seconds doubling up to 60
 - `table`: Resolved pointer to routing table
 - `accept_cb`: Accept callback function
 
@@ -499,7 +500,8 @@ Once CONNECTED, the connection enters steady-state proxying:
     told apart by their address, and a connection is refused only when a
     lookup walks past 32 entries of one chain, so collision spraying cannot
     bypass the limiter
-  - Accept backoff timer on repeated errors
+  - Accept backoff when file descriptors run out, from the first EMFILE or
+    ENFILE, growing from 2 to 60 seconds
   - Idle connection timeouts
 - **Configuration hardening (0.9.7)**: sniproxy refuses to load
   configuration files that are readable or writable by group/other users,
