@@ -238,9 +238,7 @@ dpkg-buildpackage -us -uc -b
 sudo dpkg -i ../sniproxy_<version>_<arch>.deb
 ```
 
-The build runs autoreconf itself, so there is no need for `autogen.sh`,
-which would also add a `+git` entry to `debian/changelog` on any commit
-that is not a release tag when devscripts is installed.
+The build runs autoreconf itself, so there is no need for `autogen.sh`.
 
 ### Alpine
 
@@ -274,11 +272,9 @@ rpmbuild --define "_sourcedir $(pwd)" -ba redhat/sniproxy.spec
 sudo dnf install ~/rpmbuild/RPMS/<arch>/sniproxy-<version>-1.<dist>.<arch>.rpm
 ```
 
-Build from a release tag: on any other commit `autogen.sh` gives the
-spec a `+git` version that `make dist` does not use, and rpmbuild then
-cannot find the tarball. On RHEL and its rebuilds, enable EPEL and CRB
-first (`libbsd-devel` comes from EPEL); RHEL 9 also ships autoconf
-2.69, older than the 2.71 that `configure.ac` requires.
+On RHEL and its rebuilds, enable EPEL and CRB first (`libbsd-devel`
+comes from EPEL); RHEL 9 also ships autoconf 2.69, older than the 2.71
+that `configure.ac` requires.
 
 ### FreeBSD
 
