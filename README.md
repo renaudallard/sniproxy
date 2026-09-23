@@ -407,8 +407,9 @@ table secure_hosts {
 }
 ```
 
-Only one ACL policy style may appear in the configuration at once: mixing
-`allow_except` and `deny_except` aborts startup. IPv4 and IPv6 networks
+All listener `acl` blocks must use the same policy: mixing
+`allow_except` and `deny_except` across listeners aborts startup. The
+`backend_acl` policy is independent of them. IPv4 and IPv6 networks
 can be mixed in the same block; IPv4-mapped IPv6 connections are matched
 against the IPv4 CIDRs.
 

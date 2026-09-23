@@ -504,9 +504,9 @@ deny_except (deny every client except the listed ranges):
 When an acl block is omitted every client is accepted. Multiple
 statements may be provided in a block. IPv4 and IPv6 ranges may be mixed
 freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges.
-The policy choice is global: mixing allow_except and deny_except blocks
-anywhere in the configuration causes sniproxy to exit with a configuration
-error.
+The policy choice is shared by all listeners: mixing allow_except and
+deny_except acl blocks across listeners causes sniproxy to exit with a
+configuration error. The backend_acl policy is chosen independently.
 
 The access log configuration may be overridden on each listener.
 
