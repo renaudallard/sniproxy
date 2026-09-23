@@ -75,10 +75,12 @@ Print the version of SNIProxy and exit\&.
 
 .TP
 -T \fImin-tls-version\fR
-Set the minimum TLS ClientHello version that will be accepted. The
-value must be one of 1.0, 1.1, 1.2, or 1.3, and controls both the
-legacy version field and the supported_versions extension. The default
-is 1.2.
+Set the minimum TLS ClientHello version that will be accepted\&. The
+value must be one of 1.0, 1.1, 1.2, or 1.3\&. For 1.0 to 1.2 the legacy
+version field of the ClientHello is checked; for 1.3 that field is
+ignored, since TLS 1.3 clients set it to 1.2, and the supported_versions
+extension must list 1.3 or later\&. The default is 1.2\&. It applies to
+TLS listeners only, not to DTLS\&.
 
 .TP
 -d
