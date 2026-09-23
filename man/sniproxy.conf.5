@@ -480,8 +480,9 @@ sessions can only go to the fallback. To limit UDP
 reflection/amplification attacks, a new DTLS session is held until a
 second datagram arrives from the same
 address and port, and is silently dropped if none does within 3
-seconds (DTLS clients retransmit by design per RFC 6347). A single
-spoofed packet therefore never reaches a backend. The second datagram is
+seconds (DTLS clients retransmit by design per RFC 6347). The first
+datagram is discarded, and the second is the one parsed for SNI and
+forwarded. A single spoofed packet therefore never reaches a backend. The second datagram is
 not compared with the first, so an attacker who sends two spoofed
 packets gets through; rely on the backend's DTLS cookie exchange for
 the rest.
