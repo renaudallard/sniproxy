@@ -306,8 +306,8 @@ per_ip_max_connections 100
 # Default 64; set to 128 to key on the exact address.
 per_ip_ipv6_prefix 64
 
-# Per-side buffer caps. The shared form sets both at once; the per-side
-# overrides win when present. Defaults: 1 MiB each.
+# Per-side buffer caps. connection_buffer_limit sets both sides; for
+# each side the directive that comes last wins. Defaults: 1 MiB each.
 connection_buffer_limit 4M
 # client_buffer_limit   4M
 # server_buffer_limit   8M
