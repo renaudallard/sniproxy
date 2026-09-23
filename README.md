@@ -95,8 +95,9 @@ fuzzing, and active maintenance.
 - **Bounded memory**: per-connection buffer caps, a global soft limit
   that aggressively trims idle buffers, and a 4096-entry shrink queue stop
   slow clients from pinning unbounded RAM.
-- **Continuous fuzzing**: dedicated harnesses for TLS, DTLS, HTTP/2,
-  XMPP, Minecraft, hostname, address, config, listener ACL, IPC crypto and
+- **Continuous fuzzing**: dedicated harnesses for TLS, DTLS, HTTP/1,
+  HTTP/2, XMPP, Minecraft, hostname, address, config, config tokenizer,
+  table lookup, listener ACL, IPC crypto, IPC messages, IPC state and
   resolver responses run in CI and on a separate continuous-fuzzing job.
 
 ## Protocol support
