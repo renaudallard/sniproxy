@@ -85,7 +85,8 @@ Each listener operates independently with its own event loop watchers.
 
 **Configuration fields:**
 - `address`: Listening address and port
-- `protocol`: Protocol parser (TLS, DTLS, HTTP, HTTP/2, XMPP, Minecraft)
+- `protocol`: Protocol parser (TLS, DTLS, HTTP, XMPP, Minecraft); the HTTP
+  parser also recognises HTTP/2 prior-knowledge requests by their preface
 - `table_name`: Name of routing table to use
 - `fallback_address`: Default backend when no match found
 - `source_address`: Source address for outbound connections
@@ -268,7 +269,8 @@ Protocol handlers parse application-layer headers to extract hostnames.
    - Enforces `HTTP_MAX_HEADERS` (100) (0.9.6) to prevent CPU exhaustion from
      adversarial header floods
 
-4. **HTTP/2**: Extracts :authority pseudo-header from HTTP/2 requests
+4. **HTTP/2**: Extracts :authority pseudo-header from HTTP/2 requests, as part
+   of the HTTP protocol when a request starts with the HTTP/2 preface
    - Parses client preface and SETTINGS frames
    - HPACK decompression with dynamic table
    - Handles HEADERS and CONTINUATION frames
