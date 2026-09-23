@@ -86,7 +86,8 @@ TLS listeners only, not to DTLS\&.
 .TP
 -d
 Enable verbose resolver debug logging to aid DNS troubleshooting\&. The
-messages follow the error log\&. When the error log is a file the resolver
+messages go to the error log at notice priority, so an error log set
+to warning or stricter drops them\&. When the error log is a file the resolver
 process sends them to syslog instead, see the ERROR_LOG section of
 \fBsniproxy.conf\fR(5)\&.
 
