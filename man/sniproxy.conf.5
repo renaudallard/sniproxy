@@ -332,8 +332,8 @@ resolver {
 
 Specify how DNS queries should be resolved, which is only required if
 using hostnames as addresses in the configuration or using wildcard
-backends. If not specified the IPv4 only queries will be performed using
-the system default name servers.
+backends. If not specified, the name servers from \fBresolv.conf\fR(5)
+are used in the default mode described below.
 
 Multiple \fBnameserver\fR directives may be supplied. Optional
 \fBsearch\fR directives append the given domain to hostnames that do not
@@ -363,21 +363,23 @@ DNS-over-TLS.
 Only one \fBresolver\fR block may be given; a second one is a
 configuration error.
 
-Four modes are supported:
+Without a \fBmode\fR, or with \fBmode default\fR, A and AAAA records
+are queried at the same time and the first family that answers with
+records is used. Four other modes are supported:
 
-ipv4_only: query for any A records, use the first A record returned
-(following CNAME records).
+ipv4_only: query for A records only.
 
-ipv6_only: query for any AAAA records, use the first AAAA record
-returned (following CNAME records).
+ipv6_only: query for AAAA records only.
 
-ipv4_first: query for both A and AAAA records, wait for both queries to
-complete, use the first A record if any, otherwise use the first AAAA
-record.
+ipv4_first: query for both A and AAAA records, answer as soon as A
+records arrive, and use AAAA records only when there is no A record.
 
-ipv6_first: query for both A and AAAA records, wait for both queries to
-complete, use the first AAAA record if any, otherwise use the first A
-record.
+ipv6_first: query for both A and AAAA records, answer as soon as AAAA
+records arrive, and use A records only when there is no AAAA record.
+
+CNAME records are followed. When several records of the chosen family
+are returned, one of them is picked at random, or by the client address
+with \fBbackend_affinity\fR.
 
 The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
 may be in flight at once (default 512). Lower values cap resolver resource
