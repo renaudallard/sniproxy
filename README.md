@@ -578,8 +578,9 @@ afterthought.
 - **OpenBSD sandboxing**: every process runs under pledge(2), and the
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it
-  forks afterwards, to the paths they need; the logger is forked before
-  that and has no unveil.
+  forks afterwards, to the paths they need, which include
+  `/etc/resolv.conf` and `/etc/hosts` read only for the resolver; the
+  logger is forked before that and has no unveil.
 - **FreeBSD sandboxing**: Capsicum capability mode is entered after
   the resolver loads its CA bundle, the logger has its log dirfds
   pre-opened, and the main loop has its config dir + temp dir

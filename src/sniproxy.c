@@ -483,6 +483,17 @@ main(int argc, char **argv) {
         /* Readable so that a SIGHUP reload can parse it again. */
         openbsd_unveil_path(config_file, "r", 0);
 
+        /* The resolver child inherits this view, and c-ares reads the
+         * system resolver configuration and the hosts file through it.
+         * Without them it falls back to a server on 127.0.0.1. */
+        static const char *const resolver_files[] = {
+            "/etc/resolv.conf",
+            "/etc/hosts",
+        };
+        for (size_t i = 0; i < sizeof(resolver_files) / sizeof(resolver_files[0]); i++)
+            if (unveil(resolver_files[i], "r") == -1 && errno != ENOENT)
+                fatal("unveil %s failed: %s", resolver_files[i], strerror(errno));
+
         if (config->pidfile != NULL)
             openbsd_unveil_path(config->pidfile, "rwc", 1);
 
