@@ -557,6 +557,11 @@ that the ACL, \fBper_ip_connection_rate\fR and
 (the upstream proxy), while \fBmax_concurrent_queries_per_client\fR and
 \fBbackend_affinity\fR use the address from the PROXY header.
 
+DTLS sessions neither read nor send PROXY headers: on a dtls listener
+\fBproxy_protocol\fR and a \fBproxy_protocol\fR option on the fallback
+are configuration errors, and the option on the entries of its table is
+ignored with a warning, since the table may also serve TCP listeners.
+
 The source directive allows specifying an address to bind to before
 connecting to the backend server. In most cases it is better to omit
 this option and allow the operating system to select the outgoing

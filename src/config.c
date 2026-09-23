@@ -615,12 +615,20 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     if (config != NULL) {
         struct Listener *listener = SLIST_FIRST(&config->listeners);
         while (listener != NULL) {
-            if (table_lookup(&config->tables, listener->table_name) == NULL) {
-                err("Table \"%s\" not defined", listener->table_name != NULL ?
-                        listener->table_name : "(default)");
+            const char *table_name = listener->table_name != NULL ?
+                    listener->table_name : "(default)";
+            struct Table *table = table_lookup(&config->tables,
+                    listener->table_name);
+            if (table == NULL) {
+                err("Table \"%s\" not defined", table_name);
                 free_config(config, loop);
                 return NULL;
             }
+            /* A table may be shared with TCP listeners, so this is legal. */
+            if (listener->protocol->sock_type == SOCK_DGRAM &&
+                    table_uses_proxy_header(table))
+                warn("dtls listener using table \"%s\" ignores the "
+                        "proxy_protocol option of its entries", table_name);
             listener = SLIST_NEXT(listener, entries);
         }
     }

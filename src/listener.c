@@ -771,6 +771,14 @@ valid_listener(const struct Listener *listener) {
         return 0;
     }
 
+    /* DTLS sessions neither read nor send a PROXY header. */
+    if (listener->protocol->sock_type == SOCK_DGRAM &&
+            (listener->accept_proxy_protocol ||
+             listener->fallback_use_proxy_header != PROXY_PROTOCOL_NONE)) {
+        err("PROXY protocol is not supported on dtls listeners");
+        return 0;
+    }
+
     return 1;
 }
 

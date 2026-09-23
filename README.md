@@ -66,7 +66,8 @@ fuzzing, and active maintenance.
   client asked for (`*:443`).
 - **HAProxy PROXY protocol**: emit v1 or v2 headers to backends; accept v1
   or v2 from upstream load balancers on listeners with
-  `proxy_protocol on` (the version is auto-detected).
+  `proxy_protocol on` (the version is auto-detected). TCP only: DTLS
+  listeners refuse these options.
 - **Privilege separation**: four cooperating processes:
   `sniproxy-mainloop`, `sniproxy-binder`, `sniproxy-logger`,
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.

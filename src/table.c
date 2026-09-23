@@ -237,6 +237,17 @@ table_lookup(const struct Table_head *tables, const char *name) {
     return NULL;
 }
 
+int
+table_uses_proxy_header(const struct Table *table) {
+    const struct Backend *backend;
+
+    STAILQ_FOREACH(backend, &table->backends, entries)
+        if (backend->use_proxy_header != PROXY_PROTOCOL_NONE)
+            return 1;
+
+    return 0;
+}
+
 
 struct LookupResult
 table_lookup_server_address(struct Table *table, const char *name, size_t name_len) {
