@@ -31,9 +31,11 @@ username daemon
 .fi
 .PP
 
-Specify the user sniproxy will run as.
+Specify the user sniproxy will run as; the default is daemon.
 When sniproxy is launched as super user,
-it will drop permissions to this user.
+it will drop permissions to this user, which must not have user ID 0\&.
+When it is launched as another user, that user must be the configured
+one, or sniproxy refuses to start.
 
 .SS GROUPNAME
 
@@ -43,9 +45,11 @@ groupname _sniproxy
 .fi
 .PP
 
-Specify the group sniproxy will run as after dropping privileges. Either
+Specify the group sniproxy will run as after dropping privileges; the
+default is the primary group of the user. Either
 the full \fBgroupname\fR directive or the short \fBgroup\fR form may be
-used.
+used. When sniproxy is launched without super user privileges, its group
+must be this one, or it refuses to start.
 
 .SS PIDFILE
 
