@@ -12,12 +12,16 @@ sniproxy.conf - sniproxy configuration file
 
 /etc/sniproxy.conf is the configuration file for sniproxy.
 Statements are separated by either a new line or semi-colon.
-Lines starting with \&# are comments.
+A \&# starts a comment that runs to the end of the line wherever it
+appears, even inside a word, unless it is within double quotes.
 The configuration is broken down into stanzas delimited by
-curly braces. Characters may be escaped using \&\\. Directives must be
-spelled out in full; only the explicit aliases user (username),
-group (groupname), listen (listener) and proto (protocol) are
-recognized.
+curly braces. Words are separated by spaces or tabs and also end at
+\&;, \&#, { or }; enclosing part of a word in double quotes keeps these
+characters in it, and the quotes are removed. A \&\\ escapes the next
+character, inside quotes as well, and is removed. Directives and
+keywords are case sensitive and must be spelled out in full; only the
+explicit aliases user (username), group (groupname), listen (listener)
+and proto (protocol) are recognized.
 
 .SS USERNAME
 
@@ -565,6 +569,11 @@ character, so a backslash intended for the regex must be doubled. Write
 every dot matches any character and the pattern therefore also matches
 hostnames such as "aexample-com.example.org". Literal hostnames need no
 backslashes at all, since their dots are escaped automatically.
+
+Since { and } end a word, a pattern using them must be quoted or have
+its braces escaped, with its other backslashes still doubled:
+\fB"^[a-z]{3}\e\e.example\e\e.com$"\fR or
+\fB^[a-z]\e{3\e}\e\e.example\e\e.com$\fR.
 
 The optional proxy_protocol option will prepend a HAProxy PROXY v1 (text)
 protocol header to the proxied connection, allowing supporting
