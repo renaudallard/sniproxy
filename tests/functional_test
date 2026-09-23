@@ -54,14 +54,16 @@ sub connection_dump_files() {
         push @candidates, "$ENV{XDG_RUNTIME_DIR}/sniproxy";
     }
     push @candidates, '/var/run/sniproxy';
-    push @candidates, "/tmp/sniproxy-$<";
+    # The dump is written by the user sniproxy runs as, not by us
+    my $uid = (getpwnam(test_user()))[2];
+    push @candidates, "/tmp/sniproxy-$uid";
 
     my %files;
     foreach my $dir (@candidates) {
         opendir(my $dh, $dir) or next;
         foreach my $entry (readdir($dh)) {
             $files{"$dir/$entry"} = 1
-                if $entry =~ /^connections-[0-9a-fA-F]{6,}$/;
+                if $entry =~ /^connections-[0-9A-Za-z]{6,}$/;
         }
         closedir($dh);
     }
