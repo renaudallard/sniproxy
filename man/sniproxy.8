@@ -81,7 +81,10 @@ process sends them to syslog instead, see the ERROR_LOG section of
 .B SIGHUP
 Reopen log files and reload the configuration file\&. Existing
 connections continue using their original routing; new connections
-use the updated configuration\&.
+use the updated configuration\&. Changes to user, group, pidfile and
+the resolver block, and to tcp_fastopen, reuseport and ipv6_v6only
+for listeners that already exist, only take effect on restart; the
+reload logs a warning for each one it ignores\&.
 
 .TP
 .B SIGUSR1

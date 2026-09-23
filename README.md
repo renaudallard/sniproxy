@@ -84,9 +84,10 @@ fuzzing, and active maintenance.
 - **DNS-over-TLS upstreams**: `nameserver dot://9.9.9.9/dns.quad9.net/tls1.2`
   inside the `resolver` block; IP literals require a TLS hostname or an
   explicit `/insecure`. TLS 1.2 is enforced by default.
-- **Hot reload**: SIGHUP re-reads the config, re-resolves backends and
-  rebuilds tables without dropping live connections. Reference counting
-  keeps old tables alive while connections that pinned them drain.
+- **Hot reload**: SIGHUP re-reads the config and updates listeners and
+  tables in place without dropping live connections; connections that
+  are already routed keep their backend. Hostname backends are resolved
+  for every new connection, so DNS changes need no reload.
 - **Zero-copy on OpenBSD**: SO_SPLICE moves data in the kernel after the
   handshake is parsed, user buffers shrink to 4 KiB and the idle timer
   checks the kernel byte counters, so one silent direction does not end
@@ -272,9 +273,13 @@ brew link --force gettext      # GNU gettext is needed for autogen.sh
 
 A config file has a small set of **global** directives followed by one or
 more `listener <addr>` and `table <name>` blocks. SIGHUP triggers a
-zero-downtime reload; SIGUSR1 dumps the live connection table to a
-temporary `connections-XXXXXX` file under `$XDG_RUNTIME_DIR/sniproxy`,
-`/var/run/sniproxy`, or `/tmp/sniproxy-<uid>` (tried in that order).
+zero-downtime reload. A few settings only change on restart, and the
+reload logs a warning when it ignores one: `user`, `group`, `pidfile`,
+the `resolver` block, and, for listeners that already exist,
+`tcp_fastopen`, `reuseport` and `ipv6_v6only`. SIGUSR1 dumps the live
+connection table to a temporary `connections-XXXXXX` file under
+`$XDG_RUNTIME_DIR/sniproxy`, `/var/run/sniproxy`, or
+`/tmp/sniproxy-<uid>` (tried in that order).
 
 ### Global directives
 
@@ -579,8 +584,8 @@ also reduces spoofing exposure and upstream query volume.
 - **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1).
 - **SO_REUSEPORT**: bind multiple sniproxy workers to the same port
   for kernel-level load balancing across cores.
-- **Hot reload**: SIGHUP rebuilds routing tables in place; in-flight
-  connections finish on the old table.
+- **Hot reload**: SIGHUP updates routing tables in place; connections
+  that are already routed keep their backend.
 
 ## Troubleshooting
 
