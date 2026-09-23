@@ -567,8 +567,8 @@ workflow. TSan is available locally through a configure flag (see
 
 ## DNS resolution
 
-Hostnames in the config (table entries, fallbacks, transparent-proxy
-sources, wildcard backends) are resolved by a dedicated
+Hostnames in table entries and fallbacks, and the name a client asked
+for when it matches a wildcard backend, are resolved by a dedicated
 `sniproxy-resolver` child built on [c-ares](https://c-ares.org).
 That gives:
 
