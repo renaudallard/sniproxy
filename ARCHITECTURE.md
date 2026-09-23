@@ -526,17 +526,25 @@ buffer assembly, reducing the number of buffer operations required
 
 ### Reload (SIGHUP)
 
-1. Parse new configuration file
-2. Create new tables and listeners
-3. Compare with existing configuration:
-   - Unchanged listeners: keep running
-   - Modified listeners: stop old, start new
-   - New listeners: start
-   - Removed listeners: stop
-4. Update table references atomically
+1. Parse the new configuration file; if it fails to parse or fails the
+   permission check, the running configuration is kept
+2. Swap the backend list of each existing table for the new one in place,
+   and add new tables
+3. Compare listeners by address:
+   - Same address: updated in place, keeping the socket; `tcp_fastopen`,
+     `reuseport` and `ipv6_v6only` changes are ignored with a warning.
+     Only a change between TCP and UDP replaces the listener, binding the
+     new socket before the old one is closed
+   - New listeners: bound and started
+   - Removed listeners: stopped
+4. Apply the other global settings (limits, buffer caps, backend ACL,
+   logs); user, group, pidfile and the resolver's servers, search domains,
+   mode and DNSSEC setting wait for a restart
 5. Use reference counting to defer freeing old objects
-6. Existing connections continue with old configuration
-7. New connections use new configuration
+6. Connections that are already routed keep their backend; those still
+   waiting for their request are routed with the new tables, and new
+   buffer limits apply to existing connections
+7. New connections use the new configuration
 
 ## Performance Considerations
 
