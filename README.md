@@ -259,8 +259,10 @@ sudo sysrc sniproxy_enable=YES
 sudo service sniproxy start
 ```
 
-Capsicum capability mode is enabled automatically when every listener,
-fallback and backend address is an IP (not a Unix domain socket).
+The logger and resolver always run in Capsicum capability mode. The
+main process enters it too unless a listener, fallback or backend is a
+Unix domain socket. The binder never does, since it may have to bind
+Unix socket paths. `SNIPROXY_DISABLE_CAPSICUM=1` turns it off.
 
 ### macOS (best effort)
 
@@ -487,7 +489,8 @@ SNIProxy is built with defense-in-depth as a design goal, not an
 afterthought.
 
 - **TLS 1.2+ by default**: older clients can be re-enabled with
-  `-T 1.1` or `-T 1.0`, or you can lock the listener to `-T 1.3`.
+  `-T 1.1` or `-T 1.0`, or TLS 1.3 required with `-T 1.3`. The flag
+  applies to every TLS listener.
 - **Cryptographically random seeds**: the per-IP hashes (rate limiter,
   connection counts, DNS client tracking, backend affinity) are keyed
   with an arc4random seed, and the rate limiter and connection count
@@ -512,22 +515,27 @@ afterthought.
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages.
 - **Strict config and pidfile checks**: config files must not be
-  group/other-readable (unless `-g` is passed); all path directives must
-  be absolute; resolver search domains are treated as literal suffixes,
-  not re-parsed by the system resolver. Pidfiles refuse to be written
-  over stale sockets, FIFOs or symlinks.
+  accessible to group or others (`-g` allows group read only); the
+  `pidfile` and log file paths must be absolute; resolver search domains
+  are treated as literal suffixes, not re-parsed by the system resolver.
+  Pidfiles refuse to be written over stale sockets, FIFOs or symlinks.
 - **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`.
-- **OpenBSD sandboxing**: unveil(2) restricts the visible filesystem
-  to declared paths; per-process pledge(2) promise sets are pared down
-  in two stages (startup vs. steady state) for each helper.
+- **OpenBSD sandboxing**: every process runs under pledge(2), and the
+  main loop and the logger narrow their promises again once startup is
+  done. unveil(2) limits the main loop, and the binder and resolver it
+  forks afterwards, to the paths they need; the logger is forked before
+  that and has no unveil.
 - **FreeBSD sandboxing**: Capsicum capability mode is entered after
   the resolver loads its CA bundle, the logger has its log dirfds
   pre-opened, and the main loop has its config dir + temp dir
   pre-opened for `openat()`. Adding a new log path during SIGHUP reload
   is not supported in capability mode; set `SNIPROXY_DISABLE_CAPSICUM=1`
   for debugging.
-- **Linux sandboxing**: seccomp BPF filters per process type.
+- **Linux sandboxing**: seccomp BPF filters per process type, when
+  built with libseccomp (configure uses it if it finds it, and the build
+  has no seccomp otherwise). `SNIPROXY_DISABLE_SECCOMP=1` turns it off
+  for debugging.
 - **macOS has no sandbox**: `sandbox_init(3)` and its named profiles
   are deprecated, and a process opting into one is killed outright when
   built against the macOS 27.0 SDK or later, so adopting them would buy a
