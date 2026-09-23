@@ -226,8 +226,10 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 - Overflow protection: `buf->len + min_room` wraparound detection
 - **Performance optimization (0.9.0)**: Periodic shrink timer reduces per-event
   timestamp operations, eliminating unnecessary buffer size checks on every I/O event
-- **Memory tracking (0.9.0)**: Global memory observer tracks total buffer memory
-  usage across all connections, providing visibility into peak memory consumption
+- **Memory tracking (0.9.0)**: A global memory observer, called on every buffer
+  allocation, resize and free, tracks total buffer memory across all
+  connections. Above 64 MiB it also shrinks idle buffers, at most every 0.25
+  seconds
 - **Reliability (0.9.6)**: Buffer growth refuses to exceed SIZE_MAX/2 and now
   closes the offending connection instead of silently leaving buffers in an
   inconsistent state.
@@ -587,8 +589,8 @@ buffer assembly, reducing the number of buffer operations required
 - **Protocol parsers**: TLS, HTTP, and HTTP/2 parsers use compile-time length
   constants and optimized data structures to minimize per-request overhead
 - **PROXY protocol**: Single-pass header composition reduces buffer operations
-- **Memory accounting**: Global tracking provides operational visibility without
-  per-operation overhead
+- **Memory accounting**: Global tracking costs one observer call per buffer
+  allocation, resize or free, and shrinks idle buffers under memory pressure
 - **Socket state caching**: Connection callbacks cache socket open state to avoid
   repeated checks
 
