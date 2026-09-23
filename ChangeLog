@@ -1,5 +1,35 @@
 2026-09-23  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.14.5
+	- openbsd: the resolver process can read /etc/resolv.conf and
+	  /etc/hosts. Under unveil it read neither and asked 127.0.0.1, so
+	  nothing resolved without a resolver block unless a local resolver
+	  was running.
+	- sniproxy: source client works again after the privilege drop. On
+	  Linux the main process keeps CAP_NET_RAW alone when a listener
+	  uses it, and the helper processes started later give it up.
+	- resolver: dot:// servers given by hostname are looked up through
+	  c-ares once the sandbox is in place, and queries are only read
+	  after those lookups succeeded.
+	- resolver: the DNSSEC code that could never compile in is gone.
+	  dnssec_validation strict and its aliases warn when the config is
+	  read and act as relaxed.
+	- packaging: the systemd unit starts as root and passes -g. The
+	  Debian package installs /etc/sniproxy.conf 0640 root:daemon and
+	  keeps /var/log/sniproxy daemon:adm 0750, and declares
+	  Rules-Requires-Root. The RPM ships the default config, the log
+	  directory and the logrotate file, which moved to scripts/ and no
+	  longer names the adm group.
+	- build: configure warns without libseccomp. setver.sh is gone, so
+	  autogen.sh no longer rewrites tracked files.
+	- tests: the integration tests run without root. Their configs turn
+	  off the per-IP rate limit, and reload, functional, binder,
+	  reuseport and transparent proxy tests were fixed. Fuzzing keeps
+	  its crash files.
+	- docs: README and man pages corrected throughout.
+
+2026-09-23  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.14.4
 	- tests: the SIGCHLD handler in TestUtils.pm could record -1 as the
 	  status of a child it had just reaped when a second SIGCHLD was

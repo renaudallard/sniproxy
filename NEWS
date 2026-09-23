@@ -1,3 +1,48 @@
+sniproxy 0.14.5 (2026-09-23)
+===============================
+
+The README and man pages were checked claim by claim against the code,
+which turned up real bugs behind several of them. Most fixes are in the
+packages and on OpenBSD.
+
+Upgrade note: configurations copied from the README's regex examples
+should be checked. Those examples lost their backslashes to the config
+parser and were not anchored, so with a wildcard backend they matched
+names chosen by the client; write .*\\.example\\.com$ as the man page
+does. dnssec_validation strict, and its aliases, now log a warning when
+the configuration is read: sniproxy never validated DNSSEC, the
+directive only turns EDNS0 on or off, and strict always behaved like
+relaxed.
+
+Highlights:
+
+* On OpenBSD, names resolve without a resolver block in the
+  configuration. The resolver process could read neither
+  /etc/resolv.conf nor /etc/hosts under unveil and asked 127.0.0.1, so
+  nothing resolved unless a local resolver was running.
+
+* source client works again. Once sniproxy had dropped root, every
+  connection through such a listener failed with "setsockopt
+  IP_TRANSPARENT failed: Operation not permitted". On Linux the main
+  process now keeps CAP_NET_RAW, and nothing else, when a listener
+  uses it.
+
+* The systemd unit in the .deb and .rpm packages could not start: it
+  ran as a user no package creates. It now starts sniproxy as root,
+  which drops to the configured user. The Debian package installs
+  /etc/sniproxy.conf as 0640 root:daemon instead of a 0644 file sniproxy
+  refused to read, and the RPM now ships the default configuration, the
+  log directory and a logrotate file.
+
+* A DNS-over-TLS server given by hostname is looked up through c-ares
+  after the resolver process has entered its sandbox, instead of with
+  getaddrinfo() before. If that lookup fails the resolver still refuses
+  to start.
+
+* CI fuzzing now keeps the crash files it finds, configure warns when
+  libseccomp is missing, and the integration tests no longer need root,
+  so CI runs them.
+
 sniproxy 0.14.4 (2026-09-23)
 ===============================
 
