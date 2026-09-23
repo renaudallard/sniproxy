@@ -453,7 +453,9 @@ listener 0.0.0.0 4443 {
 Define a listening address to accept new connections from clients on.
 Addresses may be specified as an IPv4 literal followed by a port
 number, an IPv6 literal followed by a port number, a bare port
-number, or a unix socket path prefixed with 'unix:'. Listeners are
+number, which listens on [::], or a unix socket path prefixed with
+\&'unix:'. The port may be left out when the listener has a protocol
+line, which then supplies its default port. Listeners are
 bound at startup before privileges are dropped. A unix-socket listener
 added by a reload whose directory is not writable by the configured user
 is bound by the privileged binder helper; for safety the binder only
@@ -467,8 +469,9 @@ that or by an unclean shutdown, is detected as stale and replaced on the
 next start as long as no other process is accepting connections on it.
 
 Protocol defines how the client request should be parsed to obtain the
-requested hostname. Five protocols are supported: tls, http, xmpp,
-minecraft, and dtls. The minecraft protocol defaults to port 25565.
+requested hostname. Five protocols are supported: tls, the default,
+http, xmpp, minecraft, and dtls. Their default ports are 443 for tls
+and dtls, 80 for http, 5222 for xmpp and 25565 for minecraft.
 The dtls protocol proxies DTLS (TLS over UDP) connections by extracting
 the SNI extension from the DTLS ClientHello, enabling proxying by
 hostname without decryption of DTLS protocols whose clients send SNI,
