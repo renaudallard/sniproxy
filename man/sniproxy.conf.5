@@ -391,7 +391,7 @@ are returned, one of them is picked at random, or by the client address
 with \fBbackend_affinity\fR.
 
 The optional \fBmax_concurrent_queries\fR directive limits how many DNS lookups
-may be in flight at once (default 512). Lower values cap resolver resource
+may be in flight at once (default 512); it must be at least 1. Lower values cap resolver resource
 usage, while higher values increase throughput for configurations that rely on
 wildcard or hostname targets.
 
@@ -401,10 +401,13 @@ DNS lookups a single source IP may have in flight at once (default 16). Set to
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
 default is relaxed, which turns on EDNS0 in c-ares; 'off' leaves c-ares at
-its defaults. sniproxy does not validate DNSSEC itself and never checks the
+its defaults, which from c-ares 1.22 on include EDNS0 unless
+\fBdot://\fR servers are configured. sniproxy does not validate DNSSEC itself and never checks the
 AD flag, which c-ares cannot report. 'strict' is still accepted for
 existing configurations but treated as relaxed, with a warning when the
-configuration is read. For DNSSEC protection, point sniproxy at a
+configuration is read. The values no, false, disable and disabled mean
+off; allow_insecure, permissive, fail_open and fail-open mean relaxed;
+and require, enforce, on, yes and true act like strict. For DNSSEC protection, point sniproxy at a
 validating resolver.
 
 It is strongly recommended to use a local name server, since a single
