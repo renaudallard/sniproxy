@@ -418,8 +418,10 @@ table secure_hosts {
     secure.example.com  192.0.2.20:443 proxy_protocol
     other.example.com   192.0.2.21:443 proxy_protocol_v2
 
-    # Same client IP always reaches the same backend when DNS returns
-    # multiple records for that hostname
+    # Same client IP reaches the same backend when DNS returns several
+    # records for the name. The hash is seeded per process, so the
+    # mapping changes on restart and differs between reuseport workers.
+    # TCP only. Without it, and for DTLS, a record is picked at random.
     backend_affinity on
     .*\\.cdn\\.example\\.com$ *:443
 }
