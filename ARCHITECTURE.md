@@ -508,9 +508,10 @@ Once CONNECTED, the connection enters steady-state proxying:
   ensuring accidental chmod mistakes do not leak secrets when starting or
   reloading the daemon.
 - **Configuration hardening (0.9.8)**: Reloads repeat the permission checks,
-  all configured paths must be absolute, resolver cancellation includes a
-  memory fence, and temporary connection dumps rely on `mkostemp()` with
-  CLOEXEC/NOFOLLOW semantics.
+  all configured paths must be absolute, resolver cancellation takes the
+  query list mutex, and temporary connection dumps are created by
+  `mkostemp()` with O_CLOEXEC, whose O_CREAT|O_EXCL already refuses to
+  follow a symlink.
 
 ### PROXY Protocol Support
 
