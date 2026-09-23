@@ -41,7 +41,7 @@ sub checked_system {
     }
 }
 
-sub make_config($$) {
+sub make_transparent_config($$) {
     my $proxy_port = shift;
     my $httpd_port = shift;
 
@@ -115,7 +115,7 @@ sub main {
     my $proxy_namespace = $PROXY_NAMESPACE;
     my $client_namespace = $CLIENT_NAMESPACE;
 
-    my $config = make_config($proxy_port, $httpd_port);
+    my $config = make_transparent_config($proxy_port, $httpd_port);
 
     unless ($> == 0 and $^O eq 'linux') {
         print STDERR "This test requires Linux and root privileges\n";
