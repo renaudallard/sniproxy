@@ -505,14 +505,6 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     resolver_saved_nameservers = nameservers;
     resolver_saved_search = search;
     resolver_saved_mode = mode;
-
-#if !defined(ARES_FLAG_TRUSTAD)
-    if (dnssec_mode == DNSSEC_VALIDATION_STRICT) {
-        notice("DNSSEC strict mode requested but this c-ares build lacks Trust AD support; falling back to relaxed mode");
-        dnssec_mode = DNSSEC_VALIDATION_RELAXED;
-    }
-#endif
-
     resolver_saved_dnssec_mode = dnssec_mode;
 
     if (resolver_bucket_salt == 0) {
@@ -1654,25 +1646,13 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
     optmask |= ARES_OPT_SOCK_STATE_CB;
     options_ptr = &options;
 
+    /* The only thing dnssec_validation changes: c-ares cannot report
+     * the AD flag, so no validation happens here. */
     if (dnssec_mode != DNSSEC_VALIDATION_OFF) {
 #ifdef ARES_FLAG_EDNS
         options.flags |= ARES_FLAG_EDNS;
 #endif
-#ifdef ARES_FLAG_DNSSECOK
-        options.flags |= ARES_FLAG_DNSSECOK;
-#endif
     }
-
-#if defined(ARES_FLAG_TRUSTAD)
-    if (dnssec_mode == DNSSEC_VALIDATION_STRICT) {
-        options.flags |= ARES_FLAG_TRUSTAD;
-    }
-#else
-    if (dnssec_mode == DNSSEC_VALIDATION_STRICT) {
-        err("resolver child: DNSSEC strict mode requested but not supported by this c-ares build; falling back to relaxed mode");
-        dnssec_mode = DNSSEC_VALIDATION_RELAXED;
-    }
-#endif
 
     if (search_domains != NULL && search_domains[0] != NULL) {
         int ndomains = 0;

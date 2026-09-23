@@ -359,9 +359,10 @@ DNS lookups a single source IP may have in flight at once (default 16). Set to
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
 default is relaxed, which turns on EDNS0 in c-ares; 'off' leaves c-ares at
 its defaults. sniproxy does not validate DNSSEC itself and never checks the
-AD flag. The strict mode relies on c-ares flags that do not exist, so it
-is treated as relaxed and a notice is logged. For DNSSEC protection, point
-sniproxy at a validating resolver.
+AD flag, which c-ares cannot report. 'strict' is still accepted for
+existing configurations but treated as relaxed, with a warning when the
+configuration is read. For DNSSEC protection, point sniproxy at a
+validating resolver.
 
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is

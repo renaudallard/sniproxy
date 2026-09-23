@@ -51,7 +51,6 @@ enum resolv_mode {
 enum dnssec_validation_mode {
     DNSSEC_VALIDATION_OFF = 0,
     DNSSEC_VALIDATION_RELAXED = 1,
-    DNSSEC_VALIDATION_STRICT = 2,
 };
 
 #ifndef DEFAULT_DNSSEC_VALIDATION_MODE

@@ -493,7 +493,6 @@ static const char *const resolver_mode_names[] = {
 static const char *const dnssec_validation_mode_names[] = {
     "off",
     "relaxed",
-    "strict",
 };
 
 
@@ -2105,10 +2104,14 @@ accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *v
         return 1;
     }
 
+    /* c-ares cannot report the AD flag of an answer, so a mode that
+     * requires it cannot be honoured. Accept it for existing configs. */
     if (strcasecmp(value, "strict") == 0 || strcasecmp(value, "require") == 0 ||
             strcasecmp(value, "enforce") == 0 || strcasecmp(value, "on") == 0 ||
             strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0) {
-        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_STRICT;
+        warn("dnssec_validation %s is not supported, using relaxed: "
+                "sniproxy does not validate DNSSEC", value);
+        resolver->dnssec_validation_mode = DNSSEC_VALIDATION_RELAXED;
         return 1;
     }
 
