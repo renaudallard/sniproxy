@@ -59,8 +59,13 @@ pidfile /var/run/sniproxy.pid
 .fi
 .PP
 
-Specify the path to the pid file, the directory must be writeable by the
-user sniproxy runs as.
+Specify the path to the pid file, which must be absolute and contain no
+\&.\&. component\&. It is only used when sniproxy daemonizes, not with
+.BR -f :
+startup is refused while the file names a running process, and
+otherwise it is written before privileges are dropped\&. It is removed at
+exit by the unprivileged process, so its directory must be writable by
+the user sniproxy runs as for that to work.
 
 .SS MAX_CONNECTIONS
 
