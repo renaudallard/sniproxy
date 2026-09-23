@@ -263,9 +263,10 @@ Protocol handlers parse application-layer headers to extract hostnames.
    - Supports source address binding and transparent proxy mode
 
 3. **HTTP**: Extracts Host header from HTTP/1.x requests
-   - Parses GET/POST/HEAD and other methods
+   - Reads only the Host header; the request line is skipped, so neither
+     the method nor an absolute URI plays a part
    - Case-insensitive header matching
-   - Handles absolute URIs and Host headers
+   - Rejects a second Host header and strips a port from the value
    - Enforces `HTTP_MAX_HEADERS` (100) (0.9.6) to prevent CPU exhaustion from
      adversarial header floods
 
@@ -439,7 +440,7 @@ Once CONNECTED, the connection enters steady-state proxying:
 - **NUL byte rejection**: Protocol parsers reject embedded NUL bytes
 - **Buffer overflow protection**: Strict bounds checking in all parsers
   - TLS: Validates ClientHello structure and extension lengths
-  - HTTP: Limits header sizes, validates method and URI formats
+  - HTTP: Limits the header count and the Host value length
   - HTTP/2: Frame size limits, header block size limits
 
 ### Denial of Service Protection
