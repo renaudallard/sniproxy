@@ -59,7 +59,7 @@
 #include "fd_util.h"
 
 enum udp_session_state {
-    UDP_VALIDATING,     /* awaiting retransmission to prove source is real */
+    UDP_VALIDATING,     /* awaiting a second datagram from the same source */
     UDP_RESOLVING,
     UDP_CONNECTED,
 };
@@ -179,9 +179,10 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             }
             break;
         case UDP_VALIDATING:
-            /* Source validated: a retransmission from the same (IP, port)
-             * proves the source address is real (spoofed sources never
-             * retransmit).  Repeat already swapped to idle timeout above. */
+            /* A second datagram from the same (IP, port) ends validation.
+             * It is not compared with the first, so this stops single
+             * spoofed packets, not an attacker who forges two. Repeat
+             * already swapped to idle timeout above. */
             udp_parse_and_resolve(session, buf, (size_t)n, loop);
             break;
         case UDP_RESOLVING:
@@ -224,10 +225,10 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
     connections_conn_count_increment(&client_addr);
     /* Session starts in UDP_VALIDATING state. The datagram is not forwarded
-     * yet; we wait for a retransmission from the same (IP, port) to confirm
-     * the source address is real. This prevents UDP reflection/amplification
-     * attacks where spoofed sources would receive backend responses. DTLS
-     * clients retransmit by design (RFC 6347 section 4.2.4). */
+     * yet; we wait for a second one from the same (IP, port), which DTLS
+     * clients send by design (RFC 6347 section 4.2.4). A single spoofed
+     * packet therefore never reaches a backend; an attacker who forges
+     * more than one is left to the backend's own cookie exchange. */
 }
 
 static void
