@@ -317,7 +317,7 @@ static void resolver_remove_pending(struct ResolverPending *pending);
 static struct ResolverPending *resolver_detach_pending_queries(void);
 static void resolver_cleanup_pending_queries(void);
 static void resolver_free_pending_list(struct ResolverPending *list, int notify_clients);
-static int resolver_restart(void);
+static int resolver_restart(int);
 static void resolver_cancel_scheduled_restart(void);
 static void resolver_resubmit_pending_queries(void);
 static void resolver_fail_pending_restart_list(void);
@@ -814,7 +814,7 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
         resolver_remove_pending(new_pending);
         pthread_mutex_unlock(&resolver_queries_lock);
         if (needs_restart) {
-            if (resolver_restart() < 0)
+            if (resolver_restart(0) < 0)
                 err("resolver restart failed");
         }
         if (client_cb != NULL)
@@ -968,7 +968,7 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             pthread_mutex_unlock(&resolver_restart_lock);
             if (!restarting &&
                     (saved_errno == ECONNRESET || saved_errno == ENOTCONN || saved_errno == EPIPE)) {
-                if (resolver_restart() < 0)
+                if (resolver_restart(0) < 0)
                     err("resolver restart failed");
             }
             break;
@@ -986,7 +986,7 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             int restarting = resolver_restart_in_progress;
             pthread_mutex_unlock(&resolver_restart_lock);
             if (!restarting) {
-                if (resolver_restart() < 0)
+                if (resolver_restart(0) < 0)
                     err("resolver restart failed");
             }
             break;
@@ -1340,7 +1340,7 @@ resolver_restart_timer_cb(struct ev_loop *loop, struct ev_timer *w,
     /* resolver_restart() reports the reason and schedules the next attempt
      * itself, so a failure here needs no further logging: this fires once
      * a second while the child stays unstartable. */
-    (void)resolver_restart();
+    (void)resolver_restart(1);
 }
 
 static void
@@ -1363,8 +1363,10 @@ resolver_cancel_scheduled_restart(void) {
     resolver_restart_timer_active = 0;
 }
 
+/* retry is set when the restart timer calls: its delay was the throttle,
+ * so that attempt is made however fast the child has been dying. */
 static int
-resolver_restart(void) {
+resolver_restart(int retry) {
     if (resolver_loop_ref == NULL)
         return -1;
 
@@ -1387,7 +1389,7 @@ resolver_restart(void) {
     clock_gettime(CLOCK_MONOTONIC, &now_ts);
     if (last_restart.tv_sec != 0 &&
             now_ts.tv_sec - last_restart.tv_sec < 2) {
-        if (++rapid_restarts >= 3)
+        if (++rapid_restarts >= 3 && !retry)
             throttled = 1;
     } else {
         rapid_restarts = 0;

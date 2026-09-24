@@ -129,7 +129,8 @@ SNIProxy runs as four cooperating processes:
    log lines over an encrypted, authenticated Unix socket.
 4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.
    The main loop caps the queries in flight, overall and per client, and
-   restarts the resolver if it exits.
+   restarts the resolver if it exits, at most once a second once it has
+   died three times in quick succession.
 
 All IPC channels are encrypted with ChaCha20-Poly1305. The master key is
 generated and locked in memory once in the parent and inherited across
