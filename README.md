@@ -124,7 +124,8 @@ SNIProxy runs as four cooperating processes:
    SIGHUP reload can still bind a privileged port once the main loop has
    dropped its privileges; the initial listeners are bound by the main
    loop before it drops root. It idles otherwise, and only binds Unix
-   socket paths under `/run` or `/var/run`.
+   socket paths whose directory really lies under `/run` or `/var/run`,
+   symlinks resolved.
 3. **`sniproxy-logger`**: writes the log files. The main loop sends it
    log lines over an encrypted, authenticated Unix socket.
 4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.

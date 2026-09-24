@@ -28,6 +28,7 @@
 #include <config.h>
 #endif
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -50,6 +51,9 @@
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
 #endif
+#ifdef HAVE_BSD_STRING_H
+#include <bsd/string.h>
+#endif
 #ifdef HAVE_BSD_UNISTD_H
 #include <bsd/unistd.h>
 #endif
@@ -71,6 +75,9 @@ static void binder_main(int);
 static int binder_spawn_child(void);
 static int binder_restart_child(void);
 static void binder_cleanup_child(int block);
+#ifndef __OpenBSD__
+static int binder_bind_unix(int, const struct sockaddr_un *);
+#endif
 static int binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
         int bind_check);
 static int binder_sockaddr_equal(const struct sockaddr *a, size_t alen,
@@ -705,7 +712,14 @@ binder_main(int sockfd) {
         /* Like the main process, create a unix socket node that anyone
          * may connect to, whatever umask the daemon runs with. */
         mode_t old_umask = umask(0111);
-        int bound = bind(fd, req->address, req->address_len);
+        int bound;
+#ifndef __OpenBSD__
+        if (req->address[0].sa_family == AF_UNIX)
+            bound = binder_bind_unix(fd,
+                    (const struct sockaddr_un *)req->address);
+        else
+#endif
+            bound = bind(fd, req->address, req->address_len);
         int bind_errno = errno;
         umask(old_umask);
         if (bound < 0) {
@@ -728,6 +742,80 @@ binder_main(int sockfd) {
     }
 }
 
+#ifndef __OpenBSD__
+/* Whether dir, as given by getcwd(), is root or lies below it. root is
+ * resolved first, since /var/run is a symlink on Linux and macOS. */
+static int
+binder_dir_within(const char *dir, const char *root) {
+    char resolved[PATH_MAX];
+
+    if (realpath(root, resolved) == NULL)
+        return 0;
+
+    size_t len = strlen(resolved);
+    return strncmp(dir, resolved, len) == 0 &&
+            (dir[len] == '\0' || dir[len] == '/');
+}
+
+/* Bind a unix socket in the directory its path really leads to. The path
+ * was only checked by name in binder_validate_sockaddr(), and a symlink
+ * among its directories could lead out of /run, so open the directory,
+ * check where it is and bind the last component relative to it: the
+ * directory cannot be swapped once it is open. OpenBSD needs none of
+ * this, as unveil(2) confines the binder to the real paths already. */
+static int
+binder_bind_unix(int fd, const struct sockaddr_un *sun) {
+    const char *slash = strrchr(sun->sun_path, '/');
+    struct sockaddr_un local;
+    char dir[sizeof(sun->sun_path)];
+    char cwd[PATH_MAX];
+    int result = -1;
+
+    if (slash == NULL || slash[1] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    size_t dir_len = slash == sun->sun_path ? 1 :
+            (size_t)(slash - sun->sun_path);
+    memcpy(dir, sun->sun_path, dir_len);
+    dir[dir_len] = '\0';
+
+    memset(&local, 0, sizeof(local));
+    local.sun_family = AF_UNIX;
+    size_t name_len = strlcpy(local.sun_path, slash + 1,
+            sizeof(local.sun_path));
+
+    int dirfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dirfd < 0)
+        return -1;
+
+    if (fchdir(dirfd) == 0) {
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            if (binder_dir_within(cwd, "/run") ||
+                    binder_dir_within(cwd, "/var/run"))
+                result = bind(fd, (struct sockaddr *)&local,
+                        (socklen_t)(offsetof(struct sockaddr_un, sun_path) +
+                            name_len + 1));
+            else
+                errno = EACCES;
+        }
+
+        /* Every path the binder is given is absolute, so where it
+         * returns to does not matter. */
+        int saved_errno = errno;
+        if (chdir("/") < 0)
+            warn("binder: chdir(\"/\"): %s", strerror(errno));
+        errno = saved_errno;
+    }
+
+    int saved_errno = errno;
+    close(dirfd);
+    errno = saved_errno;
+    return result;
+}
+#endif
+
 static int
 binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
         int bind_check) {
@@ -747,6 +835,12 @@ binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
             size_t max_len = addr_len - offsetof(struct sockaddr_un, sun_path);
             size_t path_len = strnlen(sun->sun_path, max_len);
             if (path_len == 0 || path_len >= max_len)
+                return 0;
+            /* The address may be longer than a sockaddr_un, but the path
+             * must fit in sun_path with its NUL, like any path bind()
+             * accepts; binder_bind_unix() copies it into buffers of that
+             * size. */
+            if (path_len >= sizeof(sun->sun_path))
                 return 0;
             /* Reject abstract sockets and relative paths. */
             if (sun->sun_path[0] != '/')

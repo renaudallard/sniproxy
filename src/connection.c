@@ -3389,8 +3389,14 @@ log_connection(struct Connection *con) {
 
     display_sockaddr(&con->client.addr, con->client.addr_len,
             client_address, sizeof(client_address));
-    display_sockaddr(&con->client.local_addr, con->client.local_addr_len,
-            listener_address, sizeof(listener_address));
+    /* A unix socket the binder bound knows only the name relative to its
+     * directory, so show the path the listener was configured with. */
+    if (con->client.local_addr.ss_family == AF_UNIX)
+        display_address(con->listener->address, listener_address,
+                sizeof(listener_address));
+    else
+        display_sockaddr(&con->client.local_addr, con->client.local_addr_len,
+                listener_address, sizeof(listener_address));
     display_sockaddr(&con->server.addr, con->server.addr_len,
             server_address, sizeof(server_address));
 
