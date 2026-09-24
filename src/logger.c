@@ -2104,6 +2104,12 @@ logger_child_main(int sockfd) {
      * it would deliver SIGPIPE and kill the child. */
     signal(SIGPIPE, SIG_IGN);
 
+    /* The logger is also forked before daemonize() detaches the main
+     * process from the terminal. Leave the session, so that the terminal
+     * sniproxy was started from is not the logger's controlling terminal
+     * and the logger cannot push input into it with TIOCSTI. */
+    (void)setsid();
+
     /* A logger restarted after the privilege drop must not inherit the
      * CAP_NET_RAW the main process may keep for "source client". */
     if (getuid() != 0 && geteuid() != 0 && caps_drop_all() < 0) {
