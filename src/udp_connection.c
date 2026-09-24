@@ -39,6 +39,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -80,6 +81,7 @@ struct UDPSession {
     size_t pending_dgram_len;
     struct ResolvQuery *query_handle;
     struct UDPSession *next;    /* hash chain */
+    TAILQ_ENTRY(UDPSession) validating_entries; /* while UDP_VALIDATING */
     uint32_t addr_hash;
     enum udp_session_state state;
 };
@@ -97,6 +99,9 @@ struct udp_resolv_cb_data {
 
 static struct UDPSession *session_table[UDP_SESSION_BUCKETS];
 static size_t session_count;
+/* Sessions still waiting for their second datagram, oldest first */
+static TAILQ_HEAD(, UDPSession) validating_sessions =
+    TAILQ_HEAD_INITIALIZER(validating_sessions);
 static uint32_t udp_hash_seed;
 
 static struct UDPSession *udp_session_lookup(const struct sockaddr_storage *addr,
@@ -121,6 +126,7 @@ void
 udp_init_sessions(void) {
     memset(session_table, 0, sizeof(session_table));
     session_count = 0;
+    TAILQ_INIT(&validating_sessions);
     udp_hash_seed = arc4random();
 }
 
@@ -218,9 +224,17 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     }
 
     if (session_count >= UDP_MAX_SESSIONS) {
-        debug("UDP session limit (%d) reached, dropping datagram",
-                UDP_MAX_SESSIONS);
-        return;
+        /* Make room by dropping the session that has waited longest for
+         * its second datagram, so that spoofed first datagrams cannot
+         * lock every new client out until they expire. */
+        struct UDPSession *oldest = TAILQ_FIRST(&validating_sessions);
+
+        if (oldest == NULL) {
+            debug("UDP session limit (%d) reached, dropping datagram",
+                    UDP_MAX_SESSIONS);
+            return;
+        }
+        udp_session_destroy(oldest, loop);
     }
 
     session = udp_session_create(listener, &client_addr, addr_len, hash, loop);
@@ -309,6 +323,7 @@ udp_session_create(struct Listener *listener,
     s->server_fd = -1;
     s->addr_hash = hash;
     s->state = UDP_VALIDATING;
+    TAILQ_INSERT_TAIL(&validating_sessions, s, validating_entries);
 
     ev_init(&s->server_watcher, udp_server_cb);
     s->server_watcher.data = s;
@@ -342,6 +357,8 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
         pp = &(*pp)->next;
     }
     session_count--;
+    if (session->state == UDP_VALIDATING)
+        TAILQ_REMOVE(&validating_sessions, session, validating_entries);
     connections_conn_count_decrement(&session->client_addr);
 
     /* Cancel pending DNS query */
@@ -378,6 +395,11 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
         size_t data_len, struct ev_loop *loop) {
     char *hostname = NULL;
     const struct Protocol *proto = session->listener->protocol;
+
+    /* Validation is over: from here the session resolves its backend,
+     * connects to it or goes away. */
+    TAILQ_REMOVE(&validating_sessions, session, validating_entries);
+    session->state = UDP_RESOLVING;
 
     int result = proto->parse_packet(data, data_len, &hostname);
 

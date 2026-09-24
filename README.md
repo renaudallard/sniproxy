@@ -76,6 +76,8 @@ fuzzing, and active maintenance.
 - **DTLS source check**: a new UDP session is held until a second
   datagram arrives from the same source address and port before any
   backend traffic is sent, so a single spoofed packet reaches no backend.
+  When the session table is full, the session that has waited longest
+  for its second datagram, if any, makes room for the new one.
 - **Per-IP rate limiting**: token buckets in a hash table keyed with an
   arc4random seed cap new TCP connections and UDP sessions; short-chain
   cutoffs defeat hash spraying.

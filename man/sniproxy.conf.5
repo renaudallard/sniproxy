@@ -511,7 +511,10 @@ datagram is discarded, and the second is the one parsed for SNI and
 forwarded. A single spoofed packet therefore never reaches a backend. The second datagram is
 not compared with the first, so an attacker who sends two spoofed
 packets gets through; rely on the backend's DTLS cookie exchange for
-the rest.
+the rest. At most 16384 DTLS sessions exist at once; when that many do,
+the session that has waited longest for its second datagram, if one is
+still waiting, is dropped to make room, so spoofed first datagrams
+cannot keep new clients out. Otherwise the new datagram is dropped.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same
