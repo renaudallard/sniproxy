@@ -37,20 +37,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* The lists name each call in all its forms: 32-bit ABIs such as i386 and
+ * ARM have their own for some of them (mmap2, fcntl64, getuid32, _llseek,
+ * the *_time64 calls). allow_syscall() skips the names the architecture
+ * does not have, and a 32-bit libc calls the other forms, so a list with
+ * only the 64-bit names kills every process on those systems. */
 static const char *const common_syscalls[] = {
     "read", "write", "readv", "writev", "pwrite64", "pread64",
     "pwritev", "preadv",
-    "close", "lseek", "fstat", "fstat64",
-    "brk", "madvise", "mmap", "mprotect", "mremap", "munmap",
-    "clock_gettime", "clock_getres", "clock_nanosleep", "gettimeofday", "nanosleep", "time",
+    "close", "lseek", "_llseek", "fstat", "fstat64",
+    "brk", "madvise", "mmap", "mmap2", "mprotect", "mremap", "munmap",
+    "clock_gettime", "clock_gettime64", "clock_getres",
+    "clock_getres_time64", "clock_nanosleep", "clock_nanosleep_time64",
+    "gettimeofday", "nanosleep", "time",
     "getpid", "getppid", "gettid", "getrusage",
-    "getuid", "geteuid", "getgid", "getegid", "getgroups", "getcwd",
+    "getuid", "getuid32", "geteuid", "geteuid32", "getgid", "getgid32",
+    "getegid", "getegid32", "getgroups", "getgroups32", "getcwd",
     "uname", "sysinfo",
-    "futex", "set_robust_list", "set_tid_address",
+    "futex", "futex_time64", "set_robust_list", "set_tid_address",
     "sched_yield", "sched_getaffinity", "sched_getparam", "sched_setscheduler",
     "restart_syscall", "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
-    "sigaltstack", "tgkill", "rt_sigtimedwait",
-    "prctl", "prlimit64", "getrlimit", "setrlimit",
+    "sigreturn", "sigaltstack", "tgkill", "rt_sigtimedwait",
+    "rt_sigtimedwait_time64",
+    "prctl", "prlimit64", "getrlimit", "ugetrlimit", "setrlimit",
     "getrandom",
     "umask",
     "exit", "exit_group",
@@ -59,7 +68,8 @@ static const char *const common_syscalls[] = {
 
 static const char *const fs_read_syscalls[] = {
     "open", "openat", "openat2",
-    "stat", "lstat", "newfstatat", "fstatfs", "statfs", "statx",
+    "stat", "stat64", "lstat", "lstat64", "newfstatat", "fstatat64",
+    "fstatfs", "fstatfs64", "statfs", "statfs64", "statx",
     "readlink", "readlinkat",
     "faccessat", "access",
     NULL,
@@ -67,7 +77,8 @@ static const char *const fs_read_syscalls[] = {
 
 static const char *const fs_write_syscalls[] = {
     "fchmod", "fchmodat", "chmod",
-    "fchown", "fchownat", "chown", "lchown",
+    "fchown", "fchown32", "fchownat", "chown", "chown32", "lchown",
+    "lchown32",
     "unlink", "unlinkat",
     "mkdir", "mkdirat", "rmdir",
     "rename", "renameat", "renameat2",
@@ -79,13 +90,13 @@ static const char *const fs_write_syscalls[] = {
 
 static const char *const fs_misc_syscalls[] = {
     "dup", "dup2", "dup3",
-    "fcntl", "ioctl",
+    "fcntl", "fcntl64", "ioctl",
     "fsync", "fdatasync",
     "getdents", "getdents64",
     "pipe", "pipe2",
     "close_range", "closefrom",
     "chdir", "fchdir",
-    "utime", "utimes", "futimesat", "utimensat",
+    "utime", "utimes", "futimesat", "utimensat", "utimensat_time64",
     NULL,
 };
 
@@ -95,7 +106,8 @@ static const char *const network_syscalls[] = {
     "getsockopt", "setsockopt",
     "getsockname", "getpeername",
     "shutdown",
-    "sendto", "recvfrom", "sendmsg", "recvmsg", "sendmmsg", "recvmmsg",
+    "sendto", "send", "recvfrom", "recv", "sendmsg", "recvmsg",
+    "sendmmsg", "recvmmsg", "recvmmsg_time64",
     NULL,
 };
 
@@ -105,7 +117,7 @@ static const char *const network_syscalls[] = {
  * sendmmsg, recvmmsg, or getpeername. */
 static const char *const logger_network_syscalls[] = {
     "socket", "connect",
-    "sendto", "sendmsg", "recvmsg",
+    "sendto", "send", "sendmsg", "recvmsg",
     "getsockopt", "setsockopt",
     "getsockname",
     "shutdown",
@@ -123,15 +135,17 @@ static const char *const logger_network_syscalls[] = {
 static const char *const binder_network_syscalls[] = {
     "socket", "connect",
     "bind", "setsockopt",
-    "sendto", "sendmsg", "recvmsg",
+    "sendto", "send", "sendmsg", "recvmsg",
     NULL,
 };
 
 static const char *const event_syscalls[] = {
-    "poll", "ppoll", "select", "pselect6",
+    "poll", "ppoll", "ppoll_time64", "select", "_newselect", "pselect6",
+    "pselect6_time64",
     "epoll_create", "epoll_create1", "epoll_ctl", "epoll_wait", "epoll_pwait",
     "epoll_pwait2",
-    "timerfd_create", "timerfd_settime", "timerfd_gettime",
+    "timerfd_create", "timerfd_settime", "timerfd_settime64",
+    "timerfd_gettime", "timerfd_gettime64",
     "eventfd", "eventfd2",
     "signalfd4",
     "alarm", "setitimer", "getitimer",
@@ -143,7 +157,7 @@ static const char *const process_syscalls[] = {
     "wait4", "waitid",
     "kill", "tkill",
     "setpgid", "getpgid", "getsid", "setsid",
-    "setgid", "setuid", "setgroups",
+    "setgid", "setgid32", "setuid", "setuid32", "setgroups", "setgroups32",
     "capget", "capset",
     /* Helper processes forked at runtime to replace a dead child run
      * under the inherited main filter until they install their own,
@@ -154,7 +168,14 @@ static const char *const process_syscalls[] = {
 };
 
 static const char *const privilege_syscalls[] = {
-    "setgid", "setuid", "setgroups",
+    "setgid", "setgid32", "setuid", "setuid32", "setgroups", "setgroups32",
+    NULL,
+};
+
+/* ARM needs the instruction cache flushed after PCRE2 JIT writes code,
+ * which the main process does when a reload compiles the tables. */
+static const char *const jit_syscalls[] = {
+    "cacheflush",
     NULL,
 };
 
@@ -217,7 +238,8 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
-                allow_syscalls(ctx, process_syscalls) < 0) {
+                allow_syscalls(ctx, process_syscalls) < 0 ||
+                allow_syscalls(ctx, jit_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
             }

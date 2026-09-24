@@ -612,8 +612,9 @@ afterthought.
   `SNIPROXY_DISABLE_CAPSICUM=1` turns Capsicum off for debugging.
 - **Linux sandboxing**: seccomp BPF filters per process type, when
   built with libseccomp (configure uses it if it finds it, and the build
-  has no seccomp otherwise). `SNIPROXY_DISABLE_SECCOMP=1` turns it off
-  for debugging.
+  has no seccomp otherwise). The filters cover 32-bit systems (i386,
+  armhf) as well, whose libc calls variants such as mmap2 and fcntl64.
+  `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging.
 - **macOS has no sandbox**: `sandbox_init(3)` and its named profiles
   are deprecated, and a process opting into one is killed outright when
   built against the macOS 27.0 SDK or later, so adopting them would buy a
