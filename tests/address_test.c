@@ -84,7 +84,10 @@ static const char *bad[] = {
     "example.com:443:8080",
     "[::1]:80:81",
     "[::1]junk",
-    "[::1]:80x"
+    "[::1]:80x",
+    /* unix socket paths must be absolute */
+    "unix:",
+    "unix:relative.sock"
 };
 
 int compare_address_strings(const char *a, const char *b) {

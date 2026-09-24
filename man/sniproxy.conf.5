@@ -478,7 +478,7 @@ Define a listening address to accept new connections from clients on.
 Addresses may be specified as an IPv4 literal followed by a port
 number, an IPv6 literal followed by a port number, a bare port
 number, which listens on [::] (IPv4 included only where ipv6_v6only
-allows it), or a unix socket path prefixed with
+allows it), or an absolute unix socket path prefixed with
 \&'unix:'. The port may be left out when the listener has a protocol
 line, which then supplies its default port. An address may only be
 given to one listener, except that a TCP and a dtls listener may share
@@ -552,8 +552,9 @@ not used when the address of a matching table entry fails to resolve;
 that connection is closed instead, as is a ClientHello refused by the
 TLS version policy or one that attempts a renegotiation, and a DTLS
 session whose ClientHello attempts one is dropped. This should be
-an IP address and port or a unix socket path; a hostname is accepted
-with a warning, and without a port the listener's port is used. sniproxy
+an IP address and port or an absolute unix socket path; a hostname is
+accepted with a warning, and without a port the listener's port is
+used. sniproxy
 does not terminate TLS for the fallback either: the fallback server
 receives the client's ClientHello and the rest of the connection
 unmodified, and completes the handshake itself. The literal argument
@@ -660,8 +661,8 @@ table http_hosts {
 Tables define how to map each hostname to a backend server. Each
 request's hostname is matched against entries in the table in order
 until a match is found and that server is used. The server address may
-be either an IP, an IP and port, a unix socket path prefixed with
-\&'unix:', a hostname, or '*'. A '*' connects to the hostname the client
+be either an IP, an IP and port, an absolute unix socket path prefixed
+with \&'unix:', a hostname, or '*'. A '*' connects to the hostname the client
 asked for, looked up through the resolver, and may carry a port as in
 \fB*:443\fR.
 If no port is specified, the port of the listener that received the

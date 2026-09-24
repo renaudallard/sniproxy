@@ -115,7 +115,11 @@ new_address(const char *hostname_or_ip) {
         /* Unix socket */
         memset(&s, 0, sizeof(s));
         if (strncmp("unix:", input, 5) == 0) {
-            /* Only pathname unix sockets are supported */
+            /* Only pathname unix sockets are supported, with an absolute
+             * path: the binder refuses others, and a daemon resolves a
+             * relative one from / */
+            if (input[5] != '/')
+                return NULL;
             s.un.sun_family = AF_UNIX;
             if (strlcpy(s.un.sun_path, input + 5, sizeof(s.un.sun_path))
                 >= sizeof(s.un.sun_path))
