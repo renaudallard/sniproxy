@@ -491,6 +491,32 @@ display_address(const struct Address *addr, char *buffer, size_t buffer_len) {
     }
 }
 
+/*
+ * A dual-stack listener reports an IPv4 client with an IPv4-mapped IPv6
+ * address. Copy addr to out, turning such an address into plain IPv4,
+ * and return the length of the copy.
+ */
+socklen_t
+sockaddr_unmap_ipv4(const struct sockaddr_storage *addr, socklen_t len,
+        struct sockaddr_storage *out) {
+    const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+
+    if (addr->ss_family != AF_INET6 ||
+            !IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
+        if (len > sizeof(*out))
+            len = sizeof(*out);
+        memcpy(out, addr, len);
+        return len;
+    }
+
+    struct sockaddr_in *in = (struct sockaddr_in *)out;
+    memset(out, 0, sizeof(*out));
+    in->sin_family = AF_INET;
+    in->sin_port = in6->sin6_port;
+    memcpy(&in->sin_addr, &in6->sin6_addr.s6_addr[12], sizeof(in->sin_addr));
+    return sizeof(*in);
+}
+
 const char *
 display_sockaddr(const void *sa_ptr, socklen_t sa_len, char *buffer, size_t buffer_len) {
     const struct sockaddr *sa = (const struct sockaddr *)sa_ptr;

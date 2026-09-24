@@ -2975,7 +2975,10 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         int resolv_mode = RESOLV_MODE_DEFAULT;
         if (con->listener->transparent_proxy) {
             char listener_address[ADDRESS_BUFFER_SIZE];
-            switch (con->client.addr.ss_family) {
+            struct sockaddr_storage client;
+            (void)sockaddr_unmap_ipv4(&con->client.addr,
+                    con->client.addr_len, &client);
+            switch (client.ss_family) {
                 case AF_INET:
                     resolv_mode = RESOLV_MODE_IPV4_ONLY;
                     break;
@@ -3208,8 +3211,13 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
 #endif
     }
 
+    /* An IPv4 client of a dual-stack listener is bound as plain IPv4 */
+    struct sockaddr_storage source;
+    socklen_t source_len = sockaddr_unmap_ipv4(&con->client.addr,
+            con->client.addr_len, &source);
+
     if (con->listener->transparent_proxy &&
-            con->client.addr.ss_family == con->server.addr.ss_family) {
+            source.ss_family == con->server.addr.ss_family) {
 #ifdef IP_TRANSPARENT
         int on = 1;
         int result = setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on));
@@ -3225,8 +3233,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
             return;
         }
 
-        result = bind(sockfd, (struct sockaddr *)&con->client.addr,
-                con->client.addr_len);
+        result = bind(sockfd, (struct sockaddr *)&source, source_len);
         if (result < 0) {
             err("bind failed: %s", strerror(errno));
             close(sockfd);

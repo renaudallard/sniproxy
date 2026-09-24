@@ -494,7 +494,10 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
 
         int resolv_mode = RESOLV_MODE_DEFAULT;
         if (session->listener->transparent_proxy) {
-            switch (session->client_addr.ss_family) {
+            struct sockaddr_storage client;
+            (void)sockaddr_unmap_ipv4(&session->client_addr,
+                    session->client_addr_len, &client);
+            switch (client.ss_family) {
             case AF_INET:
                 resolv_mode = RESOLV_MODE_IPV4_ONLY;
                 break;
@@ -648,11 +651,15 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
         return;
     }
 
-    /* Source address binding - fail closed like the TCP path so a
-     * privilege or configuration failure cannot silently leak the proxy's
-     * own source address to the backend instead of the client address. */
+    /* Source address binding - fail closed so a privilege or
+     * configuration failure cannot silently leak the proxy's own source
+     * address to the backend instead of the client address. An IPv4
+     * client of a dual-stack listener is bound as plain IPv4. */
     if (session->listener->transparent_proxy) {
 #ifdef IP_TRANSPARENT
+        struct sockaddr_storage source;
+        socklen_t source_len = sockaddr_unmap_ipv4(&session->client_addr,
+                session->client_addr_len, &source);
         int on = 1;
         if (setsockopt(fd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
             err("UDP: setsockopt IP_TRANSPARENT: %s", strerror(errno));
@@ -660,8 +667,7 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
             udp_session_destroy(session, loop);
             return;
         }
-        if (bind(fd, (struct sockaddr *)&session->client_addr,
-                session->client_addr_len) < 0) {
+        if (bind(fd, (struct sockaddr *)&source, source_len) < 0) {
             err("UDP: bind transparent source: %s", strerror(errno));
             close(fd);
             udp_session_destroy(session, loop);

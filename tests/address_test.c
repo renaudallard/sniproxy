@@ -29,6 +29,8 @@
 #include <string.h>
 #include <assert.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include "address.h"
 
 struct Test {
@@ -204,6 +206,29 @@ int main(void) {
         assert(address_len(addr) > 0);
 
         free(addr);
+    } while (0);
+
+    /* An IPv4-mapped IPv6 address becomes plain IPv4, others are copied */
+    do {
+        struct sockaddr_storage in, out;
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)&in;
+        const struct sockaddr_in *out4 = (const struct sockaddr_in *)&out;
+        struct in_addr expected;
+
+        memset(&in, 0, sizeof(in));
+        in6->sin6_family = AF_INET6;
+        in6->sin6_port = htons(4433);
+        assert(inet_pton(AF_INET6, "::ffff:192.0.2.6", &in6->sin6_addr) == 1);
+        assert(sockaddr_unmap_ipv4(&in, sizeof(*in6), &out) ==
+                sizeof(struct sockaddr_in));
+        assert(out4->sin_family == AF_INET);
+        assert(out4->sin_port == htons(4433));
+        assert(inet_pton(AF_INET, "192.0.2.6", &expected) == 1);
+        assert(out4->sin_addr.s_addr == expected.s_addr);
+
+        assert(inet_pton(AF_INET6, "2001:db8::6", &in6->sin6_addr) == 1);
+        assert(sockaddr_unmap_ipv4(&in, sizeof(*in6), &out) == sizeof(*in6));
+        assert(memcmp(&in, &out, sizeof(*in6)) == 0);
     } while (0);
 
     return 0;
