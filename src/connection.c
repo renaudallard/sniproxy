@@ -1591,6 +1591,35 @@ connections_set_per_ip_connection_rate(double rate) {
     rate_limit_reset();
 }
 
+/* Drop every per-IP connection count. */
+static void
+conn_count_clear(void) {
+    for (size_t i = 0; i < CONN_COUNT_TABLE_SIZE; i++) {
+        struct ConnCountBucket *b = conn_count_table[i];
+        while (b != NULL) {
+            struct ConnCountBucket *next = b->next;
+            conn_count_bucket_release(b);
+            b = next;
+        }
+        conn_count_table[i] = NULL;
+    }
+}
+
+/* Count the connections and UDP sessions that are open into an empty
+ * table. Without this their eventual close would decrement buckets they
+ * never incremented, letting a client hold more than
+ * per_ip_max_connections at once. Both containers are statically zeroed,
+ * so this is also safe when the startup config is applied before they
+ * are initialized. */
+static void
+conn_count_recount(void) {
+    struct Connection *con;
+    TAILQ_FOREACH(con, &connections, entries)
+        conn_count_increment(&con->peer_addr);
+
+    udp_sessions_recount_per_ip();
+}
+
 void
 connections_set_per_ip_ipv6_prefix(unsigned int prefix) {
     if (prefix > 128)
@@ -1604,42 +1633,22 @@ connections_set_per_ip_ipv6_prefix(unsigned int prefix) {
     /* The existing buckets are keyed on the old prefix, so drop them to
      * avoid stale grouping after a reload changes the prefix. */
     rate_limit_reset();
-    for (size_t i = 0; i < CONN_COUNT_TABLE_SIZE; i++) {
-        struct ConnCountBucket *b = conn_count_table[i];
-        while (b != NULL) {
-            struct ConnCountBucket *next = b->next;
-            conn_count_bucket_release(b);
-            b = next;
-        }
-        conn_count_table[i] = NULL;
-    }
-
-    /* Re-count the connections that are still open. Without this their
-     * eventual close would decrement buckets they never incremented,
-     * letting a client hold more than per_ip_max_connections at once.
-     * Both containers are statically zeroed, so this is also safe when
-     * the startup config sets a prefix before they are initialized. */
-    struct Connection *con;
-    TAILQ_FOREACH(con, &connections, entries)
-        conn_count_increment(&con->peer_addr);
-
-    udp_sessions_recount_per_ip();
+    conn_count_clear();
+    conn_count_recount();
 }
 
 void
 connections_set_per_ip_max_connections(size_t limit) {
-    if (limit == 0 && per_ip_max_connections_limit != 0) {
-        for (size_t i = 0; i < CONN_COUNT_TABLE_SIZE; i++) {
-            struct ConnCountBucket *b = conn_count_table[i];
-            while (b != NULL) {
-                struct ConnCountBucket *next = b->next;
-                conn_count_bucket_release(b);
-                b = next;
-            }
-            conn_count_table[i] = NULL;
-        }
-    }
+    size_t previous = per_ip_max_connections_limit;
+
+    if (limit == 0 && previous != 0)
+        conn_count_clear();
+
     per_ip_max_connections_limit = limit;
+
+    /* Nothing is counted while the limit is off */
+    if (previous == 0 && limit != 0)
+        conn_count_recount();
 }
 
 static struct ConnCountBucket *
