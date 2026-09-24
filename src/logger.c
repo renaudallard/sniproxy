@@ -275,6 +275,7 @@ static void log_sink_ref_put(struct LogSink *);
 static void free_sink(struct LogSink *);
 static int ensure_logger_process(void);
 static int logger_peer_alive(void);
+static int logger_dup_for_child(FILE *);
 static void logger_process_shutdown(void);
 static void disable_logger_process(void);
 static void logger_child_main(int) __attribute__((noreturn));
@@ -486,19 +487,14 @@ reopen_loggers(void) {
             }
         } else if (sink->type == LOG_SINK_FILE) {
             if (logger_process_enabled) {
-                if (send_logger_reopen(sink, -1) < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        warn("logger busy, reopen of %s postponed",
-                                sink->filepath);
-                    } else {
-                        err("failed to request reopen for log file %s: %s",
-                                sink->filepath, strerror(errno));
-                        disable_logger_process();
-                    }
-                }
+                int fd_for_child = -1;
+
                 /* A file this process opened itself is still reachable
                  * once the filesystem is locked: on OpenBSD its path is
-                 * unveiled and the main process keeps wpath and cpath. */
+                 * unveiled and the main process keeps wpath and cpath.
+                 * The child gets the new file too, as it may be unable
+                 * to open it, in FreeBSD capability mode for a file
+                 * first named by a reload. */
                 if (sink->fd != NULL && sink->fd_owned) {
                     FILE *file = open_log_file_checked(sink->filepath);
                     if (file == NULL) {
@@ -511,6 +507,18 @@ reopen_loggers(void) {
                         fclose(sink->fd);
                         sink->fd = file;
                         sink->fd_owned = 1;
+                        fd_for_child = logger_dup_for_child(file);
+                    }
+                }
+                /* send_logger_reopen always closes fd_for_child */
+                if (send_logger_reopen(sink, fd_for_child) < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        warn("logger busy, reopen of %s postponed",
+                                sink->filepath);
+                    } else {
+                        err("failed to request reopen for log file %s: %s",
+                                sink->filepath, strerror(errno));
+                        disable_logger_process();
                     }
                 }
             } else {
@@ -1016,7 +1024,7 @@ obtain_file_sink(const char *filepath) {
         sink->fd_owned = 1;
 
         if (logger_process_enabled) {
-            fd_for_child = dup(fileno(file));
+            fd_for_child = logger_dup_for_child(file);
             if (fd_for_child < 0) {
                 int saved_errno = errno;
                 fclose(file);
@@ -1026,19 +1034,6 @@ obtain_file_sink(const char *filepath) {
                 free(sink);
                 errno = saved_errno;
                 err("Failed to duplicate log file descriptor: %s", filepath);
-                return NULL;
-            }
-
-            if (set_cloexec(fd_for_child) < 0) {
-                int saved_errno = errno;
-                close(fd_for_child);
-                fclose(file);
-                sink->fd = NULL;
-                sink->fd_owned = 0;
-                free((char *)sink->filepath);
-                free(sink);
-                errno = saved_errno;
-                err("Failed to mark log file descriptor close-on-exec: %s", filepath);
                 return NULL;
             }
         }
@@ -1289,6 +1284,24 @@ disable_logger_process(void) {
     }
 
     ipc_crypto_state_clear(&logger_crypto_parent);
+}
+
+/* A close-on-exec copy of a log file's descriptor to hand to the logger
+ * process, or -1. */
+static int
+logger_dup_for_child(FILE *file) {
+    int fd = dup(fileno(file));
+    if (fd < 0)
+        return -1;
+
+    if (set_cloexec(fd) < 0) {
+        int saved_errno = errno;
+        close(fd);
+        errno = saved_errno;
+        return -1;
+    }
+
+    return fd;
 }
 
 /* Whether the logger process still holds its end of the socket. */
@@ -1737,6 +1750,14 @@ logger_child_unveil(void) {
 }
 #endif
 
+/* Drop group and world write permission from a log file, when the
+ * child's pledge allows it. */
+static void
+logger_child_restrict_mode(int fd, mode_t mode) {
+    if ((mode & (S_IWGRP | S_IWOTH)) != 0 && !logger_child_reduced_pledge)
+        (void)fchmod(fd, mode & ~(S_IWGRP | S_IWOTH));
+}
+
 static FILE *
 logger_child_open_file(const char *filepath, int dirfd,
         const char *file_basename) {
@@ -1753,8 +1774,7 @@ logger_child_open_file(const char *filepath, int dirfd,
     if (fd < 0)
         return NULL;
 
-    if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0 && !logger_child_reduced_pledge)
-        (void)fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH));
+    logger_child_restrict_mode(fd, st.st_mode);
 
     FILE *file = fdopen(fd, "a");
     if (file == NULL) {
@@ -1774,21 +1794,18 @@ logger_prepare_sink_fd(struct LogSink *sink) {
     if (sink == NULL || sink->type != LOG_SINK_FILE)
         return -1;
 
-    int fd = -1;
+    if (sink->fd != NULL && sink->fd_owned)
+        return logger_dup_for_child(sink->fd);
 
-    if (sink->fd != NULL && sink->fd_owned) {
-        fd = dup(fileno(sink->fd));
-        if (fd < 0)
-            return -1;
-    } else if (!logger_parent_fs_locked && sink->filepath != NULL) {
-        struct stat st;
-        fd = log_file_open(-1, sink->filepath, &st);
-        if (fd < 0)
-            return -1;
-    } else {
+    if (logger_parent_fs_locked || sink->filepath == NULL) {
         errno = EACCES;
         return -1;
     }
+
+    struct stat st;
+    int fd = log_file_open(-1, sink->filepath, &st);
+    if (fd < 0)
+        return -1;
 
     if (set_cloexec(fd) < 0) {
         int saved_errno = errno;
@@ -1989,6 +2006,9 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             if (sink->type == LOG_SINK_FILE) {
                 FILE *file = NULL;
                 if (received_fd >= 0) {
+                    struct stat st;
+                    if (fstat(received_fd, &st) == 0)
+                        logger_child_restrict_mode(received_fd, st.st_mode);
                     file = fdopen(received_fd, "a");
                     if (file == NULL) {
                         close(received_fd);
