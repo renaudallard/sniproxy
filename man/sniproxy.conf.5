@@ -477,7 +477,10 @@ number, an IPv6 literal followed by a port number, a bare port
 number, which listens on [::] (IPv4 included only where ipv6_v6only
 allows it), or a unix socket path prefixed with
 \&'unix:'. The port may be left out when the listener has a protocol
-line, which then supplies its default port. Listeners are
+line, which then supplies its default port. An address may only be
+given to one listener, except that a TCP and a dtls listener may share
+it; with \fBreuseport\fR two blocks would otherwise both bind it and
+split the clients between their settings. Listeners are
 bound at startup before privileges are dropped. A unix-socket listener
 added by a reload whose directory is not writable by the configured user
 is bound by the privileged binder helper; for safety the binder only

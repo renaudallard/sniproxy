@@ -320,6 +320,47 @@ test_mapped_acl_rule(void) {
     return 0;
 }
 
+/* Two listener blocks for one address are refused, unless one is TCP and
+ * the other DTLS. */
+static int
+test_duplicate_listener_rejected(void) {
+    struct Config *config = load_test_config(
+            "listen 127.0.0.1 8080 {\n"
+            "    proto http\n"
+            "    reuseport yes\n"
+            "}\n"
+            "listen 127.0.0.1 8080 {\n"
+            "    proto http\n"
+            "    reuseport yes\n"
+            "}\n"
+            "table {\n"
+            "    localhost 127.0.0.1 8081\n"
+            "}\n");
+    if (config != NULL) {
+        fprintf(stderr, "Config with a duplicate listener was accepted\n");
+        free_config(config, EV_DEFAULT);
+        return 1;
+    }
+
+    config = load_test_config(
+            "listen 127.0.0.1 8443 {\n"
+            "    proto tls\n"
+            "}\n"
+            "listen 127.0.0.1 8443 {\n"
+            "    proto dtls\n"
+            "}\n"
+            "table {\n"
+            "    localhost 127.0.0.1 8081\n"
+            "}\n");
+    if (config == NULL) {
+        fprintf(stderr, "TCP and DTLS listeners on one address were refused\n");
+        return 1;
+    }
+    free_config(config, EV_DEFAULT);
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -370,6 +411,9 @@ int main(int argc, char **argv) {
         return 1;
 
     if (test_mapped_acl_rule() != 0)
+        return 1;
+
+    if (test_duplicate_listener_rejected() != 0)
         return 1;
 
     return 0;

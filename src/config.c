@@ -1597,6 +1597,22 @@ end_listener_stanza(struct Config *config, struct Listener *listener) {
         return -1;
     }
 
+    /* Two blocks for one address could both bind it with reuseport, and
+     * the kernel would then split the clients between their settings,
+     * ACLs included. TCP and DTLS listeners may share an address. */
+    const struct Listener *iter;
+    SLIST_FOREACH(iter, &config->listeners, entries) {
+        if (iter->protocol->sock_type == listener->protocol->sock_type &&
+                address_compare(iter->address, listener->address) == 0) {
+            char address[ADDRESS_BUFFER_SIZE];
+
+            err("Listener %s defined more than once",
+                    display_address(listener->address, address,
+                        sizeof(address)));
+            return -1;
+        }
+    }
+
     add_listener(&config->listeners, listener);
 
     return 1;
