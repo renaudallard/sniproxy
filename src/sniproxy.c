@@ -539,6 +539,7 @@ main(int argc, char **argv) {
         if (pledge("stdio getpw inet dns rpath proc id wpath cpath chown unix sendfd recvfd", NULL) == -1) {
             fatal("main: pledge failed: %s", strerror(errno));
         }
+        logger_parent_notify_pledged();
     }
 #endif
 

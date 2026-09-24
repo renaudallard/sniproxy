@@ -222,6 +222,9 @@ static uint32_t next_sink_id = 1;
 static int logger_process_enabled = 0;
 static int logger_process_failed = 0;
 static int logger_parent_fs_locked = 0;
+/* Set once the main process has pledged without fattr, see
+ * logger_parent_notify_pledged(). */
+static int logger_parent_pledged = 0;
 
 /* Set in a logger child restarted after the main process pledged, which
  * only gets the promises needed to write its files, see
@@ -974,7 +977,8 @@ obtain_file_sink(const char *filepath) {
             return NULL;
         }
 
-        if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+        if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0 &&
+                !logger_parent_pledged) {
             if (fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH)) != 0) {
                 warn("Failed to drop group/world write permission on log file %s: %s",
                         filepath, strerror(errno));
@@ -2192,6 +2196,14 @@ logger_process_is_active(void) {
 void
 logger_parent_notify_fs_locked(void) {
     logger_parent_fs_locked = 1;
+}
+
+/* The main process's pledge(2) has no fattr, so a log file it opens
+ * from then on, with the logger process gone, is left as it is instead
+ * of having fchmod() abort the process. */
+void
+logger_parent_notify_pledged(void) {
+    logger_parent_pledged = 1;
 }
 
 void
