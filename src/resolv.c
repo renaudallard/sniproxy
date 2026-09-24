@@ -284,9 +284,11 @@ static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
  * never blocks the proxy and never leaves the resolver permanently down. */
 #define RESOLVER_RESTART_RETRY_DELAY 1.0
 /* How long the child waits for room on the IPC socket before giving up on
- * a result frame, and how many times it retries the wait. */
+ * a result frame: at most TIMEOUT without progress and TOTAL in all. It
+ * pauses PAUSE when the socket polled writable yet still refused it. */
 #define RESOLVER_CHILD_SEND_TIMEOUT_MS 1000
-#define RESOLVER_CHILD_SEND_ATTEMPTS 5
+#define RESOLVER_CHILD_SEND_TOTAL_MS 5000
+#define RESOLVER_CHILD_SEND_PAUSE_MS 10
 static struct ev_timer resolver_restart_timer;
 static int resolver_restart_timer_active = 0;
 /* A query no client waits for any more is kept until the child answers
@@ -2180,21 +2182,41 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
     }
 
     ssize_t written;
-    /* A socket reported writable still rejects a datagram larger than the
-     * space actually available, so bound the retries rather than trusting
-     * poll() to make progress. */
-    int send_attempts = RESOLVER_CHILD_SEND_ATTEMPTS;
+    struct timespec start;
+    int polled = 0;
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
     for (;;) {
         written = send(child_sock, frame, frame_len, 0);
         if (written >= 0)
             break;
         if (errno == EINTR)
             continue;
-        if (errno != EAGAIN && errno != EWOULDBLOCK)
+        /* A datagram socket reports a full buffer as ENOBUFS on macOS */
+        if (errno != EAGAIN && errno != EWOULDBLOCK && errno != ENOBUFS)
             break;
-        if (--send_attempts <= 0) {
+
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long left = RESOLVER_CHILD_SEND_TOTAL_MS -
+                ((long)(now.tv_sec - start.tv_sec) * 1000 +
+                (now.tv_nsec - start.tv_nsec) / 1000000);
+        if (left <= 0) {
             errno = EAGAIN;
             break;
+        }
+
+        /* A socket that polled writable can still refuse the frame: one
+         * larger than the space left is refused anywhere, and macOS
+         * reports a full datagram socket as writable. Pause rather than
+         * spin through the time left. */
+        if (polled) {
+            struct timespec pause = {
+                0, RESOLVER_CHILD_SEND_PAUSE_MS * 1000000L
+            };
+            nanosleep(&pause, NULL);
+            polled = 0;
+            continue;
         }
 
         /* The parent has not drained the socket yet. Waiting for room is
@@ -2205,8 +2227,10 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
         pfd.fd = child_sock;
         pfd.events = POLLOUT;
         pfd.revents = 0;
-        if (poll(&pfd, 1, RESOLVER_CHILD_SEND_TIMEOUT_MS) <= 0)
+        if (poll(&pfd, 1, left < RESOLVER_CHILD_SEND_TIMEOUT_MS ?
+                (int)left : RESOLVER_CHILD_SEND_TIMEOUT_MS) <= 0)
             break;
+        polled = 1;
     }
 
     if (written == (ssize_t)frame_len) {
