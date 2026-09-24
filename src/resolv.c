@@ -1127,8 +1127,17 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
                 struct sockaddr_storage storage;
                 memset(&storage, 0, sizeof(storage));
                 memcpy(&storage, payload + sizeof(uint32_t) * 2, addr_len);
-                address = new_address_sa((struct sockaddr *)&storage, (socklen_t)addr_len);
-                if (address == NULL)
+                /* A DNS answer is an IPv4 or IPv6 address, nothing else;
+                 * a child that sent another family, such as a unix socket
+                 * path, would have the connection made to it. */
+                if (!(storage.ss_family == AF_INET &&
+                            addr_len == sizeof(struct sockaddr_in)) &&
+                        !(storage.ss_family == AF_INET6 &&
+                            addr_len == sizeof(struct sockaddr_in6)))
+                    status = -1;
+                else if ((address = new_address_sa(
+                                (struct sockaddr *)&storage,
+                                (socklen_t)addr_len)) == NULL)
                     status = -1;
             }
         }
