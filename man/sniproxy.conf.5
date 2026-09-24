@@ -414,7 +414,9 @@ wildcard or hostname targets.
 
 The optional \fBmax_concurrent_queries_per_client\fR directive limits how many
 DNS lookups a single source IP may have in flight at once (default 16). Set to
-0 to disable the per-client guard.
+0 to disable the per-client guard. A lookup counts against both limits until
+the resolver has finished it, even when the client closes its connection
+before the answer arrives.
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
 default is relaxed, which turns on EDNS0 in c-ares; 'off' leaves c-ares at

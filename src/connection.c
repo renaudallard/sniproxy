@@ -90,6 +90,11 @@ struct resolv_cb_data {
     const struct Address *address;
     struct ev_loop *loop;
     int cb_free_addr;
+    /* The query's slot under the DNS limits. It belongs to the query, not
+     * to the connection, as the lookup outlives a connection that closes
+     * while it runs; free_resolv_cb_data() releases it. */
+    int dns_slot;
+    struct DnsClientUsageEntry *dns_client_usage;
 };
 
 
@@ -271,10 +276,6 @@ mix64_to_32(uint64_t v) {
 }
 
 static int push_proxy_header(struct Connection *, const char *, size_t);
-static int dns_client_increment(struct Connection *);
-static void dns_client_decrement(struct Connection *);
-static enum dns_acquire_status dns_query_acquire(struct Connection *);
-static void dns_query_release(struct Connection *);
 
 static ev_tstamp
 loop_now(struct ev_loop *loop) {
@@ -1540,23 +1541,6 @@ dns_client_decrement_entry(struct DnsClientUsageEntry *entry) {
     }
 }
 
-static int
-dns_client_increment(struct Connection *con) {
-    if (con == NULL)
-        return 0;
-
-    return dns_client_increment_addr(&con->client.addr, &con->dns_client_usage);
-}
-
-static void
-dns_client_decrement(struct Connection *con) {
-    if (con == NULL)
-        return;
-
-    dns_client_decrement_entry(con->dns_client_usage);
-    con->dns_client_usage = NULL;
-}
-
 
 
 static void
@@ -1812,29 +1796,6 @@ conn_count_decrement(const struct sockaddr_storage *addr) {
 
 static size_t max_concurrent_dns_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
 static size_t active_dns_queries;
-
-static enum dns_acquire_status
-dns_query_acquire(struct Connection *con) {
-    if (active_dns_queries >= max_concurrent_dns_queries)
-        return DNS_ACQUIRE_GLOBAL_LIMIT;
-
-    if (!dns_client_increment(con))
-        return DNS_ACQUIRE_PER_CLIENT_LIMIT;
-
-    active_dns_queries++;
-    return DNS_ACQUIRE_OK;
-}
-
-static void
-dns_query_release(struct Connection *con) {
-    if (con == NULL)
-        return;
-
-    if (active_dns_queries > 0)
-        active_dns_queries--;
-
-    dns_client_decrement(con);
-}
 
 enum dns_acquire_status
 connections_dns_query_acquire_addr(const struct sockaddr_storage *addr,
@@ -2970,7 +2931,9 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             }
         }
 
-        enum dns_acquire_status dns_status = dns_query_acquire(con);
+        enum dns_acquire_status dns_status =
+                connections_dns_query_acquire_addr(&con->client.addr,
+                        &cb_data->dns_client_usage);
         if (dns_status != DNS_ACQUIRE_OK) {
             char client[INET6_ADDRSTRLEN + 8];
             const char *client_ip = display_sockaddr(&con->client.addr,
@@ -2991,7 +2954,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
             return 0;
         }
 
-        con->dns_query_acquired = 1;
+        cb_data->dns_slot = 1;
         con->state = RESOLVING;
 
         uint32_t affinity_seed = 0;
@@ -3056,11 +3019,6 @@ resolv_cb(struct Address *result, void *data) {
     struct Connection *con = cb_data->connection;
     struct ev_loop *loop = cb_data->loop;
 
-    if (con->dns_query_acquired) {
-        dns_query_release(con);
-        con->dns_query_acquired = 0;
-    }
-
     if (con->state != RESOLVING) {
         warn("resolv_cb() called for connection not in RESOLVING state");
         return;
@@ -3099,6 +3057,8 @@ resolv_cb(struct Address *result, void *data) {
 static void
 free_resolv_cb_data(void *data) {
     struct resolv_cb_data *cb_data = (struct resolv_cb_data *)data;
+    if (cb_data->dns_slot)
+        connections_dns_query_release_entry(cb_data->dns_client_usage);
     if (cb_data->cb_free_addr)
         free((void *)cb_data->address);
     free(cb_data);
@@ -3298,33 +3258,12 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         warn("close failed: %s", strerror(errno));
 
     if (con->state == RESOLVING) {
-        if (con->query_handle == NULL && con->dns_query_acquired)
-            warn("inconsistent DNS state: query_handle=NULL but dns_query_acquired=1");
-
-        /* Save query_handle locally and clear before calling
-         * resolv_cancel() to maintain consistent state. */
-        void *local_query_handle = con->query_handle;
-        int local_dns_query_acquired = con->dns_query_acquired;
+        /* The lookup goes on in the resolver; its DNS slot is released
+         * with the query once it ends, see free_resolv_cb_data(). */
+        struct ResolvQuery *query_handle = con->query_handle;
 
         con->query_handle = NULL;
-        con->dns_query_acquired = 0;
-
-        /* Clean up using local copies */
-        if (local_query_handle != NULL && local_dns_query_acquired) {
-            /* Valid state: active query with acquired slot */
-            resolv_cancel(local_query_handle);
-            dns_query_release(con);
-        } else if (local_query_handle != NULL && !local_dns_query_acquired) {
-            /* Inconsistent state: query exists but slot not marked acquired */
-            warn("Inconsistent DNS state: query_handle set but dns_query_acquired=0");
-            resolv_cancel(local_query_handle);
-        } else if (local_dns_query_acquired) {
-            /* Inconsistent state: slot marked acquired but no query handle */
-            warn("Inconsistent DNS state: dns_query_acquired=1 but query_handle=NULL");
-            dns_query_release(con);
-        }
-        /* Else: both NULL/0 - no cleanup needed */
-
+        resolv_cancel(query_handle);
         con->state = PARSED;
     }
 

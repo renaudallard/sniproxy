@@ -74,8 +74,6 @@ struct Connection {
     size_t incoming_proxy_len;
     size_t request_parsed_len;  /* request bytes the last parse found incomplete */
     struct ResolvQuery *query_handle;
-    int dns_query_acquired;
-    struct DnsClientUsageEntry *dns_client_usage;
     ev_tstamp established_timestamp;
     enum proxy_protocol_mode use_proxy_header;
 #ifdef SO_SPLICE

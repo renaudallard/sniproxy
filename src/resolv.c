@@ -97,7 +97,6 @@
 #define debug_log(...) do { if (get_resolver_debug()) notice(__VA_ARGS__); } while (0)
 
 #define RESOLVER_CMD_QUERY      1u
-#define RESOLVER_CMD_CANCEL     2u
 #define RESOLVER_CMD_RESULT     3u
 #define RESOLVER_CMD_SHUTDOWN   4u
 #define RESOLVER_CMD_CRASH     5u
@@ -135,6 +134,7 @@ struct ResolverPending {
     struct ResolvQuery *clients;
     struct ResolverPending *next_id;
     struct ResolverPending *next_host;
+    ev_tstamp abandoned;    /* when the last client cancelled, or 0 */
 };
 
 enum dot_min_tls_version {
@@ -277,6 +277,13 @@ static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
 #define RESOLVER_CHILD_SEND_ATTEMPTS 5
 static struct ev_timer resolver_restart_timer;
 static int resolver_restart_timer_active = 0;
+/* A query no client waits for any more is kept until the child answers
+ * it, so that it still counts against the DNS limits. One whose answer
+ * never comes, because the child could not deliver it, is given up this
+ * long after, which is well past any c-ares timeout. */
+#define RESOLVER_ABANDONED_TIMEOUT 60.0
+static struct ev_timer resolver_abandoned_timer;
+static int resolver_abandoned_timer_active = 0;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
 static pthread_mutex_t resolver_pending_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ResolverDotServer *child_dot_servers = NULL;
@@ -317,6 +324,8 @@ static void resolver_remove_pending(struct ResolverPending *pending);
 static struct ResolverPending *resolver_detach_pending_queries(void);
 static void resolver_cleanup_pending_queries(void);
 static void resolver_free_pending_list(struct ResolverPending *list, int notify_clients);
+static int resolver_pending_wanted(const struct ResolverPending *pending);
+static void resolver_watch_abandoned(void);
 static int resolver_restart(int);
 static void resolver_cancel_scheduled_restart(void);
 static void resolver_resubmit_pending_queries(void);
@@ -333,10 +342,8 @@ static void resolver_child_shutdown_dns(struct ev_loop *loop);
 static void resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_submit_query(uint32_t id, int mode,
         uint32_t affinity_seed, const char *hostname, size_t hostname_len);
-static void resolver_child_cancel_query(uint32_t id);
 static void resolver_child_send_result(uint32_t id, const struct Address *address, int status);
 static void resolver_child_cancel_all(void);
-static struct ResolverChildQuery *resolver_child_find_query(uint32_t id);
 static void resolver_child_remove_query(struct ResolverChildQuery *query);
 static void resolver_child_free_query(struct ResolverChildQuery *query);
 static void resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
@@ -638,6 +645,10 @@ resolv_parent_capsicum_limit_rights(void) {
 void
 resolv_shutdown(struct ev_loop *loop) {
     resolver_cancel_scheduled_restart();
+    if (resolver_abandoned_timer_active) {
+        ev_timer_stop(loop, &resolver_abandoned_timer);
+        resolver_abandoned_timer_active = 0;
+    }
 
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);
@@ -735,6 +746,7 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
         handle->pending = pending;
         handle->next_client = pending->clients;
         pending->clients = handle;
+        pending->abandoned = 0.0;
         pthread_mutex_unlock(&resolver_queries_lock);
         return handle;
     }
@@ -785,6 +797,7 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
         handle->pending = race;
         handle->next_client = race->clients;
         race->clients = handle;
+        race->abandoned = 0.0;
         pthread_mutex_unlock(&resolver_queries_lock);
         return handle;
     }
@@ -830,59 +843,80 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
     return handle;
 }
 
+/* Drop the answer to a query. The lookup itself keeps running in the
+ * resolver child, which has no way to stop it, so the handle is kept and
+ * its free callback only runs once the child reports the lookup done:
+ * callers that count lookups in flight release them there. */
 void
 resolv_cancel(struct ResolvQuery *handle) {
     if (handle == NULL)
         return;
 
-    struct ResolverPending *pending = handle->pending;
-    if (pending == NULL) {
+    if (handle->pending == NULL) {
         if (handle->client_free_cb != NULL)
             handle->client_free_cb(handle->client_cb_data);
         free(handle);
         return;
     }
 
-    int send_cancel = 0;
-    uint32_t cancel_id = 0;
-    int found = 0;
+    pthread_mutex_lock(&resolver_queries_lock);
+    handle->client_cb = NULL;
+    int wanted = resolver_pending_wanted(handle->pending);
+    if (!wanted && resolver_loop_ref != NULL)
+        handle->pending->abandoned = ev_now(resolver_loop_ref);
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    if (!wanted)
+        resolver_watch_abandoned();
+}
+
+/* Give up the queries abandoned long enough ago, and stop checking once
+ * none is left. */
+static void
+resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
+        int revents __attribute__((unused))) {
+    ev_tstamp now = ev_now(loop);
+    struct ResolverPending *expired = NULL;
+    int remaining = 0;
 
     pthread_mutex_lock(&resolver_queries_lock);
+    for (size_t i = 0; i < RESOLVER_HOST_BUCKETS; i++) {
+        struct ResolverPending *iter = resolver_hosts[i];
 
-    /* Check if the clients list has already been detached by
-     * resolver_take_query(). If so, the result is being processed
-     * and our handle will be freed by resolver_handle_result(). */
-    if (pending->clients != NULL) {
-        struct ResolvQuery **iter = &pending->clients;
-        while (*iter != NULL && *iter != handle)
-            iter = &(*iter)->next_client;
+        while (iter != NULL) {
+            struct ResolverPending *next = iter->next_host;
 
-        if (*iter == handle) {
-            found = 1;
-            *iter = handle->next_client;
-            if (pending->clients == NULL) {
-                resolver_remove_pending(pending);
-                send_cancel = 1;
-                cancel_id = pending->id;
+            if (iter->abandoned != 0.0 && !resolver_pending_wanted(iter)) {
+                if (now - iter->abandoned >= RESOLVER_ABANDONED_TIMEOUT) {
+                    resolver_remove_pending(iter);
+                    iter->next_host = expired;
+                    expired = iter;
+                } else {
+                    remaining = 1;
+                }
             }
+            iter = next;
         }
     }
     pthread_mutex_unlock(&resolver_queries_lock);
 
-    /* Only free our handle if we successfully removed it from the list.
-     * If pending->clients was NULL, the handle is owned by
-     * resolver_handle_result() and will be freed there. */
-    if (found) {
-        if (handle->client_free_cb != NULL)
-            handle->client_free_cb(handle->client_cb_data);
-        free(handle);
-    }
+    resolver_free_pending_list(expired, 0);
 
-    if (send_cancel) {
-        resolver_send_message(RESOLVER_CMD_CANCEL, cancel_id, NULL, 0);
-        free(pending->hostname);
-        free(pending);
+    if (!remaining) {
+        ev_timer_stop(loop, w);
+        resolver_abandoned_timer_active = 0;
     }
+}
+
+static void
+resolver_watch_abandoned(void) {
+    if (resolver_loop_ref == NULL || resolver_abandoned_timer_active)
+        return;
+
+    ev_timer_init(&resolver_abandoned_timer, resolver_abandoned_cb,
+            RESOLVER_ABANDONED_TIMEOUT / 2, RESOLVER_ABANDONED_TIMEOUT / 2);
+    ev_timer_start(resolver_loop_ref, &resolver_abandoned_timer);
+    resolver_abandoned_timer_active = 1;
 }
 
 static int
@@ -1291,6 +1325,16 @@ resolver_cleanup_pending_queries(void) {
     resolver_free_pending_list(pending_list, 1);
 }
 
+/* Whether a client still wants the answer to a pending query */
+static int
+resolver_pending_wanted(const struct ResolverPending *pending) {
+    for (const struct ResolvQuery *client = pending->clients; client != NULL;
+            client = client->next_client)
+        if (client->client_cb != NULL)
+            return 1;
+    return 0;
+}
+
 static void
 resolver_resubmit_pending_queries(void) {
     pthread_mutex_lock(&resolver_pending_lock);
@@ -1302,6 +1346,13 @@ resolver_resubmit_pending_queries(void) {
         struct ResolverPending *next = pending_list->next_host;
         pending_list->next_host = NULL;
         pending_list->next_id = NULL;
+
+        /* Every client cancelled while the child was down */
+        if (!resolver_pending_wanted(pending_list)) {
+            resolver_free_pending_list(pending_list, 0);
+            pending_list = next;
+            continue;
+        }
 
         pthread_mutex_lock(&resolver_queries_lock);
         resolver_attach_query(pending_list);
@@ -1834,9 +1885,6 @@ resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                             hostname_len);
                 }
                 break;
-            case RESOLVER_CMD_CANCEL:
-                resolver_child_cancel_query(id);
-                break;
             case RESOLVER_CMD_SHUTDOWN:
                 ev_break(loop, EVBREAK_ALL);
                 break;
@@ -1932,18 +1980,6 @@ resolver_child_submit_query(uint32_t id, int mode,
     }
 
     resolver_child_schedule_timeout(child_loop);
-}
-
-static void
-resolver_child_cancel_query(uint32_t id) {
-    struct ResolverChildQuery *query = resolver_child_find_query(id);
-    if (query == NULL)
-        return;
-
-    resolver_child_remove_query(query);
-    query->cancelled = 1;
-
-    resolver_child_maybe_free_query(query);
 }
 
 static void
@@ -2052,17 +2088,6 @@ resolver_child_cancel_all(void) {
         query->cancelled = 1;
         query = query->next;
     }
-}
-
-static struct ResolverChildQuery *
-resolver_child_find_query(uint32_t id) {
-    struct ResolverChildQuery *iter = child_queries;
-    while (iter != NULL) {
-        if (iter->id == id)
-            return iter;
-        iter = iter->next;
-    }
-    return NULL;
 }
 
 static void
