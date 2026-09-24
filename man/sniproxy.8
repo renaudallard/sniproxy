@@ -22,11 +22,16 @@ to separate backend servers without installing the private key on the proxy
 machine\&. By default TLS 1.2 (and newer) client hellos are
 accepted\&.
 
-For security reasons the configuration file must grant no permission to
+For security reasons the configuration file must be owned by root or by
+the user reading it, which means root when sniproxy is started as root
+and, for a reload after the privilege drop, root or the configured user.
+It must grant no permission to
 other users, and none to its group unless
 .B -g
-allows group read\&. sniproxy verifies the permissions after
-opening the file and aborts startup if it detects broader access; a
+allows group read\&. Whoever may edit the file chooses, among others,
+the log files that a start as root hands over to the configured user\&.
+sniproxy verifies the owner and the permissions after
+opening the file and aborts startup if they are not so; a
 reload with such a file is refused and keeps the running configuration\&.
 
 .SH OPTIONS

@@ -539,26 +539,46 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     /* Check permissions on opened file to prevent TOCTOU.
      * With -g flag, group-read (0640) is allowed for SIGHUP reload support.
-     * Without -g, only owner access (0600) is permitted. */
+     * Without -g, only owner access (0600) is permitted. The owner must be
+     * root or the user sniproxy runs as: whoever may edit the file picks,
+     * among others, the log files that a start as root hands over to the
+     * configured user. */
     struct stat config_st;
+    if (fstat(fileno(file), &config_st) != 0) {
+        err("%s: unable to stat configuration file %s: %s",
+            __func__, config->filename, strerror(errno));
+        fclose(file);
+        free_config(config, loop);
+        return NULL;
+    }
+
     mode_t perm_mask = allow_group_read ? 0037 : 0077;
-    if (fstat(fileno(file), &config_st) == 0 && (config_st.st_mode & perm_mask)) {
-        const char *perm_msg = allow_group_read
+    const char *perm_msg = NULL;
+    if (config_st.st_uid != 0 && config_st.st_uid != geteuid())
+        perm_msg = geteuid() == 0
+            ? "must be owned by root when sniproxy runs as root"
+            : "must be owned by root or by the user running sniproxy";
+    else if (config_st.st_mode & perm_mask)
+        perm_msg = allow_group_read
             ? "must not be group-writable or world accessible (max 0640)"
             : "must not be group/world accessible (max 0600, use -g for 0640)";
+    if (perm_msg != NULL) {
         if (fatal_on_perm_error) {
             /* Use original filename parameter to avoid use-after-free.
              * config->filename will be freed by free_config() below, so we
              * must not dereference it in the fatal() call. */
-            fprintf(stderr, "FATAL: Config file %s %s (mode %04o)\n",
-                filename, perm_msg, config_st.st_mode & 0777);
+            fprintf(stderr, "FATAL: Config file %s %s (owner %u, mode %04o)\n",
+                filename, perm_msg, (unsigned int)config_st.st_uid,
+                config_st.st_mode & 0777);
             fclose(file);
             free_config(config, loop);
-            fatal("Config file %s %s (mode %04o)",
-                filename, perm_msg, config_st.st_mode & 0777);
+            fatal("Config file %s %s (owner %u, mode %04o)",
+                filename, perm_msg, (unsigned int)config_st.st_uid,
+                config_st.st_mode & 0777);
         }
-        err("%s: Config file %s %s (mode %04o)",
-            __func__, config->filename, perm_msg, config_st.st_mode & 0777);
+        err("%s: Config file %s %s (owner %u, mode %04o)",
+            __func__, config->filename, perm_msg,
+            (unsigned int)config_st.st_uid, config_st.st_mode & 0777);
         fclose(file);
         free_config(config, loop);
         return NULL;

@@ -11,7 +11,8 @@ use File::Temp;
 sub proxy {
     my $config = shift;
 
-    exec(@_, '../src/sniproxy', '-f', '-c', $config);
+    # As root the config is readable by the test user through its group
+    exec(@_, '../src/sniproxy', '-f', ($> == 0 ? '-g' : ()), '-c', $config);
 }
 
 sub worker($$$$) {
@@ -44,11 +45,17 @@ sub make_reload_config($$$) {
 
     my ($fh, $filename) = File::Temp::tempfile();
     my ($unused, $logfile) = File::Temp::tempfile();
-    # 0600 and owned by the user sniproxy drops to, so that it can read
-    # the file again on SIGHUP.
-    my @pw = getpwnam(test_user()) or die "unknown user @{[test_user()]}\n";
-    chown($pw[2], $pw[3], $filename);
-    chmod(0600, $filename);
+    # sniproxy reads the file again on SIGHUP after dropping to the test
+    # user. Started as root it only accepts a file owned by root, so that
+    # user reads it through its group, which -g allows.
+    if ($> == 0) {
+        my $gid = test_group() =~ /^\d+$/ ? test_group() : getgrnam(test_group());
+        defined $gid or die "unknown group @{[test_group()]}\n";
+        chown(0, $gid, $filename);
+        chmod(0640, $filename);
+    } else {
+        chmod(0600, $filename);
+    }
     chmod(0666, $logfile);
 
     # Write out a test config file
@@ -91,9 +98,9 @@ sub alter_config($$$$) {
     my $proxy_port2 = shift;
     my $httpd_port = shift;
 
-    # Rewrite in place: the file belongs to the user sniproxy runs as, and
-    # with fs.protected_regular even root may not open another user's file
-    # in /tmp with O_CREAT, which '>' implies.
+    # Rewrite in place, so that the file keeps the owner and mode set up
+    # in make_reload_config(): '>' implies O_CREAT, which
+    # fs.protected_regular refuses on another user's file in /tmp.
     my $fh = undef;
     open($fh, '+<', $filename)
         or die("open(): $!");
