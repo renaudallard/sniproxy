@@ -62,9 +62,9 @@ next_token(FILE *config, char *buffer, size_t buffer_len) {
             case '}':
                 return TOKEN_CBRACE;
             default:
-                /* Rewind one byte, so next_word() can fetch from
+                /* Push the byte back, so next_word() can fetch from
                  * the beginning of the word */
-                fseeko(config, (off_t)-1, SEEK_CUR);
+                ungetc(ch, config);
 
                 token_len = next_word(config, buffer, buffer_len);
                 if (token_len <= 0)
@@ -125,9 +125,9 @@ next_word(FILE *file, char *buffer, size_t buffer_len) {
             case '{':
             case '}':
                 if (quoted == 0) {
-                    /* rewind the file one character, so we don't eat
+                    /* push the character back, so we don't eat
                      * part of the next token */
-                    fseeko(file, (off_t)-1, SEEK_CUR);
+                    ungetc(ch, file);
 
                     buffer[len] = '\0';
                     len++;
