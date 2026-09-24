@@ -284,7 +284,7 @@ listeners_reload(struct Listener_head *existing_listeners,
         else if (iter_new == NULL)
             compare_result = -1;
         else
-            compare_result = address_compare(iter_existing->address, iter_new->address);
+            compare_result = listener_compare(iter_existing, iter_new);
 
         if (compare_result > 0) {
             struct Listener *new_listener = iter_new;
@@ -309,41 +309,6 @@ listeners_reload(struct Listener_head *existing_listeners,
             /* -1 for removing from new_listeners */
             listener_ref_put(new_listener);
         } else if (compare_result == 0) {
-            /* If the socket type changed (e.g. tls->dtls or dtls->tls),
-             * we cannot update in place: the socket, watcher callback,
-             * and options all differ.  Remove old and add new instead. */
-            if (iter_existing->protocol->sock_type !=
-                    iter_new->protocol->sock_type) {
-                struct Listener *removed = iter_existing;
-                struct Listener *added = iter_new;
-                iter_existing = SLIST_NEXT(iter_existing, entries);
-                iter_new = SLIST_NEXT(iter_new, entries);
-
-                /* Bind the replacement before dropping the old socket, so
-                 * a failure here leaves the address served instead of
-                 * silently unserved. The two sockets differ in type, so
-                 * their binds do not conflict. */
-                SLIST_REMOVE(new_listeners, added, Listener, entries);
-                add_listener(existing_listeners, added);
-                if (init_listener(added, tables, loop) < 0) {
-                    err("Failed to initialize replacement listener %s; "
-                            "keeping the existing one",
-                            display_address(added->address,
-                                    address, sizeof(address)));
-                    remove_listener(existing_listeners, added, loop);
-                    listener_ref_put(added);
-                    continue;
-                }
-
-                notice("Listener %s replaced (socket type changed).",
-                        display_address(removed->address,
-                                address, sizeof(address)));
-
-                remove_listener(existing_listeners, removed, loop);
-                listener_ref_put(added);
-                continue;
-            }
-
             notice ("Listener %s updated.",
                     display_address(iter_existing->address,
                             address, sizeof(address)));
@@ -372,7 +337,7 @@ static void
 listener_update(struct Listener *existing_listener, struct Listener *new_listener, const struct Table_head *tables) {
     if (existing_listener == NULL || new_listener == NULL)
         return;
-    if (address_compare(existing_listener->address, new_listener->address) != 0)
+    if (listener_compare(existing_listener, new_listener) != 0)
         return;
 
     if (existing_listener->fallback_address != new_listener->fallback_address) {
@@ -692,6 +657,21 @@ accept_listener_accept_proxy_protocol(struct Listener *listener, const char *val
 }
 
 /*
+ * Order listeners by address, then by socket type: a TCP and a dtls
+ * listener may share an address, and a reload must pair each with its
+ * own counterpart.
+ */
+int
+listener_compare(const struct Listener *a, const struct Listener *b) {
+    int result = address_compare(a->address, b->address);
+    if (result != 0)
+        return result;
+
+    return (a->protocol->sock_type > b->protocol->sock_type) -
+            (a->protocol->sock_type < b->protocol->sock_type);
+}
+
+/*
  * Insert an additional listener in to the sorted list of listeners
  */
 void
@@ -701,7 +681,7 @@ add_listener(struct Listener_head *listeners, struct Listener *listener) {
     listener_ref_get(listener);
 
     if (SLIST_FIRST(listeners) == NULL ||
-            address_compare(listener->address, SLIST_FIRST(listeners)->address) < 0) {
+            listener_compare(listener, SLIST_FIRST(listeners)) < 0) {
         SLIST_INSERT_HEAD(listeners, listener, entries);
         return;
     }
@@ -709,7 +689,7 @@ add_listener(struct Listener_head *listeners, struct Listener *listener) {
     struct Listener *iter;
     SLIST_FOREACH(iter, listeners, entries) {
         if (SLIST_NEXT(iter, entries) == NULL ||
-                address_compare(listener->address, SLIST_NEXT(iter, entries)->address) < 0) {
+                listener_compare(listener, SLIST_NEXT(iter, entries)) < 0) {
             SLIST_INSERT_AFTER(iter, listener, entries);
             return;
         }

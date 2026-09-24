@@ -1622,8 +1622,7 @@ end_listener_stanza(struct Config *config, struct Listener *listener) {
      * ACLs included. TCP and DTLS listeners may share an address. */
     const struct Listener *iter;
     SLIST_FOREACH(iter, &config->listeners, entries) {
-        if (iter->protocol->sock_type == listener->protocol->sock_type &&
-                address_compare(iter->address, listener->address) == 0) {
+        if (listener_compare(iter, listener) == 0) {
             char address[ADDRESS_BUFFER_SIZE];
 
             err("Listener %s defined more than once",

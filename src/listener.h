@@ -88,6 +88,7 @@ int accept_listener_ipv6_v6only(struct Listener *, const char *);
 int accept_listener_bad_request_action(struct Listener *, const char *);
 int accept_listener_accept_proxy_protocol(struct Listener *, const char *);
 
+int listener_compare(const struct Listener *, const struct Listener *);
 void add_listener(struct Listener_head *, struct Listener *);
 void init_listeners(struct Listener_head *, const struct Table_head *, struct ev_loop *);
 void listeners_reload(struct Listener_head *, struct Listener_head *, const struct Table_head *, struct ev_loop *);
