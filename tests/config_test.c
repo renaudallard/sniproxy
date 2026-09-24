@@ -31,7 +31,9 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <grp.h>
+#include <arpa/inet.h>
 #include "config.h"
+#include "listener.h"
 
 static char *generated_log_path;
 
@@ -244,6 +246,80 @@ test_duplicate_table_rejected(void) {
     return 0;
 }
 
+/* Parse a configuration given as text; NULL when it is refused */
+static struct Config *
+load_test_config(const char *text) {
+    char template[256];
+    if (snprintf(template, sizeof(template),
+                "%s/sniproxy-config-testXXXXXX",
+                config_test_tmpdir()) >= (int)sizeof(template))
+        return NULL;
+    int fd = mkstemp(template);
+    if (fd < 0)
+        return NULL;
+
+    FILE *fp = fdopen(fd, "w");
+    if (fp == NULL) {
+        close(fd);
+        unlink(template);
+        return NULL;
+    }
+    fputs(text, fp);
+    fclose(fp);
+
+    struct Config *config = init_config(template, EV_DEFAULT, 1);
+    unlink(template);
+    return config;
+}
+
+static int
+acl_allows(const struct Listener *listener, int family, const char *ip) {
+    struct sockaddr_storage ss;
+
+    memset(&ss, 0, sizeof(ss));
+    ss.ss_family = (sa_family_t)family;
+    if (family == AF_INET)
+        inet_pton(AF_INET, ip, &((struct sockaddr_in *)&ss)->sin_addr);
+    else
+        inet_pton(AF_INET6, ip, &((struct sockaddr_in6 *)&ss)->sin6_addr);
+
+    return listener_acl_allows(listener, &ss);
+}
+
+/* An ACL rule written as an IPv4-mapped address, as client addresses
+ * appear in the logs of a dual-stack listener, applies to those clients. */
+static int
+test_mapped_acl_rule(void) {
+    struct Config *config = load_test_config(
+            "listen [::]:8080 {\n"
+            "    proto http\n"
+            "    acl allow_except {\n"
+            "        ::ffff:192.0.2.0/120\n"
+            "    }\n"
+            "}\n"
+            "table {\n"
+            "    localhost 127.0.0.1 8081\n"
+            "}\n");
+    if (config == NULL) {
+        fprintf(stderr, "Config with an IPv4-mapped ACL rule was refused\n");
+        return 1;
+    }
+
+    const struct Listener *listener = SLIST_FIRST(&config->listeners);
+    int ok = !acl_allows(listener, AF_INET6, "::ffff:192.0.2.7") &&
+            !acl_allows(listener, AF_INET, "192.0.2.7") &&
+            acl_allows(listener, AF_INET6, "::ffff:198.51.100.1") &&
+            acl_allows(listener, AF_INET6, "2001:db8::1");
+    free_config(config, EV_DEFAULT);
+
+    if (!ok) {
+        fprintf(stderr, "IPv4-mapped ACL rule did not apply to IPv4 clients\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -291,6 +367,9 @@ int main(int argc, char **argv) {
         return 1;
 
     if (test_undefined_table_rejected() != 0)
+        return 1;
+
+    if (test_mapped_acl_rule() != 0)
         return 1;
 
     return 0;

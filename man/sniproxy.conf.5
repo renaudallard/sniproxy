@@ -237,7 +237,9 @@ reaches the local host. Unix socket
 backends match no range, so \fBdeny_except\fR refuses them. Only one
 backend_acl block may appear in the
 configuration. IPv4 and IPv6 ranges may be mixed freely, and
-IPv4-mapped IPv6 addresses are matched against IPv4 rules.
+IPv4-mapped IPv6 addresses are matched against IPv4 rules; a range
+written in that form, such as ::ffff:192.0.2.0/120, is read as the
+IPv4 range it stands for.
 Connections denied by the backend ACL are logged and closed immediately.
 The backend ACL is reloaded on SIGHUP.
 
@@ -617,7 +619,9 @@ When an acl block is omitted every client is accepted, and a listener
 may have only one. Multiple statements may be provided in a block, each
 a range with its prefix length, optionally preceded by the keyword
 \fBcidr\fR. IPv4 and IPv6 ranges may be mixed
-freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges.
+freely, and IPv4-mapped IPv6 addresses are matched against IPv4 ranges;
+a range written as ::ffff:192.0.2.0/120, as clients of a dual-stack
+listener appear in the logs, is read as 192.0.2.0/24.
 The policy choice is shared by all listeners: mixing allow_except and
 deny_except acl blocks across listeners is a configuration error, which
 stops sniproxy at startup and makes a reload keep the running

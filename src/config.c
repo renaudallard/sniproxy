@@ -1070,6 +1070,20 @@ new_listener_acl_rule_from_cidr(const char *value) {
             return NULL;
         }
         rule->family = AF_INET6;
+
+        /* Addresses in the IPv4-mapped range are matched against the IPv4
+         * rules, so a rule for them, as copied from a log line such as
+         * [::ffff:192.0.2.1]:4711, is kept as the IPv4 rule it stands
+         * for; as an IPv6 rule it would never match. */
+        if (IN6_IS_ADDR_V4MAPPED(&rule->network.in6) && prefix_len >= 96) {
+            struct in_addr in;
+
+            memcpy(&in, &rule->network.in6.s6_addr[12], sizeof(in));
+            memset(&rule->network, 0, sizeof(rule->network));
+            rule->network.in = in;
+            rule->family = AF_INET;
+            prefix_len -= 96;
+        }
     } else {
         err("Invalid network address in ACL entry: %s", value);
         free(rule);
