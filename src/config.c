@@ -1950,6 +1950,16 @@ string_vectors_equal(char **a, char **b) {
     }
 }
 
+/* Nameservers are reached over IPv4 or IPv6, never a unix socket. */
+static int
+address_is_inet(const struct Address *address) {
+    if (!address_is_sockaddr(address))
+        return 0;
+
+    sa_family_t family = address_sa(address)->sa_family;
+    return family == AF_INET || family == AF_INET6;
+}
+
 static int
 accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserver) {
     const char *value = nameserver;
@@ -2073,7 +2083,7 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
      * and /insecure makes no sense with a hostname target. */
     int valid = 0;
     if (is_dot) {
-        if (address_is_sockaddr(ns_address)) {
+        if (address_is_inet(ns_address)) {
             if (!has_sni) {
                 err("resolver nameserver '%s' must specify a TLS hostname "
                         "or '/insecure' when using an IP literal", nameserver);
@@ -2092,14 +2102,17 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
             }
             valid = 1;
         }
-    } else if (address_is_sockaddr(ns_address)) {
+    } else if (address_is_inet(ns_address)) {
         valid = 1;
     }
 
     free(ns_address);
     free(dot_target_copy);
-    if (!valid)
+    if (!valid) {
+        err("resolver nameserver '%s' is not an IPv4 or IPv6 address%s",
+                nameserver, is_dot ? " or a hostname" : "");
         return -1;
+    }
 
     return append_to_string_vector(&resolver->nameservers, nameserver);
 }
