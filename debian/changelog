@@ -1,3 +1,12 @@
+sniproxy (0.16.0) unstable; urgency=medium
+
+  * Security fixes: log files with several links, CPU spent on trickled
+    requests, DNS query limits, backend ACLs, seccomp on 32-bit systems,
+    the binder's unix sockets, and stricter checks of the configuration.
+    See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 24 Sep 2026 15:35:45 +0200
+
 sniproxy (0.15.1) unstable; urgency=medium
 
   * The last messages before exit, such as the reason for a failed

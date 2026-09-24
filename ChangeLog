@@ -1,3 +1,35 @@
+2026-09-24  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.16.0
+	- logger: log files are opened without blocking and must be regular
+	  files with a single link, so a hard link in the log directory can
+	  no longer give a root file to the service user and a FIFO no longer
+	  hangs the start. The logger starts its own session.
+	- http: an incomplete HTTP/1 request is only parsed again once a new
+	  line arrives, only the first HTTP/2 header block is searched for the
+	  host, and an HTTP/2 host value holding a NUL is refused.
+	- sniproxy: "*" is not accepted as the hostname of a request.
+	- sniproxy: a DNS lookup counts against max_concurrent_queries and
+	  max_concurrent_queries_per_client until the resolver has finished
+	  it, not only until its client leaves.
+	- resolver: the delayed restart is not throttled again, and only IPv4
+	  and IPv6 addresses are accepted from the child.
+	- acl: 0.0.0.0 and :: are refused as backends under a backend_acl, and
+	  a range written as IPv4-mapped IPv6 is read as the IPv4 range.
+	- binder: a unix socket is bound in the directory whose real path was
+	  checked, and a path too long for sun_path is refused.
+	- seccomp: the 32-bit forms of system calls are allowed, TIOCSTI is
+	  refused, and the main process cannot open raw or packet sockets.
+	- proxy protocol: a PROXY v1 header is only used once all of it is
+	  valid, and ports above 65535 are refused.
+	- dtls: a renegotiation hello drops the session, and a full session
+	  table drops the oldest unvalidated session to admit a new one.
+	- config: an address given to two listener blocks of the same type,
+	  and a config file owned by anyone but root or the running user, are
+	  refused.
+	- docs: a proxy_protocol listener should only admit the load
+	  balancer; where a wildcard backend can lead.
+
 2026-09-23  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.15.1

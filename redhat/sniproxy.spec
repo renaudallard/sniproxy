@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.15.1
+Version: 0.16.0
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 

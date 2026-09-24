@@ -1,3 +1,70 @@
+sniproxy 0.16.0 (2026-09-24)
+===============================
+
+Fixes from a security review of the whole tree.
+
+Upgrade note: some configurations earlier releases accepted are now
+refused: the same address and socket type in two listener blocks; a
+configuration file owned by anyone but root when sniproxy is started as
+root, or by anyone but root or the running user otherwise; and a log
+file with more than one hard link. Clients see some changes too: "*" is
+no longer accepted as a hostname, only the first HTTP/2 request is
+searched for the host, a DTLS session opening with a renegotiation is
+dropped instead of going to the fallback, and under a backend_acl a
+name resolving to 0.0.0.0 or :: is refused.
+
+Highlights:
+
+* Log files are opened as root and then given to the configured user,
+  who owns /var/log/sniproxy in the packages. That user could replace a
+  log file with a hard link to a root file on the same filesystem and
+  have the next start hand the file over. This was reproduced on
+  OpenBSD; FreeBSD, and Linux without fs.protected_hardlinks, allow such
+  links too. Log files must now be regular files with a single link,
+  and a FIFO at a log path no longer hangs the start.
+
+* A client could make sniproxy spend CPU before its request was routed:
+  a request trickled a byte at a time was parsed from its start on
+  every read, and each HTTP/2 header block without a host was decoded
+  again. An HTTP/1 request is now only parsed again when a new line
+  arrives, and only the first HTTP/2 header block is searched.
+
+* A client connecting and closing in a loop kept any number of DNS
+  lookups running, whatever max_concurrent_queries said. A lookup now
+  keeps its place until the resolver has finished it.
+
+* After a few quick deaths of the resolver child no resolver ran for
+  over a minute, up to three and a half in tests. It now comes back
+  within a second.
+
+* With a backend_acl, a hostname resolving to 0.0.0.0 or :: reached
+  services listening on loopback. Both are now refused. An ACL range
+  written as IPv4-mapped IPv6, the form the logs use for IPv4 clients
+  of a dual-stack listener, now matches those clients.
+
+* A build with libseccomp could not start on 32-bit ARM or i386, where
+  the C library uses the 32-bit forms of system calls. It now runs
+  (tested on armv7). The filters also refuse TIOCSTI, and the main
+  process can no longer open raw or packet sockets, which it could with
+  the CAP_NET_RAW kept for "source client" listeners.
+
+* The binder checks where a unix socket really goes before binding it,
+  so a symlink under /run can no longer make it create a root-owned
+  socket elsewhere. The logger no longer keeps the terminal sniproxy
+  was started from as its controlling terminal, and the main process
+  only accepts IPv4 and IPv6 addresses from the resolver child.
+
+* An incoming PROXY v1 header is only used once all of it is valid, and
+  ports above 65535 are refused. An HTTP/2 host holding a NUL is
+  refused, as over HTTP/1.
+
+* When the DTLS session table is full, the session waiting longest for
+  its second datagram is dropped, so spoofed first datagrams no longer
+  lock real clients out.
+
+* The documentation now says that a proxy_protocol listener must only
+  admit the load balancer, and where a '*' table entry can lead.
+
 sniproxy 0.15.1 (2026-09-23)
 ===============================
 
