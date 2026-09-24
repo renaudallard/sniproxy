@@ -60,15 +60,10 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
     if (len == 0 || len > max_len)
         return 0;
 
-    /* Host headers may legally contain only hostnames, IPv4 literals, a
-     * wildcard "*", or bracketed IPv6 literals. Reject anything else so we do
-     * not match routing rules using unexpected characters such as '/', '@',
-     * or '%'. */
-
-    if (len == 1 && hostname[0] == '*') {
-        *hostname_len = len;
-        return 1;
-    }
+    /* Host headers may legally contain only hostnames, IPv4 literals or
+     * bracketed IPv6 literals. Reject anything else so we do not match
+     * routing rules using unexpected characters such as '/', '@', '%' or
+     * '*', which a wildcard table entry would take as its own wildcard. */
 
     int bracketed_ipv6 = 0;
     if (hostname[0] == '[') {

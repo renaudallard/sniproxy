@@ -3041,6 +3041,8 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         con->state = RESOLVED;
     } else {
         err("invalid address type in backend lookup");
+        if (result.caller_free_address)
+            free((void *)result.address);
         abort_connection(con, loop);
         return 0;
     }

@@ -142,6 +142,10 @@ static const struct http_request_case good[] = {
 static const char *bad[] = {
     "GET / HTTP/1.0\r\n"
         "\r\n",
+    /* A wildcard table entry would take "*" as its own wildcard */
+    "GET / HTTP/1.1\r\n"
+        "Host: *\r\n"
+        "\r\n",
     "",
     "G",
     "GET ",
