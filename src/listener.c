@@ -805,13 +805,16 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         goto error;
     }
 
-    /* set SO_REUSEADDR on server socket to facilitate restart */
     int on = 1;
-    int result = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-    if (result < 0) {
-        err("setsockopt SO_REUSEADDR failed: %s", strerror(errno));
-        rc = result;
-        goto error;
+    int result;
+
+    if (listen_socket_reuseaddr(listener->protocol->sock_type)) {
+        result = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+        if (result < 0) {
+            err("setsockopt SO_REUSEADDR failed: %s", strerror(errno));
+            rc = result;
+            goto error;
+        }
     }
 
     /* set SO_KEEPALIVE on TCP sockets so abandoned client connections

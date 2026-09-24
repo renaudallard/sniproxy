@@ -652,7 +652,8 @@ binder_main(int sockfd) {
         }
 
         int on = 1;
-        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+        if (listen_socket_reuseaddr(req->reserved[0] ? SOCK_DGRAM : SOCK_STREAM) &&
+                setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
             char errbuf[128];
             snprintf(errbuf, sizeof(errbuf),
                     "setsockopt SO_REUSEADDR failed: %s", strerror(errno));

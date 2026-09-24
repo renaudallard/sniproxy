@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
 /*
  * musl libc (Alpine) provides closefrom() but does not declare it in
@@ -133,5 +134,22 @@ fd_child_setup(int fd)
     }
 
     return 0;
+}
+
+/*
+ * Whether a listening socket gets SO_REUSEADDR. It lets a restart bind a
+ * TCP port that still has connections in TIME_WAIT, and a specific
+ * address next to a wildcard one. On Linux two UDP sockets that both have
+ * it may bind the same address whoever owns them, so another user could
+ * take a dtls listener's datagrams; the BSDs refuse that between users.
+ */
+static inline int
+listen_socket_reuseaddr(int sock_type) {
+#ifdef __linux__
+    return sock_type == SOCK_STREAM;
+#else
+    (void)sock_type;
+    return 1;
+#endif
 }
 #endif /* FD_UTIL_H */

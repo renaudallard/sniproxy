@@ -533,7 +533,10 @@ no makes such a listener fail there. This is useful if the user wants
 different configurations
 for IPv4 and IPv6 or wishes to handle IPv4 traffic with another
 server/proxy entirely. This directive applies only to IPv6 listeners
-and is ignored on other listeners.
+and is ignored on other listeners. On Linux two listeners of the same
+kind, TCP or dtls, cannot share a port when their addresses overlap,
+such as '::' accepting IPv4 next to 0.0.0.0, or 0.0.0.0 next to
+127.0.0.1; set ipv6_v6only yes on the '::' one.
 
 Table specifies the name of the table used to look up which server
 to forward the connection to based on the hostname extracted from
