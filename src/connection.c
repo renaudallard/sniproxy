@@ -2385,7 +2385,16 @@ push_proxy_header(struct Connection *con, const char *header, size_t len) {
     if (con == NULL || header == NULL || len == 0)
         return 0;
 
-    size_t pushed = buffer_prepend(con->client.buffer, header, len);
+    /* The request may have filled the client buffer up to its limit. The
+     * header is a few hundred bytes at most, so let the buffer double for
+     * it. A buffer that grew keeps its size as its limit, which does not
+     * matter: the client buffer only grows while the request is parsed. */
+    struct Buffer *buffer = con->client.buffer;
+    size_t max_size = buffer->max_size;
+    if (buffer_room(buffer) < len)
+        buffer_set_max_size(buffer, buffer_size(buffer) * 2);
+    size_t pushed = buffer_prepend(buffer, header, len);
+    buffer_set_max_size(buffer, max_size);
     if (pushed != len) {
         char client[INET6_ADDRSTRLEN + 8];
         warn("Failed to prepend PROXY header for %s: client buffer exhausted",
