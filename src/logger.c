@@ -2366,6 +2366,14 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
     (void)revents;
 
     if (!logger_process_enabled) {
+        /* A send failed since the last check, so the logger died or its
+         * channel broke; the timer is stopped when a restart fails. */
+        logger_ping_pending = 0;
+        logger_ping_blocked = 0;
+        err("Logger process lost, restarting");
+        if (logger_restart_child())
+            return;
+        err("Logger restart failed, falling back to in-process logging");
         ev_timer_stop(loop, &logger_health_timer);
         logger_health_check_active = 0;
         return;
