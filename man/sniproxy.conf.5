@@ -579,6 +579,10 @@ that the ACL, \fBper_ip_connection_rate\fR and
 \fBper_ip_max_connections\fR are applied to the direct peer address
 (the upstream proxy), while \fBmax_concurrent_queries_per_client\fR and
 \fBbackend_affinity\fR use the address from the PROXY header.
+sniproxy takes the header from any peer, so restrict such a listener to
+the load balancer, for example with an \fBacl\fR block: any other client
+could claim any source address, which then reaches the access log and
+the PROXY headers sent to backends.
 
 DTLS sessions neither read nor send PROXY headers: on a dtls listener
 \fBproxy_protocol\fR and a \fBproxy_protocol\fR option on the fallback
