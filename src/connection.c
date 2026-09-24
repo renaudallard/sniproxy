@@ -2092,6 +2092,21 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
     }
 #endif
 
+    /* reset_idle_timer() leaves the timer alone while more than half of
+     * it remains, so activity since it was armed is only recorded in the
+     * buffer timestamps. Wait for what is left of the timeout; they are
+     * wall clock times, so a clock stepped back cannot make that longer
+     * than the timeout. */
+    ev_tstamp remaining = connection_last_activity(con) +
+            connection_idle_timeout - ev_now(loop);
+    if (remaining > connection_idle_timeout)
+        remaining = connection_idle_timeout;
+    if (remaining > 0.0) {
+        ev_timer_set(&con->idle_timer, remaining, 0.0);
+        ev_timer_start(loop, &con->idle_timer);
+        return;
+    }
+
     warn("Closing idle connection from %s after %.0f seconds without activity",
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
             connection_idle_timeout);
