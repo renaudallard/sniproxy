@@ -62,7 +62,7 @@
 static void close_listener(struct ev_loop *, struct Listener *);
 static int bind_listener(int, const struct Listener *);
 static int unix_listener_path(const struct Listener *, char *, size_t);
-static int unix_listener_is_stale(const struct Listener *);
+static int unix_listener_is_stale(const struct Listener *, const char *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
 static void backoff_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static int init_listener(struct Listener *, const struct Table_head *, struct ev_loop *);
@@ -868,8 +868,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
          * nothing accepts connections on it, remove it and retry. */
         int bind_errno = errno;
         char path[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
-        if (unix_listener_is_stale(listener) &&
-                unix_listener_path(listener, path, sizeof(path)) &&
+        if (unix_listener_path(listener, path, sizeof(path)) &&
+                unix_listener_is_stale(listener, path) &&
                 unlink(path) == 0) {
             notice("removed stale unix socket %s", path);
             result = bind_listener(sockfd, listener);
@@ -1194,9 +1194,15 @@ unix_listener_path(const struct Listener *listener, char *buf, size_t buf_len) {
 }
 
 /* Probe an AF_UNIX listener path that failed to bind: when no process
- * accepts connections on it, the socket file is a stale leftover. */
+ * accepts connections on it, the socket file is a stale leftover. Only a
+ * socket qualifies, as connect() also fails with ECONNREFUSED on a
+ * regular file on Linux. */
 static int
-unix_listener_is_stale(const struct Listener *listener) {
+unix_listener_is_stale(const struct Listener *listener, const char *path) {
+    struct stat st;
+    if (lstat(path, &st) != 0 || !S_ISSOCK(st.st_mode))
+        return 0;
+
     int fd = socket(AF_UNIX, listener->protocol->sock_type, 0);
     if (fd < 0)
         return 0;
