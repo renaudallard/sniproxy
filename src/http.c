@@ -203,6 +203,11 @@ get_header(const char *header, size_t header_len, const char *data, size_t data_
 
             size_t value_len = len - value_start;
 
+            /* And trailing whitespace, before the port is looked for */
+            while (value_len > 0 &&
+                    isblank((unsigned char)data[value_start + value_len - 1]))
+                value_len--;
+
             if (value_len == 0 || value_len >= SERVER_NAME_LEN) {
                 free(found_value);
                 return TLS_ERR_INVALID_CLIENT_HELLO;

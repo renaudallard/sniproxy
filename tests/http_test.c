@@ -146,6 +146,19 @@ static const struct http_request_case good[] = {
         "\r\n",
         "[2001:db8::1]"
     },
+    /* Trailing whitespace after the port */
+    {
+        "GET / HTTP/1.1\r\n"
+        "Host: localhost:8080 \t\r\n"
+        "\r\n",
+        "localhost"
+    },
+    {
+        "GET / HTTP/1.1\r\n"
+        "Host: [2001:db8::1]:443 \r\n"
+        "\r\n",
+        "[2001:db8::1]"
+    },
 };
 static const char *bad[] = {
     "GET / HTTP/1.0\r\n"
