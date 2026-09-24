@@ -285,7 +285,6 @@ static int hpack_global_try_reserve(size_t size);
 static void hpack_global_release(size_t size);
 static void hpack_drop_last_entry(struct hpack_decoder *decoder);
 
-static void header_block_reset(struct header_block *block);
 static void header_block_free(struct header_block *block);
 static int header_block_append(struct header_block *block, const unsigned char *data, size_t len);
 static const struct hpack_static_name_index *hpack_lookup_static_name(const char *, size_t);
@@ -367,7 +366,6 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
     size_t pos = 0;
     int result = -1;
     size_t frame_count = 0;
-    int saw_end_headers = 0;
 
     while (pos <= data_len) {
         size_t remaining = data_len - pos;
@@ -451,15 +449,9 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                 }
 
                 if (flags & 0x04) {
-                    saw_end_headers = 1;
-                    result = decode_header_block(&decoder, block.data, block.len, &hosts);
-                    if (result < 0)
-                        goto done;
-                    if (hosts.primary != NULL) {
-                        result = (int)hosts.primary_len;
-                        goto done;
-                    }
-                    header_block_reset(&block);
+                    result = decode_header_block(&decoder, block.data,
+                            block.len, &hosts);
+                    goto header_block_done;
                 }
                 break;
             }
@@ -479,15 +471,9 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                     }
                 }
                 if (flags & 0x04) {
-                    saw_end_headers = 1;
-                    result = decode_header_block(&decoder, block.data, block.len, &hosts);
-                    if (result < 0)
-                        goto done;
-                    if (hosts.primary != NULL) {
-                        result = (int)hosts.primary_len;
-                        goto done;
-                    }
-                    header_block_reset(&block);
+                    result = decode_header_block(&decoder, block.data,
+                            block.len, &hosts);
+                    goto header_block_done;
                 }
                 break;
             }
@@ -514,12 +500,16 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
         pos += length;
     }
 
-    /* Only declare "no hostname" if we processed at least one complete
-     * header block (HEADERS with END_HEADERS, possibly via CONTINUATION)
-     * and it did not contain a host.  Otherwise the request is still
-     * arriving and we should return -1 to wait for more data. */
-    if (saw_end_headers)
-        result = -2;
+    /* No complete header block yet: the request is still arriving. */
+    goto done;
+
+ header_block_done:
+    /* The first complete header block is the client's first request and
+     * must name the host. Later blocks are not looked at: every read
+     * parses the buffer again from its start, so decoding them could
+     * cost a full HPACK pass over the buffer for each byte received. */
+    if (result >= 0)
+        result = hosts.primary != NULL ? (int)hosts.primary_len : -2;
 
  done:
     if (result >= 0 && hosts.primary != NULL) {
@@ -1044,13 +1034,6 @@ header_block_append(struct header_block *block, const unsigned char *data, size_
     block->len += len;
 
     return 1;
-}
-
-static void
-header_block_reset(struct header_block *block) {
-    block->len = 0;
-    block->stream_id = 0;
-    block->continuation_count = 0;
 }
 
 static void

@@ -65,6 +65,25 @@ static const unsigned char http2_large_table_size_setting[] =
     "\x82\x87\x84\x41\x09"
     "localhost";
 
+/* Only the first complete header block, the client's first request, is
+ * searched for the host: a later block is not decoded, and a first block
+ * without a host fails at once instead of waiting for more data. */
+static const unsigned char http2_hostless_then_host[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x03\x01\x05\x00\x00\x00\x01"
+    "\x82\x87\x84"
+    "\x00\x00\x0e\x01\x05\x00\x00\x00\x03"
+    "\x82\x87\x84\x41\x09"
+    "localhost";
+
+static const unsigned char http2_hostless_then_partial[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x03\x01\x05\x00\x00\x00\x01"
+    "\x82\x87\x84"
+    "\x00\x00\x10\x00\x00\x00\x00\x00\x01";
+
 struct http_request_case {
     const char *request;
     const char *expected_host;
@@ -228,6 +247,18 @@ int main(void) {
     assert(hostname != NULL);
     assert(strcmp("localhost", hostname) == 0);
     free(hostname);
+
+    hostname = NULL;
+    result = http_protocol->parse_packet((const char *)http2_hostless_then_host,
+            sizeof(http2_hostless_then_host) - 1, &hostname);
+    assert(result == -2);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    result = http_protocol->parse_packet((const char *)http2_hostless_then_partial,
+            sizeof(http2_hostless_then_partial) - 1, &hostname);
+    assert(result == -2);
+    assert(hostname == NULL);
 
     size_t oversized_payload = HTTP2_MAX_HEADER_BLOCK_SIZE + 1;
     size_t oversized_total = sizeof(http2_preface) - 1 + 9 + oversized_payload;
