@@ -2523,13 +2523,18 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
                     resolver_child_compare_addresses);
         }
 
+        /* The *_first modes fall back to the other family when the
+         * preferred one has no record, so pick among the family of the
+         * address they chose. */
         int preferred_family = 0;
-        if (query->resolv_mode == RESOLV_MODE_IPV4_FIRST ||
-                query->resolv_mode == RESOLV_MODE_IPV4_ONLY)
+        if (query->resolv_mode == RESOLV_MODE_IPV4_ONLY)
             preferred_family = AF_INET;
-        else if (query->resolv_mode == RESOLV_MODE_IPV6_FIRST ||
-                query->resolv_mode == RESOLV_MODE_IPV6_ONLY)
+        else if (query->resolv_mode == RESOLV_MODE_IPV6_ONLY)
             preferred_family = AF_INET6;
+        else if ((query->resolv_mode == RESOLV_MODE_IPV4_FIRST ||
+                    query->resolv_mode == RESOLV_MODE_IPV6_FIRST) &&
+                best_address != NULL && address_is_sockaddr(best_address))
+            preferred_family = address_sa(best_address)->sa_family;
 
         /* Count candidates matching the preferred family */
         size_t candidate_count = 0;
