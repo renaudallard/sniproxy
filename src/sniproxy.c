@@ -903,14 +903,18 @@ effective_max_connections(const struct Config *cfg) {
     if (configured_fd_limit == 0)
         return 0;
 
+    /* Keep 20% for listeners, resolver, etc., at least 256 descriptors
+     * or half of a smaller limit. */
     size_t fd_budget = (size_t)configured_fd_limit;
-    size_t headroom = fd_budget / 5; /* keep 20% for listeners, resolver, etc. */
-    if (headroom < 256)
-        headroom = 256;
-    if (headroom >= fd_budget)
-        return fd_budget > 1 ? fd_budget - 1 : 1;
+    size_t headroom = fd_budget / 5;
+    size_t min_headroom = fd_budget / 2 < 256 ? fd_budget / 2 : 256;
+    if (headroom < min_headroom)
+        headroom = min_headroom;
 
-    return fd_budget - headroom;
+    /* A proxied connection holds two descriptors: the client socket and
+     * the backend one. */
+    size_t ceiling = (fd_budget - headroom) / 2;
+    return ceiling > 0 ? ceiling : 1;
 }
 
 static int

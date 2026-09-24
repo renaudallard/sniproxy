@@ -36,6 +36,10 @@ sub make_fd_limit_config($$$) {
 user @{[test_user()]}
 group @{[test_group()]}
 
+# The ceiling derived from -n would refuse connections before the
+# descriptors run out, which is what this test is about.
+max_connections 1000
+
 error_log {
     filename $logfile
     priority notice

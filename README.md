@@ -363,8 +363,8 @@ pidfile /var/run/sniproxy.pid
 io_collect_interval      0.0005
 timeout_collect_interval 0.005
 
-# Cap total simultaneous connections. 0 (the default) auto-derives
-# ~80% of the file descriptor limit.
+# Cap total simultaneous connections. 0 (the default) derives it from
+# the file descriptor limit: 80% of it, two descriptors per connection.
 max_connections 20000
 
 # Per-IP token-bucket rate (TCP + UDP, default 30/s; 0 disables).
