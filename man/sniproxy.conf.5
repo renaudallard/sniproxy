@@ -281,7 +281,10 @@ given syslog facility: auth, cron, daemon, ftp, local0 to local7, mail,
 news, user or uucp, in any case; another name is a configuration error. Alternatively the filename directive may be
 specified to log to file, given as an absolute path
 without \&.\&. components, and these two options are mutually
-exclusive. The priority directive indicates what severity of
+exclusive. The file must be a regular file with a single link: a
+symlink, a FIFO or a file with more than one hard link is refused,
+because log files are opened as root and then handed to the configured
+user. The priority directive indicates what severity of
 messages should be logged. Accepted priorities are the standard
 syslog priorities, in increasing verbosity: emergency, alert,
 critical, error, warning, notice, info, and debug. The default is

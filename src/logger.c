@@ -370,12 +370,16 @@ new_file_logger(const char *filepath) {
     return logger;
 }
 
-/* Open a log file defensively and verify the fd still refers to the on-disk path.
- * This limits TOCTOU exposure between open() and validation by rejecting
- * mismatched inode/device pairs or non-regular files. */
-static FILE *
-open_log_file_checked(const char *filepath) {
-    int open_flags = O_WRONLY | O_APPEND | O_CREAT;
+/* Open a log file for appending, relative to dirfd unless it is -1, and
+ * fill in st. The file is opened as root at startup and then handed to
+ * the unprivileged user, so it must be the regular file named by the
+ * path: O_NOFOLLOW refuses a symlink, O_NONBLOCK keeps a FIFO from
+ * blocking the open, and a file with more than one link is refused, as a
+ * hard link planted in the log directory could name any file on the
+ * same filesystem. */
+static int
+log_file_open(int dirfd, const char *path, struct stat *st) {
+    int open_flags = O_WRONLY | O_APPEND | O_CREAT | O_NONBLOCK;
 #ifdef O_CLOEXEC
     open_flags |= O_CLOEXEC;
 #endif
@@ -383,17 +387,39 @@ open_log_file_checked(const char *filepath) {
     open_flags |= O_NOFOLLOW;
 #endif
 
-    int fd = open(filepath, open_flags, 0600);
+    int fd;
+    if (dirfd >= 0)
+        fd = openat(dirfd, path, open_flags, 0600);
+    else
+        fd = open(path, open_flags, 0600);
     if (fd < 0)
-        return NULL;
+        return -1;
 
-    struct stat st_fd;
-    if (fstat(fd, &st_fd) != 0 || !S_ISREG(st_fd.st_mode)) {
-        int saved_errno = errno != 0 ? errno : EINVAL;
+    if (fstat(fd, st) != 0) {
+        int saved_errno = errno;
         close(fd);
         errno = saved_errno;
-        return NULL;
+        return -1;
     }
+
+    if (!S_ISREG(st->st_mode) || st->st_nlink != 1) {
+        close(fd);
+        errno = S_ISREG(st->st_mode) ? EMLINK : EINVAL;
+        return -1;
+    }
+
+    return fd;
+}
+
+/* Open a log file defensively and verify the fd still refers to the on-disk path.
+ * This limits TOCTOU exposure between open() and validation by rejecting
+ * mismatched inode/device pairs or non-regular files. */
+static FILE *
+open_log_file_checked(const char *filepath) {
+    struct stat st_fd;
+    int fd = log_file_open(-1, filepath, &st_fd);
+    if (fd < 0)
+        return NULL;
 
     /* Ensure the path we opened still refers to the same inode to block
      * post-open symlink/hardlink swaps. */
@@ -930,41 +956,18 @@ obtain_file_sink(const char *filepath) {
     int fd_for_child = -1;
 
     if (!logger_process_enabled || !logger_parent_fs_locked) {
-        int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-        open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-        open_flags |= O_NOFOLLOW;
-#endif
-
-        int fd = open(filepath, open_flags, 0600);
+        struct stat st;
+        int fd = log_file_open(-1, filepath, &st);
         if (fd < 0) {
             int saved_errno = errno;
             free((char *)sink->filepath);
             free(sink);
             errno = saved_errno;
-            err("Failed to open new log file %s: %s", filepath, strerror(saved_errno));
-            return NULL;
-        }
-
-        struct stat st;
-        if (fstat(fd, &st) != 0) {
-            int saved_errno = errno;
-            close(fd);
-            free((char *)sink->filepath);
-            free(sink);
-            errno = saved_errno;
-            err("Failed to stat log file: %s", filepath);
-            return NULL;
-        }
-
-        if (!S_ISREG(st.st_mode)) {
-            close(fd);
-            free((char *)sink->filepath);
-            free(sink);
-            err("Refusing to write to non-regular log file: %s", filepath);
-            errno = EINVAL;
+            if (saved_errno == EINVAL)
+                err("Refusing to write to non-regular log file: %s", filepath);
+            else
+                err("Failed to open new log file %s: %s", filepath,
+                        strerror(saved_errno));
             return NULL;
         }
 
@@ -1694,31 +1697,12 @@ logger_child_open_file(const char *filepath, int dirfd,
     if (filepath == NULL && (dirfd < 0 || file_basename == NULL))
         return NULL;
 
-    int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-    open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-    open_flags |= O_NOFOLLOW;
-#endif
-
     if (dirfd >= 0 && file_basename != NULL)
-        fd = openat(dirfd, file_basename, open_flags, 0600);
+        fd = log_file_open(dirfd, file_basename, &st);
     else
-        fd = open(filepath, open_flags, 0600);
+        fd = log_file_open(-1, filepath, &st);
     if (fd < 0)
         return NULL;
-
-    if (fstat(fd, &st) != 0) {
-        close(fd);
-        return NULL;
-    }
-
-    if (!S_ISREG(st.st_mode)) {
-        close(fd);
-        errno = EINVAL;
-        return NULL;
-    }
 
     if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0 && !logger_child_reduced_pledge)
         (void)fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH));
@@ -1748,14 +1732,8 @@ logger_prepare_sink_fd(struct LogSink *sink) {
         if (fd < 0)
             return -1;
     } else if (!logger_parent_fs_locked && sink->filepath != NULL) {
-        int open_flags = O_WRONLY | O_APPEND | O_CREAT;
-#ifdef O_CLOEXEC
-        open_flags |= O_CLOEXEC;
-#endif
-#ifdef O_NOFOLLOW
-        open_flags |= O_NOFOLLOW;
-#endif
-        fd = open(sink->filepath, open_flags, 0600);
+        struct stat st;
+        fd = log_file_open(-1, sink->filepath, &st);
         if (fd < 0)
             return -1;
     } else {
