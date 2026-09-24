@@ -330,6 +330,10 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
 - Configurable nameservers and search domains
 - IPv4/IPv6 preference modes
 - Concurrent query limiting to prevent resource exhaustion
+- Queries that find the socketpair to the resolver process full wait in
+  a FIFO and are sent from a write watcher. Where a full datagram
+  socket still polls writable (macOS 15), a wakeup that sends nothing
+  switches to a 10 ms retry timer instead.
 - Integration with libev event loop
 - Thread-safe query list with mutex protection
 - DNS-over-TLS upstreams via `dot://address/hostname` entries with certificate

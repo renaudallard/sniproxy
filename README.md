@@ -664,6 +664,9 @@ That gives:
   system resolver
 - **IPv4/IPv6 preference modes** for mixed-stack deployments
 - **Concurrency caps**, globally and per client, to bound resolver memory
+- **Burst tolerance**: when many new names arrive faster than the
+  resolver process reads them, the lookups wait in order for room on
+  the channel to it instead of failing with a 503
 
 sniproxy does not validate DNSSEC itself. `dnssec_validation relaxed`
 (the default) only turns on EDNS0 in c-ares, and `off` leaves c-ares at

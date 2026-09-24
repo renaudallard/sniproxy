@@ -134,6 +134,8 @@ struct ResolverPending {
     struct ResolvQuery *clients;
     struct ResolverPending *next_id;
     struct ResolverPending *next_host;
+    struct ResolverPending *next_unsent;
+    int unsent;             /* waiting for room on the IPC socket */
     ev_tstamp abandoned;    /* when the last client cancelled, or 0 */
 };
 
@@ -258,6 +260,16 @@ resolver_next_query_prng(void) {
 
 static pthread_mutex_t resolver_queries_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_io resolver_ipc_watcher;
+/* Queries not sent yet because the IPC socket was full, oldest first.
+ * Protected by resolver_queries_lock. */
+static struct ResolverPending *resolver_unsent_head = NULL;
+static struct ResolverPending **resolver_unsent_tail = &resolver_unsent_head;
+static struct ev_io resolver_write_watcher;
+/* Some systems, macOS 15 among them, report a full AF_UNIX datagram
+ * socket as writable, so a write watcher that sends nothing gives way
+ * to a timer rather than spin. */
+#define RESOLVER_SEND_RETRY_DELAY 0.01
+static struct ev_timer resolver_send_retry_timer;
 static int default_resolv_mode = RESOLV_MODE_IPV4_ONLY;
 static struct ev_loop *resolver_loop_ref = NULL;
 static char **resolver_saved_nameservers = NULL;
@@ -317,6 +329,8 @@ static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
 static void resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
 static int resolver_emit_query(struct ResolverPending *pending);
+static int resolver_submit_query(struct ResolverPending *pending);
+static void resolver_send_unsent(void);
 static void resolver_attach_query(struct ResolverPending *pending);
 static struct ResolverPending *resolver_take_query(uint32_t id);
 static int resolver_query_id_in_use(uint32_t id);
@@ -649,6 +663,9 @@ resolv_shutdown(struct ev_loop *loop) {
         ev_timer_stop(loop, &resolver_abandoned_timer);
         resolver_abandoned_timer_active = 0;
     }
+    /* Unconditionally: the socket may already be closed */
+    ev_io_stop(loop, &resolver_write_watcher);
+    ev_timer_stop(loop, &resolver_send_retry_timer);
 
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);
@@ -818,7 +835,7 @@ resolv_query(const char *hostname, int mode, uint32_t affinity_seed,
      * This prevents a race where resolver_restart() could capture
      * a query between attach and emit, leading to the query being
      * sent on a stale socket and potentially duplicated or lost. */
-    int send_result = resolver_emit_query(new_pending);
+    int send_result = resolver_submit_query(new_pending);
     pthread_mutex_unlock(&resolver_queries_lock);
 
     if (send_result < 0) {
@@ -886,7 +903,9 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
         while (iter != NULL) {
             struct ResolverPending *next = iter->next_host;
 
-            if (iter->abandoned != 0.0 && !resolver_pending_wanted(iter)) {
+            /* An unsent one is dropped when its turn to be sent comes */
+            if (iter->abandoned != 0.0 && !iter->unsent &&
+                    !resolver_pending_wanted(iter)) {
                 if (now - iter->abandoned >= RESOLVER_ABANDONED_TIMEOUT) {
                     resolver_remove_pending(iter);
                     iter->next_host = expired;
@@ -966,6 +985,13 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
         /* Partial write should never happen with SOCK_SEQPACKET/DGRAM. */
         send_errno = EIO;
     }
+
+    /* The child has not caught up yet: the caller can queue the message.
+     * A datagram socket reports this as ENOBUFS on macOS. The sealed frame
+     * is simply dropped, the peer only requires increasing counters. */
+    if (send_errno == EAGAIN || send_errno == EWOULDBLOCK ||
+            send_errno == ENOBUFS)
+        return 1;
 
     err("resolver send failed: %s", strerror(send_errno));
 
@@ -1194,6 +1220,118 @@ resolver_emit_query(struct ResolverPending *pending) {
             payload, sizeof(mode_net) + sizeof(seed_net) + hostname_len);
 }
 
+static void
+resolver_send_unsent_io_cb(struct ev_loop *loop __attribute__((unused)),
+        struct ev_io *w __attribute__((unused)),
+        int revents __attribute__((unused))) {
+    resolver_send_unsent();
+}
+
+static void
+resolver_send_unsent_timer_cb(struct ev_loop *loop __attribute__((unused)),
+        struct ev_timer *w __attribute__((unused)),
+        int revents __attribute__((unused))) {
+    resolver_send_unsent();
+}
+
+/* Wait for room on the IPC socket: through the write watcher, or through
+ * the retry timer once the watcher fired without anything getting out.
+ * Caller must hold resolver_queries_lock. */
+static void
+resolver_wait_unsent(int use_timer) {
+    if (resolver_loop_ref == NULL || resolver_sock < 0)
+        return;
+
+    if (use_timer) {
+        ev_io_stop(resolver_loop_ref, &resolver_write_watcher);
+        if (!ev_is_active(&resolver_send_retry_timer)) {
+            ev_timer_init(&resolver_send_retry_timer,
+                    resolver_send_unsent_timer_cb,
+                    RESOLVER_SEND_RETRY_DELAY, 0.0);
+            ev_timer_start(resolver_loop_ref, &resolver_send_retry_timer);
+        }
+    } else if (!ev_is_active(&resolver_write_watcher) &&
+            !ev_is_active(&resolver_send_retry_timer)) {
+        ev_io_init(&resolver_write_watcher, resolver_send_unsent_io_cb,
+                resolver_sock, EV_WRITE);
+        ev_io_start(resolver_loop_ref, &resolver_write_watcher);
+    }
+}
+
+/* Send a query to the child, or queue it behind the ones still waiting
+ * for room on the IPC socket. Caller must hold resolver_queries_lock. */
+static int
+resolver_submit_query(struct ResolverPending *pending) {
+    if (resolver_unsent_head == NULL) {
+        int rc = resolver_emit_query(pending);
+        if (rc <= 0)
+            return rc;
+    }
+
+    pending->unsent = 1;
+    pending->next_unsent = NULL;
+    *resolver_unsent_tail = pending;
+    resolver_unsent_tail = &pending->next_unsent;
+    resolver_wait_unsent(0);
+    return 0;
+}
+
+static void
+resolver_send_unsent(void) {
+    struct ResolverPending *failed = NULL;
+    struct ResolverPending *unwanted = NULL;
+    struct ResolverPending *pending;
+    int sent = 0;
+    int rc = 0;
+
+    pthread_mutex_lock(&resolver_queries_lock);
+    while ((pending = resolver_unsent_head) != NULL) {
+        /* A query every client gave up on while it waited is dropped:
+         * the child never saw it, so no answer would come to free it. */
+        int wanted = resolver_pending_wanted(pending);
+
+        rc = wanted ? resolver_emit_query(pending) : 0;
+        /* Socket full again, or child gone: the restart hands every
+         * pending query, the waiting ones included, to the new child. */
+        if (rc > 0 || rc == -2)
+            break;
+
+        resolver_unsent_head = pending->next_unsent;
+        pending->next_unsent = NULL;
+        pending->unsent = 0;
+
+        if (wanted && rc == 0) {
+            sent++;
+            continue;
+        }
+        resolver_remove_pending(pending);
+        if (wanted) {
+            pending->next_host = failed;
+            failed = pending;
+        } else {
+            pending->next_host = unwanted;
+            unwanted = pending;
+        }
+    }
+
+    if (resolver_unsent_head == NULL) {
+        resolver_unsent_tail = &resolver_unsent_head;
+        if (resolver_loop_ref != NULL) {
+            ev_io_stop(resolver_loop_ref, &resolver_write_watcher);
+            ev_timer_stop(resolver_loop_ref, &resolver_send_retry_timer);
+        }
+    } else if (rc > 0) {
+        resolver_wait_unsent(sent == 0);
+    }
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    resolver_free_pending_list(unwanted, 0);
+    resolver_free_pending_list(failed, 1);
+
+    if (rc == -2 && resolver_restart(0) < 0)
+        err("resolver restart failed");
+}
+
 
 static void
 resolver_attach_query(struct ResolverPending *pending) {
@@ -1303,6 +1441,13 @@ resolver_detach_pending_queries(void) {
         }
     }
     memset(resolver_queries, 0, sizeof(resolver_queries));
+    while (resolver_unsent_head != NULL) {
+        struct ResolverPending *pending = resolver_unsent_head;
+        resolver_unsent_head = pending->next_unsent;
+        pending->next_unsent = NULL;
+        pending->unsent = 0;
+    }
+    resolver_unsent_tail = &resolver_unsent_head;
     pthread_mutex_unlock(&resolver_queries_lock);
 
     return pending_list;
@@ -1365,7 +1510,7 @@ resolver_resubmit_pending_queries(void) {
 
         pthread_mutex_lock(&resolver_queries_lock);
         resolver_attach_query(pending_list);
-        int send_result = resolver_emit_query(pending_list);
+        int send_result = resolver_submit_query(pending_list);
         if (send_result < 0)
             resolver_remove_pending(pending_list);
         pthread_mutex_unlock(&resolver_queries_lock);
