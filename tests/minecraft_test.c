@@ -38,8 +38,10 @@ static size_t
 build_handshake(unsigned char *buf, size_t buf_size,
         uint32_t protocol_version, const char *address, size_t address_len,
         uint16_t port, uint8_t next_state) {
-    unsigned char payload[512];
+    unsigned char payload[2048];
     size_t pos = 0;
+
+    assert(address_len + 16 <= sizeof(payload));
 
     /* Packet ID = 0x00 */
     payload[pos++] = 0x00;
@@ -444,6 +446,42 @@ int main(void) {
         assert(hostname != NULL);
         assert(strcmp(hostname, "mc.example.com") == 0);
         free(hostname);
+    }
+
+    /* BungeeCord IP forwarding in online mode appends the signed profile
+     * properties, which takes the handshake past a kilobyte. */
+    printf("Testing BungeeCord forwarding with signed properties...\n");
+    {
+        static const char prefix[] = "mc.example.com\0" "203.0.113.7\0"
+                "069a79f444e94726a5befca90e38aaf5\0";
+        char long_addr[1400];
+        unsigned char long_buf[1500];
+
+        memcpy(long_addr, prefix, sizeof(prefix) - 1);
+        memset(long_addr + sizeof(prefix) - 1, 'x',
+                sizeof(long_addr) - (sizeof(prefix) - 1));
+
+        pkt_len = build_handshake(long_buf, sizeof(long_buf), 767,
+                long_addr, sizeof(long_addr), 25565, 2);
+        assert(pkt_len > 1024);
+        hostname = NULL;
+        result = minecraft_protocol->parse_packet((const char *)long_buf,
+                pkt_len, &hostname);
+        assert(result == 14);
+        assert(hostname != NULL);
+        assert(strcmp(hostname, "mc.example.com") == 0);
+        free(hostname);
+    }
+
+    /* A declared length past the largest handshake is refused at once */
+    {
+        /* VarInt 98318 followed by a packet ID */
+        static const unsigned char too_long[] = { 0x8e, 0x80, 0x06, 0x00 };
+        hostname = NULL;
+        result = minecraft_protocol->parse_packet((const char *)too_long,
+                sizeof(too_long), &hostname);
+        assert(result == -5);
+        assert(hostname == NULL);
     }
 
     /* Modern Forge marker */

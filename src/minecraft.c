@@ -40,6 +40,13 @@
 #include "protocol.h"
 #include "hostname_sanitize.h"
 
+/* BungeeCord IP forwarding appends the client address, UUID and signed
+ * profile properties to the server address, and the servers it forwards to
+ * accept up to 32767 characters there, each at most three bytes in UTF-8.
+ * Packet ID, protocol version, string length, port and next state add at
+ * most 1 + 5 + 3 + 2 + 5 bytes. */
+#define MINECRAFT_MAX_HANDSHAKE_LEN (1 + 5 + 3 + 32767 * 3 + 2 + 5)
+
 #define SERVER_NAME_LEN 256
 #define VARINT_MAX_BYTES 5
 
@@ -113,8 +120,7 @@ parse_minecraft_handshake(const char *data_char, size_t data_len,
         return n == -2 ? -5 : -1;
     pos += (size_t)n;
 
-    /* Sanity check: a handshake packet cannot exceed a few hundred bytes */
-    if (packet_len == 0 || packet_len > 1024)
+    if (packet_len == 0 || packet_len > MINECRAFT_MAX_HANDSHAKE_LEN)
         return -5;
 
     /* Wait for the full packet */
