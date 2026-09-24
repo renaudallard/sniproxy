@@ -82,8 +82,9 @@ sessions are not counted here; they have a fixed limit of 16384. The
 default value of 0 lets sniproxy derive a ceiling from the file
 descriptor limit given with
 .B -n
-(65536 by default), keeping 20% of it, and at least 256 descriptors, in
-reserve for listeners, DNS sockets, and internal bookkeeping.
+(65536 by default), or the lower one the system allows, keeping 20% of
+it, and at least 256 descriptors, in reserve for listeners, DNS
+sockets, and internal bookkeeping.
 
 .SS PER_IP_CONNECTION_RATE
 

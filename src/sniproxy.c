@@ -80,7 +80,7 @@
 static void usage(void);
 static void daemonize(void);
 static int write_pidfile(const char *, pid_t);
-static void set_limits(rlim_t);
+static rlim_t set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
 static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
@@ -597,8 +597,7 @@ main(int argc, char **argv) {
         binder_listener = SLIST_NEXT(binder_listener, entries);
     }
 
-    set_limits(max_nofiles);
-    configured_fd_limit = max_nofiles;
+    configured_fd_limit = set_limits(max_nofiles);
 
     connections_set_per_ip_connection_rate(config->per_ip_connection_rate);
     connections_set_per_ip_max_connections(config->per_ip_max_connections);
@@ -746,7 +745,8 @@ daemonize(void) {
  * Raise file handle limit to reasonable level
  * At some point we should make this a config parameter
  */
-static void
+/* Returns the file descriptor limit in force afterwards. */
+static rlim_t
 set_limits(rlim_t max_nofiles) {
     struct rlimit fd_limit = {
         .rlim_cur = max_nofiles,
@@ -756,6 +756,18 @@ set_limits(rlim_t max_nofiles) {
     int result = setrlimit(RLIMIT_NOFILE, &fd_limit);
     if (result < 0)
         warn("Failed to set file handle limit: %s", strerror(errno));
+
+    /* A failure leaves the previous limit, and OpenBSD silently caps it
+     * at kern.maxfiles. */
+    if (getrlimit(RLIMIT_NOFILE, &fd_limit) < 0 ||
+            fd_limit.rlim_cur == RLIM_INFINITY ||
+            fd_limit.rlim_cur >= max_nofiles)
+        return max_nofiles;
+
+    warn("File handle limit is %llu, lower than the %llu requested",
+            (unsigned long long)fd_limit.rlim_cur,
+            (unsigned long long)max_nofiles);
+    return fd_limit.rlim_cur;
 }
 
 static void
