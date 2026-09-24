@@ -659,7 +659,13 @@ be either an IP, an IP and port, a unix socket path prefixed with
 asked for, looked up through the resolver, and may carry a port as in
 \fB*:443\fR.
 If no port is specified, the port of the listener that received the
-connection will be used. Table names must be unique; defining the same
+connection will be used. IP literals are refused as a '*' target, but a
+client can still name any host its hostname resolves to: localhost and
+other loopback names included, which with no port on the '*' entry
+leads sniproxy back to its own listener when that listens on a loopback
+or wildcard address, once per connection, until the per-IP connection
+rate stops it. Limit '*' entries with a
+\fBbackend_acl\fR. Table names must be unique; defining the same
 table name (or the unnamed default table) twice is a configuration
 error, as are a table without entries and a listener naming a table
 that is not defined.
