@@ -34,8 +34,10 @@
 #include <errno.h>
 #include <seccomp.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 
 /* The lists name each call in all its forms: 32-bit ABIs such as i386 and
  * ARM have their own for some of them (mmap2, fcntl64, getuid32, _llseek,
@@ -90,7 +92,7 @@ static const char *const fs_write_syscalls[] = {
 
 static const char *const fs_misc_syscalls[] = {
     "dup", "dup2", "dup3",
-    "fcntl", "fcntl64", "ioctl",
+    "fcntl", "fcntl64",
     "fsync", "fdatasync",
     "getdents", "getdents64",
     "pipe", "pipe2",
@@ -202,6 +204,26 @@ allow_syscalls(scmp_filter_ctx ctx, const char *const *names) {
     return 0;
 }
 
+/* ioctl, except TIOCSTI: run with -f, every process shares the terminal
+ * sniproxy was started from, and TIOCSTI would let one push input into
+ * it. The kernel reads the request as 32 bits, so bits set above them
+ * must not get it past the filter; and an unconditional rule would
+ * override one refusing TIOCSTI. So allow each request whose low 32 bits
+ * differ from TIOCSTI in at least one bit, with a rule per bit. */
+static int
+allow_ioctl(scmp_filter_ctx ctx) {
+    for (unsigned int bit = 0; bit < 32; bit++) {
+        uint64_t mask = (uint64_t)1 << bit;
+        int rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, mask,
+                    ~(uint64_t)TIOCSTI & mask));
+        if (rc < 0 && rc != -EEXIST)
+            return rc;
+    }
+
+    return 0;
+}
+
 int
 seccomp_available(void) {
     return seccomp_api_get() > 0;
@@ -226,7 +248,8 @@ install_filter(enum seccomp_process_type type) {
 
     /* Common syscalls for all processes */
     if (allow_syscalls(ctx, common_syscalls) < 0 ||
-        allow_syscalls(ctx, event_syscalls) < 0) {
+        allow_syscalls(ctx, event_syscalls) < 0 ||
+        allow_ioctl(ctx) < 0) {
         seccomp_release(ctx);
         return -1;
     }

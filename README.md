@@ -615,7 +615,9 @@ afterthought.
 - **Linux sandboxing**: seccomp BPF filters per process type, when
   built with libseccomp (configure uses it if it finds it, and the build
   has no seccomp otherwise). The filters cover 32-bit systems (i386,
-  armhf) as well, whose libc calls variants such as mmap2 and fcntl64.
+  armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
+  and refuse the TIOCSTI ioctl, so that a process started with `-f`
+  cannot push input into the operator's terminal.
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging.
 - **macOS has no sandbox**: `sandbox_init(3)` and its named profiles
   are deprecated, and a process opting into one is killed outright when
