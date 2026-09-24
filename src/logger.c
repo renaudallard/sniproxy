@@ -323,6 +323,9 @@ struct logger_ipc_header {
 
 static int logger_process_initialized = 0;
 static struct ChildSink_head child_sink_head = SLIST_HEAD_INITIALIZER(child_sink_head);
+/* Set once the child can no longer connect to the syslog socket, so the
+ * connection it opened before must be kept. */
+static int logger_child_syslog_pinned = 0;
 
 struct Logger *
 new_syslog_logger(const char *facility) {
@@ -1619,7 +1622,7 @@ child_sink_free(struct ChildSink_head *head, struct ChildSink *sink) {
     SLIST_REMOVE(head, sink, ChildSink, entries);
     if (sink->type == LOG_SINK_FILE && sink->file != NULL)
         fclose(sink->file);
-    else if (sink->type == LOG_SINK_SYSLOG)
+    else if (sink->type == LOG_SINK_SYSLOG && !logger_child_syslog_pinned)
         closelog();
     sink->file = NULL;
     if (sink->dirfd >= 0)
@@ -1963,8 +1966,10 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             } else if (sink->type == LOG_SINK_SYSLOG) {
                 if (received_fd >= 0)
                     close(received_fd);
-                closelog();
-                openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
+                if (!logger_child_syslog_pinned) {
+                    closelog();
+                    openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
+                }
             } else {
                 if (received_fd >= 0)
                     close(received_fd);
@@ -2043,6 +2048,8 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                             strerror(errno));
                     logger_child_exit(EXIT_FAILURE);
                 }
+                /* connect() is refused in capability mode */
+                logger_child_syslog_pinned = 1;
             }
 #endif
             break;
