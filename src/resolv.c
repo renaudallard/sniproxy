@@ -2913,11 +2913,11 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
         } else {
             struct Address *sni_addr = new_address(sni_part);
             if (sni_addr == NULL || !address_is_hostname(sni_addr)) {
-                if (sni_addr != NULL)
-                    free(sni_addr);
+                /* sni_part points into sni_copy or address_copy */
+                warn("resolver child: DoT nameserver '%s' has invalid TLS hostname '%s'", target, sni_part);
+                free(sni_addr);
                 free(sni_copy);
                 free(address_copy);
-                warn("resolver child: DoT nameserver '%s' has invalid TLS hostname '%s'", target, sni_part);
                 return -1;
             }
             const char *canon = address_hostname(sni_addr);
