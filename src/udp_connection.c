@@ -55,6 +55,7 @@
 #include "address.h"
 #include "resolv.h"
 #include "protocol.h"
+#include "tls.h"
 #include "logger.h"
 #include "fd_util.h"
 
@@ -379,6 +380,18 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
     const struct Protocol *proto = session->listener->protocol;
 
     int result = proto->parse_packet(data, data_len, &hostname);
+
+    if (result == TLS_ERR_CLIENT_RENEGOTIATION) {
+        /* As on TCP: a renegotiation hello cannot start a session, so
+         * the fallback would only get a handshake it cannot finish. */
+        char client[INET6_ADDRSTRLEN + 8];
+        notice("UDP: client %s attempted DTLS renegotiation, dropping",
+                display_sockaddr(&session->client_addr,
+                        session->client_addr_len,
+                        client, sizeof(client)));
+        udp_session_destroy(session, loop);
+        return;
+    }
 
     if (result > 0) {
         session->hostname = hostname;

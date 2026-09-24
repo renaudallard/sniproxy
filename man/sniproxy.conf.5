@@ -536,7 +536,8 @@ The fallback directive specifies a server to be used if the client
 request cannot be parsed or no table entry matches the hostname. It is
 not used when the address of a matching table entry fails to resolve;
 that connection is closed instead, as is a ClientHello refused by the
-TLS version policy or one that attempts a renegotiation. This should be
+TLS version policy or one that attempts a renegotiation, and a DTLS
+session whose ClientHello attempts one is dropped. This should be
 an IP address and port or a unix socket path; a hostname is accepted
 with a warning, and without a port the listener's port is used. sniproxy
 does not terminate TLS for the fallback either: the fallback server
