@@ -274,6 +274,7 @@ static struct LogSink *log_sink_ref_get(struct LogSink *);
 static void log_sink_ref_put(struct LogSink *);
 static void free_sink(struct LogSink *);
 static int ensure_logger_process(void);
+static int logger_peer_alive(void);
 static void logger_process_shutdown(void);
 static void disable_logger_process(void);
 static void logger_child_main(int) __attribute__((noreturn));
@@ -1239,6 +1240,8 @@ disable_logger_process(void) {
         return;
     }
 
+    int peer_alive = logger_peer_alive();
+
     if (logger_sock >= 0) {
         close(logger_sock);
         logger_sock = -1;
@@ -1251,10 +1254,15 @@ disable_logger_process(void) {
         if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);
+        } else if (wr < 0 && errno == ECHILD && peer_alive) {
+            /* Not a child: a daemon forks its first logger before
+             * daemonize(). It still holds its end of the socket, so the
+             * pid is still its own; init reaps it. */
+            kill(logger_pid, SIGKILL);
         }
-        /* ECHILD means sigchld_cb already reaped the child; sending
-         * SIGKILL to logger_pid would target whatever process the
-         * kernel later allocated that PID to.  Just clear our handle. */
+        /* Otherwise sigchld_cb already reaped the child, or it is gone;
+         * sending SIGKILL to logger_pid would target whatever process
+         * the kernel later allocated that PID to. */
         logger_pid = -1;
     }
 
@@ -1281,6 +1289,24 @@ disable_logger_process(void) {
     }
 
     ipc_crypto_state_clear(&logger_crypto_parent);
+}
+
+/* Whether the logger process still holds its end of the socket. */
+static int
+logger_peer_alive(void) {
+    if (logger_sock < 0)
+        return 0;
+
+    struct pollfd pfd = { .fd = logger_sock, .events = POLLIN };
+    int rc = poll(&pfd, 1, 0);
+    if (rc < 0 || (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0)
+        return 0;
+    if (rc == 0)
+        return 1;
+
+    /* Readable: a pending pong, or the end of the stream */
+    char byte;
+    return recv(logger_sock, &byte, 1, MSG_PEEK | MSG_DONTWAIT) > 0;
 }
 
 static int
