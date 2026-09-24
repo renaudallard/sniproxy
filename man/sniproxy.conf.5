@@ -587,7 +587,11 @@ original source address when connecting to the backend. This mode is
 only available on Linux and needs CAP_NET_RAW: when sniproxy is started
 as root and a listener uses it, the main process keeps that single
 capability after dropping to the configured user, and the helper
-processes started later give it up. Adding it to a listener with a
+processes started later give it up. Its seccomp filter only lets it
+create unix and netlink sockets, and stream and datagram sockets over
+IPv4 and IPv6, so the capability cannot be
+used to read the host's traffic through raw or packet sockets, except
+where socket(2) goes through socketcall(2), as on i386. Adding it to a listener with a
 reload does not work until sniproxy is restarted. The routing and
 firewall rules that deliver the backend's replies back to sniproxy are
 up to the administrator. For safety \fBsource client\fR

@@ -596,7 +596,9 @@ afterthought.
 - **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`. The only capability that survives
   the drop is CAP_NET_RAW, on Linux, and only when a listener uses
-  `source client`.
+  `source client`; the seccomp filter keeps the main process from
+  using it for raw or packet sockets, except on i386, s390x and other
+  systems where socket() goes through socketcall(2).
 - **OpenBSD sandboxing**: every process runs under pledge(2), and the
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it

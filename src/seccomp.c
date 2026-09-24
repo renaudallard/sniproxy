@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 
 /* The lists name each call in all its forms: 32-bit ABIs such as i386 and
  * ARM have their own for some of them (mmap2, fcntl64, getuid32, _llseek,
@@ -103,7 +104,7 @@ static const char *const fs_misc_syscalls[] = {
 };
 
 static const char *const network_syscalls[] = {
-    "socket", "socketpair",
+    "socketpair",
     "bind", "listen", "accept", "accept4", "connect",
     "getsockopt", "setsockopt",
     "getsockname", "getpeername",
@@ -224,6 +225,39 @@ allow_ioctl(scmp_filter_ctx ctx) {
     return 0;
 }
 
+/* The sockets the main process may create: unix and netlink sockets, and
+ * stream and datagram sockets over IPv4 and IPv6, which is all it and the
+ * helpers it restarts use. With "source client" it keeps CAP_NET_RAW,
+ * and raw or packet sockets would let it read the host's traffic. Where
+ * socket() goes through socketcall(2), as on i386, its arguments are out
+ * of the filter's reach, so any socket stays allowed there. */
+static int
+allow_main_sockets(scmp_filter_ctx ctx) {
+    static const int families[] = { AF_INET, AF_INET6 };
+    static const int types[] = { SOCK_STREAM, SOCK_DGRAM };
+    int nr = seccomp_syscall_resolve_name("socket");
+
+    if (nr < 0)
+        return allow_syscall(ctx, "socket");
+
+    int rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+            SCMP_A0(SCMP_CMP_EQ, AF_UNIX));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK));
+    /* The low four bits of the type argument hold the socket type, the
+     * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. */
+    for (size_t f = 0; rc == 0 &&
+            f < sizeof(families) / sizeof(families[0]); f++)
+        for (size_t t = 0; rc == 0 &&
+                t < sizeof(types) / sizeof(types[0]); t++)
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 2,
+                    SCMP_A0(SCMP_CMP_EQ, families[f]),
+                    SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, types[t]));
+
+    return rc;
+}
+
 int
 seccomp_available(void) {
     return seccomp_api_get() > 0;
@@ -257,7 +291,8 @@ install_filter(enum seccomp_process_type type) {
     /* Process-specific rules */
     switch (type) {
         case SECCOMP_PROCESS_MAIN:
-            if (allow_syscalls(ctx, network_syscalls) < 0 ||
+            if (allow_main_sockets(ctx) < 0 ||
+                allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
@@ -280,7 +315,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_RESOLVER:
-            if (allow_syscalls(ctx, network_syscalls) < 0 ||
+            if (allow_syscall(ctx, "socket") < 0 ||
+                allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
