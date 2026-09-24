@@ -691,6 +691,11 @@ append_hostname_if_needed(struct host_accumulator *hosts,
     if (value_len >= SERVER_NAME_LEN)
         return -4;
 
+    /* The value is handled as a C string below: a NUL would hide what
+     * follows it from the checks, as in "a.com:443\0other.host". */
+    if (memchr(value, '\0', value_len) != NULL)
+        return -4;
+
     if (value_len > SIZE_MAX - 1)
         return -4;
 
