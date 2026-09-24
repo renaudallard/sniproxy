@@ -580,9 +580,17 @@ void
 set_default_logger(struct Logger *new_logger) {
     struct Logger *old_default_logger = default_logger;
 
-    if (new_logger == NULL)
-        return;
-    default_logger = logger_ref_get(new_logger);
+    if (new_logger == NULL) {
+        /* Back to standard error, as without an error_log block */
+        default_logger = NULL;
+        init_default_logger();
+        if (default_logger == NULL) {
+            default_logger = old_default_logger;
+            return;
+        }
+    } else {
+        default_logger = logger_ref_get(new_logger);
+    }
     logger_ref_put(old_default_logger);
 }
 

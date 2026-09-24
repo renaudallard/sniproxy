@@ -654,7 +654,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     }
 
     /* The parsed config is valid; only now switch the error log. */
-    if (config != NULL && config->error_log != NULL)
+    if (config != NULL)
         set_default_logger(config->error_log);
 
     return(config);
