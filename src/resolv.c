@@ -171,6 +171,11 @@ struct ResolverChildDotSocket {
 
 static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+/* Set once the startup has limited the rights on the IPC socket, so the
+ * socket of a restarted resolver gets the same limits. */
+static int resolver_rights_limited = 0;
+#endif
 static struct ipc_crypto_state resolver_ipc_crypto;
 static uint32_t resolver_next_query_prng(void);
 #define RESOLVER_QUERY_BUCKETS 1024u
@@ -634,6 +639,10 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     resolver_sock = sockets[0];
     resolver_pid = pid;
     default_resolv_mode = mode;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (resolver_rights_limited)
+        resolv_parent_capsicum_limit_rights();
+#endif
 
     ev_io_init(&resolver_ipc_watcher, resolver_ipc_cb, resolver_sock, EV_READ);
     ev_io_start(loop, &resolver_ipc_watcher);
@@ -648,6 +657,7 @@ fail_crypto:
 void
 resolv_parent_capsicum_limit_rights(void) {
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    resolver_rights_limited = 1;
     if (resolver_sock < 0)
         return;
     cap_rights_t rights;

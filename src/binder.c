@@ -102,6 +102,11 @@ struct binder_request {
 
 static int binder_sock = -1; /* socket to binder */
 static pid_t binder_pid = -1;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+/* Set once the startup has limited the rights on the IPC socket, so the
+ * socket of a restarted binder gets the same limits. */
+static int binder_rights_limited = 0;
+#endif
 static struct ipc_crypto_state binder_crypto_parent;
 static struct ipc_crypto_state binder_crypto_child;
 
@@ -287,6 +292,10 @@ binder_spawn_child(void) {
         binder_cleanup_child(1);
         return -1;
     }
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (binder_rights_limited)
+        binder_parent_capsicum_limit_rights();
+#endif
 
     return 0;
 }
@@ -437,6 +446,7 @@ stop_binder(void) {
 void
 binder_parent_capsicum_limit_rights(void) {
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    binder_rights_limited = 1;
     if (binder_sock < 0)
         return;
     cap_rights_t rights;

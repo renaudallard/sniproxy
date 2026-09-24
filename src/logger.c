@@ -332,6 +332,12 @@ struct logger_ipc_header {
     uint32_t payload_len;
 };
 
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+/* Set once the startup has limited the rights on the IPC socket, so the
+ * socket of a restarted logger gets the same limits. */
+static int logger_rights_limited = 0;
+#endif
+
 static int logger_process_initialized = 0;
 static struct ChildSink_head child_sink_head = SLIST_HEAD_INITIALIZER(child_sink_head);
 /* Set once the child can no longer connect to the syslog socket, so the
@@ -1396,6 +1402,11 @@ ensure_logger_process(void) {
     logger_process_enabled = 1;
     logger_resend_sinks();
 
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    if (logger_rights_limited)
+        logger_parent_capsicum_limit_rights();
+#endif
+
     /* A child started after the privilege drop must tighten its sandbox
      * and pre-connect syslog exactly like the original one did. */
     if (logger_process_enabled && logger_priv_recorded &&
@@ -2271,6 +2282,7 @@ logger_parent_notify_pledged(void) {
 void
 logger_parent_capsicum_limit_rights(void) {
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+    logger_rights_limited = 1;
     if (logger_sock < 0)
         return;
     cap_rights_t rights;
