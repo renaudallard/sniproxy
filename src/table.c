@@ -34,6 +34,7 @@
 #include "backend.h"
 #include "address.h"
 #include "logger.h"
+#include "util.h"
 
 
 static void free_table(struct Table *);
@@ -138,16 +139,13 @@ accept_table_arg(struct Table *table, const char *arg) {
 
 int
 accept_table_backend_affinity(struct Table *table, const char *value) {
-    if (strcasecmp(value, "on") == 0 || strcasecmp(value, "yes") == 0 ||
-            strcasecmp(value, "true") == 0) {
-        table->backend_affinity = 1;
-    } else if (strcasecmp(value, "off") == 0 || strcasecmp(value, "no") == 0 ||
-            strcasecmp(value, "false") == 0) {
-        table->backend_affinity = 0;
-    } else {
+    int affinity = parse_boolean(value);
+    if (affinity < 0) {
         err("Unable to parse '%s' as a boolean value", value);
         return 0;
     }
+
+    table->backend_affinity = affinity;
     return 1;
 }
 

@@ -27,9 +27,29 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <stddef.h>
+#include <strings.h>
+
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+/* 1 for yes, true or on, 0 for no, false or off, in any case, and -1 for
+ * anything else. */
+static inline int
+parse_boolean(const char *value) {
+    static const char *const true_words[] = { "yes", "true", "on" };
+    static const char *const false_words[] = { "no", "false", "off" };
+
+    for (size_t i = 0; i < sizeof(true_words) / sizeof(true_words[0]); i++) {
+        if (strcasecmp(value, true_words[i]) == 0)
+            return 1;
+        if (strcasecmp(value, false_words[i]) == 0)
+            return 0;
+    }
+
+    return -1;
+}
 
 #if !defined(HAVE_REALLOCARRAY) && !defined(HAVE_BSD_STDLIB_H)
 #include <stdlib.h>

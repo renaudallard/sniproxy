@@ -979,14 +979,12 @@ accept_tcp_fastopen(struct Config *config, const char *value) {
     if (value == NULL)
         return 0;
 
-    if (strcasecmp(value, "on") == 0 || strcasecmp(value, "yes") == 0) {
-        config->tcp_fastopen = 1;
-    } else if (strcasecmp(value, "off") == 0 || strcasecmp(value, "no") == 0) {
-        config->tcp_fastopen = 0;
-    } else {
-        err("Invalid tcp_fastopen value '%s' (expected on/off)", value);
+    int enabled = parse_boolean(value);
+    if (enabled < 0) {
+        err("Invalid tcp_fastopen value '%s' (expected yes or no)", value);
         return 0;
     }
+    config->tcp_fastopen = enabled;
 
 #if !defined(TCP_FASTOPEN)
     if (config->tcp_fastopen) {

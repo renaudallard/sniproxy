@@ -54,6 +54,7 @@
 #include "minecraft.h"
 #include "fd_util.h"
 #include "udp_connection.h"
+#include "util.h"
 
 #define LISTENER_ACCEPT_MAX_BATCH 64
 /* Yield to the event loop after this many successful accepts to avoid starvation. */
@@ -69,7 +70,7 @@ static int init_listener(struct Listener *, const struct Table_head *, struct ev
 static void listener_update(struct Listener *, struct Listener *,  const struct Table_head *);
 static void free_listener(struct Listener *);
 static void remove_listener(struct Listener_head *, struct Listener *, struct ev_loop *);
-static int parse_boolean(const char *);
+static int accept_boolean(const char *);
 
 
 static void listener_acl_clear(struct Listener *);
@@ -82,30 +83,12 @@ static const char *listener_acl_rule_to_string(const struct ListenerACLRule *, c
 
 
 static int
-parse_boolean(const char *boolean) {
-    const char *boolean_true[] = {
-        "yes",
-        "true",
-        "on",
-    };
+accept_boolean(const char *value) {
+    int result = parse_boolean(value);
+    if (result < 0)
+        err("Unable to parse '%s' as a boolean value", value);
 
-    const char *boolean_false[] = {
-        "no",
-        "false",
-        "off",
-    };
-
-    for (size_t i = 0; i < sizeof(boolean_true) / sizeof(boolean_true[0]); i++)
-        if (strcasecmp(boolean, boolean_true[i]) == 0)
-            return 1;
-
-    for (size_t i = 0; i < sizeof(boolean_false) / sizeof(boolean_false[0]); i++)
-        if (strcasecmp(boolean, boolean_false[i]) == 0)
-            return 0;
-
-    err("Unable to parse '%s' as a boolean value", boolean);
-
-    return -1;
+    return result;
 }
 
 static void
@@ -509,7 +492,7 @@ accept_listener_protocol(struct Listener *listener, const char *protocol) {
 
 int
 accept_listener_reuseport(struct Listener *listener, const char *reuseport) {
-    listener->reuseport = parse_boolean(reuseport);
+    listener->reuseport = accept_boolean(reuseport);
     if (listener->reuseport == -1) {
         return 0;
     }
@@ -526,7 +509,7 @@ accept_listener_reuseport(struct Listener *listener, const char *reuseport) {
 
 int
 accept_listener_ipv6_v6only(struct Listener *listener, const char *ipv6_v6only) {
-    int value = parse_boolean(ipv6_v6only);
+    int value = accept_boolean(ipv6_v6only);
     if (value == -1)
         return 0;
 
@@ -650,7 +633,7 @@ accept_listener_bad_request_action(struct Listener *listener, const char *action
 
 int
 accept_listener_accept_proxy_protocol(struct Listener *listener, const char *value) {
-    listener->accept_proxy_protocol = parse_boolean(value);
+    listener->accept_proxy_protocol = accept_boolean(value);
     if (listener->accept_proxy_protocol == -1)
         return 0;
     return 1;
