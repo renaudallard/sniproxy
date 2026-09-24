@@ -1207,6 +1207,14 @@ unix_listener_is_stale(const struct Listener *listener, const char *path) {
     if (fd < 0)
         return 0;
 
+    /* A live listener with a full backlog makes a blocking connect()
+     * wait for it to accept, which would stall startup or the reload. */
+    int flags = fcntl(fd, F_GETFL);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(fd);
+        return 0;
+    }
+
     int rc = connect(fd, address_sa(listener->address),
             address_sa_len(listener->address));
     int saved_errno = errno;
