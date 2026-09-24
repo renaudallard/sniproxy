@@ -1,3 +1,22 @@
+sniproxy 0.16.1 (2026-09-24)
+===============================
+
+Fixes for lookups lost when many new names arrive at once. No
+configuration change.
+
+* When hostnames needing a DNS lookup arrived faster than the resolver
+  process read them, the channel to it filled up and the lookups that
+  did not fit failed at once with a 503. The channel holds a few hundred
+  lookups on Linux and OpenBSD and a few dozen on macOS. Lookups now
+  wait in order for room instead.
+
+* On macOS a full channel is reported as ENOBUFS, which the resolver
+  process did not retry, so an answer it could not hand back was dropped
+  and the client waited for its idle timeout. It now waits for room as
+  on other systems. macOS 15 also reports a full channel as ready for
+  writing, and both processes now pause briefly in that case rather than
+  spin.
+
 sniproxy 0.16.0 (2026-09-24)
 ===============================
 

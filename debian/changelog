@@ -1,3 +1,11 @@
+sniproxy (0.16.1) unstable; urgency=medium
+
+  * Lookups arriving faster than the resolver process reads them wait
+    instead of failing with a 503, and on macOS the resolver process no
+    longer drops answers when its channel is full. See ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Thu, 24 Sep 2026 19:00:26 +0200
+
 sniproxy (0.16.0) unstable; urgency=medium
 
   * Security fixes: log files with several links, CPU spent on trickled

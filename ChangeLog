@@ -1,5 +1,14 @@
 2026-09-24  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.16.1
+	- resolver: a lookup that finds the channel to the resolver process
+	  full waits for room instead of failing with a 503.
+	- resolver: on macOS the resolver process retries an answer the full
+	  channel refused with ENOBUFS instead of dropping it, and pauses when
+	  the channel reports room it does not have.
+
+2026-09-24  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.16.0
 	- logger: log files are opened without blocking and must be regular
 	  files with a single link, so a hard link in the log directory can
