@@ -759,6 +759,13 @@ valid_listener(const struct Listener *listener) {
         return 0;
     }
 
+    /* A DTLS session is keyed on the client's IP address and port */
+    if (listener->protocol->sock_type == SOCK_DGRAM &&
+            address_sa(listener->address)->sa_family == AF_UNIX) {
+        err("dtls listeners cannot use a unix socket");
+        return 0;
+    }
+
     return 1;
 }
 
