@@ -257,10 +257,35 @@ listeners_reload(struct Listener_head *existing_listeners,
         const struct Table_head *tables, struct ev_loop *loop) {
     struct Listener *iter_existing = SLIST_FIRST(existing_listeners);
     struct Listener *iter_new = SLIST_FIRST(new_listeners);
+    char address[ADDRESS_BUFFER_SIZE];
 
+    /* Close the listeners the new config drops before adding any: one of
+     * them may hold a port an added listener needs, as 127.0.0.1:443 does
+     * for 0.0.0.0:443. */
+    while (iter_existing != NULL) {
+        int compare_result = iter_new == NULL ? -1 :
+                listener_compare(iter_existing, iter_new);
+
+        if (compare_result < 0) {
+            struct Listener *removed_listener = iter_existing;
+            iter_existing = SLIST_NEXT(iter_existing, entries);
+
+            notice("Listener %s removed.",
+                    display_address(removed_listener->address,
+                            address, sizeof(address)));
+
+            remove_listener(existing_listeners, removed_listener, loop);
+        } else {
+            if (compare_result == 0)
+                iter_existing = SLIST_NEXT(iter_existing, entries);
+            iter_new = SLIST_NEXT(iter_new, entries);
+        }
+    }
+
+    iter_existing = SLIST_FIRST(existing_listeners);
+    iter_new = SLIST_FIRST(new_listeners);
     while (iter_existing != NULL || iter_new != NULL) {
         int compare_result;
-        char address[ADDRESS_BUFFER_SIZE];
 
         if (iter_existing == NULL)
             compare_result = 1;
