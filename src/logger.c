@@ -249,6 +249,12 @@ static struct ev_timer logger_health_timer;
 static struct ev_loop *logger_health_loop = NULL;
 static uint32_t logger_ping_id = 0;
 static int logger_ping_pending = 0;
+/* Set when a check found the logger socket full, with the number of
+ * messages sent to the logger by then */
+static int logger_ping_blocked = 0;
+static unsigned long logger_sent_at_block = 0;
+/* Messages sent to the logger */
+static unsigned long logger_sent = 0;
 static int logger_health_check_active = 0;
 
 struct logger_ipc_header;
@@ -1429,6 +1435,8 @@ send_logger_message(const struct logger_ipc_header *header,
 
     int rc = ipc_crypto_send_msg(&logger_crypto_parent, logger_sock,
             buf, total, fd_to_send);
+    if (rc >= 0)
+        logger_sent++;
 
     if (buf != stack_buf)
         free(buf);
@@ -2379,10 +2387,17 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
         }
     }
 
-    /* Send new ping */
+    /* Send new ping. A socket found full again at the next check, with
+     * nothing sent in between, means the logger stopped reading it; a
+     * slow one still makes room for some messages. */
     if (logger_send_ping() < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        if ((errno == EAGAIN || errno == EWOULDBLOCK) &&
+                (!logger_ping_blocked || logger_sent != logger_sent_at_block)) {
+            logger_ping_blocked = 1;
+            logger_sent_at_block = logger_sent;
             return;
+        }
+        logger_ping_blocked = 0;
         err("Logger health check: unable to send ping, restarting");
         if (logger_restart_child()) {
             return;
@@ -2390,7 +2405,9 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
         err("Logger restart failed, falling back to in-process logging");
         ev_timer_stop(loop, &logger_health_timer);
         logger_health_check_active = 0;
+        return;
     }
+    logger_ping_blocked = 0;
 }
 
 void
@@ -2403,6 +2420,7 @@ logger_start_health_check(struct ev_loop *loop) {
 
     logger_health_loop = loop;
     logger_ping_pending = 0;
+    logger_ping_blocked = 0;
     logger_ping_id = 0;
 
     ev_timer_init(&logger_health_timer, logger_health_check_cb,
