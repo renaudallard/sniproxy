@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <unistd.h> /* close */
 #include <string.h>
@@ -3476,7 +3477,8 @@ log_connection(struct Connection *con) {
 
     log_msg(con->listener->access_log,
            LOG_NOTICE,
-           "%s -> %s -> %s [%.*s] %zu/%zu bytes tx %zu/%zu bytes rx %1.3f seconds",
+           "%s -> %s -> %s [%.*s] %" PRIu64 "/%" PRIu64 " bytes tx %" PRIu64
+           "/%" PRIu64 " bytes rx %1.3f seconds",
            client_address,
            listener_address,
            server_address,
@@ -3698,10 +3700,10 @@ static void
 splice_account(struct Connection *con, ev_tstamp last_activity) {
     (void)splice_progressed(con);
 
-    con->client.buffer->rx_bytes += (size_t)con->splice_client_bytes;
-    con->client.buffer->tx_bytes += (size_t)con->splice_client_bytes;
-    con->server.buffer->rx_bytes += (size_t)con->splice_server_bytes;
-    con->server.buffer->tx_bytes += (size_t)con->splice_server_bytes;
+    con->client.buffer->rx_bytes += (uint64_t)con->splice_client_bytes;
+    con->client.buffer->tx_bytes += (uint64_t)con->splice_client_bytes;
+    con->server.buffer->rx_bytes += (uint64_t)con->splice_server_bytes;
+    con->server.buffer->tx_bytes += (uint64_t)con->splice_server_bytes;
     con->client.buffer->last_recv = last_activity;
     con->server.buffer->last_recv = last_activity;
 }

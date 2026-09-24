@@ -28,6 +28,7 @@
 #define BUFFER_H
 
 #include <sys/types.h>
+#include <stdint.h>
 #include <ev.h>
 
 
@@ -40,8 +41,8 @@ struct Buffer {
     size_t max_size;        /* hard cap for buffer_size() */
     ev_tstamp last_recv;
     ev_tstamp last_send;
-    size_t tx_bytes;
-    size_t rx_bytes;
+    uint64_t tx_bytes;      /* wider than size_t on 32-bit systems */
+    uint64_t rx_bytes;
     int pool_managed;
 };
 
