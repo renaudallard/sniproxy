@@ -95,7 +95,9 @@ fuzzing, and active maintenance.
   a live connection.
 - **Bounded memory**: per-connection buffer caps, a global soft limit
   that aggressively trims idle buffers, and a 4096-entry shrink queue stop
-  slow clients from pinning unbounded RAM.
+  slow clients from pinning unbounded RAM. An HTTP/1 request is only
+  parsed again once a new line arrives, so a client trickling a large
+  request does not make every byte cost a pass over all of it.
 - **Continuous fuzzing**: dedicated harnesses for TLS, DTLS, HTTP/1,
   HTTP/2, XMPP, Minecraft, hostname, address, config, config tokenizer,
   table lookup, listener ACL, IPC crypto, IPC messages, IPC state and

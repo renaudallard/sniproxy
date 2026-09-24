@@ -260,6 +260,22 @@ int main(void) {
     assert(result == -2);
     assert(hostname == NULL);
 
+    /* Data without a new line cannot complete an HTTP/1 request, while
+     * HTTP/2 frames are always parsed again. */
+    static const char partial[] = "GET / HTTP/1.1\r\nX-Pad: aaaa";
+    size_t partial_len = sizeof(partial) - 1;
+    assert(http_protocol->request_may_complete(partial, partial_len,
+            partial_len - 4) == 0);
+    assert(http_protocol->request_may_complete(partial, partial_len,
+            partial_len) == 0);
+    static const char more[] = "GET / HTTP/1.1\r\nX-Pad: aaaa\r\n";
+    assert(http_protocol->request_may_complete(more, sizeof(more) - 1,
+            partial_len) == 1);
+    assert(http_protocol->request_may_complete(
+            (const char *)http2_single_request,
+            sizeof(http2_single_request) - 1,
+            sizeof(http2_single_request) - 2) == 1);
+
     size_t oversized_payload = HTTP2_MAX_HEADER_BLOCK_SIZE + 1;
     size_t oversized_total = sizeof(http2_preface) - 1 + 9 + oversized_payload;
     unsigned char *oversized = malloc(oversized_total);

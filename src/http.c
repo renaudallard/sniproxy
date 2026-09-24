@@ -47,9 +47,12 @@ http_set_max_headers(size_t max_headers) {
 }
 
 static int parse_http_header(const char *, size_t, char **);
+static int http_request_may_complete(const char *, size_t, size_t);
 static int get_header(const char *, size_t, const char *, size_t, char **);
 static size_t next_header(const char **, size_t *);
 
+
+static const char http2_preface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
 static const char http_503[] =
     "HTTP/1.1 503 Service Temporarily Unavailable\r\n"
@@ -64,6 +67,7 @@ const struct Protocol *const http_protocol = &(struct Protocol){
     .abort_message = http_503,
     .abort_message_len = sizeof(http_503) - 1,
     .sock_type = SOCK_STREAM,
+    .request_may_complete = &http_request_may_complete,
 };
 
 /*
@@ -86,7 +90,6 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
     if (hostname == NULL)
         return -3;
 
-    static const char http2_preface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     size_t preface_len = sizeof(http2_preface) - 1;
 
     if (data_len > 0) {
@@ -157,6 +160,21 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
     }
 
     return (int)hostname_len;
+}
+
+/* An HTTP/1 header block only ends with a new line, so data holding none
+ * cannot have completed an incomplete request. HTTP/2 frames need not hold
+ * one; their parse costs little, so it is always repeated. */
+static int
+http_request_may_complete(const char *data, size_t data_len, size_t parsed) {
+    size_t preface_len = sizeof(http2_preface) - 1;
+    size_t cmp_len = data_len < preface_len ? data_len : preface_len;
+
+    if (memcmp(data, http2_preface, cmp_len) == 0)
+        return 1;
+
+    return parsed < data_len &&
+            memchr(data + parsed, '\n', data_len - parsed) != NULL;
 }
 
 static int

@@ -37,6 +37,9 @@ struct Protocol {
     const char *const abort_message;
     const size_t abort_message_len;
     const int sock_type;  /* SOCK_STREAM or SOCK_DGRAM */
+    /* Optional: whether the data after the first parsed bytes, which the
+     * last parse found incomplete, can have completed the request */
+    int (*const request_may_complete)(const char *, size_t, size_t);
 };
 
 #endif

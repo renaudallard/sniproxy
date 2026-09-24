@@ -2746,6 +2746,9 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
         }
         con->incoming_proxy_len = (size_t)rc;
         buffer_pop(con->client.buffer, NULL, con->incoming_proxy_len);
+        /* The request now starts after the header, as when a reload has
+         * turned on proxy_protocol while it was arriving */
+        con->request_parsed_len = 0;
 
         /* Re-coalesce after popping the header */
         payload_len = buffer_coalesce(con->client.buffer, (const void **)&payload);
@@ -2758,12 +2761,24 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
     payload += con->header_len;
     payload_len -= con->header_len;
 
-    int result = con->protocol->parse_packet(payload, payload_len, &hostname);
+    /* Each read parses the whole buffer again from its start, so a client
+     * trickling a large request would make every byte cost a pass over
+     * all of it. Skip the parse when what arrived since the last one
+     * cannot have completed the request. */
+    int result;
+    if (con->request_parsed_len != 0 &&
+            con->protocol->request_may_complete != NULL &&
+            !con->protocol->request_may_complete(payload, payload_len,
+                con->request_parsed_len))
+        result = -1;
+    else
+        result = con->protocol->parse_packet(payload, payload_len, &hostname);
     if (result < 0) {
         char client[INET6_ADDRSTRLEN + 8];
         int fatal_parse_error = 0;
 
         if (result == -1) { /* incomplete request */
+            con->request_parsed_len = payload_len;
             if (buffer_room(con->client.buffer) > 0)
                 return; /* give client a chance to send more data */
 
