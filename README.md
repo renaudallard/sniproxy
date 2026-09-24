@@ -389,7 +389,10 @@ http_max_headers 200
 # Only connect to backends in these ranges, so a wildcard backend cannot
 # be used to reach arbitrary hosts. allow_except does the opposite:
 # everything except the listed ranges, e.g. to keep a wildcard backend
-# out of internal address space. Unix socket backends match no range.
+# out of internal address space, which then has to list loopback
+# (127.0.0.0/8, ::1/128) and link-local (169.254.0.0/16, fe80::/10)
+# too. Unix socket backends match no range, and 0.0.0.0 and :: are
+# always refused.
 backend_acl deny_except {
     10.0.0.0/8
     172.16.0.0/12
@@ -500,7 +503,10 @@ All listener `acl` blocks must use the same policy: mixing
 `allow_except` and `deny_except` across listeners aborts startup. The
 `backend_acl` policy is independent of them. IPv4 and IPv6 networks
 can be mixed in the same block; IPv4-mapped IPv6 connections are matched
-against the IPv4 CIDRs.
+against the IPv4 CIDRs. With a `backend_acl`, a backend address of
+0.0.0.0 or `::` is refused whatever the policy, since connecting to it
+reaches the local host, so a hostname resolving to it cannot get around
+a block of the loopback range.
 
 ### XMPP
 

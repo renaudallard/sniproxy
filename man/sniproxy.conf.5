@@ -227,8 +227,13 @@ policy is left out, or \fBdeny_except\fR (deny all backends except the
 listed ranges). When the block is omitted all addresses are permitted.
 
 This prevents abuse of sniproxy as an open proxy: the example above only
-lets it reach the private ranges, and \fBallow_except\fR with the same
-ranges would instead keep it out of internal address space. Unix socket
+lets it reach the private ranges. To keep it out of internal address
+space with \fBallow_except\fR instead, list loopback (127.0.0.0/8,
+::1/128) and link-local (169.254.0.0/16, fe80::/10) addresses as well
+as the private ranges, since a wildcard backend reaches whatever the
+client's hostname resolves to, localhost included. The addresses 0.0.0.0
+and :: are refused whatever the policy, because connecting to them
+reaches the local host. Unix socket
 backends match no range, so \fBdeny_except\fR refuses them. Only one
 backend_acl block may appear in the
 configuration. IPv4 and IPv6 ranges may be mixed freely, and

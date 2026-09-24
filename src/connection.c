@@ -1956,10 +1956,38 @@ backend_acl_rule_match_v6(const struct ListenerACLRule *rule,
     return 1;
 }
 
+/* The unspecified address, which connect() takes to mean the local host */
+static int
+sockaddr_is_unspecified(const struct sockaddr_storage *addr) {
+    if (addr->ss_family == AF_INET) {
+        const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
+        return sin->sin_addr.s_addr == htonl(INADDR_ANY);
+    }
+
+    if (addr->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)addr;
+        static const uint8_t zero[4];
+
+        return IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr) ||
+                (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr) &&
+                 memcmp(&sin6->sin6_addr.s6_addr[12], zero,
+                     sizeof(zero)) == 0);
+    }
+
+    return 0;
+}
+
 int
 backend_acl_allows(const struct sockaddr_storage *addr) {
     if (backend_acl_mode == LISTENER_ACL_MODE_DISABLED)
         return 1;
+
+    /* A connection to 0.0.0.0 or :: goes to the local host, loopback on
+     * Linux and an address of the host elsewhere, so no rule says where
+     * it ends up. A hostname that resolves to it must not get past an
+     * ACL that keeps loopback out. */
+    if (sockaddr_is_unspecified(addr))
+        return 0;
 
     const struct ListenerACLRule *rule;
     int matched = 0;
