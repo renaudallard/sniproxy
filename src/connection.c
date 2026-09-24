@@ -2759,8 +2759,15 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
     /* Parse incoming PROXY protocol header if expected */
     if (con->listener->accept_proxy_protocol && con->incoming_proxy_len == 0) {
         int rc = parse_incoming_proxy_header(con);
-        if (rc == -1)
-            return; /* incomplete, wait for more data */
+        if (rc == -1) {
+            /* Incomplete: a v2 header may be up to 64 KiB long, so make
+             * room for the rest when the buffer is full. */
+            if (buffer_room(con->client.buffer) > 0 ||
+                    buffer_reserve(con->client.buffer,
+                        buffer_size(con->client.buffer)) == 0)
+                return;
+            rc = -2;
+        }
         if (rc == -2) {
             char client[INET6_ADDRSTRLEN + 8];
             warn("Invalid PROXY protocol header from %s",
