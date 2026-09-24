@@ -36,6 +36,7 @@
 static int parse_config_depth(void *, FILE *, const struct Keyword *, const char *, int);
 static const struct Keyword *find_keyword(const struct Keyword *, const char *);
 static void cleanup_keyword_context(const struct Keyword *, void *, void *);
+static int finish_keyword(void *, const struct Keyword *, void *, int);
 
 /*
  * A directive that takes an argument but opens no block is meaningless
@@ -158,20 +159,10 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                 }
                 break;
             case TOKEN_EOL:
-                if (keyword_missing_argument(keyword, keyword_args)) {
-                    err("%s: %s requires an argument", __func__,
-                            keyword->keyword);
-                    cleanup_keyword_context(keyword, context, sub_context);
-                    return -1;
-                }
-
-                if (keyword && sub_context && keyword->finalize) {
-                    result = keyword->finalize(context, sub_context);
-                    if (result <= 0) {
-                        cleanup_keyword_context(keyword, context, sub_context);
-                        return result;
-                    }
-                }
+                result = finish_keyword(context, keyword, sub_context,
+                        keyword_args);
+                if (result <= 0)
+                    return result;
 
                 keyword = NULL;
                 sub_context = NULL;
@@ -183,42 +174,46 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
                     cleanup_keyword_context(keyword, context, sub_context);
                     return -1;
                 }
-                if (keyword_missing_argument(keyword, keyword_args)) {
-                    err("%s: %s requires an argument", __func__,
-                            keyword->keyword);
-                    cleanup_keyword_context(keyword, context, sub_context);
-                    return -1;
-                }
-
-                if (keyword && sub_context && keyword->finalize) {
-                    result = keyword->finalize(context, sub_context);
-                    if (result <= 0) {
-                        cleanup_keyword_context(keyword, context, sub_context);
-                        return result;
-                    }
-                }
-                return 1;
+                return finish_keyword(context, keyword, sub_context,
+                        keyword_args);
             case TOKEN_END:
-                /* A directive on the last line of a file without a
-                 * trailing newline reaches EOF with its keyword still
-                 * pending; finalize it as TOKEN_EOL would. */
-                if (depth == 0 && keyword && sub_context && keyword->finalize) {
-                    result = keyword->finalize(context, sub_context);
-                    if (result <= 0) {
-                        cleanup_keyword_context(keyword, context, sub_context);
-                        return result;
-                    }
-                    keyword = NULL;
-                    sub_context = NULL;
-                }
-                cleanup_keyword_context(keyword, context, sub_context);
                 if (depth > 0) {
+                    cleanup_keyword_context(keyword, context, sub_context);
                     err("unexpected end of configuration (missing closing brace)");
                     return -1;
                 }
-                return 1;
+                /* A directive on the last line of a file without a
+                 * trailing newline reaches EOF with its keyword still
+                 * pending; finish it as TOKEN_EOL would. */
+                return finish_keyword(context, keyword, sub_context,
+                        keyword_args);
         }
     }
+}
+
+/*
+ * Finish the pending directive at the end of its line, block or file:
+ * refuse it when its argument is missing, then finalize it. On failure
+ * its context is released. Returns 1 on success.
+ */
+static int
+finish_keyword(void *context, const struct Keyword *keyword,
+        void *sub_context, int keyword_args) {
+    if (keyword_missing_argument(keyword, keyword_args)) {
+        err("%s requires an argument", keyword->keyword);
+        cleanup_keyword_context(keyword, context, sub_context);
+        return -1;
+    }
+
+    if (keyword && sub_context && keyword->finalize) {
+        int result = keyword->finalize(context, sub_context);
+        if (result <= 0) {
+            cleanup_keyword_context(keyword, context, sub_context);
+            return result;
+        }
+    }
+
+    return 1;
 }
 
 static const struct Keyword *
