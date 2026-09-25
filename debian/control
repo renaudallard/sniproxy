@@ -17,15 +17,3 @@ Description: Transparent TLS and HTTP layer 4 proxy with SNI support
  the initial request of the TCP session. This enables HTTPS name-based virtual
  hosting to separate backend servers without installing the private key on the
  proxy machine.
-
-Package: sniproxy-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Depends: sniproxy (= ${binary:Version}), ${misc:Depends}
-Description: debugging symbols for sniproxy
- Proxies incoming HTTP and TLS connections based on the hostname contained in
- the initial request. This enables HTTPS name based virtual hosting to separate
- backend servers without the installing the private key on the proxy machine.
- .
- This package contains the debugging symbols for sniproxy.

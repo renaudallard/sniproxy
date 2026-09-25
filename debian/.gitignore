@@ -7,9 +7,6 @@ sniproxy.postrm.debhelper
 sniproxy.prerm.debhelper
 sniproxy.substvars
 sniproxy
-sniproxy-dbg.debhelper.log
-sniproxy-dbg.substvars
-sniproxy-dbg
 stamp-autotools
 stamp-autotools-files
 stamp-makefile-build
