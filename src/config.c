@@ -1843,6 +1843,11 @@ static int
 end_listener_access_logger_stanza(struct Listener *listener, struct LoggerBuilder *lb) {
     struct Logger *logger = NULL;
 
+    if (listener->access_log != NULL) {
+        err("Duplicate access_log in listener");
+        return -1;
+    }
+
     if (lb->filename != NULL && lb->syslog_facility == NULL)
         logger = new_file_logger(lb->filename);
     else if (lb->syslog_facility != NULL && lb->filename == NULL)
