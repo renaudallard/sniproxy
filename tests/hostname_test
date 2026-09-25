@@ -8,9 +8,10 @@ use TestUtils;
 use TestHTTPD;
 use File::Temp;
 
-sub make_wildcard_config($) {
-
-    my $proxy_port = shift;
+# A table entry whose backend is a hostname. The backend is looked up through the resolver, which finds
+# localhost in /etc/hosts, so no network access is needed.
+sub make_wildcard_config($$) {
+    my ($proxy_port, $httpd_port) = @_;
 
     my ($fh, $filename) = File::Temp::tempfile();
 
@@ -21,12 +22,16 @@ sub make_wildcard_config($) {
 user @{[test_user()]}
 group @{[test_group()]}
 
+resolver {
+    mode ipv4_only
+}
+
 listen 127.0.0.1 $proxy_port {
     proto http
 }
 
 table {
-    .* example.com:80
+    .* localhost:$httpd_port
 }
 END
 
@@ -41,39 +46,47 @@ sub proxy {
     exec(@_, '../src/sniproxy', '-f', '-c', $config);
 }
 
+sub request($$) {
+    my ($hostname, $port) = @_;
+
+    system('curl',
+            '-s', '-S', '--fail',
+            '-H', "Host: $hostname",
+            '-o', '/dev/null',
+            "http://localhost:$port/");
+    if ($? == -1) {
+        die "failed to execute: $!\n";
+    } elsif ($? & 127) {
+        printf STDERR "child died with signal %d, %s coredump\n", ($? & 127), ($? & 128) ? 'with' : 'without';
+        exit 255;
+    }
+    return $? >> 8;
+}
+
 sub worker($$) {
-    my $port = shift;
-    my $requests = shift;
+    my ($port, $requests) = @_;
 
     for (my $i = 0; $i < $requests; $i++) {
-
-        system('curl',
-                '-s', '-S',
-                '-o', '/dev/null',
-                "http://localhost:$port/");
-        if ($? == -1) {
-            die "failed to execute: $!\n";
-        } elsif ($? & 127) {
-            printf STDERR "child died with signal %d, %s coredump\n", ($? & 127), ($? & 128) ? 'with' : 'without';
-            exit 255;
-        } elsif ($? >> 8) {
-            exit $? >> 8;
-        }
+        my $status = request('example.com', $port);
+        exit $status if $status;
     }
     # Success
     exit 0;
 }
 
-
 sub main {
     my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
     my $workers = $ENV{WORKERS} || 3;
     my $iterations = $ENV{ITERATIONS} || 3;
 
-    my $config = make_wildcard_config($proxy_port);
+    my $config = make_wildcard_config($proxy_port, $httpd_port);
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+    my $httpd_pid = start_child('server', \&TestHTTPD::httpd,
+            ip => '127.0.0.1', port => $httpd_port);
 
     # Wait for proxy to load and parse config
+    wait_for_port(port => $httpd_port);
     wait_for_port(port => $proxy_port);
 
     for (my $i = 0; $i < $workers; $i++) {
@@ -83,18 +96,9 @@ sub main {
     # Wait for all our children to finish
     wait_for_type('worker');
 
-    # Give the proxy a second to flush buffers and close server connections
-    sleep 1;
-
-    # For troubleshooting connections stuck in CLOSE_WAIT state
-    #kill 10, $proxy_pid;
-    #system("netstat -ptn | grep $proxy_pid\/sniproxy");
-
-    # For troubleshooting 100% CPU usage
-    #system("top -n 1 -p $proxy_pid -b");
-
     # Orderly shutdown of the server
     kill 15, $proxy_pid;
+    kill 15, $httpd_pid;
     sleep 1;
 
     # Delete our test configuration
