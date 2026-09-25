@@ -69,8 +69,9 @@ set_cloexec(int fd)
  * parent's event pipe, which is closed below. Reload and the connection
  * dump are the parent's business, so SIGHUP and SIGUSR1 are ignored and
  * signalling the whole process group, as "pkill -HUP sniproxy" does,
- * kills no helper; SIGINT, SIGTERM and SIGCHLD get their default action
- * back so that termination works.
+ * kills no helper. So is SIGINT, which Ctrl-C sends to the whole group:
+ * the parent stops its helpers itself. SIGTERM and SIGCHLD get their
+ * default action back so that termination works.
  *
  * Then move the IPC socket to fd 0, close every other inherited
  * descriptor except stdout and stderr, and point stdout or stderr at
@@ -93,8 +94,8 @@ fd_child_setup(int fd)
     sa.sa_handler = SIG_IGN;
     (void)sigaction(SIGHUP, &sa, NULL);
     (void)sigaction(SIGUSR1, &sa, NULL);
-    sa.sa_handler = SIG_DFL;
     (void)sigaction(SIGINT, &sa, NULL);
+    sa.sa_handler = SIG_DFL;
     (void)sigaction(SIGTERM, &sa, NULL);
     (void)sigaction(SIGCHLD, &sa, NULL);
     sigemptyset(&empty_mask);
