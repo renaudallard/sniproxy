@@ -6,7 +6,7 @@ This document explains how to use AddressSanitizer, MemorySanitizer, UndefinedBe
 - Configure flags: `--enable-asan`, `--enable-msan`, `--enable-ubsan`, `--enable-tsan`; `--enable-asan --enable-ubsan` is supported for combined coverage.
 - Mutual exclusions: ASAN, MSAN, and TSAN cannot be combined. Configure fails fast with `Cannot enable multiple memory sanitizers (ASAN/MSAN/TSAN) simultaneously`.
 - Hardening: when a sanitizer is enabled, configure drops every hardening flag it added (`_FORTIFY_SOURCE`, stack protector, PIE, RELRO and the others), since some of them conflict.
-- CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on pushes to branches whose names contain no `/`, and on pull requests; there is no TSAN job. MSAN builds and caches instrumented dependencies, so a run without the cache takes about 20 minutes, while cached runs finish in about 2 minutes.
+- CI coverage: four jobs (ASAN, UBSAN, ASAN+UBSAN, MSAN) run on pushes to any branch and on pull requests; there is no TSAN job. MSAN builds and caches instrumented dependencies, so a run without the cache takes about 20 minutes, while cached runs finish in about 2 minutes.
 - CI toolchain: clang plus libev, pcre2, c-ares, OpenSSL (LibreSSL for MSAN), libbsd, autotools. No sanitizer job installs libseccomp, so the seccomp sandbox is not built there. Tests run with `SKIP_BAD_REQUEST_TEST=1`.
 - Valgrind: `.github/workflows/valgrind.yml` runs twelve of the unit test binaries under memcheck on the same triggers and uploads the logs.
 
@@ -91,7 +91,7 @@ For local use, build instrumented libraries and point `PKG_CONFIG_PATH`, `CFLAGS
 ## CI/CD Usage
 
 - Workflow: `.github/workflows/sanitizers.yml`
-- Triggers: pushes to branches whose names contain no `/`, and pull requests
+- Triggers: pushes to any branch, and pull requests
 - Jobs:
   - **AddressSanitizer**: `./configure --enable-asan`
   - **UndefinedBehaviorSanitizer**: `./configure --enable-ubsan`

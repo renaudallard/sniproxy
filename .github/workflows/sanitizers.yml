@@ -2,7 +2,7 @@ name: Sanitizers (ASAN/MSAN/UBSAN)
 
 on:
   push:
-    branches: ["*"]
+    branches: ["**"]
   pull_request:
 
 jobs:
