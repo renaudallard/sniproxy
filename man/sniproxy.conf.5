@@ -46,8 +46,9 @@ groupname _sniproxy
 .PP
 
 Specify the group sniproxy will run as after dropping privileges; the
-default is the primary group of the user. It must not have group ID 0,
-like root or wheel, or sniproxy refuses to start. Either
+default is the primary group of the user. When sniproxy is launched as
+super user, the group must not have group ID 0, like root or wheel, or
+sniproxy refuses to start. Either
 the full \fBgroupname\fR directive or the short \fBgroup\fR form may be
 used. When sniproxy is launched without super user privileges, its group
 must be this one, or it refuses to start.
