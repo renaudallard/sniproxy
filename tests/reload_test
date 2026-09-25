@@ -20,7 +20,7 @@ sub worker($$$$) {
 
     for (my $i = 0; $i < $requests; $i++) {
         system('curl',
-                '-s', '-S',
+                '-s', '-S', '--fail',
                 '-H', "Host: $hostname",
                 '-o', '/dev/null',
                 "http://localhost:$port/$path");
