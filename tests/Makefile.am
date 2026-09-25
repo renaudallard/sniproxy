@@ -35,9 +35,14 @@ TESTS += ipc_crypto_debug_test \
          ipc_crypto_rekey_test \
          ipc_crypto_time_rekey_test
 
+# Every test goes through check_output.sh, which also fails it when a
+# helper process crashed or a sanitizer reported something.
+LOG_COMPILER = $(SHELL) $(srcdir)/check_output.sh
+
 # Perl integration tests and their harness modules are not built, so
 # automake does not distribute them automatically.
-EXTRA_DIST = functional_test \
+EXTRA_DIST = check_output.sh \
+             functional_test \
              bad_request_test \
              bind_source_test \
              connection_reset_test \
