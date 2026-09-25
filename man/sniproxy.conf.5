@@ -525,10 +525,11 @@ cannot keep new clients out. Otherwise the new datagram is dropped.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same
-ip:port pair. This enables evenly load-balancing incoming connections
-between these instances without the use of any external
-load-balancing proxy. Requires Linux kernel 3.9+. Setting reuseport
-to "yes" enables this functionality.
+ip:port pair. On Linux 3.9 and later the kernel spreads incoming
+connections evenly between these instances, without an external
+load-balancing proxy; other systems accept the option but do not
+balance the load that way. Setting reuseport to "yes" enables this
+functionality.
 
 The ipv6_v6only directive controls whether listening on the IPv6 any
 address '::' will accept connections to any IPv4 address as well as an
@@ -543,7 +544,8 @@ server/proxy entirely. This directive applies only to IPv6 listeners
 and is ignored on other listeners. On Linux two listeners of the same
 kind, TCP or dtls, cannot share a port when their addresses overlap,
 such as '::' accepting IPv4 next to 0.0.0.0, or 0.0.0.0 next to
-127.0.0.1; set ipv6_v6only yes on the '::' one.
+127.0.0.1, unless both use reuseport; set ipv6_v6only yes on the '::'
+one.
 
 Table specifies the name of the table used to look up which server
 to forward the connection to based on the hostname extracted from
