@@ -2798,6 +2798,9 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
         }
         con->incoming_proxy_len = (size_t)rc;
         buffer_pop(con->client.buffer, NULL, con->incoming_proxy_len);
+        /* Dropped, not sent to the backend: keep it out of the access
+         * log's count of bytes sent */
+        con->client.buffer->tx_bytes -= con->incoming_proxy_len;
         /* The request now starts after the header, as when a reload has
          * turned on proxy_protocol while it was arriving */
         con->request_parsed_len = 0;
