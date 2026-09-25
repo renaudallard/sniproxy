@@ -69,7 +69,7 @@ do_stop()
 	#   other if a failure occurred
 	start-stop-daemon --stop --quiet \
         --pidfile $PIDFILE \
-        --retry=TERM/30/KILL/5 --name "$(basename $DAEMON)"
+        --retry=TERM/30/KILL/5 --exec $DAEMON
 	RETVAL="$?"
 	[ "$RETVAL" = 2 ] && return 2
 	# Wait for children to finish too if this is a daemon that forks
