@@ -3028,7 +3028,11 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                 con->listener->table->backend_affinity) {
             affinity_seed = hash_sockaddr_ip(&con->client.addr,
                     NULL, NULL);
-            affinity_seed |= 1; /* ensure non-zero */
+            /* 0 means no affinity. Setting the low bit instead would make
+             * every seed odd, and the pick among an even number of
+             * records would never land on an even index. */
+            if (affinity_seed == 0)
+                affinity_seed = 1;
         }
 
         struct ResolvQuery *qh = resolv_query(hostname,
