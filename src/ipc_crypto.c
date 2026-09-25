@@ -45,6 +45,13 @@
 #include "ipc_crypto.h"
 #include "logger.h"
 
+/* Ancillary data for one descriptor, aligned for the struct cmsghdr that
+ * CMSG_FIRSTHDR() returns a pointer to */
+union ipc_fd_control {
+    struct cmsghdr align;
+    char buf[CMSG_SPACE(sizeof(int))];
+};
+
 static uint64_t host_to_be64(uint64_t host) {
     uint32_t high = (uint32_t)(host >> 32);
     uint32_t low = (uint32_t)(host & 0xffffffffu);
@@ -884,13 +891,13 @@ ipc_crypto_send_msg(struct ipc_crypto_state *state, int sockfd,
     msg.msg_iov = iov;
     msg.msg_iovlen = 2;
 
-    char control_buf[CMSG_SPACE(sizeof(int))];
+    union ipc_fd_control control_buf;
     if (fd_to_send >= 0) {
         /* CMSG_SPACE includes padding after the descriptor that the
          * macros never write; hand the kernel a fully defined buffer. */
-        memset(control_buf, 0, sizeof(control_buf));
-        msg.msg_control = control_buf;
-        msg.msg_controllen = sizeof(control_buf);
+        memset(&control_buf, 0, sizeof(control_buf));
+        msg.msg_control = control_buf.buf;
+        msg.msg_controllen = sizeof(control_buf.buf);
         struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
         if (cmsg == NULL)
             return -1;
@@ -971,13 +978,13 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
         prefix_iov.iov_base = &frame_len_net;
         prefix_iov.iov_len = sizeof(frame_len_net);
 
-        char prefix_control[CMSG_SPACE(sizeof(int))];
+        union ipc_fd_control prefix_control;
         struct msghdr prefix_msg;
         memset(&prefix_msg, 0, sizeof(prefix_msg));
         prefix_msg.msg_iov = &prefix_iov;
         prefix_msg.msg_iovlen = 1;
-        prefix_msg.msg_control = prefix_control;
-        prefix_msg.msg_controllen = sizeof(prefix_control);
+        prefix_msg.msg_control = prefix_control.buf;
+        prefix_msg.msg_controllen = sizeof(prefix_control.buf);
 
         ssize_t prefix_ret;
         do {
@@ -1037,13 +1044,13 @@ ipc_crypto_recv_msg(struct ipc_crypto_state *state, int sockfd,
     iov.iov_base = cipher;
     iov.iov_len = frame_len;
 
-    char control_buf[CMSG_SPACE(sizeof(int))];
+    union ipc_fd_control control_buf;
     struct msghdr msg;
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
-    msg.msg_control = control_buf;
-    msg.msg_controllen = sizeof(control_buf);
+    msg.msg_control = control_buf.buf;
+    msg.msg_controllen = sizeof(control_buf.buf);
 
     ssize_t ret;
     do {
