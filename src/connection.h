@@ -82,6 +82,7 @@ struct Connection {
      * our sending side towards the other peer is shut down too. */
     int client_eof, server_eof;
     int client_shut, server_shut;   /* shutdown(SHUT_WR) done on that socket */
+    int reset_client;   /* the backend failed mid answer: reset the client */
     struct ResolvQuery *query_handle;
     ev_tstamp established_timestamp;
     enum proxy_protocol_mode use_proxy_header;

@@ -66,7 +66,9 @@ fuzzing, and active maintenance.
   client asked for (`*:443`).
 - **TCP half-close**: a client or backend that shuts down its sending
   side has that passed on once its data is through, while the other
-  direction goes on, as `nc -N` or `shutdown(SHUT_WR)` expects.
+  direction goes on, as `nc -N` or `shutdown(SHUT_WR)` expects. A
+  backend that refuses the connection gets the client the protocol's
+  error (503 for HTTP), and one that fails mid answer gets it reset.
 - **HAProxy PROXY protocol**: emit v1 or v2 headers to backends; accept v1
   or v2 from upstream load balancers on listeners with
   `proxy_protocol on` (the version is auto-detected), which should admit

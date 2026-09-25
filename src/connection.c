@@ -150,6 +150,7 @@ static size_t connections_peak_count(void);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void connection_pass_eof(struct Connection *, struct ev_loop *);
+static void server_failed(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 static void start_header_timer(struct Connection *, struct ev_loop *);
 static void stop_header_timer(struct Connection *, struct ev_loop *);
@@ -913,7 +914,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 close_client_socket(con, loop);
                 client_open = 0;
             } else {
-                close_server_socket(con, loop);
+                server_failed(con, loop);
                 server_open = 0;
             }
             revents = 0; /* Clear revents so we don't try to send */
@@ -962,7 +963,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 close_client_socket(con, loop);
                 client_open = 0;
             } else {
-                close_server_socket(con, loop);
+                server_failed(con, loop);
                 server_open = 0;
             }
         }
@@ -3425,6 +3426,14 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
 
     ev_io_stop(loop, &con->client.watcher);
 
+    /* A reset tells the client its answer was cut short */
+    if (con->reset_client) {
+        struct linger reset = { .l_onoff = 1, .l_linger = 0 };
+        if (setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_LINGER,
+                    &reset, sizeof(reset)) < 0)
+            warn("setsockopt SO_LINGER failed: %s", strerror(errno));
+    }
+
     if (close(con->client.watcher.fd) < 0)
         warn("close failed: %s", strerror(errno));
 
@@ -3447,6 +3456,28 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
         con->state = CLOSED;
     else
         con->state = CLIENT_CLOSED;
+}
+
+/*
+ * The backend socket failed. A backend that never answered, such as one
+ * that refused the connection, gets the client the protocol's abort
+ * message, as an unroutable request does. Once it has answered, the
+ * client is reset after what it sent is delivered, so that it can tell
+ * the answer was cut short.
+ */
+static void
+server_failed(struct Connection *con, struct ev_loop *loop) {
+    int answered = con->server.buffer->rx_bytes > 0;
+
+    close_server_socket(con, loop);
+    if (!client_socket_open(con))
+        return;
+
+    if (answered)
+        con->reset_client = 1;
+    else
+        buffer_push(con->server.buffer, con->protocol->abort_message,
+                con->protocol->abort_message_len);
 }
 
 /* Close server socket.
@@ -3845,6 +3876,18 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
         }
         return;
     }
+
+    /* A backend that failed resets the client, as without splicing. The
+     * error of the client to backend splice is reported on the client
+     * socket, so look at the backend socket's own. */
+    int server_error = is_client ? 0 : error;
+    if (is_client) {
+        error_len = sizeof(server_error);
+        (void)getsockopt(con->server.watcher.fd, SOL_SOCKET, SO_ERROR,
+                &server_error, &error_len);
+    }
+    if (server_error != 0)
+        con->reset_client = 1;
 
     splice_account(con, ev_now(loop));
 

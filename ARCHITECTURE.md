@@ -176,7 +176,11 @@ A backend or fallback given as a hostname goes through RESOLVING, an IP
 address or unix socket straight to RESOLVED. Before CONNECTED a connection
 can be aborted (unparsable request without a fallback, failed lookup,
 backend refused by `backend_acl`): the protocol's abort message is queued
-for the client and it enters SERVER_CLOSED.
+for the client and it enters SERVER_CLOSED. So is a backend that fails
+before it has sent anything, such as one refusing the connection. One
+that fails after answering sets `reset_client`: the client is reset
+once the data it sent is delivered, so that it can tell the answer was
+cut short.
 
 A peer that shuts down its sending side (a FIN) does not close the
 connection: the flags `client_eof` or `server_eof` record it and its
