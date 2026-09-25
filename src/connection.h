@@ -65,6 +65,10 @@ struct Connection {
     } client, server;
     struct sockaddr_storage peer_addr; /* Original peer address for conn_count */
     struct ev_timer idle_timer;
+    /* How much later than armed the idle timer should expire, after
+     * activity that did not re-arm it; in the monotonic clock of the
+     * timer, not wall clock time. */
+    ev_tstamp idle_extend;
     struct ev_timer header_timer;
     struct Listener *listener;
     const struct Protocol *protocol; /* Snapshot at accept time */

@@ -1125,15 +1125,19 @@ reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
 
     if (ev_is_active(&con->idle_timer)) {
         /* Skip the timer churn while more than half the timeout
-         * remains. ev_timer_remaining() is the documented accessor;
-         * the watcher's own deadline field is private and lives in
-         * the monotonic clock domain, not in ev_now() time. */
-        if (ev_timer_remaining(loop, &con->idle_timer) >
-                connection_idle_timeout * 0.5)
+         * remains, noting instead how much later it should expire.
+         * ev_timer_remaining() is the documented accessor; the
+         * watcher's own deadline field is private and lives in the
+         * monotonic clock domain, not in ev_now() time. */
+        ev_tstamp remaining = ev_timer_remaining(loop, &con->idle_timer);
+        if (remaining > connection_idle_timeout * 0.5) {
+            con->idle_extend = connection_idle_timeout - remaining;
             return;
+        }
         ev_timer_stop(loop, &con->idle_timer);
     }
 
+    con->idle_extend = 0.0;
     ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
     ev_timer_start(loop, &con->idle_timer);
 }
@@ -2096,23 +2100,18 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
      * never reset this timer; the byte counters tell whether either
      * direction was active since the previous check. */
     if (con->spliced && splice_progressed(con)) {
+        con->idle_extend = 0.0;
         ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
         ev_timer_start(loop, &con->idle_timer);
         return;
     }
 #endif
 
-    /* reset_idle_timer() leaves the timer alone while more than half of
-     * it remains, so activity since it was armed is only recorded in the
-     * buffer timestamps. Wait for what is left of the timeout; they are
-     * wall clock times, so a clock stepped back cannot make that longer
-     * than the timeout. */
-    ev_tstamp remaining = connection_last_activity(con) +
-            connection_idle_timeout - ev_now(loop);
-    if (remaining > connection_idle_timeout)
-        remaining = connection_idle_timeout;
-    if (remaining > 0.0) {
-        ev_timer_set(&con->idle_timer, remaining, 0.0);
+    /* Activity that did not re-arm the timer left how much later it
+     * should expire: wait for that before closing. */
+    if (con->idle_extend > 0.0) {
+        ev_timer_set(&con->idle_timer, con->idle_extend, 0.0);
+        con->idle_extend = 0.0;
         ev_timer_start(loop, &con->idle_timer);
         return;
     }
