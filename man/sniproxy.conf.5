@@ -668,7 +668,8 @@ with \&'unix:', a hostname, or '*'. A '*' connects to the hostname the client
 asked for, looked up through the resolver, and may carry a port as in
 \fB*:443\fR.
 If no port is specified, the port of the listener that received the
-connection will be used. IP literals are refused as a '*' target, but a
+connection will be used. IP literals, and names whose last label is
+all digits such as 127.0.0.01, are refused as a '*' target, but a
 client can still name any host its hostname resolves to: localhost and
 other loopback names included, which with no port on the '*' entry
 leads sniproxy back to its own listener when that listens on a loopback

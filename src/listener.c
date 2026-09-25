@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <stddef.h> /* offsetof */
 #include <stdint.h>
 #include <limits.h>
@@ -665,6 +666,27 @@ accept_listener_accept_proxy_protocol(struct Listener *listener, const char *val
 }
 
 /*
+ * c-ares resolves a name made of digits and dots as an IPv4 address by
+ * itself, in forms inet_pton() refuses such as 127.0.0.01. No top-level
+ * domain is numeric, so a name whose last label is all digits is an
+ * address literal.
+ */
+static int
+hostname_last_label_numeric(const char *name, size_t name_len) {
+    size_t start = name_len;
+    while (start > 0 && name[start - 1] != '.')
+        start--;
+    if (start == name_len)
+        return 0;
+
+    for (size_t i = start; i < name_len; i++)
+        if (!isdigit((unsigned char)name[i]))
+            return 0;
+
+    return 1;
+}
+
+/*
  * Order listeners by address, then by socket type: a TCP and a dtls
  * listener may share an address, and a reload must pair each with its
  * own counterpart.
@@ -1037,7 +1059,8 @@ listener_lookup_server_address(const struct Listener *listener,
                 .address = listener->fallback_address,
                 .use_proxy_header = listener->fallback_use_proxy_header
             };
-        } else if (address_is_sockaddr(new_addr)) {
+        } else if (address_is_sockaddr(new_addr) ||
+                hostname_last_label_numeric(name, name_len)) {
             warn("Refusing to proxy to socket address literal %.*s in request",
                     (int)name_len, name);
             free(new_addr);
