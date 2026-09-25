@@ -1,3 +1,63 @@
+sniproxy 0.17.0 (2026-09-25)
+===============================
+
+Fixes from another review of the whole tree.
+
+Upgrade note: some configurations earlier releases accepted are now
+refused: a unix: address with a relative path, a unix socket as a
+resolver nameserver, a dtls listener on a unix socket, and a directive
+missing its argument on the last line of a file with no final newline.
+On Linux two dtls listeners on one port whose addresses overlap, such as
+[::] accepting IPv4 next to 0.0.0.0, no longer both bind, as was already
+the case for TCP. Without max_connections, the connection ceiling is
+about half what it was, as each connection holds two descriptors.
+
+Highlights:
+
+* A reload could leave an address with nothing listening on it: a tls
+  and a dtls listener sharing it after their blocks were swapped or one
+  was removed, or a listener moved from 127.0.0.1:443 to 0.0.0.0:443.
+
+* Idle connections were closed after as little as 30 seconds of silence
+  instead of 60.
+
+* On Linux another local user could bind a dtls listener's address on
+  an unprivileged port and receive its datagrams.
+
+* Minecraft handshakes carrying BungeeCord IP forwarding in online mode,
+  over a kilobyte long, were refused.
+
+* On FreeBSD the logger stopped sending to syslog after the first
+  SIGHUP, and a log file first named by a reload was never reopened on
+  rotation. On OpenBSD a reload naming an existing group-writable log
+  file after the logger had died aborted the proxy.
+
+* A stale unix socket check deleted any regular file at a unix listener
+  path, and could hang the start or a reload on a busy listener.
+
+* The default connection ceiling ignored a file limit the system had
+  refused or capped, and allowed one connection per descriptor. The
+  proxy then ran out of descriptors instead of refusing connections.
+
+* The logger was not replaced when it stopped reading its socket, when
+  it died between two health checks, or, for a daemon, when its first
+  logger got stuck, as that one is not a child of the main process.
+
+* An incoming PROXY v2 header bigger than the free buffer never
+  completed, and a request filling the client buffer got a 503 on a
+  backend with proxy_protocol. Turning on per_ip_max_connections with a
+  reload let clients exceed it.
+
+* With "source client" on a dual-stack listener, IPv4 clients went out
+  from the proxy's address (TCP) or were dropped (dtls).
+
+* Smaller fixes: ipv4_first and ipv6_first spread lookups over the
+  records of the other family too; a Host header with a port and
+  trailing whitespace is accepted; removing error_log and reloading logs
+  to standard error; access log byte counts no longer wrap at 4 GiB on
+  32-bit systems; tcp_fastopen takes true and false; a config can be
+  read from a pipe; restarted helpers get the same Capsicum limits.
+
 sniproxy 0.16.1 (2026-09-24)
 ===============================
 

@@ -1,3 +1,12 @@
+sniproxy (0.17.0) unstable; urgency=medium
+
+  * Fixes from a review of the whole tree: reloads that left an address
+    unserved, idle connections closed early, dtls listeners bindable by
+    other users on Linux, logger restarts, BungeeCord handshakes. Some
+    configurations are now refused. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 25 Sep 2026 01:53:27 +0200
+
 sniproxy (0.16.1) unstable; urgency=medium
 
   * Lookups arriving faster than the resolver process reads them wait

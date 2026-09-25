@@ -1,3 +1,29 @@
+2026-09-25  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.17.0
+	- listener: reloads pair listeners by address and socket type, and
+	  close dropped listeners before adding new ones.
+	- connection: idle connections are closed a full idle timeout after
+	  their last activity.
+	- listener, binder: no SO_REUSEADDR on dtls sockets on Linux.
+	- minecraft: handshakes up to the largest BungeeCord server address.
+	- logger: FreeBSD syslog kept across SIGHUP in capability mode; no
+	  fchmod after the OpenBSD pledge; rotated files handed to the logger;
+	  stuck, lost and non-child loggers replaced.
+	- listener: stale unix socket probe only removes sockets and does
+	  not block; dtls on unix sockets refused.
+	- connection: large incoming PROXY v2 headers, outgoing PROXY header
+	  on a full buffer, per-IP counts when a reload enables the limit,
+	  source client for IPv4 clients of dual-stack listeners, 64-bit
+	  byte counts.
+	- sniproxy: connection ceiling from the file limit in force, two
+	  descriptors per connection.
+	- config: relative unix paths, unix nameservers and a bare directive
+	  at end of file refused; error_log removal on reload; tokenizer
+	  works on pipes; one boolean parser, tcp_fastopen takes true/false.
+	- http: trailing whitespace in Host; resolver: *_first spread over
+	  fallback records; FreeBSD: Capsicum limits on restarted helpers.
+
 2026-09-24  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.16.1
