@@ -79,7 +79,9 @@ max_connections 20000
 Limit the maximum number of simultaneously active TCP connections
 accepted across all listeners. Once this threshold is reached new
 connections are closed immediately until existing ones complete. DTLS
-sessions are not counted here; they have a fixed limit of 16384. The
+sessions have a fixed limit of 16384, and each one that has opened its
+backend socket also takes half a connection from this limit, as it
+holds one descriptor where a TCP connection holds two. The
 default value of 0 lets sniproxy derive a ceiling from the file
 descriptor limit given with
 .B -n

@@ -246,10 +246,14 @@ static size_t connection_memory_peak;
 static size_t connection_active_count;
 static size_t connection_peak_count;
 static size_t max_global_connections;
+/* Backend sockets of dtls sessions. They share the descriptors of
+ * max_global_connections, which counts two for each TCP connection. */
+static size_t udp_socket_count;
 static ev_tstamp max_connections_log_throttle;
 
 static void connection_memory_adjust(ssize_t delta);
 static void buffer_memory_observer(ssize_t delta);
+static int descriptor_budget_allows(size_t, size_t);
 static void connection_account_add(void);
 static void connection_account_remove(void);
 
@@ -426,8 +430,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         goto cleanup;
     }
 
-    if (max_global_connections > 0 &&
-            connection_active_count >= max_global_connections) {
+    if (!descriptor_budget_allows(connection_active_count + 1,
+                udp_socket_count)) {
         if (now - max_connections_log_throttle >= 1.0) {
             char addrbuf[INET6_ADDRSTRLEN];
             const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
@@ -2055,6 +2059,30 @@ connection_memory_adjust(ssize_t delta) {
 static void
 buffer_memory_observer(ssize_t delta) {
     connection_memory_adjust(delta);
+}
+
+/* Whether tcp connections and udp dtls backend sockets fit in the
+ * descriptors max_global_connections allows */
+static int
+descriptor_budget_allows(size_t tcp, size_t udp) {
+    return max_global_connections == 0 ||
+            2 * tcp + udp <= 2 * max_global_connections;
+}
+
+int
+connections_udp_socket_acquire(void) {
+    if (!descriptor_budget_allows(connection_active_count,
+                udp_socket_count + 1))
+        return 0;
+
+    udp_socket_count++;
+    return 1;
+}
+
+void
+connections_udp_socket_release(void) {
+    if (udp_socket_count > 0)
+        udp_socket_count--;
 }
 
 static void

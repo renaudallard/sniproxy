@@ -72,6 +72,7 @@ struct UDPSession {
     struct sockaddr_storage server_addr;
     socklen_t server_addr_len;
     int server_fd;              /* per-session connected socket */
+    int holds_socket_budget;    /* counted by connections_udp_socket_acquire() */
     struct ev_io server_watcher;
     struct ev_timer idle_timer;
     struct Listener *listener;
@@ -373,6 +374,8 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
         ev_io_stop(loop, &session->server_watcher);
         close(session->server_fd);
     }
+    if (session->holds_socket_budget)
+        connections_udp_socket_release();
 
     /* Log */
     if (session->hostname != NULL) {
@@ -621,6 +624,23 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
         udp_session_destroy(session, loop);
         return;
     }
+
+    /* The backend socket counts against max_connections, as TCP ones do,
+     * so that sessions cannot use up the descriptors it leaves. */
+    if (!connections_udp_socket_acquire()) {
+        static ev_tstamp last_logged;
+        if (ev_now(loop) - last_logged >= 1.0) {
+            char client[INET6_ADDRSTRLEN + 8];
+            notice("UDP: connection limit reached, dropping session from %s",
+                    display_sockaddr(&session->client_addr,
+                            session->client_addr_len,
+                            client, sizeof(client)));
+            last_logged = ev_now(loop);
+        }
+        udp_session_destroy(session, loop);
+        return;
+    }
+    session->holds_socket_budget = 1;
 
     int fd;
     int socket_type = SOCK_DGRAM;

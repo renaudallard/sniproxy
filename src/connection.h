@@ -120,6 +120,8 @@ enum dns_acquire_status connections_dns_query_acquire_addr(
 void connections_dns_query_release_entry(struct DnsClientUsageEntry *entry);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
 void connections_set_global_limit(size_t limit);
+int connections_udp_socket_acquire(void);
+void connections_udp_socket_release(void);
 void connections_set_backend_acl(int mode,
         struct ListenerACLRule_head *rules);
 int backend_acl_allows(const struct sockaddr_storage *);
