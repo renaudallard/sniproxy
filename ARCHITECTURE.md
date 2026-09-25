@@ -246,7 +246,8 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
   seconds
 - **Reliability (0.9.6)**: A buffer never grows past its limit
   (`client_buffer_limit` or `server_buffer_limit`, 1 MiB by default and
-  1 GiB at most). A full server buffer at its limit stops reads from the
+  1 GiB at most), except that a client buffer may double once to take an
+  outgoing PROXY header when the request filled it. A full server buffer at its limit stops reads from the
   backend, and a request that outgrows the client buffer is handled as
   unparsable.
 - **Bounded shrink queues (0.9.6)**: Shrink candidate lists stay capped at 4096
@@ -342,8 +343,9 @@ Asynchronous DNS resolver for backend addresses specified as hostnames.
   requests and results between the main process and the resolver process
   moved from linear counters to xorshift32 and now to arc4random(), unique
   among queries in flight; the IDs in the DNS packets themselves come from
-  c-ares. Each connection records whether it holds a slot of the DNS query
-  limits (`dns_query_acquired`), so a slot is released exactly once.
+  c-ares. The lookup's callback data records whether it holds a slot of
+  the DNS query limits (`dns_slot`), so a slot is released exactly once,
+  when the lookup ends.
 - **Robustness (0.9.0 -> 0.9.6)**: Async-signal-safe signal handlers and
   overflow guards remain, and resolver restart/shutdown now uses
   mutex-protected flags plus dedicated release helpers to prevent counter drift
@@ -493,8 +495,9 @@ Once CONNECTED, the connection enters steady-state proxying:
   - Prevents catastrophic backtracking
 
 - **Request guardrails (0.9.6)**:
-  - HTTP parsers enforce `http_max_headers` (default 100) so
-    attacker-controlled header floods cannot pin CPU in linear scans
+  - The HTTP/1 parser enforces `http_max_headers` (default 100) and the
+    HTTP/2 one a fixed 100, so attacker-controlled header floods cannot
+    pin CPU in linear scans
   - TLS ClientHello parsers cap extension lists at 64 entries to avoid walking
     unbounded extension tables
 
@@ -575,13 +578,14 @@ buffer assembly, reducing the number of buffer operations required
    permission check, the running configuration is kept
 2. Swap the backend list of each existing table for the new one in place,
    and add new tables
-3. Compare listeners by address:
-   - Same address: updated in place, keeping the socket; `tcp_fastopen`,
-     `reuseport` and `ipv6_v6only` changes are ignored with a warning.
-     Only a change between TCP and UDP replaces the listener, binding the
-     new socket before the old one is closed
+3. Compare listeners by address and socket type, TCP or UDP:
+   - Listeners the new configuration drops are stopped first, so that a
+     new listener can take their port, as 0.0.0.0:443 does after
+     127.0.0.1:443
+   - Same address and type: updated in place, keeping the socket;
+     `tcp_fastopen`, `reuseport` and `ipv6_v6only` changes are ignored
+     with a warning
    - New listeners: bound and started
-   - Removed listeners: stopped
 4. Apply the other global settings (limits, buffer caps, backend ACL,
    logs); user, group, pidfile and the resolver's servers, search domains,
    mode and DNSSEC setting wait for a restart
