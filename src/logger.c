@@ -2418,59 +2418,55 @@ logger_restart_child(void) {
     return ensure_logger_process();
 }
 
+/* Replace the logger, then say why: said before, the message would go
+ * to the logger being replaced, which is stuck or gone. */
+static void
+logger_health_restart(struct ev_loop *loop, const char *reason) {
+    logger_ping_pending = 0;
+    logger_ping_blocked = 0;
+
+    if (logger_restart_child()) {
+        warn("Logger process %s, restarted it", reason);
+        return;
+    }
+
+    err("Logger process %s and could not be restarted, "
+            "falling back to in-process logging", reason);
+    ev_timer_stop(loop, &logger_health_timer);
+    logger_health_check_active = 0;
+}
+
 static void
 logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
     (void)w;
     (void)revents;
 
+    /* A send failed since the last check, so the logger died or its
+     * channel broke; the timer is stopped when a restart fails. */
     if (!logger_process_enabled) {
-        /* A send failed since the last check, so the logger died or its
-         * channel broke; the timer is stopped when a restart fails. */
-        logger_ping_pending = 0;
-        logger_ping_blocked = 0;
-        err("Logger process lost, restarting");
-        if (logger_restart_child())
-            return;
-        err("Logger restart failed, falling back to in-process logging");
-        ev_timer_stop(loop, &logger_health_timer);
-        logger_health_check_active = 0;
+        logger_health_restart(loop, "was lost");
         return;
     }
 
     /* Check if previous ping got a response */
-    if (logger_ping_pending) {
-        if (logger_check_pong() < 0) {
-            logger_ping_pending = 0;
-            err("Logger health check: no response to ping, restarting");
-            if (logger_restart_child()) {
-                /* Restart succeeded, continue health checks */
-                return;
-            }
-            err("Logger restart failed, falling back to in-process logging");
-            ev_timer_stop(loop, &logger_health_timer);
-            logger_health_check_active = 0;
-            return;
-        }
+    if (logger_ping_pending && logger_check_pong() < 0) {
+        logger_health_restart(loop, "did not answer the health check");
+        return;
     }
 
     /* Send new ping. A socket found full again at the next check, with
      * nothing sent in between, means the logger stopped reading it; a
      * slow one still makes room for some messages. */
     if (logger_send_ping() < 0) {
-        if ((errno == EAGAIN || errno == EWOULDBLOCK) &&
+        int blocked = errno == EAGAIN || errno == EWOULDBLOCK;
+        if (blocked &&
                 (!logger_ping_blocked || logger_sent != logger_sent_at_block)) {
             logger_ping_blocked = 1;
             logger_sent_at_block = logger_sent;
             return;
         }
-        logger_ping_blocked = 0;
-        err("Logger health check: unable to send ping, restarting");
-        if (logger_restart_child()) {
-            return;
-        }
-        err("Logger restart failed, falling back to in-process logging");
-        ev_timer_stop(loop, &logger_health_timer);
-        logger_health_check_active = 0;
+        logger_health_restart(loop, blocked ?
+                "stopped reading its socket" : "could not be sent a ping");
         return;
     }
     logger_ping_blocked = 0;
