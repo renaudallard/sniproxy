@@ -411,6 +411,9 @@ main(int argc, char **argv) {
 
     /* Config file permissions are checked in init_config() using fstat() */
 
+    if (background_flag && !test_config)
+        logger_set_daemon_mode();
+
     tls_set_min_client_hello_version(min_tls_major, min_tls_minor);
 
     unsigned int loop_flags = 0;

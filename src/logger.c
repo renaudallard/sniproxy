@@ -339,6 +339,10 @@ static int logger_rights_limited = 0;
 #endif
 
 static int logger_process_initialized = 0;
+/* Set when sniproxy will daemonize: the logger is forked before that,
+ * and must not keep the standard output and error of whoever started
+ * sniproxy open, as a shell capturing them would wait for it. */
+static int logger_child_null_stdio = 0;
 static struct ChildSink_head child_sink_head = SLIST_HEAD_INITIALIZER(child_sink_head);
 /* Set once the child can no longer connect to the syslog socket, so the
  * connection it opened before must be kept. */
@@ -1379,12 +1383,24 @@ ensure_logger_process(void) {
         int child_fd = fd_child_setup(sockets[1]);
         if (child_fd < 0)
             _exit(EXIT_FAILURE);
+        if (logger_child_null_stdio) {
+            int devnull = open("/dev/null", O_RDWR);
+            if (devnull < 0 || dup2(devnull, STDOUT_FILENO) < 0 ||
+                    dup2(devnull, STDERR_FILENO) < 0)
+                _exit(EXIT_FAILURE);
+            if (devnull > STDERR_FILENO)
+                close(devnull);
+        }
         logger_child_main(child_fd);
     }
 
     close(sockets[1]);
     logger_sock = sockets[0];
     logger_pid = pid;
+    /* Only the first logger is forked before sniproxy daemonizes; later
+     * ones share the main process's /dev/null, and on OpenBSD could not
+     * open it once the file system view is locked. */
+    logger_child_null_stdio = 0;
 
     /* Set non-blocking to prevent mainloop stall under heavy logging */
     int flags = fcntl(logger_sock, F_GETFL);
@@ -2264,6 +2280,11 @@ logger_child_main(int sockfd) {
 int
 logger_process_is_active(void) {
     return logger_process_enabled;
+}
+
+void
+logger_set_daemon_mode(void) {
+    logger_child_null_stdio = 1;
 }
 
 void
