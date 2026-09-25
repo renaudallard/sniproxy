@@ -43,6 +43,7 @@ static int count_tables(const struct Table_head *);
 static void test_table_validation(void);
 static void test_literal_auto_anchor(void);
 static void test_pattern_case_insensitive(void);
+static void test_first_match_wins(void);
 
 
 int main(void) {
@@ -54,6 +55,43 @@ int main(void) {
     test_table_validation();
     test_literal_auto_anchor();
     test_pattern_case_insensitive();
+    test_first_match_wins();
+}
+
+/* Entries are tried in the order of the table, and the first one that
+ * matches is used, even when a later one matches too. */
+static void
+test_first_match_wins(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+    table_ref_get(table);
+    accept_table_arg(table, "order");
+
+    append_entry(table, "^www\\.example\\.com$", "192.0.2.1");
+    append_entry(table, ".*\\.example\\.com$", "192.0.2.2");
+    append_entry(table, ".*", "192.0.2.3");
+
+    init_table(table);
+
+    static const struct {
+        const char *hostname;
+        const char *backend;
+    } cases[] = {
+        { "www.example.com", "192.0.2.1" },
+        { "mail.example.com", "192.0.2.2" },
+        { "example.org", "192.0.2.3" },
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        char buffer[ADDRESS_BUFFER_SIZE];
+        struct LookupResult result = table_lookup_server_address(table,
+                cases[i].hostname, strlen(cases[i].hostname));
+        assert(result.address != NULL);
+        display_address(result.address, buffer, sizeof(buffer));
+        assert(strcmp(buffer, cases[i].backend) == 0);
+    }
+
+    table_ref_put(table);
 }
 
 /* Hostnames reach the table lowercased, so a pattern spelled with
