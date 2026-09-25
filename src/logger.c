@@ -245,6 +245,7 @@ static int logger_priv_recorded = 0;
 
 #define LOGGER_HEALTH_CHECK_INTERVAL 30.0
 #define LOGGER_HEALTH_CHECK_TIMEOUT 5.0
+#define LOGGER_CONTROL_TIMEOUT_MS 1000
 static struct ev_timer logger_health_timer;
 static struct ev_loop *logger_health_loop = NULL;
 static uint32_t logger_ping_id = 0;
@@ -280,6 +281,8 @@ static void logger_process_shutdown(void);
 static void disable_logger_process(void);
 static void logger_child_main(int) __attribute__((noreturn));
 static int send_logger_message(const struct logger_ipc_header *, const void *,
+        size_t, int);
+static int send_logger_control(const struct logger_ipc_header *, const void *,
         size_t, int);
 static int send_logger_new_sink(struct LogSink *, int fd_to_send);
 static int send_logger_log(struct Logger *, int, const char *, size_t);
@@ -480,16 +483,9 @@ reopen_loggers(void) {
         if (sink->type == LOG_SINK_SYSLOG) {
             if (logger_process_enabled) {
                 if (send_logger_reopen(sink, -1) < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        /* Socket buffer full under heavy logging; the
-                         * child keeps its current sink until the next
-                         * rotation rather than being killed. */
-                        warn("logger busy, syslog reopen postponed");
-                    } else {
-                        err("failed to reopen syslog sink: %s",
-                                strerror(errno));
-                        disable_logger_process();
-                    }
+                    disable_logger_process();
+                    err("failed to reopen syslog sink: %s",
+                            strerror(errno));
                 }
             } else {
                 closelog();
@@ -522,14 +518,10 @@ reopen_loggers(void) {
                 }
                 /* send_logger_reopen always closes fd_for_child */
                 if (send_logger_reopen(sink, fd_for_child) < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        warn("logger busy, reopen of %s postponed",
-                                sink->filepath);
-                    } else {
-                        err("failed to request reopen for log file %s: %s",
-                                sink->filepath, strerror(errno));
-                        disable_logger_process();
-                    }
+                    int saved_errno = errno;
+                    disable_logger_process();
+                    err("failed to request reopen for log file %s: %s",
+                            sink->filepath, strerror(saved_errno));
                 }
             } else {
                 if (!logger_parent_fs_locked ||
@@ -949,9 +941,10 @@ obtain_syslog_sink(void) {
 
         if (logger_process_enabled) {
             if (send_logger_new_sink(sink, -1) < 0) {
-                err("failed to register syslog sink with logger process: %s",
-                        strerror(errno));
+                int saved_errno = errno;
                 disable_logger_process();
+                err("failed to register syslog sink with logger process: %s",
+                        strerror(saved_errno));
             }
         }
     }
@@ -1052,10 +1045,12 @@ obtain_file_sink(const char *filepath) {
     if (logger_process_enabled) {
         /* send_logger_new_sink always closes fd_for_child */
         if (send_logger_new_sink(sink, fd_for_child) < 0) {
-            err("Failed to register log file %s with logger process: %s", filepath,
-                    strerror(errno));
-            /* Fall back to in-process logging */
+            int saved_errno = errno;
+            /* Fall back to in-process logging, which also gets the
+             * message instead of the logger that failed */
             disable_logger_process();
+            err("Failed to register log file %s with logger process: %s", filepath,
+                    strerror(saved_errno));
         }
     } else if (fd_for_child >= 0) {
         close(fd_for_child);
@@ -1120,11 +1115,7 @@ free_sink(struct LogSink *sink) {
     SLIST_REMOVE(&sinks, sink, LogSink, entries);
 
     if (logger_process_enabled) {
-        /* On a momentarily full socket the child just keeps the dropped
-         * sink open until it is restarted; only a real IPC failure
-         * disables the logger process. */
-        if (send_logger_drop(sink) < 0 &&
-                errno != EAGAIN && errno != EWOULDBLOCK)
+        if (send_logger_drop(sink) < 0)
             disable_logger_process();
     }
 
@@ -1510,6 +1501,35 @@ send_logger_message(const struct logger_ipc_header *header,
     return rc;
 }
 
+/* Messages that change what the logger does cannot be dropped like log
+ * lines when its socket is full, or the logger would keep writing to a
+ * rotated file, or miss a sink. Give it a second to make room; a logger
+ * that cannot is stuck, and errno is then ETIMEDOUT. */
+static int
+send_logger_control(const struct logger_ipc_header *header,
+        const void *payload, size_t payload_len, int fd_to_send) {
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (;;) {
+        int rc = send_logger_message(header, payload, payload_len,
+                fd_to_send);
+        if (rc >= 0 || (errno != EAGAIN && errno != EWOULDBLOCK))
+            return rc;
+
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long waited_ms = (now.tv_sec - start.tv_sec) * 1000 +
+                (now.tv_nsec - start.tv_nsec) / 1000000;
+        struct pollfd pfd = { .fd = logger_sock, .events = POLLOUT };
+        if (waited_ms >= LOGGER_CONTROL_TIMEOUT_MS ||
+                poll(&pfd, 1, (int)(LOGGER_CONTROL_TIMEOUT_MS - waited_ms)) <= 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+    }
+}
+
 static int
 send_logger_new_sink(struct LogSink *sink, int fd_to_send) {
     struct logger_ipc_header header = {
@@ -1527,7 +1547,7 @@ send_logger_new_sink(struct LogSink *sink, int fd_to_send) {
     if (payload != NULL)
         header.payload_len = (uint32_t)(strlen(payload) + 1);
 
-    int rc = send_logger_message(&header, payload, header.payload_len,
+    int rc = send_logger_control(&header, payload, header.payload_len,
             fd_to_send);
 
     if (fd_to_send >= 0)
@@ -1563,7 +1583,7 @@ send_logger_reopen(struct LogSink *sink, int fd_to_send) {
         .payload_len = 0,
     };
 
-    int rc = send_logger_message(&header, NULL, 0, fd_to_send);
+    int rc = send_logger_control(&header, NULL, 0, fd_to_send);
 
     if (fd_to_send >= 0)
         close(fd_to_send);
@@ -1581,7 +1601,7 @@ send_logger_drop(struct LogSink *sink) {
         .payload_len = 0,
     };
 
-    return send_logger_message(&header, NULL, 0, -1);
+    return send_logger_control(&header, NULL, 0, -1);
 }
 
 static int
@@ -1604,7 +1624,7 @@ send_logger_privileges(uid_t uid, gid_t gid) {
         .payload_len = sizeof(payload),
     };
 
-    return send_logger_message(&header, &payload, sizeof(payload), -1);
+    return send_logger_control(&header, &payload, sizeof(payload), -1);
 }
 
 static int
