@@ -126,7 +126,9 @@ SNIProxy runs as four cooperating processes:
 2. **`sniproxy-binder`**: keeps root so that a listener added by a
    SIGHUP reload can still bind a privileged port once the main loop has
    dropped its privileges; the initial listeners are bound by the main
-   loop before it drops root. It idles otherwise, and only binds Unix
+   loop before it drops root. A binder restarted after it died runs
+   without root, as it is forked from the main loop, until sniproxy is
+   restarted. It idles otherwise, and only binds Unix
    socket paths whose directory really lies under `/run` or `/var/run`,
    symlinks resolved.
 3. **`sniproxy-logger`**: writes the log files. The main loop sends it

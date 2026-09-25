@@ -351,6 +351,12 @@ binder_restart_child(void) {
     if (binder_spawn_child() < 0)
         return -1;
 
+    /* Forked from the main process after it dropped root */
+    if (geteuid() != 0)
+        warn("binder restarted without root: a reload can no longer "
+                "bind privileged ports or unix sockets in root's "
+                "directories");
+
     return binder_sync_allowlist_to_child();
 }
 
