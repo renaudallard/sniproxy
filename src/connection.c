@@ -2157,6 +2157,10 @@ connection_header_timeout_cb(struct ev_loop *loop, struct ev_timer *w,
     TAILQ_REMOVE(&connections, con, entries);
     connection_account_remove();
     conn_count_decrement(&con->peer_addr);
+
+    if (con->listener->access_log)
+        log_connection(con);
+
     free_connection(con);
     maybe_stop_buffer_shrink_timer(loop);
 }
