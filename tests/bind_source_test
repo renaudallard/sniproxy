@@ -7,6 +7,7 @@ use lib dirname (__FILE__);
 use TestUtils;
 use TestHTTPD;
 use File::Temp;
+use IO::Socket::INET;
 
 sub proxy {
     my $config = shift;
@@ -74,6 +75,13 @@ sub main {
     my $workers = $ENV{WORKERS} || 10;
     my $iterations = $ENV{ITERATIONS} || 10;
     my $local_httpd = $ENV{LOCAL_HTTPD_PORT};
+
+    # All of 127.0.0.0/8 is local on Linux, but on the BSDs only the
+    # addresses configured on lo0 are.
+    unless (IO::Socket::INET->new(LocalAddr => '127.1.1.1', Proto => 'udp')) {
+        print STDERR "127.1.1.1 is not a local address here, skipping\n";
+        exit 77;
+    }
 
     my $config = make_source_config($proxy_port, $local_httpd || $httpd_port);
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
