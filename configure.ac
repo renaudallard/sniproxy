@@ -250,7 +250,8 @@ AC_SUBST([LIBSSL_LIBS])
 
 AC_ARG_ENABLE([rfc3339-timestamps],
   [AS_HELP_STRING([--enable-rfc3339-timestamps], [Enable RFC3339 timestamps])],
-  [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])
+  [AS_IF([test "x$enableval" = xyes],
+    [AC_DEFINE([RFC3339_TIMESTAMP], 1, [RFC3339 timestamps enabled])])])
 
 # Check for libseccomp (Linux only).  Both the header and the library
 # must be present; HAVE_SECCOMP gates a #include <seccomp.h> in
