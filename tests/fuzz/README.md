@@ -8,6 +8,7 @@ with AddressSanitizer and UndefinedBehaviorSanitizer.
 | Fuzzer | Target | Description |
 |--------|--------|-------------|
 | `tls_fuzz` | src/tls.c | TLS ClientHello parsing and SNI extraction |
+| `dtls_fuzz` | src/dtls.c | DTLS ClientHello parsing and SNI extraction |
 | `http2_fuzz` | src/http2.c | HTTP/2 HPACK header parsing |
 | `http_fuzz` | src/http.c | HTTP/1.x request parsing and Host header extraction |
 | `xmpp_fuzz` | src/xmpp.c | XMPP stream parsing and `to` attribute extraction |
