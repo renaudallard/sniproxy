@@ -696,7 +696,10 @@ also reduces spoofing exposure and upstream query volume.
   kernel splices client and server sockets directly; user-space buffers
   shrink to 4 KiB and the idle timer polls the kernel byte counters of
   both directions before closing a quiet connection.
-- **JIT regex**: PCRE2 JIT compilation is used where available.
+- **JIT regex**: PCRE2 JIT compilation is used where available. The
+  packaged systemd unit forbids writable executable memory
+  (`MemoryDenyWriteExecute`), so patterns are matched by the PCRE2
+  interpreter there.
 - **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1).
 - **SO_REUSEPORT**: run several sniproxy instances on the same port;
   on Linux 3.9+ the kernel spreads new connections across them.
