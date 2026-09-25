@@ -208,6 +208,22 @@ int main(void) {
         free(addr);
     } while (0);
 
+    /* A unix socket has no port, so the one a protocol default would set
+     * must not make two listeners on one path compare different */
+    do {
+        struct Address *a = new_address("unix:/run/same.sock");
+        struct Address *b = new_address("unix:/run/same.sock");
+
+        assert(a != NULL && b != NULL);
+        address_set_port(a, 443);
+        address_set_port(b, 80);
+        assert(address_port(a) == 0);
+        assert(address_compare(a, b) == 0);
+
+        free(a);
+        free(b);
+    } while (0);
+
     /* An IPv4-mapped IPv6 address becomes plain IPv4, others are copied */
     do {
         struct sockaddr_storage in, out;

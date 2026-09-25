@@ -424,8 +424,11 @@ address_set_port(struct Address *addr, uint16_t port) {
                 default:
                     break;
             }
+            /* Keep the cached port what address_port() reports: a unix
+             * socket has none, and address_compare() looks at it. */
+            addr->port = address_port(addr);
+            break;
         }
-            __attribute__((fallthrough));
         case HOSTNAME:
         case WILDCARD:
             addr->port = port;
