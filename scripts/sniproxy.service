@@ -14,11 +14,21 @@ EnvironmentFile=-/etc/default/sniproxy
 ExecStart=/usr/sbin/sniproxy -f -c ${SNIPROXY_CONFIG} ${SNIPROXY_OPTS}
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
+# Stop the main process only: it stops its helper processes itself, once
+# the logger has written what it was sent.
+KillMode=mixed
+# Stop the main process only: it stops its helper processes itself, once
+# the logger has written what it was sent.
+KillMode=mixed
 
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ReadWritePaths=-/var/log/sniproxy
+# The only writable place under /run, for unix socket listeners
+RuntimeDirectory=sniproxy
+# The only writable place under /run, for unix socket listeners
+RuntimeDirectory=sniproxy
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

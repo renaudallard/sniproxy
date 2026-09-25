@@ -226,7 +226,9 @@ directory and a logrotate file. The `.deb` and `.rpm` packages add a
 systemd unit and the `.apk` an OpenRC service, neither enabled. Both
 start sniproxy as root, which binds its listeners and drops to the
 `user` in the configuration, and pass `-g` so that user can read the
-configuration again on reload. Enable the unit with
+configuration again on reload. The systemd unit makes the file system
+read-only apart from `/var/log/sniproxy` and `/run/sniproxy`, so a unix
+socket listener has to be in `/run/sniproxy` there. Enable the unit with
 `systemctl enable --now sniproxy`, or the OpenRC service with
 `rc-update add sniproxy` and `rc-service sniproxy start`; its options go
 in `/etc/conf.d/sniproxy` (`SNIPROXY_CONFIG`, `SNIPROXY_OPTS`).
