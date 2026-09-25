@@ -1159,9 +1159,12 @@ start_header_timer(struct Connection *con, struct ev_loop *loop) {
     if (connection_header_timeout <= 0.0)
         return;
 
+    /* libev does not allow setting an active timer */
+    if (ev_is_active(&con->header_timer))
+        return;
+
     ev_timer_set(&con->header_timer, connection_header_timeout, 0.0);
-    if (!ev_is_active(&con->header_timer))
-        ev_timer_start(loop, &con->header_timer);
+    ev_timer_start(loop, &con->header_timer);
 }
 
 static void
