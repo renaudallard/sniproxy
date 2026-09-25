@@ -71,6 +71,18 @@ fi
 
 
 %changelog
+* Fri Sep 25 2026 Renaud Allard <renaud@allard.it> 0.17.0-1
+- Reload: keep listeners that share an address with another of a different
+  socket type, and close dropped listeners before adding new ones.
+- Connections: close idle ones only after the full idle timeout; on Linux
+  stop other users from binding a dtls listener's address.
+- Logger: restart a logger that is stuck or lost, and reopen log files
+  correctly on rotation, on FreeBSD and OpenBSD too.
+- Limits: base the default connection ceiling on the file limit in force,
+  counting two descriptors per connection.
+- Config: refuse relative unix paths, unix nameservers and a directive
+  missing its argument at the end of the file. See NEWS for the full list.
+
 * Sun Mar 02 2026 Renaud Allard <renaud@allard.it> 0.9.23-1
 - Security: Normalize IPv4-mapped IPv6 addresses in rate limiter so the
   same client gets one bucket regardless of address family.
