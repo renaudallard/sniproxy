@@ -116,7 +116,7 @@ static size_t shrink_candidates_count = 0;
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
 
-static void reactivate_watcher(struct ev_loop *, struct ev_io *, int,
+static void reactivate_watcher(struct ev_loop *, struct ev_io *, int, int,
         const struct Buffer *, const struct Buffer *);
 static int server_buffer_may_grow(int);
 
@@ -149,6 +149,7 @@ static size_t connections_active_count(void);
 static size_t connections_peak_count(void);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
+static void connection_pass_eof(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 static void start_header_timer(struct Connection *, struct ev_loop *);
 static void stop_header_timer(struct Connection *, struct ev_loop *);
@@ -916,11 +917,16 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
                 server_open = 0;
             }
             revents = 0; /* Clear revents so we don't try to send */
-        } else if (bytes_received == 0) { /* peer closed socket */
-            if (is_client) {
-                close_client_socket(con, loop);
-                client_open = 0;
-            } else {
+        } else if (bytes_received == 0) {
+            /* The peer shut down its sending side. It may still read what
+             * the other peer sends, so keep its socket open and only stop
+             * reading it; connection_pass_eof() passes the end on. A
+             * server that ends while the client is gone closes. */
+            if (is_client)
+                con->client_eof = 1;
+            else if (con->state == CONNECTED)
+                con->server_eof = 1;
+            else {
                 close_server_socket(con, loop);
                 server_open = 0;
             }
@@ -976,14 +982,20 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     }
 
 #ifdef SO_SPLICE
-    /* Attempt kernel-level splice once both buffers have been flushed */
+    /* Attempt kernel-level splice once both buffers have been flushed,
+     * while both directions are still open */
     if (con->state == CONNECTED && !con->spliced &&
+            !con->client_eof && !con->server_eof &&
             buffer_len(con->client.buffer) == 0 &&
             buffer_len(con->server.buffer) == 0) {
         if (try_splice(con, loop))
             return;
     }
 #endif
+
+    connection_pass_eof(con, loop);
+    client_open = client_socket_open(con);
+    server_open = server_socket_open(con);
 
     /* Close other socket if we have flushed corresponding buffer */
     if (con->state == SERVER_CLOSED && buffer_len(con->server.buffer) == 0) {
@@ -1013,6 +1025,39 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     reactivate_watchers_with_state(con, loop, client_open, server_open);
 }
 
+/*
+ * Once all a peer sent before shutting down its sending side has gone
+ * out, shut down our sending side towards the other peer, and close the
+ * connection once both directions have ended this way.
+ */
+static void
+connection_pass_eof(struct Connection *con, struct ev_loop *loop) {
+    if (con->state != CONNECTED)
+        return;
+
+    /* Only once something reached the backend, which shows its socket
+     * finished connecting: the request always gets there first. */
+    if (con->client_eof && !con->server_shut &&
+            buffer_len(con->client.buffer) == 0 &&
+            con->client.buffer->tx_bytes > 0) {
+        if (shutdown(con->server.watcher.fd, SHUT_WR) < 0)
+            warn("shutdown(server): %s", strerror(errno));
+        con->server_shut = 1;
+    }
+
+    if (con->server_eof && !con->client_shut &&
+            buffer_len(con->server.buffer) == 0) {
+        if (shutdown(con->client.watcher.fd, SHUT_WR) < 0)
+            warn("shutdown(client): %s", strerror(errno));
+        con->client_shut = 1;
+    }
+
+    if (con->client_shut && con->server_shut) {
+        close_server_socket(con, loop);
+        close_client_socket(con, loop);
+    }
+}
+
 static void
 reactivate_watchers(struct Connection *con, struct ev_loop *loop) {
     reactivate_watchers_with_state(con, loop,
@@ -1025,6 +1070,10 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
         int client_open, int server_open) {
     struct ev_io *client_watcher = &con->client.watcher;
     struct ev_io *server_watcher = &con->server.watcher;
+
+    connection_pass_eof(con, loop);
+    client_open = client_open && client_socket_open(con);
+    server_open = server_open && server_socket_open(con);
 
     /* Close other socket if we have flushed corresponding buffer.
      * This handles protocols with no abort message (e.g. Minecraft)
@@ -1059,12 +1108,12 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
 
     /* Reactivate watchers */
     if (client_open)
-        reactivate_watcher(loop, client_watcher, 0,
+        reactivate_watcher(loop, client_watcher, 0, con->client_eof,
                 con->client.buffer, con->server.buffer);
 
     if (server_open)
         reactivate_watcher(loop, server_watcher,
-                server_buffer_may_grow(client_open),
+                server_buffer_may_grow(client_open), con->server_eof,
                 con->server.buffer, con->client.buffer);
 
     /* Validate watcher state consistency */
@@ -1097,12 +1146,13 @@ server_buffer_may_grow(int client_open) {
 
 static void
 reactivate_watcher(struct ev_loop *loop, struct ev_io *w, int may_grow,
-        const struct Buffer *input_buffer,
+        int read_done, const struct Buffer *input_buffer,
         const struct Buffer *output_buffer) {
     int events = 0;
 
-    if (buffer_room(input_buffer) ||
-            (may_grow && buffer_can_double(input_buffer)))
+    /* A socket at the end of its data would always be readable */
+    if (!read_done && (buffer_room(input_buffer) ||
+            (may_grow && buffer_can_double(input_buffer))))
         events |= EV_READ;
 
     if (buffer_len(output_buffer))
@@ -2814,10 +2864,11 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
         int rc = parse_incoming_proxy_header(con);
         if (rc == -1) {
             /* Incomplete: a v2 header may be up to 64 KiB long, so make
-             * room for the rest when the buffer is full. */
-            if (buffer_room(con->client.buffer) > 0 ||
+             * room for the rest when the buffer is full. No more comes
+             * after the client's end of data. */
+            if (!con->client_eof && (buffer_room(con->client.buffer) > 0 ||
                     buffer_reserve(con->client.buffer,
-                        buffer_size(con->client.buffer)) == 0)
+                        buffer_size(con->client.buffer)) == 0))
                 return;
             rc = -2;
         }
@@ -2843,9 +2894,13 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
         payload_len = buffer_coalesce(con->client.buffer, (const void **)&payload);
     }
 
-    /* Avoid payload_len underflow and empty request */
-    if (payload_len <= con->header_len)
+    /* Avoid payload_len underflow and empty request. A client that ends
+     * its data without sending a request is simply closed. */
+    if (payload_len <= con->header_len) {
+        if (con->client_eof)
+            close_client_socket(con, loop);
         return;
+    }
 
     payload += con->header_len;
     payload_len -= con->header_len;
@@ -2866,7 +2921,12 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
         char client[INET6_ADDRSTRLEN + 8];
         int fatal_parse_error = 0;
 
-        if (result == -1) { /* incomplete request */
+        if (result == -1 && con->client_eof) {
+            warn("Request from %s ended before it was complete",
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
+        } else if (result == -1) { /* incomplete request */
             con->request_parsed_len = payload_len;
             if (buffer_room(con->client.buffer) > 0)
                 return; /* give client a chance to send more data */
@@ -3756,6 +3816,35 @@ splice_account(struct Connection *con, ev_tstamp last_activity) {
 static void
 splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unused))) {
     struct Connection *con = (struct Connection *)w->data;
+    int is_client = w == &con->client.watcher;
+    int error = 0;
+    socklen_t error_len = sizeof(error);
+    char byte;
+
+    /* A splice that ends at the end of its source's data leaves the other
+     * one running, and the kernel does not pass the end on: do it, and
+     * wait for the other direction. Anything else ends both. */
+    if (getsockopt(w->fd, SOL_SOCKET, SO_ERROR, &error, &error_len) == 0 &&
+            error == 0 &&
+            recv(w->fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0 &&
+            !(is_client ? con->server_eof : con->client_eof)) {
+        int drain_fd = is_client ?
+                con->server.watcher.fd : con->client.watcher.fd;
+
+        (void)splice_progressed(con);
+        ev_io_stop(loop, w);
+        if (shutdown(drain_fd, SHUT_WR) < 0)
+            warn("shutdown(%s): %s", is_client ? "server" : "client",
+                    strerror(errno));
+        if (is_client) {
+            con->client_eof = 1;
+            con->server_shut = 1;
+        } else {
+            con->server_eof = 1;
+            con->client_shut = 1;
+        }
+        return;
+    }
 
     splice_account(con, ev_now(loop));
 

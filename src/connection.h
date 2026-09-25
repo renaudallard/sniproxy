@@ -77,6 +77,11 @@ struct Connection {
     size_t header_len;
     size_t incoming_proxy_len;
     size_t request_parsed_len;  /* request bytes the last parse found incomplete */
+    /* The client or server shut down its sending side: its socket stays
+     * open for the other direction, and once what it sent has gone out
+     * our sending side towards the other peer is shut down too. */
+    int client_eof, server_eof;
+    int client_shut, server_shut;   /* shutdown(SHUT_WR) done on that socket */
     struct ResolvQuery *query_handle;
     ev_tstamp established_timestamp;
     enum proxy_protocol_mode use_proxy_header;

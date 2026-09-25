@@ -176,8 +176,19 @@ A backend or fallback given as a hostname goes through RESOLVING, an IP
 address or unix socket straight to RESOLVED. Before CONNECTED a connection
 can be aborted (unparsable request without a fallback, failed lookup,
 backend refused by `backend_acl`): the protocol's abort message is queued
-for the client and it enters SERVER_CLOSED. A client that closes before
-CONNECTED goes straight to CLOSED.
+for the client and it enters SERVER_CLOSED.
+
+A peer that shuts down its sending side (a FIN) does not close the
+connection: the flags `client_eof` or `server_eof` record it and its
+socket is no longer read, but it stays open for the other direction.
+Once everything that peer sent has gone out, sniproxy shuts down its
+own sending side towards the other peer (`server_shut`, `client_shut`),
+and the connection closes when both directions have ended. A client
+that ends its data before CONNECTED still has its request routed; one
+whose request is incomplete at that point gets the abort message, and
+one that sent nothing is closed. On OpenBSD the end of one spliced
+direction ends only that splice, and sniproxy passes the FIN on itself,
+as the kernel does not.
 
 **States:**
 - `NEW`: Before successful accept
@@ -186,8 +197,10 @@ CONNECTED goes straight to CLOSED.
 - `RESOLVING`: DNS lookup in progress (if backend is hostname)
 - `RESOLVED`: Backend address obtained
 - `CONNECTED`: Bidirectional proxy active
-- `SERVER_CLOSED`: Server closed, draining server-to-client buffer
-- `CLIENT_CLOSED`: Client closed, draining client-to-server buffer
+- `SERVER_CLOSED`: Server socket closed after an error or abort,
+  draining server-to-client buffer
+- `CLIENT_CLOSED`: Client socket closed after an error, draining
+  client-to-server buffer
 - `CLOSED`: Both sockets closed, connection can be freed
 
 **Fields:**
@@ -462,12 +475,18 @@ Once CONNECTED, the connection enters steady-state proxying:
 
 ### Connection Teardown
 
-1. **Partial close**: One side closes
+1. **Half close**: One peer shuts down its sending side
+   - Its socket stays open and is no longer read
+   - Once its data has been flushed, the other peer's socket is shut
+     down for writing, and the other direction goes on
+   - When both directions have ended, both sockets are closed
+
+2. **Partial close**: One side fails or is aborted
    - Transitions to SERVER_CLOSED or CLIENT_CLOSED
    - Continues flushing remaining buffer data
    - Closes other socket when buffer empty
 
-2. **Full close**: Both sides closed
+3. **Full close**: Both sides closed
    - Transitions to CLOSED
    - Logs connection statistics (duration, bytes transferred)
    - Frees all resources (buffers, watchers, query handles)
