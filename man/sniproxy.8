@@ -146,7 +146,10 @@ to restrict each process to the system calls it needs and the files it
 uses\&. The main process and the binder and resolver it forks see the
 configuration, the resolver files, the certificate bundle, and the
 directories holding the log files, the pidfile, listening Unix sockets
-and connection dumps, in which they may create files\&. The logger process is forked before the
+and connection dumps, in which they may create files\&. That view is
+fixed at startup: a Unix socket listener, backend or fallback that a
+reload names outside it cannot be bound or reached until sniproxy is
+restarted\&. The logger process is forked before the
 filesystem view is locked and unveils only its own log files once
 privileges are dropped, so a log file first named by a reload is only
 opened after a restart\&. A logger restarted by the health check runs

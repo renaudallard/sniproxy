@@ -613,7 +613,9 @@ afterthought.
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it
   forks afterwards, to the paths they need, which include
-  `/etc/resolv.conf` and `/etc/hosts` read only for the resolver. The
+  `/etc/resolv.conf` and `/etc/hosts` read only for the resolver. That
+  view is fixed at startup, so a Unix socket path that a reload names
+  outside it only works after a restart. The
   logger is forked before that and unveils only its own log files once
   privileges are dropped, so a log file first named by a reload is only
   opened after a restart. A logger restarted by the health check runs
