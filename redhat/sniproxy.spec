@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.17.0
+Version: 0.18.0
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -71,6 +71,14 @@ fi
 
 
 %changelog
+* Fri Sep 25 2026 Renaud Allard <renaud@allard.it> 0.18.0-1
+- Connections: pass a TCP half-close on instead of closing both sides, and
+  tell the client when its backend refuses or fails.
+- Routing: fix backend_affinity with two records, refuse numeric names as
+  a wildcard target, count dtls sessions against max_connections.
+- Logger and packaging: fixes for daemon starts, busy loggers and the
+  systemd unit; the SELinux policy is removed. See NEWS for the full list.
+
 * Fri Sep 25 2026 Renaud Allard <renaud@allard.it> 0.17.0-1
 - Reload: keep listeners that share an address with another of a different
   socket type, and close dropped listeners before adding new ones.

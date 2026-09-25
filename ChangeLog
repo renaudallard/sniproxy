@@ -1,5 +1,30 @@
 2026-09-25  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.18.0
+	- connection: TCP half-close is passed on instead of closing both
+	  sides, on spliced OpenBSD connections too; a backend failing before
+	  answering gets the client the abort message, one failing mid answer
+	  resets the client.
+	- connection: backend_affinity seeds no longer all odd; dtls backend
+	  sockets count against max_connections; idle timer on the monotonic
+	  clock; access log fixes for incoming PROXY headers and header
+	  timeouts.
+	- listener: numeric names refused as a '*' target; address: no port
+	  on unix socket addresses; config: second access_log in a listener
+	  refused; sniproxy: pidfile pid range checked.
+	- logger: first logger detached from the caller's output when
+	  daemonizing; control messages wait a second for a busy logger;
+	  restart reasons logged; helpers ignore SIGINT; binder warns when
+	  restarted without root.
+	- packaging: systemd unit gets /run/sniproxy and KillMode=mixed;
+	  Debian init stop fixed; sniproxy-dbg dropped; RPM changelog and
+	  build requirements; SELinux policy removed.
+	- tests and docs: curl --fail, crash and sanitizer detection, working
+	  slow_client, hostname and wildcard tests; fuzzing fails on UB; CI on
+	  every branch; manual, README and ARCHITECTURE.md corrections.
+
+2026-09-25  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.17.0
 	- listener: reloads pair listeners by address and socket type, and
 	  close dropped listeners before adding new ones.

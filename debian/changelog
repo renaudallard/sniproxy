@@ -1,3 +1,11 @@
+sniproxy (0.18.0) unstable; urgency=medium
+
+  * TCP half-close, backend failures reported to clients, and fixes from a
+    review of the whole tree. Some configurations are now refused, and the
+    empty sniproxy-dbg package is gone. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 25 Sep 2026 13:24:20 +0200
+
 sniproxy (0.17.0) unstable; urgency=medium
 
   * Fixes from a review of the whole tree: reloads that left an address

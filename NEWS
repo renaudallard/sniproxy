@@ -1,3 +1,61 @@
+sniproxy 0.18.0 (2026-09-25)
+===============================
+
+Fixes from another review of the whole tree, and TCP half-close.
+
+Upgrade note: some configurations earlier releases accepted are now
+refused: two access_log blocks in one listener, and two listeners on the
+same unix socket path with different protocols. Clients see some
+changes too: a '*' table entry refuses names whose last label is all
+digits, such as 127.0.0.01, and a backend that closes after its answer
+no longer closes the client connection at once. The packaged systemd
+unit now only lets sniproxy create unix sockets in /run/sniproxy, and
+the Debian packages no longer include the empty sniproxy-dbg.
+
+Highlights:
+
+* TCP half-close: a client or backend that shuts down its sending side
+  has that passed on once its data is through, and the other direction
+  goes on. A client that sent its request and then ended its data got
+  nothing back before.
+
+* A backend that refuses the connection now gets the client the
+  protocol's error (503 for HTTP), and one that fails in the middle of
+  its answer gets the client connection reset, so that a truncated
+  answer no longer looks complete.
+
+* backend_affinity sent every client to the same backend when DNS
+  returned two records.
+
+* A '*' table entry could reach any IPv4 address, whatever its DNS, as
+  c-ares reads names such as 127.0.0.01 as addresses by itself.
+
+* dtls sessions now count against max_connections, so that they cannot
+  use up the file descriptors and stop the TCP listeners.
+
+* Idle connections are timed on the monotonic clock only; a clock step
+  closed them early or kept them open longer.
+
+* Logger: a daemonizing start no longer leaves the caller's output open
+  (out=$(sniproxy) never returned); a busy logger gets a second to take
+  a reopen or a new log file instead of being killed or left writing to
+  the rotated file; the reason for a health check restart is logged.
+
+* The systemd unit has a writable /run/sniproxy for unix socket
+  listeners and stops the main process first. The Debian init script
+  now stops sniproxy properly.
+
+* Smaller fixes: a unix listener whose protocol changes on reload is
+  updated instead of rebound; an out of range pid in the pidfile no
+  longer blocks the start; the access log no longer counts a dropped
+  incoming PROXY header as sent, and includes connections closed by the
+  header timeout; helpers ignore SIGINT; a restarted binder warns that
+  it runs without root; --disable-rfc3339-timestamps no longer turns
+  them on.
+
+* Tests now fail on HTTP errors, on crashes of helper processes and on
+  sanitizer reports, and several of them now test what they claim to.
+
 sniproxy 0.17.0 (2026-09-25)
 ===============================
 
