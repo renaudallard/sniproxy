@@ -152,15 +152,23 @@ pidfile_remove_stale(const char *path) {
         return 0;
     }
 
+    char line[32];
     long pid = 0;
-    int matched = fscanf(fp, "%ld", &pid);
+    if (fgets(line, sizeof(line), fp) != NULL) {
+        char *end;
+        errno = 0;
+        pid = strtol(line, &end, 10);
+        /* Anything but a pid in range is not ours: 0 and -1 would name
+         * a process group or every process to kill(). */
+        if (errno != 0 || end == line || pid <= 0 || pid > INT_MAX)
+            pid = 0;
+    }
     fclose(fp);
 
     /* Treat an existing pid as live; EPERM means it exists but belongs
      * to another user. A recycled pid is indistinguishable from a live
      * instance, in that case the operator must remove the file. */
-    if (matched == 1 && pid > 0 &&
-            (kill((pid_t)pid, 0) == 0 || errno == EPERM))
+    if (pid > 0 && (kill((pid_t)pid, 0) == 0 || errno == EPERM))
         return -1;
 
     notice("removing stale PID file %s", path);
