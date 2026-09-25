@@ -158,10 +158,14 @@ int main(void) {
             return 1;
         }
 
-        address_set_port(addr, port);
+        /* A new port reads back, except on a unix socket, which has none */
+        address_set_port(addr, 8443);
+        int expected_port = address_is_sockaddr(addr) &&
+                address_sa(addr)->sa_family == AF_UNIX ? 0 : 8443;
+        port = address_port(addr);
 
-        if (good[i].port != port) {
-            fprintf(stderr, "address_port(%p) return %d, expected %d\n", (void *)addr, port, good[i].port);
+        if (port != expected_port) {
+            fprintf(stderr, "address_port(%p) return %d after address_set_port, expected %d\n", (void *)addr, port, expected_port);
             return 1;
         }
 
