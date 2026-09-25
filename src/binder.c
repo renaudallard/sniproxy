@@ -98,6 +98,13 @@ struct binder_request {
 #define BINDER_CMD_REGISTER 2
 
 #define BINDER_IPC_MAX_PAYLOAD 512
+
+/* A request and room for its address, aligned as the request needs */
+union binder_request_buffer {
+    struct binder_request request;
+    uint8_t bytes[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
+};
+
 #define BINDER_IPC_CHANNEL_ID 0x424e4452u /* BNDR */
 
 static int binder_sock = -1; /* socket to binder */
@@ -142,8 +149,8 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
     if (!binder_validate_sockaddr(addr, addr_len, 0))
         return -1;
 
-    uint8_t buffer[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
-    struct binder_request *req = (struct binder_request *)buffer;
+    union binder_request_buffer buffer;
+    struct binder_request *req = &buffer.request;
     memset(req, 0, sizeof(*req));
     req->cmd = BINDER_CMD_REGISTER;
     req->address_len = addr_len;
@@ -153,7 +160,7 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
         return -1;
 
     if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
-            buffer, sizeof(*req) + addr_len, -1) < 0) {
+            buffer.bytes, sizeof(*req) + addr_len, -1) < 0) {
         /* A partial frame desyncs the stream. Drop the channel so the next
          * bind request respawns the child rather than talking to a child
          * that is still waiting for the rest of this frame. Restarting here
@@ -367,8 +374,8 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
         fatal("bind_socket: address length %zu exceeds buffer", addr_len);
 
     size_t request_len = sizeof(struct binder_request) + addr_len;
-    uint8_t buffer[sizeof(struct binder_request) + BINDER_IPC_MAX_PAYLOAD];
-    struct binder_request *request = (struct binder_request *)buffer;
+    union binder_request_buffer buffer;
+    struct binder_request *request = &buffer.request;
     memset(request, 0, sizeof(*request));
     request->cmd = BINDER_CMD_BIND;
     request->reserved[0] = (sock_type == SOCK_DGRAM) ? 1 : 0;
@@ -387,7 +394,7 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
         }
 
         if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
-                buffer, request_len, -1) < 0) {
+                buffer.bytes, request_len, -1) < 0) {
             /* EPROTO means a partial frame reached the child, leaving the
              * stream desynced; only a fresh channel recovers from that. */
             if ((errno == EPIPE || errno == ECONNRESET || errno == EPROTO) &&
