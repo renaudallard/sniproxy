@@ -116,7 +116,7 @@ static size_t shrink_candidates_count = 0;
 static inline int client_socket_open(const struct Connection *);
 static inline int server_socket_open(const struct Connection *);
 
-static void reactivate_watcher(struct ev_loop *, struct ev_io *, int, int,
+static void reactivate_watcher(struct ev_loop *, struct ev_io *, int, int, int,
         const struct Buffer *, const struct Buffer *);
 static int server_buffer_may_grow(int);
 
@@ -150,6 +150,8 @@ static size_t connections_peak_count(void);
 static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, socklen_t);
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void connection_pass_eof(struct Connection *, struct ev_loop *);
+static int server_connecting(const struct Connection *);
+static int server_eof_pending(const struct Connection *);
 static void server_failed(struct Connection *, struct ev_loop *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 static void start_header_timer(struct Connection *, struct ev_loop *);
@@ -1036,11 +1038,7 @@ connection_pass_eof(struct Connection *con, struct ev_loop *loop) {
     if (con->state != CONNECTED)
         return;
 
-    /* Only once something reached the backend, which shows its socket
-     * finished connecting: the request always gets there first. */
-    if (con->client_eof && !con->server_shut &&
-            buffer_len(con->client.buffer) == 0 &&
-            con->client.buffer->tx_bytes > 0) {
+    if (server_eof_pending(con) && !server_connecting(con)) {
         if (shutdown(con->server.watcher.fd, SHUT_WR) < 0)
             warn("shutdown(server): %s", strerror(errno));
         con->server_shut = 1;
@@ -1057,6 +1055,39 @@ connection_pass_eof(struct Connection *con, struct ev_loop *loop) {
         close_server_socket(con, loop);
         close_client_socket(con, loop);
     }
+}
+
+/*
+ * Whether the client's end of data waits to be passed to the backend.
+ * Only once something reached the backend, which shows its socket
+ * finished connecting: the request always gets there first.
+ */
+static int
+server_eof_pending(const struct Connection *con) {
+    return con->state == CONNECTED && con->client_eof && !con->server_shut &&
+            buffer_len(con->client.buffer) == 0 &&
+            con->client.buffer->tx_bytes > 0;
+}
+
+/*
+ * With TCP Fast Open the request leaves with the SYN, so it can reach
+ * the backend while the socket is still connecting, and a shutdown()
+ * then aborts the connection instead of sending a FIN.
+ */
+static int
+server_connecting(const struct Connection *con) {
+#if defined(TCP_FASTOPEN_CONNECT) && defined(TCP_INFO)
+    struct tcp_info info;
+    socklen_t len = sizeof(info);
+
+    if (tcp_fastopen_enabled && con->server.addr.ss_family != AF_UNIX &&
+            getsockopt(con->server.watcher.fd, IPPROTO_TCP, TCP_INFO,
+                &info, &len) == 0)
+        return info.tcpi_state == TCP_SYN_SENT;
+#else
+    (void)con;
+#endif
+    return 0;
 }
 
 static void
@@ -1109,12 +1140,15 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
 
     /* Reactivate watchers */
     if (client_open)
-        reactivate_watcher(loop, client_watcher, 0, con->client_eof,
+        reactivate_watcher(loop, client_watcher, 0, con->client_eof, 0,
                 con->client.buffer, con->server.buffer);
 
+    /* An end of data held back until the backend is connected needs to
+     * know when it is, which the socket shows by becoming writable */
     if (server_open)
         reactivate_watcher(loop, server_watcher,
                 server_buffer_may_grow(client_open), con->server_eof,
+                server_eof_pending(con) && server_connecting(con),
                 con->server.buffer, con->client.buffer);
 
     /* Validate watcher state consistency */
@@ -1147,7 +1181,7 @@ server_buffer_may_grow(int client_open) {
 
 static void
 reactivate_watcher(struct ev_loop *loop, struct ev_io *w, int may_grow,
-        int read_done, const struct Buffer *input_buffer,
+        int read_done, int want_write, const struct Buffer *input_buffer,
         const struct Buffer *output_buffer) {
     int events = 0;
 
@@ -1156,7 +1190,7 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w, int may_grow,
             (may_grow && buffer_can_double(input_buffer))))
         events |= EV_READ;
 
-    if (buffer_len(output_buffer))
+    if (buffer_len(output_buffer) || want_write)
         events |= EV_WRITE;
 
     if (ev_is_active(w)) {
