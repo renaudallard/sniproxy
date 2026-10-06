@@ -24,6 +24,7 @@ TESTS += functional_test \
          connection_reset_test \
          fallback_test \
          fd_limit_test \
+         half_close_test \
          ipv6_v6only_test \
          proxy_header_test \
          reload_test \
@@ -52,6 +53,7 @@ EXTRA_DIST = check_output.sh \
              connection_reset_test \
              fallback_test \
              fd_limit_test \
+             half_close_test \
              ipv6_v6only_test \
              proxy_header_test \
              reload_test \

@@ -1,0 +1,123 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use File::Basename;
+use lib dirname (__FILE__);
+use TestUtils;
+use TestHTTPD;
+use File::Temp;
+use IO::Socket::INET;
+use Socket qw(SHUT_WR);
+
+sub proxy {
+    my $config = shift;
+
+    exec(@_, '../src/sniproxy', '-f', '-c', $config);
+}
+
+sub make_half_close_config($$$) {
+    my $proxy_port = shift;
+    my $httpd_port = shift;
+    my $closed_port = shift;
+
+    my ($fh, $filename) = File::Temp::tempfile();
+
+    print $fh <<END;
+# Half-close and backend failure test configuration
+
+user @{[test_user()]}
+group @{[test_group()]}
+per_ip_connection_rate 0
+
+listen 127.0.0.1 $proxy_port {
+    proto http
+}
+
+table {
+    localhost 127.0.0.1 $httpd_port
+    refused 127.0.0.1 $closed_port
+}
+END
+
+    close ($fh);
+
+    return $filename;
+}
+
+# Send a request, end the client's data, and return all the proxy answers
+sub half_close_request($$) {
+    my $port = shift;
+    my $request = shift;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => "tcp",
+                                       Type => SOCK_STREAM)
+        or die "couldn't connect $!";
+
+    $socket->send($request);
+    $socket->shutdown(SHUT_WR);
+
+    my $response = '';
+    my $chunk;
+    local $SIG{ALRM} = sub { die "timed out waiting for the answer\n" };
+    alarm(10);
+    while ($socket->sysread($chunk, 16384)) {
+        $response .= $chunk;
+    }
+    alarm(0);
+
+    $socket->close();
+
+    return $response;
+}
+
+sub worker($) {
+    my $port = shift;
+    my @cases = (
+        [ "complete request then the client's end",
+          "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n", qr/\AHTTP\/1\.1 200 / ],
+        [ "incomplete request then the client's end",
+          "GET / HTTP/1.0\r\nHost: localh", qr/\AHTTP\/1\.1 503 / ],
+        [ "backend refusing the connection",
+          "GET / HTTP/1.0\r\nHost: refused\r\n\r\n", qr/\AHTTP\/1\.1 503 / ],
+    );
+
+    for my $case (@cases) {
+        my ($name, $request, $expected) = @$case;
+        my $response = half_close_request($port, $request);
+
+        die "$name: unexpected answer: '" . substr($response, 0, 40) . "'\n"
+            unless $response =~ $expected;
+    }
+
+    exit 0;
+}
+
+sub main {
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
+    # Nothing listens there
+    my $closed_port = find_free_port();
+
+    my $config = make_half_close_config($proxy_port, $httpd_port, $closed_port);
+    my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+    my $httpd_pid = start_child('server', \&TestHTTPD::httpd, port => $httpd_port);
+
+    wait_for_port(port => $httpd_port);
+    wait_for_port(port => $proxy_port);
+
+    start_child('worker', \&worker, $proxy_port);
+    wait_for_type('worker');
+
+    kill 15, $proxy_pid;
+    kill 15, $httpd_pid;
+    sleep 1;
+
+    unlink($config);
+
+    reap_children();
+}
+
+main();
