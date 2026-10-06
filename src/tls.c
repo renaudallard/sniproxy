@@ -45,6 +45,9 @@
 #define TLS_HANDSHAKE_CONTENT_TYPE 0x16
 #define TLS_HANDSHAKE_TYPE_CLIENT_HELLO 0x01
 #define CLIENT_HELLO_VERSION_RANDOM_LEN 34
+/* Bounds on a ClientHello split over several records */
+#define TLS_MAX_CLIENT_HELLO_LEN 65536
+#define TLS_MAX_CLIENT_HELLO_RECORDS 128
 
 static size_t tls_max_extensions = TLS_DEFAULT_MAX_EXTENSIONS;
 static size_t tls_max_extension_length = TLS_DEFAULT_MAX_EXTENSION_LENGTH;
@@ -55,6 +58,9 @@ static size_t tls_max_extension_length = TLS_DEFAULT_MAX_EXTENSION_LENGTH;
 
 
 static int parse_tls_header(const char *, size_t, char **);
+static int join_client_hello(const uint8_t *, size_t, size_t, uint8_t **);
+static int parse_client_hello(const uint8_t *, size_t, uint8_t, uint8_t,
+        char **);
 
 static uint8_t min_client_hello_version_major = 3;
 static uint8_t min_client_hello_version_minor = 3;
@@ -142,7 +148,6 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
     /* TLS record length */
     len = ((size_t)data[3] << 8) +
         (size_t)data[4] + TLS_HEADER_LEN;
-    data_len = MIN(data_len, len);
 
     /* Check we received entire TLS record length */
     if (data_len < len)
@@ -151,7 +156,7 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
     /*
      * Handshake
      */
-    size_t record_remaining = data_len - pos;
+    size_t record_remaining = len - pos;
     if (record_remaining < 4)
         return -5;
 
@@ -166,11 +171,89 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
         ((size_t)handshake[2] << 8) +
         (size_t)handshake[3];
 
-    if (len + 4 > record_remaining)
+    if (len + 4 <= record_remaining)
+        return parse_client_hello(handshake, len, tls_version_major,
+                tls_version_minor, hostname);
+
+    /* A handshake message may span several records (RFC 8446 5.1) */
+    uint8_t *joined = NULL;
+    int result = join_client_hello(data, data_len, len + 4, &joined);
+    if (result < 0)
+        return result;
+
+    result = parse_client_hello(joined, len, tls_version_major,
+            tls_version_minor, hostname);
+    free(joined);
+    return result;
+}
+
+/*
+ * Join the handshake records at the start of data into one buffer holding
+ * the hello_len bytes of a ClientHello. All of them are checked to be
+ * there before anything is copied, so that a client sending the records
+ * in small pieces does not have them copied again on every read.
+ * Returns 0, -1 while more is needed, -4 on malloc failure or -5 when the
+ * records cannot carry a ClientHello.
+ */
+static int
+join_client_hello(const uint8_t *data, size_t data_len, size_t hello_len,
+        uint8_t **joined) {
+    size_t pos = 0;
+    size_t have = 0;
+    size_t records = 0;
+
+    if (hello_len > TLS_MAX_CLIENT_HELLO_LEN)
         return -5;
 
+    while (have < hello_len) {
+        if (++records > TLS_MAX_CLIENT_HELLO_RECORDS)
+            return -5;
+        if (data_len - pos < TLS_HEADER_LEN)
+            return -1;
+        if (data[pos] != TLS_HANDSHAKE_CONTENT_TYPE || data[pos + 1] != 3)
+            return -5;
+
+        size_t record_len = ((size_t)data[pos + 3] << 8) +
+            (size_t)data[pos + 4];
+        if (record_len == 0)
+            return -5;
+        if (data_len - pos - TLS_HEADER_LEN < record_len)
+            return -1;
+
+        have += MIN(record_len, hello_len - have);
+        pos += TLS_HEADER_LEN + record_len;
+    }
+
+    *joined = malloc(hello_len);
+    if (*joined == NULL)
+        return -4;
+
+    pos = 0;
+    have = 0;
+    while (have < hello_len) {
+        size_t record_len = ((size_t)data[pos + 3] << 8) +
+            (size_t)data[pos + 4];
+        size_t take = MIN(record_len, hello_len - have);
+
+        memcpy(*joined + have, data + pos + TLS_HEADER_LEN, take);
+        have += take;
+        pos += TLS_HEADER_LEN + record_len;
+    }
+
+    return 0;
+}
+
+/*
+ * Parse a ClientHello handshake message, its 4 byte header included, whose
+ * body is hello_len bytes long.
+ */
+static int
+parse_client_hello(const uint8_t *handshake, size_t hello_len,
+        uint8_t tls_version_major, uint8_t tls_version_minor,
+        char **hostname) {
     const uint8_t *body = handshake + 4;
-    const uint8_t *body_end = body + len;
+    const uint8_t *body_end = body + hello_len;
+    size_t len;
 
     if ((size_t)(body_end - body) < CLIENT_HELLO_VERSION_RANDOM_LEN)
         return -5;

@@ -673,12 +673,36 @@ build_padded_client_hello(unsigned char *buf, size_t pad_len) {
     return pos;
 }
 
+/*
+ * Copy the single record ClientHello in, of in_len bytes, to out as two
+ * records, the first one carrying first_len bytes of the handshake.
+ * Returns the length of out.
+ */
+static size_t
+split_client_hello(const unsigned char *in, size_t in_len, size_t first_len,
+        unsigned char *out) {
+    size_t handshake_len = in_len - 5;
+    size_t second_len = handshake_len - first_len;
+
+    memcpy(out, in, 3);
+    out[3] = (unsigned char)(first_len >> 8);
+    out[4] = (unsigned char)first_len;
+    memcpy(out + 5, in + 5, first_len);
+    memcpy(out + 5 + first_len, in, 3);
+    out[5 + first_len + 3] = (unsigned char)(second_len >> 8);
+    out[5 + first_len + 4] = (unsigned char)second_len;
+    memcpy(out + 10 + first_len, in + 5 + first_len, second_len);
+
+    return in_len + 5;
+}
+
 int main(void) {
     unsigned int i;
     int result;
     char *hostname;
     static unsigned char padded[8192];
-    size_t padded_len;
+    static unsigned char split[8192];
+    size_t padded_len, split_len;
     struct test_packet legacy_tls10 = { (char *)tls10_client_hello, sizeof(tls10_client_hello) };
 
     for (i = 0; i < sizeof(good) / sizeof(struct test_packet); i++) {
@@ -706,6 +730,23 @@ int main(void) {
     padded_len = build_padded_client_hello(padded, 5000);
     hostname = NULL;
     result = tls_protocol->parse_packet((char *)padded, padded_len, &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    assert(0 == strcmp("localhost", hostname));
+    free(hostname);
+
+    /* A ClientHello split over two records, as RFC 8446 allows, is
+     * incomplete until the second record has arrived */
+    padded_len = build_padded_client_hello(padded, 100);
+    split_len = split_client_hello(padded, padded_len, 60, split);
+    for (size_t prefix = 0; prefix < split_len; prefix++) {
+        hostname = NULL;
+        result = tls_protocol->parse_packet((char *)split, prefix, &hostname);
+        assert(result == -1);
+        assert(hostname == NULL);
+    }
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)split, split_len, &hostname);
     assert(result == 9);
     assert(NULL != hostname);
     assert(0 == strcmp("localhost", hostname));
