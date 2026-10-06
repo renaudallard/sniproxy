@@ -11,7 +11,7 @@ Type=simple
 # reload, which needs it to be 0640 and owned by that user's group.
 Environment="SNIPROXY_CONFIG=/etc/sniproxy.conf" "SNIPROXY_OPTS=-g"
 EnvironmentFile=-/etc/default/sniproxy
-ExecStart=/usr/sbin/sniproxy -f -c ${SNIPROXY_CONFIG} ${SNIPROXY_OPTS}
+ExecStart=/usr/sbin/sniproxy -f -c ${SNIPROXY_CONFIG} $SNIPROXY_OPTS
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 # Stop the main process only: it stops its helper processes itself, once
