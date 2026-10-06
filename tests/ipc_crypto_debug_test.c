@@ -1,6 +1,7 @@
 /*
  * Debug test for IPC crypto rekey
  */
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,7 +49,7 @@ int main(void) {
 
     printf("After parent seal:\n");
     print_key("Parent send_key", parent_state.send_key, 32);
-    printf("Parent send_gen: %u, counter: %lu\n\n",
+    printf("Parent send_gen: %u, counter: %" PRIu64 "\n\n",
            parent_state.send_generation, parent_state.send_counter);
 
     /* Try to open */
@@ -60,7 +61,7 @@ int main(void) {
 
     printf("After child open (result=%d):\n", result);
     print_key("Child recv_key ", child_state.recv_key, 32);
-    printf("Child recv_gen: %u, counter: %lu\n\n",
+    printf("Child recv_gen: %u, counter: %" PRIu64 "\n\n",
            child_state.recv_generation, child_state.recv_counter);
 
     assert(result == 0);
