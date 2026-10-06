@@ -3863,22 +3863,27 @@ resolver_child_handle_addrinfo(struct ResolverChildQuery *query, int status, str
         debug_log("resolver child: query_id=%u cancelled, ignoring response family=%d status=%d",
                 query->id, family, status);
     } else if (status == ARES_SUCCESS && result != NULL) {
+        size_t family_count = family == AF_INET ?
+                query->ipv4_response_count : query->ipv6_response_count;
+
         for (struct ares_addrinfo_node *node = result->nodes; node != NULL; node = node->ai_next) {
             if (node->ai_family != family || node->ai_addr == NULL)
                 continue;
+
+            /* Limit DNS responses to prevent memory exhaustion from
+             * malicious servers. Each family has its own limit, so that
+             * the addresses of one cannot crowd out those of the other,
+             * which ipv4_first and ipv6_first rely on. */
+            if (family_count + responses_added >= RESOLVER_MAX_DNS_RESPONSES) {
+                err("resolver child: DNS response limit (%zu per address family) reached, ignoring additional addresses",
+                    (size_t)RESOLVER_MAX_DNS_RESPONSES);
+                break;
+            }
 
             struct Address *response = new_address_sa(node->ai_addr, (socklen_t)node->ai_addrlen);
             if (response == NULL) {
                 err("resolver child: failed to allocate memory for DNS query result address");
                 continue;
-            }
-
-            /* Limit DNS responses to prevent memory exhaustion from malicious servers */
-            if (query->response_count >= RESOLVER_MAX_DNS_RESPONSES) {
-                err("resolver child: DNS response limit (%zu) reached, ignoring additional addresses",
-                    (size_t)RESOLVER_MAX_DNS_RESPONSES);
-                free(response);
-                break;
             }
 
             struct Address **tmp = reallocarray(query->responses,
