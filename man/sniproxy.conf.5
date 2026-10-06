@@ -321,7 +321,8 @@ debug priority, which a daemonized sniproxy has redirected to
 /dev/null.
 
 Only one \fBerror_log\fR block may be given; a second one is a
-configuration error.
+configuration error, as is a second \fBfilename\fR, \fBsyslog\fR or
+\fBpriority\fR in a log block.
 
 The main process owns a log file, so the binder and resolver helper
 processes cannot write to it. Their own messages, for example

@@ -502,6 +502,14 @@ accept_listener_table_name(struct Listener *listener, const char *table_name) {
 
 int
 accept_listener_protocol(struct Listener *listener, const char *protocol) {
+    /* A second one would change the protocol but not the default port
+     * that the first one gave the listener */
+    if (listener->protocol_given) {
+        err("Duplicate protocol '%s'", protocol);
+        return -1;
+    }
+    listener->protocol_given = 1;
+
     if (strcasecmp(protocol, http_protocol->name) == 0)
         listener->protocol = http_protocol;
     else if (strcasecmp(protocol, xmpp_protocol->name) == 0)

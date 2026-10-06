@@ -64,6 +64,7 @@ struct LoggerBuilder {
     const char *filename;
     const char *syslog_facility;
     int priority;
+    int priority_given;
 };
 
 struct ListenerACLBuilder {
@@ -1790,11 +1791,17 @@ accept_logger_filename(struct LoggerBuilder *lb, const char *filename) {
     if (lb == NULL)
         return 0;
 
+    /* Also catches a listener's access_log given a filename both as its
+     * argument and in its block */
+    if (lb->filename != NULL) {
+        err("Duplicate logger filename '%s'", filename);
+        return 0;
+    }
+
     char *normalized = NULL;
     if (!validate_config_path("logger filename", filename, &normalized))
         return 0;
 
-    free((char *)lb->filename);
     lb->filename = normalized;
 
     return 1;
@@ -1804,6 +1811,11 @@ static int
 accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
     if (lb == NULL)
         return 0;
+
+    if (lb->syslog_facility != NULL) {
+        err("Duplicate syslog facility '%s'", facility);
+        return 0;
+    }
 
     if (!logger_syslog_facility_valid(facility)) {
         err("Unknown syslog facility '%s'", facility);
@@ -1816,7 +1828,6 @@ accept_logger_syslog_facility(struct LoggerBuilder *lb, const char *facility) {
         return -1;
     }
 
-    free((char *)lb->syslog_facility);
     lb->syslog_facility = new_facility;
 
     return 1;
@@ -1845,6 +1856,12 @@ accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
         err("Empty log priority");
         return -1;
     }
+
+    if (lb->priority_given) {
+        err("Duplicate log priority '%s'", priority);
+        return -1;
+    }
+    lb->priority_given = 1;
 
     for (size_t i = 0; i < sizeof(priorities) / sizeof(priorities[0]); i++)
         if (strcasecmp(priorities[i].name, priority) == 0) {

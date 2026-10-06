@@ -58,6 +58,7 @@ struct Listener {
     /* Configuration fields */
     struct Address *address, *fallback_address, *source_address;
     const struct Protocol *protocol;
+    int protocol_given;         /* set by a protocol directive */
     char *table_name;
     struct Logger *access_log;
     int log_bad_requests, reuseport, transparent_proxy, ipv6_v6only,
