@@ -582,7 +582,7 @@ TLS version policy or one that attempts a renegotiation, and a DTLS
 session whose ClientHello attempts one is dropped. This should be
 an IP address and port or an absolute unix socket path; a hostname is
 accepted with a warning, and without a port the listener's port is
-used. sniproxy
+used, which a unix socket listener does not have. sniproxy
 does not terminate TLS for the fallback either: the fallback server
 receives the client's ClientHello and the rest of the connection
 unmodified, and completes the handshake itself. The literal argument
@@ -701,7 +701,12 @@ with \&'unix:', a hostname, or '*'. A '*' connects to the hostname the client
 asked for, looked up through the resolver, and may carry a port as in
 \fB*:443\fR.
 If no port is specified, the port of the listener that received the
-connection will be used. IP literals, and names whose last label is
+connection will be used; a table serving a unix socket listener, which
+has none, must give a port in every entry that is not a unix socket,
+unless a listener with a port shares the table, in which case the
+entries without one are only good for that listener and a warning is
+logged.
+IP literals, and names whose last label is
 all digits such as 127.0.0.01, are refused as a '*' target, but a
 client can still name any host its hostname resolves to: localhost and
 other loopback names included, which with no port on the '*' entry

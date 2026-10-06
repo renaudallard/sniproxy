@@ -247,6 +247,21 @@ table_uses_proxy_header(const struct Table *table) {
 }
 
 
+/* The first entry whose address has no port and is not a unix socket,
+ * which takes the port of the listener it serves, or NULL */
+const struct Backend *
+table_portless_backend(const struct Table *table) {
+    const struct Backend *backend;
+
+    STAILQ_FOREACH(backend, &table->backends, entries)
+        if (address_port(backend->address) == 0 &&
+                !(address_is_sockaddr(backend->address) &&
+                  address_sa(backend->address)->sa_family == AF_UNIX))
+            return backend;
+
+    return NULL;
+}
+
 struct LookupResult
 table_lookup_server_address(struct Table *table, const char *name, size_t name_len) {
     if (table == NULL)

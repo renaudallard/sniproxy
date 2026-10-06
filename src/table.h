@@ -70,6 +70,7 @@ int accept_table_backend_affinity(struct Table *, const char *);
 void add_table(struct Table_head *, struct Table *);
 struct Table *table_lookup(const struct Table_head *, const char *);
 int table_uses_proxy_header(const struct Table *);
+const struct Backend *table_portless_backend(const struct Table *);
 struct LookupResult table_lookup_server_address(struct Table *,
                                                 const char *, size_t);
 void reload_tables(struct Table_head *, struct Table_head *);

@@ -126,6 +126,8 @@ static int string_vectors_equal(char **, char **);
 static void print_resolver_config(FILE *, struct ResolverConfig *);
 static int validate_config_path(const char *setting, const char *path,
         char **normalized_out);
+static int table_serves_port_listener(const struct Config *,
+        const struct Table *);
 
 
 static void *new_listener_acl_builder(void);
@@ -671,6 +673,45 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
                     table_uses_proxy_header(table))
                 warn("dtls listener using table \"%s\" ignores the "
                         "proxy_protocol option of its entries", table_name);
+            /* A unix socket listener has no port to give the entries and
+             * the fallback that leave theirs out */
+            if (address_sa(listener->address)->sa_family == AF_UNIX) {
+                const struct Backend *portless = table_portless_backend(table);
+                const struct Address *fallback = listener->fallback_address;
+                char address[ADDRESS_BUFFER_SIZE];
+                char listener_address[ADDRESS_BUFFER_SIZE];
+
+                if (portless != NULL) {
+                    display_address(portless->address, address,
+                            sizeof(address));
+                    display_address(listener->address, listener_address,
+                            sizeof(listener_address));
+                    /* The entry may be meant for a listener with a port
+                     * that shares the table */
+                    if (table_serves_port_listener(config, table)) {
+                        warn("Table \"%s\" entry %s has no port, so unix "
+                                "socket listener %s cannot use it",
+                                table_name, address, listener_address);
+                    } else {
+                        err("Table \"%s\" entry %s needs a port to serve "
+                                "unix socket listener %s", table_name,
+                                address, listener_address);
+                        free_config(config, loop);
+                        return NULL;
+                    }
+                }
+                if (fallback != NULL && address_port(fallback) == 0 &&
+                        !(address_is_sockaddr(fallback) &&
+                          address_sa(fallback)->sa_family == AF_UNIX)) {
+                    err("Fallback %s of unix socket listener %s needs a port",
+                            display_address(fallback, address,
+                                sizeof(address)),
+                            display_address(listener->address,
+                                listener_address, sizeof(listener_address)));
+                    free_config(config, loop);
+                    return NULL;
+                }
+            }
             listener = SLIST_NEXT(listener, entries);
         }
     }
@@ -680,6 +721,20 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         set_default_logger(config->error_log);
 
     return(config);
+}
+
+/* Whether a listener other than a unix socket one uses the table */
+static int
+table_serves_port_listener(const struct Config *config,
+        const struct Table *table) {
+    const struct Listener *listener;
+
+    SLIST_FOREACH(listener, &config->listeners, entries)
+        if (address_sa(listener->address)->sa_family != AF_UNIX &&
+                table_lookup(&config->tables, listener->table_name) == table)
+            return 1;
+
+    return 0;
 }
 
 void
