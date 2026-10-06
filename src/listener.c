@@ -636,8 +636,10 @@ accept_listener_source_address(struct Listener *listener, const char *source) {
         err("Unable to parse source address: %s", source);
         return 0;
     }
-    if (!address_is_sockaddr(listener->source_address)) {
-        err("Only source socket addresses permitted");
+    if (!address_is_sockaddr(listener->source_address) ||
+            (address_sa(listener->source_address)->sa_family != AF_INET &&
+             address_sa(listener->source_address)->sa_family != AF_INET6)) {
+        err("Only IPv4 and IPv6 source addresses permitted: %s", source);
         free(listener->source_address);
         listener->source_address = NULL;
         return 0;
