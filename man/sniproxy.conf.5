@@ -384,8 +384,9 @@ TLS 1.2 is enforced.
 
 When ADDRESS is a hostname it is resolved once at resolver startup, after
 the resolver process has entered its sandbox, through the cleartext
-servers in \fBresolv.conf\fR(5); queries are only answered once that
-lookup has succeeded. If it fails the resolver refuses to start rather
+servers in \fBresolv.conf\fR(5), over TCP, which those servers must
+therefore accept; queries are only answered once that lookup has
+succeeded. If it fails the resolver refuses to start rather
 than falling back to those cleartext servers, so a configured
 DNS-over-TLS upstream is never silently downgraded. Up to four of the
 addresses it finds are used, those the host can reach first, and queries
