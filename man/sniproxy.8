@@ -117,7 +117,10 @@ one it ignores\&. The resolver's query limits do change on reload\&.
 When sniproxy was started as root with no listener using
 .BR "source client" ,
 one added by a reload also needs a restart, and the reload warns about
-it\&.
+it\&. So does a listener on a privileged port that a reload adds after
+the binder process keeping root for it has died, or has left a request
+unanswered for 30 seconds, as the binder that replaces it runs without
+root\&.
 
 .TP
 .B SIGUSR1

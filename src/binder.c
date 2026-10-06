@@ -40,6 +40,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
@@ -75,6 +76,7 @@ static void binder_main(int);
 static int binder_spawn_child(void);
 static int binder_restart_child(void);
 static void binder_cleanup_child(int block);
+static int binder_drop_unanswered(void);
 #ifndef __OpenBSD__
 static int binder_bind_unix(int, const struct sockaddr_un *);
 #endif
@@ -106,6 +108,8 @@ union binder_request_buffer {
 };
 
 #define BINDER_IPC_CHANNEL_ID 0x424e4452u /* BNDR */
+/* Seconds the main process waits for an answer from the binder */
+#define BINDER_REPLY_TIMEOUT 30
 
 static int binder_sock = -1; /* socket to binder */
 static pid_t binder_pid = -1;
@@ -180,6 +184,8 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
             BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, NULL);
     if (rc <= 0) {
         free(reply);
+        if (rc < 0)
+            binder_drop_unanswered();
         return -1;
     }
 
@@ -293,6 +299,13 @@ binder_spawn_child(void) {
     close(sockets[1]);
     binder_sock = sockets[0];
     binder_pid = pid;
+
+    /* A binder that does not answer, stopped or stuck, must not block
+     * the main loop for good */
+    struct timeval reply_timeout = { BINDER_REPLY_TIMEOUT, 0 };
+    if (setsockopt(binder_sock, SOL_SOCKET, SO_RCVTIMEO, &reply_timeout,
+                sizeof(reply_timeout)) < 0)
+        warn("binder: setsockopt SO_RCVTIMEO failed: %s", strerror(errno));
     if (ipc_crypto_channel_init(&binder_crypto_parent, BINDER_IPC_CHANNEL_ID,
                 IPC_CRYPTO_ROLE_PARENT) < 0) {
         err("Failed to initialize binder IPC crypto");
@@ -305,6 +318,21 @@ binder_spawn_child(void) {
 #endif
 
     return 0;
+}
+
+/*
+ * After a receive that failed for the lack of an answer, drop the channel:
+ * a reply arriving late would be taken for the answer to the next request.
+ * The next bind request starts another binder. Returns 1 if it was dropped.
+ */
+static int
+binder_drop_unanswered(void) {
+    if (errno != EAGAIN && errno != EWOULDBLOCK)
+        return 0;
+
+    err("binder did not answer within %d seconds", BINDER_REPLY_TIMEOUT);
+    binder_cleanup_child(0);
+    return 1;
 }
 
 static void
@@ -413,6 +441,8 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
                 BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, &received_fd);
         if (rc <= 0) {
             free(reply);
+            if (rc < 0 && binder_drop_unanswered())
+                return -1;
             /* rc == 0 is end of stream: the binder child died before
              * replying. recvmsg() does not set errno in that case, so
              * it must not be consulted. */
