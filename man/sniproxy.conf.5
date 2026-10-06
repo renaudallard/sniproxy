@@ -533,8 +533,11 @@ not compared with the first, so an attacker who sends two spoofed
 packets gets through; rely on the backend's DTLS cookie exchange for
 the rest. At most 16384 DTLS sessions exist at once; when that many do,
 the session that has waited longest for its second datagram, if one is
-still waiting, is dropped to make room, so spoofed first datagrams
-cannot keep new clients out. Otherwise the new datagram is dropped.
+still waiting, is dropped to make room, so a trickle of spoofed first
+datagrams cannot keep new clients out; otherwise the new datagram is
+dropped. A flood of more than about 16000 new first datagrams a second
+still can, as a session then waits less than the second DTLS clients
+take to send their next datagram.
 
 Reuseport directive controls if the port is opened in SO_REUSEPORT mode,
 which allows one to run several sniproxy instances on the same
