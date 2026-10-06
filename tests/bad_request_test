@@ -82,7 +82,7 @@ my $bad_requests = [
                0x00, 0x48,
                    # Handshake
                    0x01,
-                   0x00, 0x00, 0x42,
+                   0x00, 0x00, 0x44,
                    0x03, 0x03,
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -111,7 +111,7 @@ my $bad_requests = [
                0x00, 0x48, # Length
                    # Handshake
                    0x01, # Handshake Type: Client Hello
-                   0x00, 0x00, 0x42, # Length
+                   0x00, 0x00, 0x44, # Length
                    0x03, 0x03, # Version: TLS 1.2
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -143,7 +143,7 @@ my $bad_requests = [
                0x00, 0x3a, # Length
                    # Handshake
                    0x01, # Handshake Type: Client Hello
-                   0x00, 0x00, 0x34, # Length
+                   0x00, 0x00, 0x36, # Length
                    0x03, 0x03, # Version: TLS 1.2
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -169,7 +169,7 @@ my $bad_requests = [
                0x00, 0x3f, # Length
                    # Handshake
                    0x01, # Handshake Type: Client Hello
-                   0x00, 0x00, 0x39, # Length
+                   0x00, 0x00, 0x3b, # Length
                    0x03, 0x03, # Version: TLS 1.2
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -185,7 +185,7 @@ my $bad_requests = [
                    0x00, 0x0e, # Extensions Length
                        # Extension
                        0x00, 0x00, # Extension Type: Server Name
-                       0x00, 0x0e, # Length
+                       0x00, 0x05, # Length
                        0x00, 0x03, # Server Name Indication Length
                            0x00, # Server Name Type: host_name
                            0x00, 0x00, # Length
@@ -199,7 +199,7 @@ my $bad_requests = [
                0x00, 0x48, # Length
                    # Handshake
                    0x01, # Handshake Type: Client Hello
-                   0x00, 0x00, 0x42, # Length
+                   0x00, 0x00, 0x44, # Length
                    0x03, 0x03, # Version: TLS 1.2
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -231,7 +231,7 @@ my $bad_requests = [
                0x00, 0x31, # Length
                    # Handshake
                    0x01, # Handshake Type: Client Hello
-                   0x00, 0x00, 0x2b, # Length
+                   0x00, 0x00, 0x2d, # Length
                    0x03, 0x03, # Version: TLS 1.2
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -251,7 +251,7 @@ my $bad_requests = [
                0x00, 0x35, # Length
                    # Handshake
                    0x01, # Handshake Type: Client Hello
-                   0x00, 0x00, 0x2f, # Length
+                   0x00, 0x00, 0x31, # Length
                    0x03, 0x03, # Version: TLS 1.2
                    # Random
                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
