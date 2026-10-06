@@ -549,7 +549,9 @@ element and routes accordingly. The STARTTLS negotiation that follows is
 transparent. Hostnames are validated (alphanumeric, dot, hyphen,
 underscore, bracketed IPv6); control characters, path traversal and
 injection metacharacters are rejected. Maximum hostname length is 255
-bytes, maximum stream header size is 4096 bytes.
+bytes, maximum stream header size is 4096 bytes. Internationalized
+domains cannot be routed: XMPP clients send their labels in UTF-8 (RFC
+7622), which is refused, so such a stream goes to the fallback.
 
 ### Minecraft
 
