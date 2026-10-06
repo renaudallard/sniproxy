@@ -47,7 +47,8 @@ END
     return $filename;
 }
 
-sub http10_client($$) {
+sub http10_client($$$) {
+    my $hostname = shift;
     my $path = shift;
     my $port = shift;
 
@@ -57,7 +58,8 @@ sub http10_client($$) {
                                        Type => SOCK_STREAM)
         or die "couldn't connect $!";
 
-    $socket->send("GET /$path HTTP/1.0\r\n\r\n");
+    my $host_header = defined $hostname ? "Host: $hostname\r\n" : "";
+    $socket->send("GET /$path HTTP/1.0\r\n$host_header\r\n");
 
     my $buffer;
     $socket->recv($buffer, 16384);
@@ -74,7 +76,8 @@ sub worker($$) {
     my ($hostname, $path, $port, $requests) = @_;
 
     for (my $i = 0; $i < $requests; $i++) {
-        my $error = http10_client($path, $port);
+        # Without a Host header, and with one that no table entry matches
+        my $error = http10_client($i % 2 ? $hostname : undef, $path, $port);
 
         die $error if defined $error;
     }
