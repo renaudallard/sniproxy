@@ -2330,9 +2330,11 @@ connection_header_timeout_cb(struct ev_loop *loop, struct ev_timer *w,
     struct Connection *con = w->data;
     char client[INET6_ADDRSTRLEN + 8];
 
-    warn("Closing connection from %s after %.0f seconds without initial request data",
+    warn("Closing connection from %s after %.0f seconds without %s",
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
-            connection_header_timeout);
+            connection_header_timeout,
+            con->client.buffer->rx_bytes > con->incoming_proxy_len ?
+                    "a complete request" : "initial request data");
 
     close_connection(con, loop);
     TAILQ_REMOVE(&connections, con, entries);
