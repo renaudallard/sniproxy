@@ -411,8 +411,14 @@ main(int argc, char **argv) {
 
     /* Config file permissions are checked in init_config() using fstat() */
 
-    if (background_flag && !test_config)
+    /* A daemon must not keep the directory it was started from busy.
+     * daemon() moves to / too late for the logger, which init_config()
+     * starts, and on OpenBSD it cannot once unveil() has been locked. */
+    if (background_flag && !test_config) {
+        if (chdir("/") < 0)
+            fatal("chdir(/): %s", strerror(errno));
         logger_set_daemon_mode();
+    }
 
     tls_set_min_client_hello_version(min_tls_major, min_tls_minor);
 
