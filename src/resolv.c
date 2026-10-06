@@ -2641,10 +2641,12 @@ resolver_child_apply_nameservers(char **processed) {
         return -1;
     }
     debug_log("resolver child: nameservers %s", csv);
-    int status = ares_set_servers_csv(child_channel, csv);
+    /* Before c-ares 1.24 ares_set_servers_csv() drops the ports, which
+     * would send the queries for a DoT server in cleartext to port 53. */
+    int status = ares_set_servers_ports_csv(child_channel, csv);
     free(csv);
     if (status != ARES_SUCCESS) {
-        err("resolver child: ares_set_servers_csv failed: %s", ares_strerror(status));
+        err("resolver child: ares_set_servers_ports_csv failed: %s", ares_strerror(status));
         return -1;
     }
     return 0;
