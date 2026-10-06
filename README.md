@@ -571,7 +571,11 @@ The handshake packet is the very first data in the TCP stream, so
 sniproxy reads it, cuts the server address at the first NUL byte to
 drop any Forge Mod Loader or BungeeCord forwarding trailer, and routes
 on what is left. The packet itself reaches the backend unchanged,
-trailer included.
+trailer included. The server list ping of clients before 1.7 is not a
+handshake: the 1.6 form, which names the server in a plugin message
+sniproxy does not read, goes to the fallback, while the older ones, a
+lone FE or FE 01, cannot be told from the start of a handshake and are
+closed after the 5 second request timeout.
 
 ## Security and hardening
 

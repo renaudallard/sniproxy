@@ -378,6 +378,43 @@ int main(void) {
     }
     printf("  %zu invalid cases passed\n", sizeof(bad) / sizeof(bad[0]));
 
+    /* The server list ping of 1.6 clients carries no handshake and goes
+     * to the fallback, while a handshake of 254 bytes, which starts with
+     * the same two bytes, is parsed as usual */
+    printf("Testing legacy server list ping...\n");
+    {
+        static const unsigned char ping16[] = {
+            0xFE, 0x01, 0xFA, 0x00, 0x0B, 0x00, 'M', 0x00, 'C',
+        };
+        static const unsigned char ping14[] = { 0xFE, 0x01 };
+        char addr[246];
+        unsigned char hs[300];
+        size_t hs_len;
+
+        hostname = NULL;
+        result = minecraft_protocol->parse_packet((const char *)ping16,
+                sizeof(ping16), &hostname);
+        assert(result == -2);
+        assert(hostname == NULL);
+
+        result = minecraft_protocol->parse_packet((const char *)ping14,
+                sizeof(ping14), &hostname);
+        assert(result == -1);
+        assert(hostname == NULL);
+
+        memset(addr, 'x', sizeof(addr));
+        memcpy(addr, "mc.example.com", 15);
+        hs_len = build_handshake(hs, sizeof(hs), 763, addr, sizeof(addr),
+                25565, 2);
+        assert(hs[0] == 0xFE && hs[1] == 0x01 && hs[2] == 0x00);
+        result = minecraft_protocol->parse_packet((const char *)hs, hs_len,
+                &hostname);
+        assert(result == 14);
+        assert(hostname != NULL);
+        assert(strcmp(hostname, "mc.example.com") == 0);
+        free(hostname);
+    }
+
     /* Test NULL hostname pointer */
     printf("Testing NULL hostname pointer...\n");
     result = minecraft_protocol->parse_packet(

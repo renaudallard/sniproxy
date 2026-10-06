@@ -114,6 +114,13 @@ parse_minecraft_handshake(const char *data_char, size_t data_len,
     if (data_len == 0)
         return -1;
 
+    /* The server list ping of clients before 1.7 starts with FE 01 FA and
+     * carries no handshake: leave it to the fallback. A handshake of 254
+     * bytes starts with FE 01 too, followed by its packet ID, 0x00. */
+    if (data_len >= 3 && data[0] == 0xFE && data[1] == 0x01 &&
+            data[2] == 0xFA)
+        return -2;
+
     /* Packet length */
     n = decode_varint(data, data_len, &packet_len);
     if (n < 0)
