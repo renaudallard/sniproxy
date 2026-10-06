@@ -86,6 +86,7 @@ static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void sigchld_cb(struct ev_loop *, struct ev_signal *, int revents);
+static void early_signal_cb(int);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
 static size_t effective_max_connections(const struct Config *);
@@ -118,6 +119,9 @@ static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
+/* A reload or dump requested before the event loop took the signals */
+static volatile sig_atomic_t early_sighup = 0;
+static volatile sig_atomic_t early_sigusr1 = 0;
 static const char *pidfile_path_at_exit = NULL;
 
 /* Remove a leftover pidfile only when the process it names is gone.
@@ -310,6 +314,16 @@ main(int argc, char **argv) {
     int test_config = 0;
     rlim_t max_nofiles = 65536;
     int opt;
+    struct sigaction early;
+
+    /* Until the event loop handles them, a SIGHUP or SIGUSR1 would kill
+     * the process: note it instead, to be acted on once the loop runs */
+    memset(&early, 0, sizeof(early));
+    early.sa_handler = early_signal_cb;
+    sigemptyset(&early.sa_mask);
+    early.sa_flags = SA_RESTART;
+    (void)sigaction(SIGHUP, &early, NULL);
+    (void)sigaction(SIGUSR1, &early, NULL);
     uint8_t min_tls_major = 3;
     uint8_t min_tls_minor = 3;
     struct ev_loop *loop = NULL;
@@ -687,6 +701,12 @@ main(int argc, char **argv) {
     ev_signal_start(loop, &sigterm_watcher);
     ev_signal_start(loop, &sigchld_watcher);
 
+    /* Hand the loop what arrived before it took the signals over */
+    if (early_sighup)
+        (void)raise(SIGHUP);
+    if (early_sigusr1)
+        (void)raise(SIGUSR1);
+
     if (resolv_init(loop, config->resolver.nameservers,
             config->resolver.search, config->resolver.mode,
             config->resolver.dnssec_validation_mode) < 0)
@@ -780,7 +800,6 @@ daemonize(void) {
      * will relax permissions explicitly when needed.
      */
     umask(077);
-    signal(SIGHUP, SIG_IGN);
 
     ev_default_fork();
 
@@ -1083,6 +1102,14 @@ cleanup:
         close(fd);
 
     return 0;
+}
+
+static void
+early_signal_cb(int signum) {
+    if (signum == SIGHUP)
+        early_sighup = 1;
+    else
+        early_sigusr1 = 1;
 }
 
 static void
