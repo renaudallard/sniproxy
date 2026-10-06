@@ -27,11 +27,14 @@
 #ifndef FD_UTIL_H
 #define FD_UTIL_H
 
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 
 /*
  * musl libc (Alpine) provides closefrom() but does not declare it in
@@ -153,4 +156,29 @@ listen_socket_reuseaddr(int sock_type) {
     return 1;
 #endif
 }
+/*
+ * Reap a helper process that has been told to exit, giving it up to a
+ * second, then kill it: one that is stuck, or stopped, which SIGKILL ends
+ * too, must not hold up the main process. A helper that cannot be
+ * killed, a binder still running as root seen from the unprivileged main
+ * process, is left to init rather than waited for.
+ */
+static inline void
+helper_wait_exit(pid_t pid)
+{
+    const struct timespec step = { 0, 10000000L };
+
+    for (int i = 0; i < 100; i++) {
+        pid_t result = waitpid(pid, NULL, WNOHANG);
+        if (result > 0 || (result < 0 && errno != EINTR))
+            return;
+        if (result == 0)
+            nanosleep(&step, NULL);
+    }
+
+    if (kill(pid, SIGKILL) == 0)
+        while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
+            ;
+}
+
 #endif /* FD_UTIL_H */

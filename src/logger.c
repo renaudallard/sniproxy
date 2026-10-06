@@ -238,11 +238,6 @@ static gid_t logger_priv_gid;
 static int logger_priv_recorded = 0;
 
 /* Health check state */
-/* How long the main process waits at exit for the logger to write what
- * is queued, in steps of LOGGER_SHUTDOWN_STEP_NS */
-#define LOGGER_SHUTDOWN_STEPS 100
-#define LOGGER_SHUTDOWN_STEP_NS 10000000L
-
 #define LOGGER_HEALTH_CHECK_INTERVAL 30.0
 #define LOGGER_HEALTH_CHECK_TIMEOUT 5.0
 #define LOGGER_CONTROL_TIMEOUT_MS 1000
@@ -1447,20 +1442,10 @@ logger_process_shutdown(void) {
         /* The child writes everything queued before the SHUTDOWN message
          * and exits. Give it up to a second, so that the last messages,
          * such as the reason for a fatal exit, reach the log, and kill it
-         * if it is stuck, on filesystem I/O for instance. */
-        const struct timespec step = { 0, LOGGER_SHUTDOWN_STEP_NS };
-        int wr = waitpid(logger_pid, NULL, WNOHANG);
-        for (int i = 0; wr == 0 && i < LOGGER_SHUTDOWN_STEPS; i++) {
-            nanosleep(&step, NULL);
-            wr = waitpid(logger_pid, NULL, WNOHANG);
-        }
-        if (wr == 0) {
-            kill(logger_pid, SIGKILL);
-            waitpid(logger_pid, NULL, 0);
-        }
-        /* ECHILD means sigchld_cb already reaped the child; sending
-         * SIGKILL to logger_pid would target whatever process the
-         * kernel later allocated that PID to.  Just clear our handle. */
+         * if it is stuck, on filesystem I/O for instance. ECHILD means
+         * sigchld_cb already reaped the child, and its PID must not be
+         * signalled, as the kernel may have given it to another process. */
+        helper_wait_exit(logger_pid);
     }
 
     logger_pid = -1;

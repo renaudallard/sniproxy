@@ -314,15 +314,17 @@ binder_cleanup_child(int block) {
         binder_sock = -1;
     }
 
-    if (binder_pid > 0) {
-        int status;
-        int options = block ? 0 : WNOHANG;
+    if (binder_pid > 0 && block) {
+        /* It exits once it sees the socket closed */
+        helper_wait_exit(binder_pid);
+        binder_pid = -1;
+    } else if (binder_pid > 0) {
         pid_t result;
         do {
-            result = waitpid(binder_pid, &status, options);
+            result = waitpid(binder_pid, NULL, WNOHANG);
         } while (result < 0 && errno == EINTR);
 
-        if (result > 0 || (result == 0 && block) || (result < 0 && errno == ECHILD))
+        if (result > 0 || (result < 0 && errno == ECHILD))
             binder_pid = -1;
     }
 

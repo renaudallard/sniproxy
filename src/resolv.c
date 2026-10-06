@@ -716,8 +716,7 @@ resolv_shutdown(struct ev_loop *loop) {
              * never sees the closed socket. Signal it so shutdown does
              * not wait out the system resolver timeout. */
             kill(resolver_pid, SIGTERM);
-            if (waitpid(resolver_pid, &status, 0) < 0 && errno != ECHILD)
-                err("waitpid on resolver failed: %s", strerror(errno));
+            helper_wait_exit(resolver_pid);
         }
         resolver_pid = -1;
     }
