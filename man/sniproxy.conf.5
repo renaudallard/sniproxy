@@ -18,7 +18,8 @@ The configuration is broken down into stanzas delimited by
 curly braces. Words are separated by spaces or tabs and also end at
 \&;, \&#, { or }; enclosing part of a word in double quotes keeps these
 characters in it, and the quotes are removed. A \&\\ escapes the next
-character, inside quotes as well, and is removed. Directives and
+character, inside quotes as well, and is removed. A word may be up to
+4096 bytes long. Directives and
 keywords are case sensitive and must be spelled out in full; only the
 explicit aliases user (username), group (groupname), listen (listener)
 and proto (protocol) are recognized.

@@ -32,6 +32,8 @@
 #include "logger.h"
 
 #define MAX_PARSE_DEPTH 32
+/* Longest word, enough for a path or a long table pattern */
+#define MAX_WORD_LEN 4096
 
 static int parse_config_depth(void *, FILE *, const struct Keyword *, const char *, int);
 static const struct Keyword *find_keyword(const struct Keyword *, const char *);
@@ -60,7 +62,7 @@ parse_config(void *context, FILE *cfg, const struct Keyword *grammar,
 static int
 parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
         const char *context_name, int depth) {
-    char buffer[256];
+    char buffer[MAX_WORD_LEN + 1];
     const struct Keyword *keyword = NULL;
     void *sub_context = NULL;
     int keyword_args = 0;
@@ -76,7 +78,12 @@ parse_config_depth(void *context, FILE *cfg, const struct Keyword *grammar,
     for (;;) {
         switch (next_token(cfg, buffer, sizeof(buffer))) {
             case TOKEN_ERROR:
-                err("%s: tokenizer error", __func__);
+                /* The tokenizer stops a word that fills the buffer */
+                if (strlen(buffer) >= sizeof(buffer) - 1)
+                    err("Configuration word longer than %d bytes",
+                            MAX_WORD_LEN);
+                else
+                    err("%s: tokenizer error", __func__);
                 cleanup_keyword_context(keyword, context, sub_context);
                 return -1;
             case TOKEN_WORD:
