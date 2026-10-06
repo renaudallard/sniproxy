@@ -616,7 +616,11 @@ address automatically. Do not include a port number in this address,
 because doing so will limit the proxy to one simultaneous connection to
 each server at a time. The special argument \fBclient\fR enables
 transparent proxy mode (IP_TRANSPARENT) where supported, preserving the
-original source address when connecting to the backend. This mode is
+original source address when connecting to the backend. A hostname
+backend is then looked up in the client's address family only, but an
+address literal of the other family cannot carry the client's address:
+TCP connections to it leave from the proxy's own address, while dtls
+sessions are refused. This mode is
 only available on Linux and needs CAP_NET_RAW: when sniproxy is started
 as root and a listener uses it, the main process keeps that single
 capability after dropping to the configured user, and the helper
