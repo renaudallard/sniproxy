@@ -175,10 +175,12 @@ static const char *const privilege_syscalls[] = {
     NULL,
 };
 
-/* ARM needs the instruction cache flushed after PCRE2 JIT writes code,
- * which the main process does when a reload compiles the tables. */
+/* ARM and RISC-V need the instruction cache flushed after PCRE2 JIT
+ * writes code, which the main process does when a reload compiles the
+ * tables. */
 static const char *const jit_syscalls[] = {
     "cacheflush",
+    "riscv_flush_icache",
     NULL,
 };
 
