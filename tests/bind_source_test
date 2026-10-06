@@ -85,7 +85,22 @@ sub main {
 
     my $config = make_source_config($proxy_port, $local_httpd || $httpd_port);
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
-    my $httpd_pid = start_child('server', \&TestHTTPD::httpd, port => $httpd_port) unless $local_httpd;
+    # The backend answers only connections from the source address, so
+    # that curl --fail catches a connection that did not bind to it
+    my $httpd_pid = start_child('server', \&TestHTTPD::httpd,
+            port => $httpd_port,
+            generator => sub {
+                return sub($$) {
+                    my $sock = shift;
+                    my $from_source = $sock->peerhost() eq '127.1.1.1';
+
+                    print $sock $from_source ? "HTTP/1.1 200 OK\r\n" :
+                            "HTTP/1.1 403 Forbidden\r\n";
+                    print $sock "Content-Length: 0\r\n";
+                    print $sock "Connection: close\r\n";
+                    print $sock "\r\n";
+                };
+            }) unless $local_httpd;
 
     # Wait for proxy to load and parse config
     wait_for_port(port => $httpd_port);
