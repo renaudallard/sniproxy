@@ -107,7 +107,7 @@ case "$1" in
        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
        ;;
   restart|force-reload)
-    test "$ENABLED" != "0" || exit 1
+    test "$ENABLED" != "0" || exit 0
 	log_daemon_msg "Restarting $DESC" "$NAME"
 	do_stop
 	case "$?" in
