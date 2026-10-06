@@ -2770,7 +2770,16 @@ parse_incoming_proxy_header(struct Connection *con) {
             return -2;
         if (cmd == 0x01) { /* PROXY command */
             uint8_t af = (fam >> 4) & 0x0F;
-            if (af == 0x01 && addr_len >= 12) {
+            uint8_t transport = fam & 0x0F;
+
+            /* Families and transports beyond those assigned, and address
+             * blocks too short for their family, must be refused */
+            if (af > 0x03 || transport > 0x02 ||
+                    (af == 0x01 && addr_len < 12) ||
+                    (af == 0x02 && addr_len < 36))
+                return -2;
+
+            if (af == 0x01) {
                 /* AF_INET */
                 struct sockaddr_in *src =
                         (struct sockaddr_in *)&con->client.addr;
@@ -2788,7 +2797,7 @@ parse_incoming_proxy_header(struct Connection *con) {
                 memcpy(&dst->sin_addr, data + 20, 4);
                 memcpy(&dst->sin_port, data + 26, 2);
                 con->client.local_addr_len = sizeof(*dst);
-            } else if (af == 0x02 && addr_len >= 36) {
+            } else if (af == 0x02) {
                 /* AF_INET6 */
                 struct sockaddr_in6 *src =
                         (struct sockaddr_in6 *)&con->client.addr;
@@ -2807,7 +2816,7 @@ parse_incoming_proxy_header(struct Connection *con) {
                 memcpy(&dst->sin6_port, data + 50, 2);
                 con->client.local_addr_len = sizeof(*dst);
             }
-            /* else: unknown family, keep real peer address */
+            /* AF_UNSPEC and AF_UNIX: keep the real peer address */
         }
         /* cmd == 0x00 (LOCAL): health check, keep real peer address */
 
@@ -2839,62 +2848,71 @@ parse_incoming_proxy_header(struct Connection *con) {
         memcpy(line, data + 6, line_len - 6);
         line[line_len - 6] = '\0';
 
+        /* UNKNOWN may be followed by anything, which is ignored */
+        if (strncasecmp(line, "UNKNOWN", 7) == 0 &&
+                (line[7] == '\0' || line[7] == ' '))
+            return (int)total; /* keep the real peer */
+
         char proto[8], src_str[46], dst_str[46];
         char sport_str[16], dport_str[16];
+        int end_offset = 0;
 
-        if (sscanf(line, "%7s %45s %45s %15s %15s",
-                    proto, src_str, dst_str, sport_str, dport_str) == 5) {
-            /* Fill in local copies and only take them once the whole
-             * line is valid: the error logged for an invalid header must
-             * name the peer, not an address the peer made up. */
-            struct sockaddr_storage src, dst;
-            socklen_t addr_len;
-            uint16_t sport, dport;
-            int family;
+        /* Anything other than the five fields of TCP4 and TCP6 must be
+         * refused rather than ignored */
+        if (sscanf(line, "%7s %45s %45s %15s %15s%n", proto, src_str,
+                    dst_str, sport_str, dport_str, &end_offset) != 5 ||
+                (size_t)end_offset != line_len - 6)
+            return -2;
 
-            if (strcasecmp(proto, "TCP4") == 0)
-                family = AF_INET;
-            else if (strcasecmp(proto, "TCP6") == 0)
-                family = AF_INET6;
-            else
-                return (int)total; /* UNKNOWN: keep the real peer */
+        /* Fill in local copies and only take them once the whole
+         * line is valid: the error logged for an invalid header must
+         * name the peer, not an address the peer made up. */
+        struct sockaddr_storage src, dst;
+        socklen_t addr_len;
+        uint16_t sport, dport;
+        int family;
 
-            if (!parse_proxy_port(sport_str, &sport) ||
-                    !parse_proxy_port(dport_str, &dport))
+        if (strcasecmp(proto, "TCP4") == 0)
+            family = AF_INET;
+        else if (strcasecmp(proto, "TCP6") == 0)
+            family = AF_INET6;
+        else
+            return -2;
+
+        if (!parse_proxy_port(sport_str, &sport) ||
+                !parse_proxy_port(dport_str, &dport))
+            return -2;
+
+        memset(&src, 0, sizeof(src));
+        memset(&dst, 0, sizeof(dst));
+        if (family == AF_INET) {
+            struct sockaddr_in *src4 = (struct sockaddr_in *)&src;
+            struct sockaddr_in *dst4 = (struct sockaddr_in *)&dst;
+
+            if (inet_pton(AF_INET, src_str, &src4->sin_addr) != 1 ||
+                    inet_pton(AF_INET, dst_str, &dst4->sin_addr) != 1)
                 return -2;
+            src4->sin_family = dst4->sin_family = AF_INET;
+            src4->sin_port = htons(sport);
+            dst4->sin_port = htons(dport);
+            addr_len = sizeof(struct sockaddr_in);
+        } else {
+            struct sockaddr_in6 *src6 = (struct sockaddr_in6 *)&src;
+            struct sockaddr_in6 *dst6 = (struct sockaddr_in6 *)&dst;
 
-            memset(&src, 0, sizeof(src));
-            memset(&dst, 0, sizeof(dst));
-            if (family == AF_INET) {
-                struct sockaddr_in *src4 = (struct sockaddr_in *)&src;
-                struct sockaddr_in *dst4 = (struct sockaddr_in *)&dst;
-
-                if (inet_pton(AF_INET, src_str, &src4->sin_addr) != 1 ||
-                        inet_pton(AF_INET, dst_str, &dst4->sin_addr) != 1)
-                    return -2;
-                src4->sin_family = dst4->sin_family = AF_INET;
-                src4->sin_port = htons(sport);
-                dst4->sin_port = htons(dport);
-                addr_len = sizeof(struct sockaddr_in);
-            } else {
-                struct sockaddr_in6 *src6 = (struct sockaddr_in6 *)&src;
-                struct sockaddr_in6 *dst6 = (struct sockaddr_in6 *)&dst;
-
-                if (inet_pton(AF_INET6, src_str, &src6->sin6_addr) != 1 ||
-                        inet_pton(AF_INET6, dst_str, &dst6->sin6_addr) != 1)
-                    return -2;
-                src6->sin6_family = dst6->sin6_family = AF_INET6;
-                src6->sin6_port = htons(sport);
-                dst6->sin6_port = htons(dport);
-                addr_len = sizeof(struct sockaddr_in6);
-            }
-
-            con->client.addr = src;
-            con->client.addr_len = addr_len;
-            con->client.local_addr = dst;
-            con->client.local_addr_len = addr_len;
+            if (inet_pton(AF_INET6, src_str, &src6->sin6_addr) != 1 ||
+                    inet_pton(AF_INET6, dst_str, &dst6->sin6_addr) != 1)
+                return -2;
+            src6->sin6_family = dst6->sin6_family = AF_INET6;
+            src6->sin6_port = htons(sport);
+            dst6->sin6_port = htons(dport);
+            addr_len = sizeof(struct sockaddr_in6);
         }
-        /* else: parse failed but header is consumed (PROXY UNKNOWN\r\n) */
+
+        con->client.addr = src;
+        con->client.addr_len = addr_len;
+        con->client.local_addr = dst;
+        con->client.local_addr_len = addr_len;
 
         return (int)total;
     }

@@ -599,7 +599,10 @@ that the ACL, \fBper_ip_connection_rate\fR and
 sniproxy takes the header from any peer, so restrict such a listener to
 the load balancer, for example with an \fBacl\fR block: any other client
 could claim any source address, which then reaches the access log and
-the PROXY headers sent to backends.
+the PROXY headers sent to backends. A header that does not follow the
+protocol, such as a v1 line other than UNKNOWN without the five fields
+of TCP4 or TCP6, or a v2 header with an unassigned address family, ends
+the connection with the protocol's abort message.
 
 DTLS sessions neither read nor send PROXY headers: on a dtls listener
 \fBproxy_protocol\fR and a \fBproxy_protocol\fR option on the fallback
