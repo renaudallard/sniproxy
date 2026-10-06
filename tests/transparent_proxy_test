@@ -89,7 +89,7 @@ sub worker($$$$$) {
     for (my $i = 0; $i < $requests; $i++) {
         system('ip', 'netns', 'exec', $CLIENT_NAMESPACE,
                 'curl',
-                '-s', '-S',
+                '-s', '-S', '--fail',
                 '-H', "Host: $hostname",
                 '-o', '/dev/null',
                 "http://$ip:$port/$path");
@@ -236,7 +236,22 @@ sub main {
     #checked_system('ip', 'netns', 'exec', 'ns-test-clt', 'ip', '-d', 'route', 'show');
 
     my $proxy_pid = start_child('proxy', \&proxy, $config, @ARGV);
-    my $httpd_pid = start_child('server', \&TestHTTPD::httpd, ip => '192.0.2.2', port => $httpd_port);
+    # The backend answers only connections from the client's address, so
+    # that curl --fail catches a connection not made transparently
+    my $httpd_pid = start_child('server', \&TestHTTPD::httpd,
+            ip => '192.0.2.2', port => $httpd_port,
+            generator => sub {
+                return sub($$) {
+                    my $sock = shift;
+                    my $from_client = $sock->peerhost() eq '192.0.2.6';
+
+                    print $sock $from_client ? "HTTP/1.1 200 OK\r\n" :
+                            "HTTP/1.1 403 Forbidden\r\n";
+                    print $sock "Content-Length: 0\r\n";
+                    print $sock "Connection: close\r\n";
+                    print $sock "\r\n";
+                };
+            });
     my $tcpdump1_pid = start_child('tcpdump', \&exec_cmd, 'ip', 'netns', 'exec', $proxy_namespace, 'tcpdump', '-npi' ,'veth-proxy-clt', '-s', '0', '-w', 'veth-proxy-clt.pcap');
     my $tcpdump2_pid = start_child('tcpdump', \&exec_cmd, 'ip', 'netns', 'exec', $proxy_namespace, 'tcpdump', '-npi' ,'veth-proxy-srv', '-s', '0', '-w', 'veth-proxy-srv.pcap');
 
