@@ -369,6 +369,7 @@ static void resolver_child_remove_query(struct ResolverChildQuery *query);
 static void resolver_child_free_query(struct ResolverChildQuery *query);
 static void resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_deferred_free_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
+static void resolver_child_dot_apply_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_schedule_timeout(struct ev_loop *loop);
 static void resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, int writable);
@@ -419,6 +420,7 @@ static int child_shutting_down = 0;
 static struct ev_io child_ipc_watcher;
 static struct ev_timer child_dns_timeout_watcher;
 static struct ev_timer child_deferred_free_timer;
+static struct ev_timer child_dot_apply_timer;
 static struct ResolverChildQuery *child_queries_to_free = NULL;
 struct resolver_child_cares_io {
     struct ev_io watcher;
@@ -1920,6 +1922,7 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
 
     ev_timer_init(&child_dns_timeout_watcher, resolver_child_dns_timeout_cb, 0.0, 0.0);
     ev_timer_init(&child_deferred_free_timer, resolver_child_deferred_free_cb, 0.0, 0.0);
+    ev_timer_init(&child_dot_apply_timer, resolver_child_dot_apply_cb, 0.0, 0.0);
 
     resolver_child_schedule_timeout(loop);
 }
@@ -1943,6 +1946,9 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
 
     if (ev_is_active(&child_deferred_free_timer))
         ev_timer_stop(loop, &child_deferred_free_timer);
+
+    if (ev_is_active(&child_dot_apply_timer))
+        ev_timer_stop(loop, &child_dot_apply_timer);
 
     if (child_channel != NULL) {
         /* ares_destroy will invoke callbacks for all pending queries.
@@ -2724,12 +2730,21 @@ resolver_child_dot_lookup_cb(void *arg, int status,
     if (--child_dot_lookups_pending > 0)
         return;
 
+    /* c-ares is still processing the answer here, and changing its
+     * servers would free the connection it is reading from, so set
+     * them once it has returned. */
+    ev_timer_start(child_loop, &child_dot_apply_timer);
+}
+
+static void
+resolver_child_dot_apply_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((unused)),
+        int revents __attribute__((unused))) {
     int rc = resolver_child_apply_nameservers(child_pending_nameservers);
     resolver_child_free_processed_nameservers(child_pending_nameservers);
     child_pending_nameservers = NULL;
     if (rc < 0)
         resolver_child_exit(EXIT_FAILURE);
-    ev_io_start(child_loop, &child_ipc_watcher);
+    ev_io_start(loop, &child_ipc_watcher);
 }
 
 static char *
