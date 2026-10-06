@@ -1386,7 +1386,10 @@ accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         last_errno = errno;
 
-        if (last_errno == EINTR)
+        /* A client that went away before it was accepted leaves the
+         * others still waiting */
+        if (last_errno == EINTR || last_errno == ECONNABORTED ||
+                last_errno == EPROTO)
             continue;
 
         if (last_errno == EAGAIN || last_errno == EWOULDBLOCK ||

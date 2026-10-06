@@ -367,9 +367,12 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     if (sockfd < 0) {
         int saved_errno = errno;
 
+        /* ECONNABORTED and EPROTO only say that a client went away
+         * before it was accepted, as the BSDs report it */
         if (saved_errno == EMFILE || saved_errno == ENFILE)
             warn("accept failed (%s); hitting fd limit", strerror(saved_errno));
-        else if (!IS_TEMPORARY_SOCKERR(saved_errno))
+        else if (!IS_TEMPORARY_SOCKERR(saved_errno) &&
+                saved_errno != ECONNABORTED && saved_errno != EPROTO)
             warn("accept failed: %s", strerror(saved_errno));
 
         errno = saved_errno;
