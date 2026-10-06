@@ -179,8 +179,11 @@ backend refused by `backend_acl`): the protocol's abort message is queued
 for the client and it enters SERVER_CLOSED. So is a backend that fails
 before it has sent anything or ended its data, such as one refusing the
 connection. One that fails after answering, or after ending its data,
-sets `reset_client`: the client is reset once the data it sent is
-delivered, so that it can tell the answer was cut short.
+sets `reset_client`: the client is reset once the data it sent has been
+written to the client's socket, so that it can tell the answer was cut
+short. On OpenBSD a spliced connection whose backend fails goes back to
+user space for this: what the backend sent that the kernel had not moved
+on yet is read from its socket first.
 
 A peer that shuts down its sending side (a FIN) does not close the
 connection: the flags `client_eof` or `server_eof` record it and its

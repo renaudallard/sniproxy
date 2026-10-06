@@ -177,6 +177,8 @@ static int try_splice(struct Connection *, struct ev_loop *);
 static void splice_cb(struct ev_loop *, struct ev_io *, int);
 static int splice_progressed(struct Connection *);
 static void splice_account(struct Connection *, ev_tstamp);
+static int socket_disconnected(int);
+static void splice_server_failed(struct Connection *, struct ev_loop *, int);
 #endif
 
 /* A bucket lives for RATE_LIMIT_IDLE_TTL after its last connection and a
@@ -3971,6 +3973,52 @@ splice_account(struct Connection *con, ev_tstamp last_activity) {
     con->server.buffer->last_recv = last_activity;
 }
 
+/* Whether a socket has lost its connection, as one reset by its peer */
+static int
+socket_disconnected(int fd) {
+    struct sockaddr_storage addr;
+    socklen_t len = sizeof(addr);
+
+    return getpeername(fd, (struct sockaddr *)&addr, &len) < 0;
+}
+
+/*
+ * The backend of an unspliced connection failed. What it sent that the
+ * kernel had not moved on yet is still in its socket: read it, as far as
+ * the server buffers may grow, then go back to user space to handle the
+ * failure as without splicing, the abort message for a backend that sent
+ * nothing, a reset for one that answered.
+ */
+static void
+splice_server_failed(struct Connection *con, struct ev_loop *loop,
+        int server_error) {
+    struct Buffer *buffer = con->server.buffer;
+
+    con->spliced = 0;
+    for (;;) {
+        if (buffer_room(buffer) == 0 &&
+                (!server_buffer_may_grow(client_socket_open(con)) ||
+                !buffer_can_double(buffer) ||
+                buffer_resize(buffer, buffer_size(buffer) * 2) < 0))
+            break;
+        if (buffer_recv(buffer, con->server.watcher.fd, 0, loop) <= 0)
+            break;
+    }
+
+    /* After an answer, the reset is mostly the backend's kernel refusing
+     * what the client sent once the backend had closed, such as a TLS
+     * close_notify, which the splice moved before its end was seen */
+    if (buffer->rx_bytes == 0)
+        warn("recv(server): %s, closing connection", strerror(server_error));
+
+    ev_io_init(&con->client.watcher, connection_cb, con->client.watcher.fd,
+            EV_READ);
+    ev_io_init(&con->server.watcher, connection_cb, con->server.watcher.fd,
+            EV_READ);
+    server_failed(con, loop);
+    reactivate_watchers(con, loop);
+}
+
 /*
  * Callback for spliced connections.  Fires when splice terminates
  * (peer close, error, or idle timeout).
@@ -4008,18 +4056,6 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
         return;
     }
 
-    /* A backend that failed resets the client, as without splicing. The
-     * error of the client to backend splice is reported on the client
-     * socket, so look at the backend socket's own. */
-    int server_error = is_client ? 0 : error;
-    if (is_client) {
-        error_len = sizeof(server_error);
-        (void)getsockopt(con->server.watcher.fd, SOL_SOCKET, SO_ERROR,
-                &server_error, &error_len);
-    }
-    if (server_error != 0)
-        con->reset_client = 1;
-
     splice_account(con, ev_now(loop));
 
     /* Unsplice both directions. EPROTO is expected: the kernel already
@@ -4031,9 +4067,32 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
             && errno != EPROTO)
         warn("failed to unsplice server socket: %s", strerror(errno));
 
+    /* After a reset both sockets carry its error, as each splice copies
+     * the error of its drain onto its source: the side that failed is the
+     * one no longer connected. The other socket is read once unspliced,
+     * as its splice can copy an error onto it until then. */
+    int client_error = is_client ? error : 0;
+    int server_error = is_client ? 0 : error;
+    error_len = sizeof(int);
+    (void)getsockopt(is_client ? con->server.watcher.fd : con->client.watcher.fd,
+            SOL_SOCKET, SO_ERROR, is_client ? &server_error : &client_error,
+            &error_len);
+    int server_gone = server_error != 0 &&
+            socket_disconnected(con->server.watcher.fd);
+    int client_gone = client_error != 0 &&
+            socket_disconnected(con->client.watcher.fd);
+
     /* Stop splice watchers */
     ev_io_stop(loop, &con->client.watcher);
     ev_io_stop(loop, &con->server.watcher);
+
+    if (server_gone && !client_gone) {
+        splice_server_failed(con, loop, server_error);
+        return;
+    }
+    /* Otherwise a backend error tells the client its answer was cut */
+    if (server_error != 0 && !client_gone)
+        con->reset_client = 1;
 
     /* Close the connection: after a splice ends there is no attempt to
      * fall back to user-space forwarding, both directions are finished. */
