@@ -2160,8 +2160,13 @@ buffer_memory_observer(ssize_t delta) {
  * descriptors max_global_connections allows */
 static int
 descriptor_budget_allows(size_t tcp, size_t udp) {
-    return max_global_connections == 0 ||
-            2 * tcp + udp <= 2 * max_global_connections;
+    if (max_global_connections == 0)
+        return 1;
+    if (tcp > max_global_connections)
+        return 0;
+
+    /* 2 * tcp + udp <= 2 * max, without letting 2 * max wrap around */
+    return udp / 2 + udp % 2 <= max_global_connections - tcp;
 }
 
 int
