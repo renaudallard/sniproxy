@@ -68,8 +68,10 @@ are opened as they would be at startup, so missing ones are created\&.
 Set both the soft and the hard file descriptor limit to this value
 before privileges are dropped\&. The default is 65536, which is also
 applied without this option and can lower a higher inherited limit\&.
-If the limit cannot be set, or the system caps it lower, sniproxy logs
-a warning and goes on; the default connection limit (see
+If the limit cannot be set, as when sniproxy is started without root
+and the hard limit is lower, the soft limit is raised as far as the hard
+limit allows; sniproxy logs a warning and goes on, and the default
+connection limit (see
 .B max_connections
 in
 .BR sniproxy.conf (5))

@@ -819,8 +819,20 @@ set_limits(rlim_t max_nofiles) {
     };
 
     int result = setrlimit(RLIMIT_NOFILE, &fd_limit);
-    if (result < 0)
+    if (result < 0) {
         warn("Failed to set file handle limit: %s", strerror(errno));
+
+        /* Without privileges the hard limit cannot be raised, but the
+         * soft limit can still go up to it */
+        if (getrlimit(RLIMIT_NOFILE, &fd_limit) == 0 &&
+                fd_limit.rlim_cur < fd_limit.rlim_max &&
+                fd_limit.rlim_cur < max_nofiles) {
+            fd_limit.rlim_cur = fd_limit.rlim_max < max_nofiles ?
+                    fd_limit.rlim_max : max_nofiles;
+            /* The limit this leaves is reported below */
+            (void)setrlimit(RLIMIT_NOFILE, &fd_limit);
+        }
+    }
 
     /* A failure leaves the previous limit, and OpenBSD silently caps it
      * at kern.maxfiles. */
