@@ -504,6 +504,7 @@ binder_parent_capsicum_limit_rights(void) {
 
 static void
 binder_main(int sockfd) {
+    helper_install_crash_handler("binder child");
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-binder", 0, 0, 0);
 #endif

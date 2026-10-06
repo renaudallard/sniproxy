@@ -1658,62 +1658,6 @@ resolver_restart(int retry) {
     return rc;
 }
 
-static void
-resolver_child_crash_handler(int signum) {
-    /* SECURITY: Only async-signal-safe operations allowed in signal handlers.
-     * Per POSIX signal-safety(7), we can only use: write(), _exit(), and
-     * a few other specific functions. We MUST NOT use:
-     * - htonl() or other functions that might use locks
-     * - writev() over IPC (removed - could deadlock or corrupt state)
-     * - malloc/free or any function that manipulates shared state
-     * The signal handler will be reset by SA_RESETHAND, so after this
-     * returns, the signal will terminate the process. */
-    const char msg_prefix[] = "resolver child crashed with signal ";
-    const size_t msg_prefix_len = sizeof(msg_prefix) - 1;
-    const char *signame = "UNKNOWN";
-    size_t signame_len = sizeof("UNKNOWN") - 1;
-
-    switch (signum) {
-        case SIGSEGV:
-            signame = "SIGSEGV (segmentation fault)";
-            signame_len = sizeof("SIGSEGV (segmentation fault)") - 1;
-            break;
-        case SIGBUS:
-            signame = "SIGBUS (bus error)";
-            signame_len = sizeof("SIGBUS (bus error)") - 1;
-            break;
-        case SIGABRT:
-            signame = "SIGABRT (abort)";
-            signame_len = sizeof("SIGABRT (abort)") - 1;
-            break;
-        case SIGILL:
-            signame = "SIGILL (illegal instruction)";
-            signame_len = sizeof("SIGILL (illegal instruction)") - 1;
-            break;
-        case SIGFPE:
-            signame = "SIGFPE (floating point exception)";
-            signame_len = sizeof("SIGFPE (floating point exception)") - 1;
-            break;
-        default:
-            break;
-    }
-
-    /* Write to stderr - write() is async-signal-safe */
-    ssize_t unused_write;
-    unused_write = write(STDERR_FILENO, msg_prefix, msg_prefix_len);
-    (void)unused_write;
-    unused_write = write(STDERR_FILENO, signame, signame_len);
-    (void)unused_write;
-    unused_write = write(STDERR_FILENO, "\n", 1);
-    (void)unused_write;
-
-    /* Do NOT attempt IPC communication from signal handler:
-     * - Removed htonl() call (not guaranteed async-signal-safe)
-     * - Removed writev() to child_sock (could deadlock or corrupt IPC state)
-     * - Parent will detect child crash via SIGCHLD/waitpid()
-     * This is safer and follows signal safety best practices. */
-}
-
 static void __attribute__((noreturn))
 resolver_child_exit(int status) {
     ipc_crypto_state_clear(&resolver_ipc_crypto);
@@ -1738,17 +1682,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
      * by the send() error paths. */
     signal(SIGPIPE, SIG_IGN);
 
-    /* Install crash handlers to log what went wrong */
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = resolver_child_crash_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESETHAND; /* Reset to default after first signal */
-    sigaction(SIGSEGV, &sa, NULL);
-    sigaction(SIGBUS, &sa, NULL);
-    sigaction(SIGABRT, &sa, NULL);
-    sigaction(SIGILL, &sa, NULL);
-    sigaction(SIGFPE, &sa, NULL);
+    helper_install_crash_handler("resolver child");
 
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-resolver", 0, 0, 0);

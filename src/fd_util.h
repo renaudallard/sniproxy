@@ -156,6 +156,98 @@ listen_socket_reuseaddr(int sock_type) {
     return 1;
 #endif
 }
+/* The name helper_crash_handler() gives the process, as "resolver child" */
+static inline const char **
+helper_crash_name(void)
+{
+    static const char *name = "helper";
+    return &name;
+}
+
+/*
+ * Whether a fault raised the signal: a fault happens again once the
+ * handler returns, now with the default action, and its core keeps the
+ * fault's details, while a signal sent by a process, with kill(), tgkill()
+ * or sigqueue(), has to be raised again. Fault codes are positive, and
+ * below SI_USER where that is not 0. macOS gives a sent fault signal a
+ * fault code, and OpenBSD can give it the fault code an earlier process
+ * left behind, so there every signal is raised again.
+ */
+static inline int
+helper_signal_from_fault(const siginfo_t *info)
+{
+#if defined(__APPLE__) || defined(__OpenBSD__)
+    (void)info;
+    return 0;
+#else
+    return info != NULL && info->si_code > 0 &&
+            (SI_USER == 0 || info->si_code < SI_USER);
+#endif
+}
+
+/*
+ * Say on stderr that a helper process crashed, and with which signal: the
+ * main process cannot tell, as libev reaps its children. Only
+ * async-signal-safe calls: write() to stderr and raise(), no IPC, no
+ * allocation. SA_RESETHAND has restored the default action, under which
+ * the helper then ends.
+ */
+static inline void
+helper_crash_handler(int signum, siginfo_t *info,
+        void *context __attribute__((unused)))
+{
+    const char *name = *helper_crash_name();
+    const char *signame = "UNKNOWN";
+    ssize_t unused_write;
+
+    switch (signum) {
+        case SIGSEGV:
+            signame = "SIGSEGV (segmentation fault)";
+            break;
+        case SIGBUS:
+            signame = "SIGBUS (bus error)";
+            break;
+        case SIGABRT:
+            signame = "SIGABRT (abort)";
+            break;
+        case SIGILL:
+            signame = "SIGILL (illegal instruction)";
+            break;
+        case SIGFPE:
+            signame = "SIGFPE (floating point exception)";
+            break;
+        default:
+            break;
+    }
+
+    unused_write = write(STDERR_FILENO, name, strlen(name));
+    unused_write = write(STDERR_FILENO, " crashed with signal ",
+            sizeof(" crashed with signal ") - 1);
+    unused_write = write(STDERR_FILENO, signame, strlen(signame));
+    unused_write = write(STDERR_FILENO, "\n", 1);
+    (void)unused_write;
+
+    if (!helper_signal_from_fault(info))
+        raise(signum);
+}
+
+static inline void
+helper_install_crash_handler(const char *name)
+{
+    struct sigaction sa;
+
+    *helper_crash_name() = name;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = helper_crash_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    (void)sigaction(SIGSEGV, &sa, NULL);
+    (void)sigaction(SIGBUS, &sa, NULL);
+    (void)sigaction(SIGABRT, &sa, NULL);
+    (void)sigaction(SIGILL, &sa, NULL);
+    (void)sigaction(SIGFPE, &sa, NULL);
+}
+
 /*
  * Reap a helper process that has been told to exit, giving it up to a
  * second, then kill it: one that is stuck, or stopped, which SIGKILL ends

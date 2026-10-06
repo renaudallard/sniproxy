@@ -60,7 +60,7 @@ static const char *const common_syscalls[] = {
     "futex", "futex_time64", "set_robust_list", "set_tid_address",
     "sched_yield", "sched_getaffinity", "sched_getparam", "sched_setscheduler",
     "restart_syscall", "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
-    "sigreturn", "sigaltstack", "tgkill", "rt_sigtimedwait",
+    "sigreturn", "sigaltstack", "tgkill", "tkill", "rt_sigtimedwait",
     "rt_sigtimedwait_time64",
     "prctl", "prlimit64", "getrlimit", "ugetrlimit", "setrlimit",
     "getrandom",
@@ -158,7 +158,7 @@ static const char *const event_syscalls[] = {
 static const char *const process_syscalls[] = {
     "clone", "clone3", "fork", "vfork",
     "wait4", "waitid",
-    "kill", "tkill",
+    "kill",
     "setpgid", "getpgid", "getsid", "setsid",
     "setgid", "setgid32", "setuid", "setuid32", "setgroups", "setgroups32",
     "capget", "capset",

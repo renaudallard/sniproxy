@@ -2199,6 +2199,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
 
 static void
 logger_child_main(int sockfd) {
+    helper_install_crash_handler("logger child");
 #ifdef __linux__
     (void)prctl(PR_SET_NAME, "sniproxy-logger", 0, 0, 0);
 #endif
