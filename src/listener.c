@@ -467,6 +467,12 @@ accept_listener_arg(struct Listener *listener, const char *arg) {
             return -1;
         }
     } else if (address_port(listener->address) == 0 && is_numeric(arg)) {
+        /* A unix socket address has no port, so it would stay at 0 and
+         * accept any number of them */
+        if (address_sa(listener->address)->sa_family == AF_UNIX) {
+            err("Unix socket listener takes no port: %s", arg);
+            return -1;
+        }
         if (!address_set_port_str(listener->address, arg)) {
             err("Invalid port %s", arg);
             return -1;

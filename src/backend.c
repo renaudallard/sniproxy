@@ -107,6 +107,13 @@ accept_backend_arg(struct Backend *backend, const char *arg) {
             return -1;
         }
     } else if (address_port(backend->address) == 0 && is_numeric(arg)) {
+        /* A unix socket address has no port, so it would stay at 0 and
+         * accept any number of them */
+        if (address_is_sockaddr(backend->address) &&
+                address_sa(backend->address)->sa_family == AF_UNIX) {
+            err("Unix socket backend takes no port: %s", arg);
+            return -1;
+        }
         if (!address_set_port_str(backend->address, arg)) {
             err("Invalid port: %s", arg);
             return -1;
