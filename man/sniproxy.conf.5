@@ -387,7 +387,9 @@ the resolver process has entered its sandbox, through the cleartext
 servers in \fBresolv.conf\fR(5); queries are only answered once that
 lookup has succeeded. If it fails the resolver refuses to start rather
 than falling back to those cleartext servers, so a configured
-DNS-over-TLS upstream is never silently downgraded.
+DNS-over-TLS upstream is never silently downgraded. Up to four of the
+addresses it finds are used, those the host can reach first, and queries
+move on to the next one when a server does not answer.
 
 All configured nameservers form a single failover pool. Listing a cleartext
 nameserver alongside a \fBdot://\fR one therefore allows queries to fall back

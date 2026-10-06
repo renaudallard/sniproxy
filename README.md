@@ -454,7 +454,9 @@ servers in `/etc/resolv.conf` when the resolver process starts (after it
 has entered its sandbox), which reveals the name and lets anyone who can
 tamper with that lookup break name resolution.
 The certificate is still checked against the name, so a forged answer
-cannot redirect queries to another server:
+cannot redirect queries to another server. Up to four of the addresses
+found are used, those the host can reach first, and queries move on to
+the next one when a server does not answer:
 
 ```nginx
 # Recommended

@@ -55,6 +55,9 @@
 #ifdef HAVE_BSD_STDLIB_H
 #include <bsd/stdlib.h>
 #endif
+#ifdef HAVE_BSD_STRING_H
+#include <bsd/string.h>
+#endif
 #ifdef HAVE_BSD_UNISTD_H
 #include <bsd/unistd.h>
 #endif
@@ -144,9 +147,13 @@ enum dot_min_tls_version {
     DOT_TLS_VERSION_1_3 = 1,  /* TLS 1.3 minimum */
 };
 
+/* Addresses kept for a DoT server given by hostname */
+#define RESOLVER_DOT_MAX_ADDRESSES 4
+
 struct ResolverDotServer {
-    struct sockaddr_storage addr;
-    socklen_t addr_len;
+    struct sockaddr_storage addr[RESOLVER_DOT_MAX_ADDRESSES];
+    socklen_t addr_len[RESOLVER_DOT_MAX_ADDRESSES];
+    size_t addr_count;
     char *sni_hostname;
     int verify_certificate;
     enum dot_min_tls_version min_tls_version;
@@ -370,6 +377,7 @@ static void resolver_child_free_query(struct ResolverChildQuery *query);
 static void resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_deferred_free_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_dot_apply_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
+static void resolver_child_use_dot_socket_functions(void);
 static void resolver_child_schedule_timeout(struct ev_loop *loop);
 static void resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_process_fd(ares_socket_t read_fd, ares_socket_t write_fd);
@@ -1908,16 +1916,11 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         resolver_child_free_processed_nameservers(processed_nameservers);
     }
 
-    if (child_dot_server_count > 0) {
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-        ares_set_socket_functions(child_channel, &resolver_child_dot_socket_functions, NULL);
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-    }
+    /* The DoT server names are looked up with the default socket
+     * functions: c-ares sorts the addresses it finds by reachability only
+     * with those. */
+    if (child_dot_server_count > 0 && !lookups_needed)
+        resolver_child_use_dot_socket_functions();
 
     child_default_resolv_mode = default_mode;
 
@@ -2658,9 +2661,16 @@ resolver_child_apply_nameservers(char **processed) {
             return -1;
 
         const struct ResolverDotServer *server = &child_dot_servers[next++];
-        char buffer[ADDRESS_BUFFER_SIZE];
-        display_sockaddr(&server->addr, server->addr_len, buffer, sizeof(buffer));
-        char *entry = strdup(buffer);
+        char list[RESOLVER_DOT_MAX_ADDRESSES * (ADDRESS_BUFFER_SIZE + 1)] = "";
+        for (size_t j = 0; j < server->addr_count; j++) {
+            char buffer[ADDRESS_BUFFER_SIZE];
+            display_sockaddr(&server->addr[j], server->addr_len[j],
+                    buffer, sizeof(buffer));
+            if (j > 0)
+                (void)strlcat(list, ",", sizeof(list));
+            (void)strlcat(list, buffer, sizeof(list));
+        }
+        char *entry = strdup(list);
         if (entry == NULL)
             return -1;
         free(processed[i]);
@@ -2695,7 +2705,7 @@ resolver_child_start_dot_bootstrap(struct ev_loop *loop) {
 
     for (size_t i = 0; i < child_dot_server_count; i++)
         if (child_dot_servers[i].lookup_hostname != NULL &&
-                child_dot_servers[i].addr_len == 0)
+                child_dot_servers[i].addr_count == 0)
             count++;
     if (count == 0)
         return 0;
@@ -2705,7 +2715,7 @@ resolver_child_start_dot_bootstrap(struct ev_loop *loop) {
     child_dot_lookups_pending = count;
     for (size_t i = 0; i < child_dot_server_count; i++) {
         const struct ResolverDotServer *server = &child_dot_servers[i];
-        if (server->lookup_hostname == NULL || server->addr_len != 0)
+        if (server->lookup_hostname == NULL || server->addr_count != 0)
             continue;
 
         char port_str[6];
@@ -2740,12 +2750,21 @@ resolver_child_dot_lookup_cb(void *arg, int status,
 
     struct ResolverDotServer *server = &child_dot_servers[(size_t)(uintptr_t)arg];
 
+    /* Keep several addresses, in the order c-ares sorted them, so that
+     * one the host cannot reach does not leave it without DNS. */
     if (status == ARES_SUCCESS && result != NULL) {
-        node = result->nodes;
-        while (node != NULL && (size_t)node->ai_addrlen > sizeof(server->addr))
-            node = node->ai_next;
+        for (node = result->nodes; node != NULL &&
+                server->addr_count < RESOLVER_DOT_MAX_ADDRESSES;
+                node = node->ai_next) {
+            if ((size_t)node->ai_addrlen > sizeof(server->addr[0]))
+                continue;
+            memcpy(&server->addr[server->addr_count], node->ai_addr,
+                    node->ai_addrlen);
+            server->addr_len[server->addr_count] = (socklen_t)node->ai_addrlen;
+            server->addr_count++;
+        }
     }
-    if (node == NULL) {
+    if (server->addr_count == 0) {
         /* Going on without this server would leave c-ares with the
          * cleartext system servers. An operator who asked for DoT must
          * never be downgraded silently, so fail closed instead. */
@@ -2757,8 +2776,6 @@ resolver_child_dot_lookup_cb(void *arg, int status,
         resolver_child_exit(EXIT_FAILURE);
     }
 
-    memcpy(&server->addr, node->ai_addr, node->ai_addrlen);
-    server->addr_len = (socklen_t)node->ai_addrlen;
     ares_freeaddrinfo(result);
 
     if (--child_dot_lookups_pending > 0)
@@ -2773,12 +2790,25 @@ resolver_child_dot_lookup_cb(void *arg, int status,
 static void
 resolver_child_dot_apply_cb(struct ev_loop *loop, struct ev_timer *w __attribute__((unused)),
         int revents __attribute__((unused))) {
+    resolver_child_use_dot_socket_functions();
     int rc = resolver_child_apply_nameservers(child_pending_nameservers);
     resolver_child_free_processed_nameservers(child_pending_nameservers);
     child_pending_nameservers = NULL;
     if (rc < 0)
         resolver_child_exit(EXIT_FAILURE);
     ev_io_start(loop, &child_ipc_watcher);
+}
+
+static void
+resolver_child_use_dot_socket_functions(void) {
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    ares_set_socket_functions(child_channel, &resolver_child_dot_socket_functions, NULL);
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 }
 
 static char *
@@ -3023,14 +3053,15 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
             free(sni_override);
             return -1;
         }
-        if (len > (socklen_t)sizeof(server.addr)) {
+        if (len > (socklen_t)sizeof(server.addr[0])) {
             free(addr);
             free(address_copy);
             free(sni_override);
             return -1;
         }
-        memcpy(&server.addr, sa, len);
-        server.addr_len = len;
+        memcpy(&server.addr[0], sa, len);
+        server.addr_len[0] = len;
+        server.addr_count = 1;
         if (insecure_override) {
             server.sni_hostname = NULL;
             server.verify_certificate = 0;
@@ -3123,7 +3154,7 @@ resolver_child_handle_dot_server(const char *target, char **converted) {
      * resolver_child_apply_nameservers(). */
     char buffer[ADDRESS_BUFFER_SIZE] = "";
     if (server.lookup_hostname == NULL)
-        display_sockaddr(&server.addr, server.addr_len, buffer, sizeof(buffer));
+        display_sockaddr(&server.addr[0], server.addr_len[0], buffer, sizeof(buffer));
     *converted = strdup(buffer);
     if (*converted == NULL) {
         free(server.sni_hostname);
@@ -3150,7 +3181,7 @@ resolver_child_free_dot_servers(void) {
         child_dot_servers[i].sni_hostname = NULL;
         free(child_dot_servers[i].lookup_hostname);
         child_dot_servers[i].lookup_hostname = NULL;
-        child_dot_servers[i].addr_len = 0;
+        child_dot_servers[i].addr_count = 0;
     }
 
     free(child_dot_servers);
@@ -3165,9 +3196,12 @@ resolver_child_find_dot_server_sa(const struct sockaddr *addr, ares_socklen_t ad
         return NULL;
 
     for (size_t i = 0; i < child_dot_server_count; i++) {
-        if (resolver_child_sockaddr_equal((const struct sockaddr *)&child_dot_servers[i].addr,
-                    child_dot_servers[i].addr_len, addr, addrlen))
-            return &child_dot_servers[i];
+        struct ResolverDotServer *server = &child_dot_servers[i];
+        for (size_t j = 0; j < server->addr_count; j++)
+            if (resolver_child_sockaddr_equal(
+                        (const struct sockaddr *)&server->addr[j],
+                        server->addr_len[j], addr, addrlen))
+                return server;
     }
 
     return NULL;
