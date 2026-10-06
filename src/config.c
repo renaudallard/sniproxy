@@ -1841,8 +1841,10 @@ accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
         { "debug",      LOG_DEBUG },
     };
 
-    if (priority == NULL || *priority == '\0')
+    if (priority == NULL || *priority == '\0') {
+        err("Empty log priority");
         return -1;
+    }
 
     for (size_t i = 0; i < sizeof(priorities) / sizeof(priorities[0]); i++)
         if (strcasecmp(priorities[i].name, priority) == 0) {
@@ -1850,6 +1852,7 @@ accept_logger_priority(struct LoggerBuilder *lb, const char *priority) {
             return 1;
         }
 
+    err("Unknown log priority '%s'", priority);
     return -1;
 }
 
@@ -2153,6 +2156,7 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
 
     struct Address *ns_address = new_address(value);
     if (ns_address == NULL) {
+        err("Unable to parse resolver nameserver '%s'", value);
         free(dot_target_copy);
         return -1;
     }
@@ -2199,15 +2203,19 @@ accept_resolver_nameserver(struct ResolverConfig *resolver, const char *nameserv
 
 static int
 accept_resolver_search(struct ResolverConfig *resolver, const char *search) {
-    if (search == NULL || *search == '\0')
+    if (search == NULL || *search == '\0') {
+        err("Empty resolver search domain");
         return -1;
+    }
     return append_to_string_vector(&resolver->search, search);
 }
 
 static int
 accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
-    if (mode == NULL || *mode == '\0')
+    if (mode == NULL || *mode == '\0') {
+        err("Empty resolver mode");
         return -1;
+    }
 
     for (size_t i = 0; i < sizeof(resolver_mode_names) / sizeof(resolver_mode_names[0]); i++)
         if (strcasecmp(resolver_mode_names[i], mode) == 0) {
@@ -2215,6 +2223,7 @@ accept_resolver_mode(struct ResolverConfig *resolver, const char *mode) {
             return 1;
         }
 
+    err("Unknown resolver mode '%s'", mode);
     return -1;
 }
 
@@ -2254,21 +2263,21 @@ accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *v
 
 static int
 accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) {
-    if (value == NULL || *value == '\0' || strchr(value, '-') != NULL)
-        return -1;
-
     char *endptr = NULL;
-    errno = 0;
-    unsigned long parsed = strtoul(value, &endptr, 10);
+    unsigned long parsed = 0;
 
-    if (errno != 0 || endptr == value || *endptr != '\0')
-        return -1;
+    if (value != NULL && *value != '\0' && strchr(value, '-') == NULL) {
+        errno = 0;
+        parsed = strtoul(value, &endptr, 10);
+        if (errno != 0 || endptr == value || *endptr != '\0')
+            parsed = 0;
+    }
 
-    if (parsed == 0)
+    if (parsed == 0 || parsed > SIZE_MAX) {
+        err("Invalid max_concurrent_queries '%s' (expected a number from 1)",
+                value != NULL ? value : "");
         return -1;
-
-    if (parsed > SIZE_MAX)
-        return -1;
+    }
 
     resolver->max_concurrent_queries = (size_t)parsed;
     return 1;
@@ -2276,18 +2285,22 @@ accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) 
 
 static int
 accept_resolver_max_queries_per_client(struct ResolverConfig *resolver, const char *value) {
-    if (value == NULL || *value == '\0' || strchr(value, '-') != NULL)
-        return -1;
-
     char *endptr = NULL;
-    errno = 0;
-    unsigned long parsed = strtoul(value, &endptr, 10);
+    unsigned long parsed = 0;
+    int valid = 0;
 
-    if (errno != 0 || endptr == value || *endptr != '\0')
-        return -1;
+    if (value != NULL && *value != '\0' && strchr(value, '-') == NULL) {
+        errno = 0;
+        parsed = strtoul(value, &endptr, 10);
+        valid = errno == 0 && endptr != value && *endptr == '\0' &&
+                parsed <= SIZE_MAX;
+    }
 
-    if (parsed > SIZE_MAX)
+    if (!valid) {
+        err("Invalid max_concurrent_queries_per_client '%s' (expected a number)",
+                value != NULL ? value : "");
         return -1;
+    }
 
     resolver->max_queries_per_client = (size_t)parsed;
     return 1;
