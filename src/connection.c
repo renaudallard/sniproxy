@@ -3507,7 +3507,9 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
  */
 static void
 server_failed(struct Connection *con, struct ev_loop *loop) {
-    int answered = con->server.buffer->rx_bytes > 0;
+    /* A backend that ended its data may have done so without answering,
+     * but the client has been told that end and cannot take more */
+    int answered = con->server.buffer->rx_bytes > 0 || con->server_eof;
 
     close_server_socket(con, loop);
     if (!client_socket_open(con))
