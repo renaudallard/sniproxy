@@ -69,6 +69,10 @@
 #define IS_TEMPORARY_SOCKERR(_errno) ((_errno) == EAGAIN || \
                                       (_errno) == EWOULDBLOCK || \
                                       (_errno) == EINTR)
+/* shutdown() of a socket whose peer has already gone away */
+#define IS_PEER_GONE_SOCKERR(_errno) ((_errno) == ENOTCONN || \
+                                      (_errno) == ECONNRESET || \
+                                      (_errno) == EPIPE)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define CLIENT_BUFFER_INITIAL_SIZE 16384
 #define CLIENT_BUFFER_MIN_SIZE 8192
@@ -1039,14 +1043,16 @@ connection_pass_eof(struct Connection *con, struct ev_loop *loop) {
         return;
 
     if (server_eof_pending(con) && !server_connecting(con)) {
-        if (shutdown(con->server.watcher.fd, SHUT_WR) < 0)
+        if (shutdown(con->server.watcher.fd, SHUT_WR) < 0 &&
+                !IS_PEER_GONE_SOCKERR(errno))
             warn("shutdown(server): %s", strerror(errno));
         con->server_shut = 1;
     }
 
     if (con->server_eof && !con->client_shut &&
             buffer_len(con->server.buffer) == 0) {
-        if (shutdown(con->client.watcher.fd, SHUT_WR) < 0)
+        if (shutdown(con->client.watcher.fd, SHUT_WR) < 0 &&
+                !IS_PEER_GONE_SOCKERR(errno))
             warn("shutdown(client): %s", strerror(errno));
         con->client_shut = 1;
     }
@@ -3898,7 +3904,7 @@ splice_cb(struct ev_loop *loop, struct ev_io *w, int revents __attribute__((unus
 
         (void)splice_progressed(con);
         ev_io_stop(loop, w);
-        if (shutdown(drain_fd, SHUT_WR) < 0)
+        if (shutdown(drain_fd, SHUT_WR) < 0 && !IS_PEER_GONE_SOCKERR(errno))
             warn("shutdown(%s): %s", is_client ? "server" : "client",
                     strerror(errno));
         if (is_client) {
