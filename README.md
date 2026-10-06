@@ -258,6 +258,11 @@ in `/etc/conf.d/sniproxy` (`SNIPROXY_CONFIG`, `SNIPROXY_OPTS`).
 ./autogen.sh && ./configure && make check && sudo make install
 ```
 
+Lines written to log files and stderr are stamped with the local time,
+as `2026-10-06 18:42:07`; syslog adds its own stamp.
+`./configure --enable-rfc3339-timestamps` stamps them in UTC instead, in
+the RFC 3339 form `2026-10-06T16:42:07Z`.
+
 ### Debian / Ubuntu
 
 ```sh
