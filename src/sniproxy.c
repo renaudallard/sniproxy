@@ -395,12 +395,41 @@ main(int argc, char **argv) {
         }
     }
 
-    /* Resolve config path to absolute before daemonize() calls chdir("/"),
-     * otherwise SIGHUP reload would fail with a relative path. */
+    /* Make the config path absolute, as a daemon moves to / and would then
+     * open a relative path from there. Only its directory is resolved: a
+     * symbolic link to the file itself is left for each reload to follow,
+     * as with an absolute path. realpath() can return a directory below
+     * one the user may not search, which is no use as a path. */
     char config_path_buf[PATH_MAX];
     if (config_file[0] != '/') {
-        if (realpath(config_file, config_path_buf) != NULL)
-            config_file = config_path_buf;
+        const char *slash = strrchr(config_file, '/');
+        char dir[PATH_MAX];
+        char real_dir[PATH_MAX];
+        const char *error = NULL;
+        struct stat st;
+        int len;
+
+        len = snprintf(dir, sizeof(dir), "%.*s",
+                slash != NULL ? (int)(slash - config_file) : 1,
+                slash != NULL ? config_file : ".");
+        if (len < 0 || (size_t)len >= sizeof(dir)) {
+            error = strerror(ENAMETOOLONG);
+        } else if (realpath(dir, real_dir) == NULL ||
+                stat(real_dir, &st) < 0) {
+            error = strerror(errno);
+        } else {
+            len = snprintf(config_path_buf, sizeof(config_path_buf),
+                    "%s/%s", strcmp(real_dir, "/") == 0 ? "" : real_dir,
+                    slash != NULL ? slash + 1 : config_file);
+            if (len < 0 || (size_t)len >= sizeof(config_path_buf))
+                error = strerror(ENAMETOOLONG);
+            else
+                config_file = config_path_buf;
+        }
+        /* In the foreground the relative path keeps working */
+        if (error != NULL && background_flag && !test_config)
+            fatal("Unable to make configuration file path %s absolute: %s",
+                    config_file, error);
     }
 
     /* The config file is unveiled together with every other resource once
