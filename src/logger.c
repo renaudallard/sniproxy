@@ -2077,6 +2077,12 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
             if (payload == NULL ||
                     header->payload_len != sizeof(struct logger_privileges_payload))
                 break;
+#ifdef __OpenBSD__
+            /* Before the privileges go: unveil() needs to reach the log
+             * files, which may lie in a directory only root can search */
+            if (!logger_child_reduced_pledge)
+                logger_child_unveil();
+#endif
             if (geteuid() == 0) {
                 struct logger_privileges_payload *priv =
                         (struct logger_privileges_payload *)payload;
@@ -2115,7 +2121,6 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
              * directly as the unprivileged target user (the geteuid()==0
              * block is skipped there). */
             if (!logger_child_reduced_pledge) {
-                logger_child_unveil();
                 if (pledge("stdio rpath wpath cpath fattr unix recvfd",
                             NULL) == -1) {
                     fprintf(stderr,

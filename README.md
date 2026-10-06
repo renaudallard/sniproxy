@@ -639,10 +639,10 @@ afterthought.
   view is fixed at startup, so a Unix socket path that a reload names
   outside it only works after a restart, and a reload cannot follow a
   configuration file symlink repointed to a file outside it. The
-  logger is forked before that and unveils only its own log files once
-  privileges are dropped, so a log file first named by a reload is only
-  opened after a restart. A logger restarted by the health check runs
-  within the main loop's view and promises instead.
+  logger is forked before that and unveils only its own log files just
+  before it drops privileges, so a log file first named by a reload is
+  only opened after a restart. A logger restarted by the health check
+  runs within the main loop's view and promises instead.
 - **FreeBSD sandboxing**: the logger enters Capsicum capability mode
   with its log directories pre-opened for `openat()`. The main process
   and the resolver stay out of it, since capability mode forbids

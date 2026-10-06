@@ -156,8 +156,8 @@ fixed at startup: a Unix socket listener, backend or fallback that a
 reload names outside it cannot be bound or reached until sniproxy is
 restarted, and a reload cannot follow a configuration file symlink
 repointed to a file outside it\&. The logger process is forked before the
-filesystem view is locked and unveils only its own log files once
-privileges are dropped, so a log file first named by a reload is only
+filesystem view is locked and unveils only its own log files just before
+it drops privileges, so a log file first named by a reload is only
 opened after a restart\&. A logger restarted by the health check runs
 within the view and promises of the main process instead\&.
 .PP
