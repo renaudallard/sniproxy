@@ -552,6 +552,16 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         return NULL;
     }
 
+    /* Reading a directory fails, which would otherwise look like the
+     * end of an empty configuration */
+    if (S_ISDIR(config_st.st_mode)) {
+        err("%s: configuration file %s is a directory",
+                __func__, config->filename);
+        fclose(file);
+        free_config(config, loop);
+        return NULL;
+    }
+
     mode_t perm_mask = allow_group_read ? 0037 : 0077;
     const char *perm_msg = NULL;
     if (config_st.st_uid != 0 && config_st.st_uid != geteuid())
@@ -584,7 +594,19 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         return NULL;
     }
 
-    if (parse_config(config, file, global_grammar, "global") <= 0) {
+    int parsed = parse_config(config, file, global_grammar, "global");
+
+    /* A read error ends the tokenizer as the end of the file would, and
+     * must not leave a reload with what was read up to it */
+    if (parsed > 0 && ferror(file)) {
+        err("%s: error reading configuration file %s", __func__,
+                config->filename);
+        fclose(file);
+        free_config(config, loop);
+        return NULL;
+    }
+
+    if (parsed <= 0) {
         off_t whence = ftello(file);
         char line[256];
 
