@@ -524,7 +524,9 @@ The dtls protocol proxies DTLS (TLS over UDP) connections by extracting
 the SNI extension from the DTLS ClientHello, enabling proxying by
 hostname without decryption of DTLS protocols whose clients send SNI,
 such as CoAP. WebRTC and OpenConnect clients send no SNI, so their
-sessions can only go to the fallback. A dtls listener cannot be a unix
+sessions can only go to the fallback, as do those of clients whose
+ClientHello is fragmented over several datagrams, as a small MTU or
+large post-quantum key shares can make it. A dtls listener cannot be a unix
 socket. One on a wildcard address answers each client from the local
 address the client sent to. To limit UDP
 reflection/amplification attacks, a new DTLS session is held until a
