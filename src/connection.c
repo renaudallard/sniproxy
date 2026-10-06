@@ -501,7 +501,15 @@ free_connections(struct ev_loop *loop) {
         TAILQ_REMOVE(&connections, iter, entries);
         connection_account_remove();
         conn_count_decrement(&iter->peer_addr);
+#ifdef SO_SPLICE
+        if (iter->spliced)
+            splice_account(iter, ev_now(loop));
+#endif
         close_connection(iter, loop);
+        /* Connections still open at shutdown end here, and get their
+         * access log line like any other */
+        if (iter->listener->access_log)
+            log_connection(iter);
         free_connection(iter);
     }
     stop_buffer_shrink_timer(loop);
