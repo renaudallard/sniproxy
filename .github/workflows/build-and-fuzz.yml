@@ -50,8 +50,6 @@ jobs:
         run: make -j$(nproc)
 
       - name: Run tests
-        env:
-          SKIP_BAD_REQUEST_TEST: 1
         run: make check
 
       - name: Run fuzzers
@@ -175,7 +173,7 @@ jobs:
 
             status=0
             [ "$code" = 301 ] || status=1
-            # Skipped in the Linux and macOS jobs too
+            # Skipped in the macOS job too
             export SKIP_BAD_REQUEST_TEST=1
             if ! make check; then
               cat tests/test-suite.log || true

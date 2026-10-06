@@ -22,7 +22,7 @@ This checklist verifies that the sanitizer CI/CD workflow is ready to run.
 - [x] Proper ASAN_OPTIONS set for leak detection
 - [x] Proper UBSAN_OPTIONS set for stack traces
 - [x] Test logs uploaded on failure
-- [x] SKIP_BAD_REQUEST_TEST=1 set (same as other workflows)
+- [x] SKIP_BAD_REQUEST_TEST=1 set (as in the macOS and FreeBSD jobs)
 
 ### Jobs Defined
 - [x] address-sanitizer - Tests with ASAN
