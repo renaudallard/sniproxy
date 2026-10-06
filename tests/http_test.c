@@ -225,6 +225,94 @@ static const char *bad[] = {
         "\r\n",
 };
 
+/* Append an HPACK integer with the given prefix size and first byte bits */
+static size_t
+hpack_put_int(unsigned char *out, size_t value, unsigned prefix_bits,
+        unsigned char first) {
+    size_t max = ((size_t)1 << prefix_bits) - 1;
+    size_t pos = 0;
+
+    if (value < max) {
+        out[pos++] = (unsigned char)(first | value);
+        return pos;
+    }
+    out[pos++] = (unsigned char)(first | max);
+    value -= max;
+    while (value >= 128) {
+        out[pos++] = (unsigned char)((value & 0x7f) | 0x80);
+        value >>= 7;
+    }
+    out[pos++] = (unsigned char)value;
+    return pos;
+}
+
+/*
+ * A prior knowledge request for "localhost" whose header block also holds
+ * an authorization field of token_len bytes, before or after :authority,
+ * in frames of 16384 bytes. With bad_field, a field whose value length
+ * does not fit a size_t follows :authority. Returns its length.
+ */
+static size_t
+build_large_http2_request(unsigned char *buf, size_t token_len,
+        int authority_first, int bad_field) {
+    static unsigned char block[200000];
+    size_t block_len = 0, pos = 0, sent = 0;
+    unsigned char authority[16], token_header[16];
+    size_t authority_len, token_header_len;
+
+    authority_len = hpack_put_int(authority, 1, 4, 0x00);
+    authority[authority_len++] = 9;
+    memcpy(authority + authority_len, "localhost", 9);
+    authority_len += 9;
+    token_header_len = hpack_put_int(token_header, 23, 4, 0x00);
+    token_header_len += hpack_put_int(token_header + token_header_len,
+            token_len, 7, 0x00);
+
+    block[block_len++] = 0x82;      /* :method GET */
+    block[block_len++] = 0x86;      /* :scheme http */
+    block[block_len++] = 0x84;      /* :path / */
+    if (authority_first) {
+        memcpy(block + block_len, authority, authority_len);
+        block_len += authority_len;
+    }
+    if (bad_field) {
+        /* Literal field "x", its value length an integer too large */
+        memcpy(block + block_len, "\x00\x01x\x7f"
+                "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01", 15);
+        block_len += 15;
+    }
+    memcpy(block + block_len, token_header, token_header_len);
+    block_len += token_header_len;
+    memset(block + block_len, 'A', token_len);
+    block_len += token_len;
+    if (!authority_first) {
+        memcpy(block + block_len, authority, authority_len);
+        block_len += authority_len;
+    }
+
+    memcpy(buf, http2_preface, sizeof(http2_preface) - 1);
+    pos = sizeof(http2_preface) - 1;
+    memcpy(buf + pos, "\x00\x00\x00\x04\x00\x00\x00\x00\x00", 9);
+    pos += 9;
+    while (sent < block_len) {
+        size_t len = block_len - sent < 16384 ? block_len - sent : 16384;
+        int last = sent + len == block_len;
+
+        buf[pos++] = 0;
+        buf[pos++] = (unsigned char)(len >> 8);
+        buf[pos++] = (unsigned char)len;
+        buf[pos++] = sent == 0 ? 0x1 : 0x9;     /* HEADERS, CONTINUATION */
+        buf[pos++] = last ? 0x4 : 0x0;          /* END_HEADERS */
+        memcpy(buf + pos, "\x00\x00\x00\x01", 4);
+        pos += 4;
+        memcpy(buf + pos, block + sent, len);
+        pos += len;
+        sent += len;
+    }
+
+    return pos;
+}
+
 int main(void) {
     unsigned int i;
     int result;
@@ -251,6 +339,45 @@ int main(void) {
     assert(result == (int)strlen("localhost"));
     assert(hostname != NULL);
     assert(strcmp("localhost", hostname) == 0);
+    free(hostname);
+
+    /* A header block over the decoding limit, as a Kerberos token can
+     * make, is routed on the :authority found before the limit */
+    {
+        static unsigned char large[220000];
+        size_t large_len = build_large_http2_request(large, 70000, 1, 0);
+
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)large,
+                large_len, &hostname);
+        assert(result == (int)strlen("localhost"));
+        assert(hostname != NULL);
+        assert(strcmp("localhost", hostname) == 0);
+        free(hostname);
+
+        large_len = build_large_http2_request(large, 70000, 0, 0);
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)large,
+                large_len, &hostname);
+        assert(result == -2);
+        assert(hostname == NULL);
+
+        /* A malformed field before the limit is refused whatever the
+         * size of the block */
+        large_len = build_large_http2_request(large, 70000, 1, 1);
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)large,
+                large_len, &hostname);
+        assert(result == -4);
+        assert(hostname == NULL);
+
+        large_len = build_large_http2_request(large, 10, 1, 1);
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)large,
+                large_len, &hostname);
+        assert(result == -4);
+        assert(hostname == NULL);
+    }
     free(hostname);
 
     hostname = NULL;

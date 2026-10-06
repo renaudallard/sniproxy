@@ -325,7 +325,8 @@ Protocol handlers parse application-layer headers to extract hostnames.
      name/value lengths and binary search for header name lookups, eliminating
      repeated strlen calls and linear table scans
    - Security limits:
-     - Max header block size: 64KB
+     - Header block: only its first 64KB is decoded; a larger block is
+       routed on the fields found there
      - Max dynamic table size per connection: 64KB
      - Max aggregate dynamic table size: 4MB
      - Prevents memory exhaustion attacks
@@ -508,7 +509,7 @@ Once CONNECTED, the connection enters steady-state proxying:
 - **Buffer overflow protection**: Strict bounds checking in all parsers
   - TLS: Validates ClientHello structure and extension lengths
   - HTTP: Limits the header count and the Host value length
-  - HTTP/2: Frame size limits, header block size limits
+  - HTTP/2: Frame size limits, a limit on the header block decoded
 
 ### Denial of Service Protection
 

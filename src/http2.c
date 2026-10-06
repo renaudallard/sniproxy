@@ -35,6 +35,8 @@
 
 #define SERVER_NAME_LEN 256
 #define HTTP2_DEFAULT_DYNAMIC_TABLE_SIZE 4096
+/* What the HPACK decoding helpers return when the data ends too early */
+#define HPACK_TRUNCATED (-2)
 
 static size_t http2_max_headers = HTTP2_DEFAULT_MAX_HEADERS;
 static size_t http2_max_frame_size = HTTP2_DEFAULT_MAX_FRAME_SIZE;
@@ -330,6 +332,9 @@ hpack_drop_last_entry(struct hpack_decoder *decoder) {
 
 static int decode_header_block(struct hpack_decoder *decoder,
         const unsigned char *data, size_t len,
+        struct host_accumulator *hosts, int partial);
+static int decode_oversized_header_block(struct hpack_decoder *decoder,
+        struct header_block *block, const unsigned char *data, size_t len,
         struct host_accumulator *hosts);
 
 static int append_hostname_if_needed(struct host_accumulator *hosts,
@@ -443,14 +448,15 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                 block.continuation_count = 0;
                 if (fragment_len > 0) {
                     if (!header_block_append(&block, payload + idx, fragment_len)) {
-                        result = -4;
-                        goto done;
+                        result = decode_oversized_header_block(&decoder,
+                                &block, payload + idx, fragment_len, &hosts);
+                        goto header_block_done;
                     }
                 }
 
                 if (flags & 0x04) {
                     result = decode_header_block(&decoder, block.data,
-                            block.len, &hosts);
+                            block.len, &hosts, 0);
                     goto header_block_done;
                 }
                 break;
@@ -466,13 +472,14 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
                 }
                 if (length > 0) {
                     if (!header_block_append(&block, payload, length)) {
-                        result = -4;
-                        goto done;
+                        result = decode_oversized_header_block(&decoder,
+                                &block, payload, length, &hosts);
+                        goto header_block_done;
                     }
                 }
                 if (flags & 0x04) {
                     result = decode_header_block(&decoder, block.data,
-                            block.len, &hosts);
+                            block.len, &hosts, 0);
                     goto header_block_done;
                 }
                 break;
@@ -526,14 +533,41 @@ parse_frames(const unsigned char *data, size_t data_len, char **hostname) {
     return result;
 }
 
+/*
+ * A header block larger than HTTP2_MAX_HEADER_BLOCK_SIZE, as a Kerberos
+ * token can make one: route on the fields that fit, which hold the
+ * request's :authority, since pseudo-header fields come first (RFC 9113
+ * 8.3). The rest of the block reaches the backend untouched.
+ */
+static int
+decode_oversized_header_block(struct hpack_decoder *decoder,
+        struct header_block *block, const unsigned char *data, size_t len,
+        struct host_accumulator *hosts) {
+    size_t room = HTTP2_MAX_HEADER_BLOCK_SIZE - block->len;
+
+    /* Below the limit the append can only have failed to allocate */
+    if (len <= room || !header_block_append(block, data, room))
+        return -4;
+
+    return decode_header_block(decoder, block->data, block->len, hosts, 1);
+}
+
+/*
+ * Decode the fields of a header block, collecting the host they name. A
+ * partial block, cut at the size limit, ends at the first field that does
+ * not fit.
+ */
 static int
 decode_header_block(struct hpack_decoder *decoder,
         const unsigned char *data, size_t len,
-        struct host_accumulator *hosts) {
+        struct host_accumulator *hosts, int partial) {
     size_t pos = 0;
     size_t decoded_budget = HTTP2_MAX_HEADER_BLOCK_SIZE;
     size_t header_count = 0;
     size_t table_size_updates = 0;
+    /* What a field cut short, or too large to decode, returns */
+    const int cut_short = partial ? 0 : -4;
+    int rc;
 
     while (pos < len) {
         unsigned char byte = data[pos];
@@ -549,8 +583,9 @@ decode_header_block(struct hpack_decoder *decoder,
         if (byte & 0x80) { /* Indexed header field */
             size_t index;
             size_t consumed;
-            if (decode_integer(data + pos, len - pos, 7, &index, &consumed) < 0)
-                return -4;
+            rc = decode_integer(data + pos, len - pos, 7, &index, &consumed);
+            if (rc < 0)
+                return rc == HPACK_TRUNCATED ? cut_short : -4;
 
             const char *name = NULL, *value = NULL;
             size_t name_len = 0, value_len = 0;
@@ -569,8 +604,9 @@ decode_header_block(struct hpack_decoder *decoder,
                 return -4;
             size_t new_size;
             size_t consumed;
-            if (decode_integer(data + pos, len - pos, 5, &new_size, &consumed) < 0)
-                return -4;
+            rc = decode_integer(data + pos, len - pos, 5, &new_size, &consumed);
+            if (rc < 0)
+                return rc == HPACK_TRUNCATED ? cut_short : -4;
             if (!hpack_set_dynamic_size(decoder, new_size))
                 return -4;
             pos += consumed;
@@ -581,19 +617,21 @@ decode_header_block(struct hpack_decoder *decoder,
         size_t prefix = add_to_table ? 6 : 4;
         size_t name_index;
         size_t consumed;
-        if (decode_integer(data + pos, len - pos, prefix, &name_index, &consumed) < 0)
-            return -4;
+        rc = decode_integer(data + pos, len - pos, prefix, &name_index, &consumed);
+        if (rc < 0)
+            return rc == HPACK_TRUNCATED ? cut_short : -4;
         pos += consumed;
 
         char *name = NULL;
         size_t name_len;
         if (name_index == 0) {
             size_t str_consumed;
-            if (hpack_decode_string(data + pos, len - pos, &str_consumed, &name, &name_len) < 0)
-                return -4;
+            rc = hpack_decode_string(data + pos, len - pos, &str_consumed, &name, &name_len);
+            if (rc < 0)
+                return rc == HPACK_TRUNCATED ? cut_short : -4;
             if (name_len > decoded_budget) {
                 free(name);
-                return -4;
+                return cut_short;
             }
             decoded_budget -= name_len;
             pos += str_consumed;
@@ -605,7 +643,7 @@ decode_header_block(struct hpack_decoder *decoder,
             if (existing_len > SIZE_MAX - 1)
                 return -4;
             if (existing_len > decoded_budget)
-                return -4;
+                return cut_short;
 
             name = malloc(existing_len + 1);
             if (name == NULL)
@@ -619,14 +657,15 @@ decode_header_block(struct hpack_decoder *decoder,
         char *value = NULL;
         size_t value_len;
         size_t str_consumed;
-        if (hpack_decode_string(data + pos, len - pos, &str_consumed, &value, &value_len) < 0) {
+        rc = hpack_decode_string(data + pos, len - pos, &str_consumed, &value, &value_len);
+        if (rc < 0) {
             free(name);
-            return -4;
+            return rc == HPACK_TRUNCATED ? cut_short : -4;
         }
         if (value_len > decoded_budget) {
             free(name);
             free(value);
-            return -4;
+            return cut_short;
         }
         pos += str_consumed;
         decoded_budget -= value_len;
@@ -929,11 +968,17 @@ hpack_get_name(const struct hpack_decoder *decoder, size_t index,
     return hpack_get_indexed(decoder, index, name, name_len, NULL, NULL);
 }
 
+/*
+ * Returns 0, HPACK_TRUNCATED when the data ends before the integer does,
+ * or -1 when the integer does not fit a size_t.
+ */
 static int
 decode_integer(const unsigned char *data, size_t data_len, unsigned int prefix,
         size_t *value, size_t *consumed) {
-    if (data_len == 0 || prefix >= 8)
+    if (prefix >= 8)
         return -1;
+    if (data_len == 0)
+        return HPACK_TRUNCATED;
 
     unsigned char mask = (unsigned char)((1u << prefix) - 1u);
     size_t result = data[0] & mask;
@@ -944,7 +989,7 @@ decode_integer(const unsigned char *data, size_t data_len, unsigned int prefix,
         const size_t shift_limit = sizeof(size_t) * CHAR_BIT;
         do {
             if (idx >= data_len)
-                return -1;
+                return HPACK_TRUNCATED;
             unsigned char byte = data[idx++];
             size_t chunk = (size_t)(byte & 0x7F);
 
@@ -973,23 +1018,28 @@ decode_integer(const unsigned char *data, size_t data_len, unsigned int prefix,
     return 0;
 }
 
+/*
+ * Returns 0, HPACK_TRUNCATED when the data ends before the string does,
+ * or -1 when the string cannot be decoded.
+ */
 static int
 hpack_decode_string(const unsigned char *data, size_t data_len, size_t *consumed,
         char **out, size_t *out_len) {
     if (data_len == 0)
-        return -1;
+        return HPACK_TRUNCATED;
 
     int huffman = (data[0] & 0x80) != 0;
     size_t length;
     size_t used;
-    if (decode_integer(data, data_len, 7, &length, &used) < 0)
-        return -1;
+    int rc = decode_integer(data, data_len, 7, &length, &used);
+    if (rc < 0)
+        return rc;
 
     if (length > SIZE_MAX - 1)
         return -1;
 
     if (length > data_len - used)
-        return -1;
+        return HPACK_TRUNCATED;
 
     if (huffman) {
         if (hpack_decode_huffman(data + used, length, out, out_len) < 0)
