@@ -157,6 +157,7 @@ static void connection_pass_eof(struct Connection *, struct ev_loop *);
 static int server_connecting(const struct Connection *);
 static int server_eof_pending(const struct Connection *);
 static void server_failed(struct Connection *, struct ev_loop *);
+static void push_abort_message(struct Connection *);
 static void stop_idle_timer(struct Connection *, struct ev_loop *);
 static void start_header_timer(struct Connection *, struct ev_loop *);
 static void stop_header_timer(struct Connection *, struct ev_loop *);
@@ -3039,11 +3040,21 @@ abort_connection(struct Connection *con, struct ev_loop *loop) {
         return;
 
     stop_header_timer(con, loop);
-    buffer_push(con->server.buffer,
+    push_abort_message(con);
+
+    con->state = SERVER_CLOSED;
+}
+
+/* Queue the protocol's abort message for the client. It does not come
+ * from the backend, so keep it out of the bytes the access log counts as
+ * received from there. */
+static void
+push_abort_message(struct Connection *con) {
+    size_t pushed = buffer_push(con->server.buffer,
             con->protocol->abort_message,
             con->protocol->abort_message_len);
 
-    con->state = SERVER_CLOSED;
+    con->server.buffer->rx_bytes -= pushed;
 }
 
 static int
@@ -3518,8 +3529,7 @@ server_failed(struct Connection *con, struct ev_loop *loop) {
     if (answered)
         con->reset_client = 1;
     else
-        buffer_push(con->server.buffer, con->protocol->abort_message,
-                con->protocol->abort_message_len);
+        push_abort_message(con);
 }
 
 /* Close server socket.
