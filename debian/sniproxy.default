@@ -1,7 +1,7 @@
 # Defaults for sniproxy initscript
 
 # This file has two functions:
-# 1) to completely disable starting sniproxy,
+# 1) to disable the init script, see ENABLED below,
 # 2) to select an alternative config file
 #    by setting DAEMON_ARGS to -c <file>
 
@@ -13,6 +13,8 @@
 # (defaults /etc/sniproxy.conf and -g).
 #SNIPROXY_OPTS="-g"
 
-# Whether or not to run the sniproxy daemon; set to 0 to disable, 1 to enable.
+# Whether the init script runs the sniproxy daemon, on hosts without
+# systemd; set to 0 to disable, 1 to enable. Under systemd enable the unit
+# instead: systemctl enable --now sniproxy
 ENABLED=0
 
