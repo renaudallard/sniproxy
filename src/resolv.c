@@ -372,6 +372,7 @@ static void resolver_child_deferred_free_cb(struct ev_loop *loop, struct ev_time
 static void resolver_child_dot_apply_cb(struct ev_loop *loop, struct ev_timer *w, int revents);
 static void resolver_child_schedule_timeout(struct ev_loop *loop);
 static void resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents);
+static void resolver_child_process_fd(ares_socket_t read_fd, ares_socket_t write_fd);
 static void resolver_child_sock_state_cb(void *data, ares_socket_t socket_fd, int readable, int writable);
 static void resolver_child_watch_fd(struct ev_loop *loop, ares_socket_t fd, int events);
 static void resolver_child_process_callback(struct ResolverChildQuery *query);
@@ -2457,9 +2458,40 @@ resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     ares_socket_t read_fd = (revents & EV_READ) ? w->fd : ARES_SOCKET_BAD;
     ares_socket_t write_fd = (revents & EV_WRITE) ? w->fd : ARES_SOCKET_BAD;
 
-    ares_process_fd(child_channel, read_fd, write_fd);
+    resolver_child_process_fd(read_fd, write_fd);
 
     resolver_child_schedule_timeout(loop);
+}
+
+/*
+ * SSL_read() decrypts a whole TLS record, of which c-ares may take only
+ * a part: c-ares 1.18 and 1.19 read the length of a TCP answer and the
+ * answer in separate calls. The rest then waits in the SSL layer while
+ * the socket is no longer readable, and the answer times out. Offer that
+ * data to c-ares again for as long as it takes some.
+ */
+static void
+resolver_child_process_fd(ares_socket_t read_fd, ares_socket_t write_fd) {
+    ares_process_fd(child_channel, read_fd, write_fd);
+
+    struct ResolverChildDotSocket *sock = child_dot_socket_list;
+    while (sock != NULL) {
+        ares_socket_t fd = sock->fd;
+        int pending = sock->ssl != NULL ? SSL_pending(sock->ssl) : 0;
+
+        if (pending > 0)
+            ares_process_fd(child_channel, fd, ARES_SOCKET_BAD);
+
+        sock = resolver_child_dot_socket_get(fd);
+        if (sock == NULL) {
+            /* Closed meanwhile, which may have changed the list */
+            sock = child_dot_socket_list;
+            continue;
+        }
+        if (pending > 0 && sock->ssl != NULL && SSL_pending(sock->ssl) < pending)
+            continue;
+        sock = sock->next;
+    }
 }
 
 static void
@@ -2467,7 +2499,7 @@ resolver_child_dns_timeout_cb(struct ev_loop *loop, struct ev_timer *w __attribu
     if (!(revents & EV_TIMER) || child_channel == NULL)
         return;
 
-    ares_process_fd(child_channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
+    resolver_child_process_fd(ARES_SOCKET_BAD, ARES_SOCKET_BAD);
 
     resolver_child_schedule_timeout(loop);
 }
