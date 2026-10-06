@@ -29,7 +29,7 @@
  * Each unique (client IP, client port) pair maps to a UDPSession that holds
  * a connected server socket.  Datagrams from the client are forwarded to the
  * server via this socket; responses are sent back to the client via the
- * shared listener socket using sendto().
+ * shared listener socket, from the local address the client sent to.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +41,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <ev.h>
@@ -74,6 +75,8 @@ struct UDPSession {
     int server_fd;              /* per-session connected socket */
     int holds_socket_budget;    /* counted by connections_udp_socket_acquire() */
     int per_ip_counted;         /* counted in the per-IP connection counts */
+    struct sockaddr_storage local_addr; /* where the client sent to */
+    socklen_t local_addr_len;   /* 0 when sent from the listener's own */
     struct ev_io server_watcher;
     struct ev_timer idle_timer;
     struct Listener *listener;
@@ -113,6 +116,14 @@ static struct UDPSession *udp_session_create(struct Listener *listener,
         uint32_t hash, struct ev_loop *loop);
 static void udp_session_destroy(struct UDPSession *, struct ev_loop *);
 static int udp_session_charge_per_ip(struct UDPSession *, struct ev_loop *);
+static socklen_t udp_datagram_dst(struct msghdr *, struct sockaddr_storage *);
+static int udp_send_from(int, const void *, size_t, const struct UDPSession *);
+
+/* Room for the destination address of a datagram */
+union udp_control {
+    struct cmsghdr hdr;
+    unsigned char buf[256];
+};
 static void udp_parse_and_resolve(struct UDPSession *, const char *, size_t,
         struct ev_loop *);
 static void udp_connect_server(struct UDPSession *, struct ev_loop *);
@@ -163,15 +174,25 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Listener *listener = (struct Listener *)w->data;
     char buf[UDP_MAX_DGRAM];
     struct sockaddr_storage client_addr;
-    socklen_t addr_len = sizeof(client_addr);
+    struct iovec iov = { buf, sizeof(buf) };
+    union udp_control control;
+    struct msghdr msg;
 
     if (!(revents & EV_READ))
         return;
 
-    ssize_t n = recvfrom(w->fd, buf, sizeof(buf), 0,
-            (struct sockaddr *)&client_addr, &addr_len);
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_name = &client_addr;
+    msg.msg_namelen = sizeof(client_addr);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.buf;
+    msg.msg_controllen = sizeof(control.buf);
+
+    ssize_t n = recvmsg(w->fd, &msg, 0);
     if (n <= 0)
         return;
+    socklen_t addr_len = msg.msg_namelen;
 
     uint32_t hash = udp_hash_addr(&client_addr, addr_len);
     struct UDPSession *session = udp_session_lookup(&client_addr, addr_len,
@@ -245,6 +266,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     session = udp_session_create(listener, &client_addr, addr_len, hash, loop);
     if (session == NULL)
         return;
+    session->local_addr_len = udp_datagram_dst(&msg, &session->local_addr);
 
     /* Session starts in UDP_VALIDATING state. The datagram is not forwarded
      * yet; we wait for a second one from the same (IP, port), which DTLS
@@ -280,14 +302,136 @@ udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (listener_fd < 0)
         return;
 
-    if (sendto(listener_fd, buf, (size_t)n, 0,
-            (struct sockaddr *)&session->client_addr,
-            session->client_addr_len) < 0) {
+    if (udp_send_from(listener_fd, buf, (size_t)n, session) < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK)
-            debug("UDP sendto client failed: %s", strerror(errno));
+            debug("UDP send to client failed: %s", strerror(errno));
     }
 
     ev_timer_again(loop, &session->idle_timer);
+}
+
+/*
+ * The local address a datagram was sent to, from the ancillary data a
+ * wildcard listener asks for, see listener_recv_dst_addr(). Returns its
+ * length, or 0 when there is none.
+ */
+static socklen_t
+udp_datagram_dst(struct msghdr *msg, struct sockaddr_storage *dst) {
+    struct cmsghdr *cmsg;
+
+    memset(dst, 0, sizeof(*dst));
+    for (cmsg = CMSG_FIRSTHDR(msg); cmsg != NULL; cmsg = CMSG_NXTHDR(msg, cmsg)) {
+#ifdef IPV6_RECVPKTINFO
+        if (cmsg->cmsg_level == IPPROTO_IPV6 &&
+                cmsg->cmsg_type == IPV6_PKTINFO) {
+            struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)dst;
+            struct in6_pktinfo info;
+
+            memcpy(&info, CMSG_DATA(cmsg), sizeof(info));
+            sin6->sin6_family = AF_INET6;
+            sin6->sin6_addr = info.ipi6_addr;
+            return sizeof(*sin6);
+        }
+#endif
+#if defined(IP_PKTINFO)
+        if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
+            struct sockaddr_in *sin = (struct sockaddr_in *)dst;
+            struct in_pktinfo info;
+
+            memcpy(&info, CMSG_DATA(cmsg), sizeof(info));
+            sin->sin_family = AF_INET;
+            /* macOS fills only ipi_addr, the datagram's destination */
+            sin->sin_addr = info.ipi_spec_dst.s_addr != htonl(INADDR_ANY) ?
+                    info.ipi_spec_dst : info.ipi_addr;
+            return sizeof(*sin);
+        }
+#elif defined(IP_RECVDSTADDR) && defined(IP_SENDSRCADDR)
+        if (cmsg->cmsg_level == IPPROTO_IP &&
+                cmsg->cmsg_type == IP_RECVDSTADDR) {
+            struct sockaddr_in *sin = (struct sockaddr_in *)dst;
+
+            memcpy(&sin->sin_addr, CMSG_DATA(cmsg), sizeof(sin->sin_addr));
+            sin->sin_family = AF_INET;
+            return sizeof(*sin);
+        }
+#endif
+    }
+
+    return 0;
+}
+
+/*
+ * Send a reply to the session's client from the address the client sent
+ * to. One the system no longer accepts as a source, such as an expired
+ * temporary IPv6 address, falls back to the address the kernel picks.
+ */
+static int
+udp_send_from(int fd, const void *buf, size_t len,
+        const struct UDPSession *session) {
+    struct iovec iov = { (void *)(uintptr_t)buf, len };
+    union udp_control control;
+    struct msghdr msg;
+    struct cmsghdr *cmsg;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_name = (void *)(uintptr_t)&session->client_addr;
+    msg.msg_namelen = session->client_addr_len;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    memset(&control, 0, sizeof(control));
+    msg.msg_control = control.buf;
+    cmsg = (struct cmsghdr *)control.buf;
+
+    if (session->local_addr_len == 0) {
+        msg.msg_control = NULL;
+#ifdef IPV6_RECVPKTINFO
+    } else if (session->local_addr.ss_family == AF_INET6) {
+        struct in6_pktinfo info;
+
+        memset(&info, 0, sizeof(info));
+        info.ipi6_addr = ((const struct sockaddr_in6 *)&session->local_addr)->sin6_addr;
+        cmsg->cmsg_level = IPPROTO_IPV6;
+        cmsg->cmsg_type = IPV6_PKTINFO;
+        cmsg->cmsg_len = CMSG_LEN(sizeof(info));
+        memcpy(CMSG_DATA(cmsg), &info, sizeof(info));
+        msg.msg_controllen = CMSG_SPACE(sizeof(info));
+#endif
+#if defined(IP_PKTINFO)
+    } else if (session->local_addr.ss_family == AF_INET) {
+        struct in_pktinfo info;
+
+        memset(&info, 0, sizeof(info));
+        info.ipi_spec_dst = ((const struct sockaddr_in *)&session->local_addr)->sin_addr;
+        cmsg->cmsg_level = IPPROTO_IP;
+        cmsg->cmsg_type = IP_PKTINFO;
+        cmsg->cmsg_len = CMSG_LEN(sizeof(info));
+        memcpy(CMSG_DATA(cmsg), &info, sizeof(info));
+        msg.msg_controllen = CMSG_SPACE(sizeof(info));
+#elif defined(IP_RECVDSTADDR) && defined(IP_SENDSRCADDR)
+    } else if (session->local_addr.ss_family == AF_INET) {
+        const struct in_addr *src =
+                &((const struct sockaddr_in *)&session->local_addr)->sin_addr;
+
+        cmsg->cmsg_level = IPPROTO_IP;
+        cmsg->cmsg_type = IP_SENDSRCADDR;
+        cmsg->cmsg_len = CMSG_LEN(sizeof(*src));
+        memcpy(CMSG_DATA(cmsg), src, sizeof(*src));
+        msg.msg_controllen = CMSG_SPACE(sizeof(*src));
+#endif
+    } else {
+        msg.msg_control = NULL;
+    }
+
+    ssize_t sent = sendmsg(fd, &msg, 0);
+    if (sent < 0 && msg.msg_control != NULL &&
+            (errno == EADDRNOTAVAIL || errno == EINVAL)) {
+        msg.msg_control = NULL;
+        msg.msg_controllen = 0;
+        sent = sendmsg(fd, &msg, 0);
+    }
+
+    return sent < 0 ? -1 : 0;
 }
 
 static struct UDPSession *

@@ -522,7 +522,8 @@ the SNI extension from the DTLS ClientHello, enabling proxying by
 hostname without decryption of DTLS protocols whose clients send SNI,
 such as CoAP. WebRTC and OpenConnect clients send no SNI, so their
 sessions can only go to the fallback. A dtls listener cannot be a unix
-socket. To limit UDP
+socket. One on a wildcard address answers each client from the local
+address the client sent to. To limit UDP
 reflection/amplification attacks, a new DTLS session is held until a
 second datagram arrives from the same
 address and port, and is silently dropped if none does within 3

@@ -63,6 +63,7 @@
 
 static void close_listener(struct ev_loop *, struct Listener *);
 static int bind_listener(int, const struct Listener *);
+static void listener_recv_dst_addr(int, const struct Listener *);
 static int unix_listener_path(const struct Listener *, char *, size_t);
 static int unix_listener_is_stale(const struct Listener *, const char *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
@@ -976,6 +977,9 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 #endif
     }
 
+    if (is_dgram)
+        listener_recv_dst_addr(sockfd, listener);
+
     /* Always set nonblocking. When the binder provides a replacement
      * socket, it does not have SOCK_NONBLOCK set even if the original
      * socket did. A blocking listener socket would freeze the event
@@ -1185,6 +1189,40 @@ print_listener_config(FILE *file, const struct Listener *listener) {
     }
 
     fprintf(file, "}\n\n");
+}
+
+/*
+ * A dtls listener on a wildcard address learns the destination of each
+ * datagram, so that its replies can leave from the address the client
+ * sent to, see udp_connection.c: the kernel would otherwise pick a source
+ * address by route, which a client that reached another local address,
+ * a secondary or temporary one, ignores.
+ */
+static void
+listener_recv_dst_addr(int sockfd, const struct Listener *listener) {
+    const struct sockaddr *sa = address_sa(listener->address);
+    int on = 1;
+    int result = 0;
+
+    if (sa->sa_family == AF_INET) {
+        if (((const struct sockaddr_in *)sa)->sin_addr.s_addr != htonl(INADDR_ANY))
+            return;
+#if defined(IP_PKTINFO)
+        result = setsockopt(sockfd, IPPROTO_IP, IP_PKTINFO, &on, sizeof(on));
+#elif defined(IP_RECVDSTADDR) && defined(IP_SENDSRCADDR)
+        result = setsockopt(sockfd, IPPROTO_IP, IP_RECVDSTADDR, &on, sizeof(on));
+#endif
+    } else if (sa->sa_family == AF_INET6) {
+        if (!IN6_IS_ADDR_UNSPECIFIED(&((const struct sockaddr_in6 *)sa)->sin6_addr))
+            return;
+#ifdef IPV6_RECVPKTINFO
+        result = setsockopt(sockfd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on));
+#endif
+    }
+
+    if (result < 0)
+        warn("setsockopt to learn datagram destinations failed: %s",
+                strerror(errno));
 }
 
 /*
