@@ -65,6 +65,10 @@ EXTRA_DIST = check_output.sh \
              TestHTTPD.pm \
              README.md
 
+# The tests build their own objects of the src/ files: shared with src/,
+# the objects would get the dependency files of whichever Makefile built
+# them last, under target names the other one does not recognize, and a
+# changed header would then not rebuild them.
 check_PROGRAMS = http_test \
                  tls_test \
                  dtls_test \
@@ -199,3 +203,20 @@ ipc_crypto_time_rekey_test_SOURCES = ipc_crypto_time_rekey_test.c \
                                       ../src/ipc_crypto.c
 
 ipc_crypto_time_rekey_test_LDADD = $(LIBCRYPTO_LIBS) $(LIBBSD_LIBS)
+
+http_test_CPPFLAGS = $(AM_CPPFLAGS)
+tls_test_CPPFLAGS = $(AM_CPPFLAGS)
+dtls_test_CPPFLAGS = $(AM_CPPFLAGS)
+xmpp_test_CPPFLAGS = $(AM_CPPFLAGS)
+minecraft_test_CPPFLAGS = $(AM_CPPFLAGS)
+table_test_CPPFLAGS = $(AM_CPPFLAGS)
+binder_test_CPPFLAGS = $(AM_CPPFLAGS)
+buffer_test_CPPFLAGS = $(AM_CPPFLAGS)
+cfg_tokenizer_test_CPPFLAGS = $(AM_CPPFLAGS)
+address_test_CPPFLAGS = $(AM_CPPFLAGS)
+resolv_test_CPPFLAGS = $(AM_CPPFLAGS)
+config_test_CPPFLAGS = $(AM_CPPFLAGS)
+seccomp_test_CPPFLAGS = $(AM_CPPFLAGS)
+ipc_crypto_debug_test_CPPFLAGS = $(AM_CPPFLAGS)
+ipc_crypto_rekey_test_CPPFLAGS = $(AM_CPPFLAGS)
+ipc_crypto_time_rekey_test_CPPFLAGS = $(AM_CPPFLAGS)
