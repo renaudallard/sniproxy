@@ -172,7 +172,7 @@ static void shrink_candidate_update(struct Connection *, struct ev_loop *, ev_ts
 static void shrink_candidate_remove(struct Connection *);
 static void shrink_candidate_insert(struct Connection *);
 static ev_tstamp connection_last_activity(const struct Connection *);
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
 static int try_splice(struct Connection *, struct ev_loop *);
 static void splice_cb(struct ev_loop *, struct ev_io *, int);
 static int splice_progressed(struct Connection *);
@@ -517,7 +517,7 @@ free_connections(struct ev_loop *loop) {
         TAILQ_REMOVE(&connections, iter, entries);
         connection_account_remove();
         conn_count_decrement(&iter->peer_addr);
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
         if (iter->spliced)
             splice_account(iter, ev_now(loop));
 #endif
@@ -1016,7 +1016,7 @@ connection_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         server_open = server_socket_open(con);
     }
 
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
     /* Attempt kernel-level splice once both buffers have been flushed,
      * while both directions are still open */
     if (con->state == CONNECTED && !con->spliced &&
@@ -2277,7 +2277,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
     struct Connection *con = w->data;
     char client[INET6_ADDRSTRLEN + 8];
 
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
     /* The kernel moves the data while spliced, so the buffer timestamps
      * never reset this timer; the byte counters tell whether either
      * direction was active since the previous check. */
@@ -2302,7 +2302,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
             connection_idle_timeout);
 
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
     if (con->spliced) {
         /* Nothing moved during the last idle period, so the connection
          * went quiet about one period ago. */
@@ -3863,7 +3863,7 @@ print_connection(FILE *file, const struct Connection *con) {
     }
 }
 
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
 /*
  * Attempt to splice two connected sockets in the kernel.
  * Returns 1 if splice was set up successfully (caller should return),

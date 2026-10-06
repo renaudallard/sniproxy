@@ -34,6 +34,13 @@
 #include <ev.h>
 #include "listener.h"
 
+/* Kernel splicing of established connections is done with OpenBSD's
+ * SO_SPLICE. FreeBSD 14.2 and later have the option too, with different
+ * semantics, which this code was not written for. */
+#if defined(SO_SPLICE) && defined(__OpenBSD__)
+#define USE_SO_SPLICE 1
+#endif
+
 struct Buffer;
 struct DnsClientUsageEntry;
 struct Protocol;
@@ -86,7 +93,7 @@ struct Connection {
     struct ResolvQuery *query_handle;
     ev_tstamp established_timestamp;
     enum proxy_protocol_mode use_proxy_header;
-#ifdef SO_SPLICE
+#ifdef USE_SO_SPLICE
     int spliced;
     /* Bytes the kernel had moved out of each socket at the last idle
      * check; the buffer timestamps do not advance while spliced. */
