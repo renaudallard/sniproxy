@@ -146,7 +146,12 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
             return -5;
         }
 
-        if (len > max_extension_length) {
+        /* Only server_name is copied out: the others are skipped or only
+         * have a few bytes read, and some are legitimately large, such
+         * as a session ticket that embeds a client certificate chain or
+         * post-quantum key shares. */
+        if (data[pos] == 0x00 && data[pos + 1] == 0x00 &&
+                len > max_extension_length) {
             if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
                 free(*hostname);
                 *hostname = NULL;

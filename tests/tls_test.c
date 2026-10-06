@@ -624,10 +624,61 @@ static const unsigned char tls13_client_hello[] = {
     0x00, 0x03, 0x02, 0x03, 0x04,
 };
 
+/*
+ * A ClientHello for "localhost" followed by a padding extension of
+ * pad_len bytes, which only the server_name extension's size limit could
+ * refuse. Returns its length.
+ */
+static size_t
+build_padded_client_hello(unsigned char *buf, size_t pad_len) {
+    static const unsigned char sni[] = {
+        0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00, 0x09,
+        'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+    };
+    size_t ext_len = sizeof(sni) + 4 + pad_len;
+    size_t body_len = 2 + 32 + 1 + 4 + 2 + 2 + ext_len;
+    size_t pos = 0;
+
+    buf[pos++] = 0x16;
+    buf[pos++] = 0x03;
+    buf[pos++] = 0x01;
+    buf[pos++] = (unsigned char)((body_len + 4) >> 8);
+    buf[pos++] = (unsigned char)(body_len + 4);
+    buf[pos++] = 0x01;
+    buf[pos++] = 0x00;
+    buf[pos++] = (unsigned char)(body_len >> 8);
+    buf[pos++] = (unsigned char)body_len;
+    buf[pos++] = 0x03;
+    buf[pos++] = 0x03;
+    memset(buf + pos, 0x5a, 32);
+    pos += 32;
+    buf[pos++] = 0x00;                      /* session id */
+    buf[pos++] = 0x00;                      /* one cipher suite */
+    buf[pos++] = 0x02;
+    buf[pos++] = 0x13;
+    buf[pos++] = 0x01;
+    buf[pos++] = 0x01;                      /* null compression */
+    buf[pos++] = 0x00;
+    buf[pos++] = (unsigned char)(ext_len >> 8);
+    buf[pos++] = (unsigned char)ext_len;
+    memcpy(buf + pos, sni, sizeof(sni));
+    pos += sizeof(sni);
+    buf[pos++] = 0x00;                      /* padding */
+    buf[pos++] = 0x15;
+    buf[pos++] = (unsigned char)(pad_len >> 8);
+    buf[pos++] = (unsigned char)pad_len;
+    memset(buf + pos, 0, pad_len);
+    pos += pad_len;
+
+    return pos;
+}
+
 int main(void) {
     unsigned int i;
     int result;
     char *hostname;
+    static unsigned char padded[8192];
+    size_t padded_len;
     struct test_packet legacy_tls10 = { (char *)tls10_client_hello, sizeof(tls10_client_hello) };
 
     for (i = 0; i < sizeof(good) / sizeof(struct test_packet); i++) {
@@ -649,6 +700,16 @@ int main(void) {
 
     result = tls_protocol->parse_packet(good[0].packet, good[0].len, NULL);
     assert(result == -3);
+
+    /* Large extensions other than server_name, such as session tickets
+     * holding a client certificate chain, must not be refused */
+    padded_len = build_padded_client_hello(padded, 5000);
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)padded, padded_len, &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    assert(0 == strcmp("localhost", hostname));
+    free(hostname);
 
     hostname = NULL;
     result = tls_protocol->parse_packet(legacy_tls10.packet, legacy_tls10.len, &hostname);
