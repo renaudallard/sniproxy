@@ -512,6 +512,9 @@ The socket file is removed when the listener shuts down if the
 configured user can write its directory. A socket file left behind, by
 that or by an unclean shutdown, is detected as stale and replaced on the
 next start as long as no other process is accepting connections on it.
+A stale file the configured user cannot remove, as one a reload leaves
+behind in a directory only root can write, keeps the listener from
+being added back by a later reload until sniproxy is restarted.
 
 Protocol defines how the client request should be parsed to obtain the
 requested hostname. Five protocols are supported: tls, the default,

@@ -907,10 +907,16 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
         int bind_errno = errno;
         char path[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
         if (unix_listener_path(listener, path, sizeof(path)) &&
-                unix_listener_is_stale(listener, path) &&
-                unlink(path) == 0) {
-            notice("removed stale unix socket %s", path);
-            result = bind_listener(sockfd, listener);
+                unix_listener_is_stale(listener, path)) {
+            if (unlink(path) == 0) {
+                notice("removed stale unix socket %s", path);
+                result = bind_listener(sockfd, listener);
+            } else {
+                /* The binder cannot replace it either */
+                warn("stale unix socket %s cannot be removed: %s",
+                        path, strerror(errno));
+                errno = bind_errno;
+            }
         } else {
             errno = bind_errno;
         }
@@ -1314,8 +1320,9 @@ close_listener(struct ev_loop *loop, struct Listener *listener) {
          * a root-owned directory after privileges were dropped; such
          * leftovers are removed by the stale check on the next start. */
         char path[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
-        if (unix_listener_path(listener, path, sizeof(path)))
-            (void)unlink(path);
+        if (unix_listener_path(listener, path, sizeof(path)) &&
+                unlink(path) < 0 && errno != ENOENT)
+            info("unix socket %s left in place: %s", path, strerror(errno));
     }
 }
 
