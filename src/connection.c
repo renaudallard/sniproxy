@@ -189,10 +189,21 @@ static void splice_account(struct Connection *, ev_tstamp);
 #define RATE_LIMIT_CLEANUP_INTERVAL 60.0
 #define RATE_LIMIT_MAX_CHAIN_LENGTH 32
 
+/* What a source is allowed: TCP connections and validated UDP sessions
+ * share one token bucket, and UDP sessions still waiting for their second
+ * datagram, whose source address may be forged, have one of their own */
+enum rate_limit_kind {
+    RATE_LIMIT_CONNECTION,
+    RATE_LIMIT_UDP_SESSION,
+    RATE_LIMIT_KINDS
+};
+
 struct RateLimitBucket {
     struct sockaddr_storage addr;
-    ev_tstamp last_check;
-    double allowance;
+    struct {
+        ev_tstamp last_check;
+        double allowance;
+    } limit[RATE_LIMIT_KINDS];
     struct RateLimitBucket *next;
     uint32_t addr_hash;
     uint32_t addr_v4;
@@ -203,6 +214,9 @@ static struct RateLimitBucket *rate_limit_bucket_acquire(void);
 static void rate_limit_bucket_release(struct RateLimitBucket *bucket);
 
 static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
+/* Buckets in the table: an empty table is never scanned, as on OpenBSD
+ * even reading an untouched page makes it resident */
+static size_t rate_limit_count;
 static struct RateLimitBucket *rate_limit_free_list;
 static size_t rate_limit_free_count;
 #define RATE_LIMIT_MAX_FREE 2048
@@ -276,7 +290,8 @@ static void conn_count_decrement(const struct sockaddr_storage *);
 static void conn_count_bucket_release(struct ConnCountBucket *);
 static int sockaddr_equal_ip(const struct sockaddr_storage *,
         const struct sockaddr_storage *);
-static int rate_limit_allow_connection(const struct sockaddr_storage *, ev_tstamp);
+static int rate_limit_allow_connection(const struct sockaddr_storage *,
+        ev_tstamp, enum rate_limit_kind);
 static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
 
 /* SplitMix64-derived mixer reduced to 32 bits to improve avalanche for IPv6 hashing. */
@@ -422,7 +437,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     ev_tstamp now = loop_now(loop);
 
-    if (!rate_limit_allow_connection(&con->client.addr, now)) {
+    if (!rate_limit_allow_connection(&con->client.addr, now,
+            RATE_LIMIT_CONNECTION)) {
         char addrbuf[INET6_ADDRSTRLEN];
         const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
 
@@ -1316,8 +1332,15 @@ rate_limit_bucket_release(struct RateLimitBucket *bucket) {
 
 static void
 rate_limit_reset(void) {
+    if (rate_limit_count == 0)
+        return;
+
     for (size_t i = 0; i < RATE_LIMIT_TABLE_SIZE; i++) {
         struct RateLimitBucket *bucket = rate_limit_table[i];
+
+        /* Writing NULL over NULL would make the page resident */
+        if (bucket == NULL)
+            continue;
 
         while (bucket != NULL) {
             struct RateLimitBucket *next = bucket->next;
@@ -1328,12 +1351,14 @@ rate_limit_reset(void) {
         rate_limit_table[i] = NULL;
     }
 
+    rate_limit_count = 0;
     rate_limit_last_cleanup = 0.0;
 }
 
 static void
 rate_limit_cleanup(ev_tstamp now) {
-    if (now - rate_limit_last_cleanup < RATE_LIMIT_CLEANUP_INTERVAL)
+    if (rate_limit_count == 0 ||
+            now - rate_limit_last_cleanup < RATE_LIMIT_CLEANUP_INTERVAL)
         return;
 
     for (size_t i = 0; i < RATE_LIMIT_TABLE_SIZE; i++) {
@@ -1341,10 +1366,16 @@ rate_limit_cleanup(ev_tstamp now) {
 
         while (*current != NULL) {
             struct RateLimitBucket *bucket = *current;
+            ev_tstamp last_check = bucket->limit[0].last_check;
 
-            if (now - bucket->last_check > RATE_LIMIT_IDLE_TTL) {
+            for (int k = 1; k < RATE_LIMIT_KINDS; k++)
+                if (bucket->limit[k].last_check > last_check)
+                    last_check = bucket->limit[k].last_check;
+
+            if (now - last_check > RATE_LIMIT_IDLE_TTL) {
                 *current = bucket->next;
                 rate_limit_bucket_release(bucket);
+                rate_limit_count--;
             } else {
                 current = &bucket->next;
             }
@@ -1463,7 +1494,8 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
 }
 
 static int
-rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) {
+rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
+        enum rate_limit_kind kind) {
     if (per_ip_connection_rate_limit <= 0.0)
         return 1;
 
@@ -1518,10 +1550,14 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         bucket->addr_hash = hash;
         bucket->addr_v4 = addr_v4;
         bucket->is_v4 = is_v4;
-        bucket->last_check = now;
-        bucket->allowance = capacity - 1.0;
+        for (int k = 0; k < RATE_LIMIT_KINDS; k++) {
+            bucket->limit[k].last_check = now;
+            bucket->limit[k].allowance = capacity;
+        }
+        bucket->limit[kind].allowance -= 1.0;
         bucket->next = rate_limit_table[bucket_index];
         rate_limit_table[bucket_index] = bucket;
+        rate_limit_count++;
         return 1;
     }
 
@@ -1531,19 +1567,20 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now) 
         rate_limit_table[bucket_index] = bucket;
     }
 
-    double allowance = bucket->allowance;
-    allowance += (now - bucket->last_check) * per_ip_connection_rate_limit;
+    double allowance = bucket->limit[kind].allowance;
+    allowance += (now - bucket->limit[kind].last_check) *
+            per_ip_connection_rate_limit;
     if (allowance > capacity)
         allowance = capacity;
 
-    bucket->last_check = now;
+    bucket->limit[kind].last_check = now;
 
     if (allowance < 1.0) {
-        bucket->allowance = allowance;
+        bucket->limit[kind].allowance = allowance;
         return 0;
     }
 
-    bucket->allowance = allowance - 1.0;
+    bucket->limit[kind].allowance = allowance - 1.0;
     return 1;
 }
 
@@ -2126,7 +2163,13 @@ connections_set_tcp_fastopen(int enabled) {
 
 int
 connections_rate_limit_allow(const struct sockaddr_storage *addr, ev_tstamp now) {
-    return rate_limit_allow_connection(addr, now);
+    return rate_limit_allow_connection(addr, now, RATE_LIMIT_CONNECTION);
+}
+
+int
+connections_udp_session_rate_limit_allow(const struct sockaddr_storage *addr,
+        ev_tstamp now) {
+    return rate_limit_allow_connection(addr, now, RATE_LIMIT_UDP_SESSION);
 }
 
 int

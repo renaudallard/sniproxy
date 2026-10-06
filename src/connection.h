@@ -135,6 +135,9 @@ void connections_set_tcp_fastopen(int enabled);
 
 /* Per-IP rate and connection limiting, shared between TCP and UDP paths */
 int connections_rate_limit_allow(const struct sockaddr_storage *, ev_tstamp now);
+/* The per-IP rate of UDP sessions still waiting for their second datagram */
+int connections_udp_session_rate_limit_allow(const struct sockaddr_storage *,
+        ev_tstamp now);
 int connections_conn_count_allow(const struct sockaddr_storage *);
 void connections_conn_count_increment(const struct sockaddr_storage *);
 void connections_conn_count_decrement(const struct sockaddr_storage *);

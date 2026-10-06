@@ -73,6 +73,7 @@ struct UDPSession {
     socklen_t server_addr_len;
     int server_fd;              /* per-session connected socket */
     int holds_socket_budget;    /* counted by connections_udp_socket_acquire() */
+    int per_ip_counted;         /* counted in the per-IP connection counts */
     struct ev_io server_watcher;
     struct ev_timer idle_timer;
     struct Listener *listener;
@@ -111,6 +112,7 @@ static struct UDPSession *udp_session_create(struct Listener *listener,
         const struct sockaddr_storage *addr, socklen_t addr_len,
         uint32_t hash, struct ev_loop *loop);
 static void udp_session_destroy(struct UDPSession *, struct ev_loop *);
+static int udp_session_charge_per_ip(struct UDPSession *, struct ev_loop *);
 static void udp_parse_and_resolve(struct UDPSession *, const char *, size_t,
         struct ev_loop *);
 static void udp_connect_server(struct UDPSession *, struct ev_loop *);
@@ -152,7 +154,8 @@ void
 udp_sessions_recount_per_ip(void) {
     for (size_t i = 0; i < UDP_SESSION_BUCKETS; i++)
         for (struct UDPSession *s = session_table[i]; s != NULL; s = s->next)
-            connections_conn_count_increment(&s->client_addr);
+            if (s->per_ip_counted)
+                connections_conn_count_increment(&s->client_addr);
 }
 
 void
@@ -194,6 +197,10 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
              * It is not compared with the first, so this stops single
              * spoofed packets, not an attacker who forges two. Repeat
              * already swapped to idle timeout above. */
+            if (!udp_session_charge_per_ip(session, loop)) {
+                udp_session_destroy(session, loop);
+                return;
+            }
             udp_parse_and_resolve(session, buf, (size_t)n, loop);
             break;
         case UDP_RESOLVING:
@@ -212,15 +219,12 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
     }
 
-    /* Per-IP rate limiting (shared with TCP) */
-    if (!connections_rate_limit_allow(&client_addr, ev_now(loop))) {
+    /* The per-IP limits, shared with TCP, apply once the source has shown
+     * it is real, see udp_session_charge_per_ip(): a forged first datagram
+     * must not use up the allowance of the address it names. Until then a
+     * rate of its own keeps one source from filling the session table. */
+    if (!connections_udp_session_rate_limit_allow(&client_addr, ev_now(loop))) {
         debug("UDP session rate limited");
-        return;
-    }
-
-    /* Per-IP connection count limiting (shared with TCP) */
-    if (!connections_conn_count_allow(&client_addr)) {
-        debug("UDP session denied by per-IP connection limit");
         return;
     }
 
@@ -242,7 +246,6 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (session == NULL)
         return;
 
-    connections_conn_count_increment(&client_addr);
     /* Session starts in UDP_VALIDATING state. The datagram is not forwarded
      * yet; we wait for a second one from the same (IP, port), which DTLS
      * clients send by design (RFC 6347 section 4.2.4). A single spoofed
@@ -342,6 +345,28 @@ udp_session_create(struct Listener *listener,
     return s;
 }
 
+/*
+ * Charge a session to its client's per-IP rate and connection count, shared
+ * with TCP, once its second datagram has come from the same address and
+ * port. Returns 0 if a limit refuses it.
+ */
+static int
+udp_session_charge_per_ip(struct UDPSession *session, struct ev_loop *loop) {
+    if (!connections_rate_limit_allow(&session->client_addr, ev_now(loop))) {
+        debug("UDP session rate limited");
+        return 0;
+    }
+
+    if (!connections_conn_count_allow(&session->client_addr)) {
+        debug("UDP session denied by per-IP connection limit");
+        return 0;
+    }
+
+    connections_conn_count_increment(&session->client_addr);
+    session->per_ip_counted = 1;
+    return 1;
+}
+
 static void
 udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
     if (session == NULL)
@@ -360,7 +385,8 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
     session_count--;
     if (session->state == UDP_VALIDATING)
         TAILQ_REMOVE(&validating_sessions, session, validating_entries);
-    connections_conn_count_decrement(&session->client_addr);
+    if (session->per_ip_counted)
+        connections_conn_count_decrement(&session->client_addr);
 
     /* Cancel pending DNS query */
     if (session->query_handle != NULL) {
