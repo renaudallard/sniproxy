@@ -49,7 +49,7 @@ clang -fsanitize=fuzzer,address,undefined -Isrc \
 ```
 clang -fsanitize=fuzzer,address,undefined -Isrc \
     tests/fuzz/http2_fuzz.c \
-    src/http2.c
+    src/http2.c src/http2_huffman.c
 ```
 
 Replace the sanitizer list or add `-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION`
@@ -63,7 +63,7 @@ with a seed corpus directory.
 ```bash
 clang -fsanitize=fuzzer,address,undefined -Isrc \
     tests/fuzz/http_fuzz.c \
-    src/http.c
+    src/http.c src/http2.c src/http2_huffman.c
 ```
 
 ### XMPP fuzzer
