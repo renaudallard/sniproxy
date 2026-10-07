@@ -122,11 +122,12 @@ static const char *const network_syscalls[] = {
 };
 
 /* Restricted network subset for the logger child: IPC over its AF_UNIX
- * socketpair plus syslog (openlog needs socket+connect, syslog needs
- * sendto).  Does not include bind, listen, accept, recvfrom, socketpair,
- * sendmmsg, recvmmsg, or getpeername. */
+ * socketpair plus syslog (openlog needs a unix socket, which
+ * allow_sockets() permits, and connect, syslog needs sendto).  Does not
+ * include bind, listen, accept, recvfrom, socketpair, sendmmsg, recvmmsg,
+ * or getpeername. */
 static const char *const logger_network_syscalls[] = {
-    "socket", "connect",
+    "connect",
     "sendto", "send", "sendmsg", "recvmsg",
     "getsockopt", "setsockopt",
     "getsockname",
@@ -136,14 +137,15 @@ static const char *const logger_network_syscalls[] = {
 
 /* Restricted network subset for the binder child: it binds privileged
  * ports and passes the resulting sockets back over its IPC channel via
- * sendmsg/recvmsg; it never listens or accepts.  socket/connect/sendto
+ * sendmsg/recvmsg; it never listens or accepts.  allow_sockets() lets it
+ * create the unix, IPv4 and IPv6 sockets it binds.  connect and sendto
  * are kept because, after disinheriting the logger process, the binder
  * logs its own errors directly, which reaches vsyslog() when error_log
  * uses syslog.  Excludes listen, accept, accept4, recvfrom, sendmmsg,
  * recvmmsg, getsockname, getpeername, and socketpair (created in the
  * parent before fork). */
 static const char *const binder_network_syscalls[] = {
-    "socket", "connect",
+    "connect",
     "bind", "setsockopt",
     "sendto", "send", "sendmsg", "recvmsg",
     NULL,
@@ -252,29 +254,35 @@ allow_open_read(scmp_filter_ctx ctx) {
     return rc;
 }
 
-/* The sockets the main process may create: unix and netlink sockets, and
- * stream and datagram sockets over IPv4 and IPv6, which is all it and the
- * helpers it restarts use. With "source client" it keeps CAP_NET_RAW,
- * and raw or packet sockets would let it read the host's traffic. Where
+#define SOCKETS_UNIX    0x1
+#define SOCKETS_NETLINK 0x2
+#define SOCKETS_INET    0x4
+
+/* The sockets a process may create, among unix sockets, netlink sockets,
+ * and stream and datagram sockets over IPv4 and IPv6. With "source
+ * client" the main process keeps CAP_NET_RAW, and raw or packet sockets
+ * would let it read the host's traffic; the binder keeps root. Where
  * socket() goes through socketcall(2), as on i386, its arguments are out
  * of the filter's reach, so any socket stays allowed there. */
 static int
-allow_main_sockets(scmp_filter_ctx ctx) {
+allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
     static const int families[] = { AF_INET, AF_INET6 };
     static const int types[] = { SOCK_STREAM, SOCK_DGRAM };
     int nr = seccomp_syscall_resolve_name("socket");
+    int rc = 0;
 
     if (nr < 0)
         return allow_syscall(ctx, "socket");
 
-    int rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
-            SCMP_A0(SCMP_CMP_EQ, AF_UNIX));
-    if (rc == 0)
+    if (kinds & SOCKETS_UNIX)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A0(SCMP_CMP_EQ, AF_UNIX));
+    if (rc == 0 && (kinds & SOCKETS_NETLINK))
         rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
                 SCMP_A0(SCMP_CMP_EQ, AF_NETLINK));
     /* The low four bits of the type argument hold the socket type, the
      * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. */
-    for (size_t f = 0; rc == 0 &&
+    for (size_t f = 0; rc == 0 && (kinds & SOCKETS_INET) &&
             f < sizeof(families) / sizeof(families[0]); f++)
         for (size_t t = 0; rc == 0 &&
                 t < sizeof(types) / sizeof(types[0]); t++)
@@ -318,7 +326,8 @@ install_filter(enum seccomp_process_type type) {
     /* Process-specific rules */
     switch (type) {
         case SECCOMP_PROCESS_MAIN:
-            if (allow_main_sockets(ctx) < 0 ||
+            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
+                    SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
@@ -332,7 +341,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_LOGGER:
-            if (allow_syscalls(ctx, logger_network_syscalls) < 0 ||
+            if (allow_sockets(ctx, SOCKETS_UNIX) < 0 ||
+                allow_syscalls(ctx, logger_network_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
@@ -344,7 +354,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_RESOLVER:
-            if (allow_syscall(ctx, "socket") < 0 ||
+            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
+                    SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
@@ -360,7 +371,8 @@ install_filter(enum seccomp_process_type type) {
              * and both the timestamp path (localtime/strftime) and vsyslog
              * read /etc/localtime (openat + per-call newfstatat). Without it
              * the first err() would be killed by SCMP_ACT_KILL_PROCESS. */
-            if (allow_syscalls(ctx, binder_network_syscalls) < 0 ||
+            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_INET) < 0 ||
+                allow_syscalls(ctx, binder_network_syscalls) < 0 ||
                 allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
