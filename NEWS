@@ -1,3 +1,52 @@
+sniproxy 0.19.1 (2026-10-07)
+===============================
+
+Fixes from a security review of 0.19.0.
+
+Upgrade note: UDP sessions now have their own per-IP allowance and
+count, apart from TCP connections, so a client may hold
+per_ip_max_connections UDP sessions on top of as many TCP connections.
+A TLS ClientHello whose version cannot be checked against the -T
+minimum is refused instead of going to the fallback. On Linux no
+process of sniproxy leaves a core file any more.
+
+Highlights:
+
+* Forged DTLS datagrams could still lock a victim out of every TCP
+  listener, although the 0.19.0 notes said otherwise: the per-IP limits
+  were charged on a session's second datagram, which can be forged as
+  easily as the first. UDP sessions are now limited apart from TCP.
+
+* Spoofed datagrams from one /16 with chosen ports all fell into one
+  bucket of the DTLS session table, whatever its random seed, and kept
+  the main loop busy. The session hash is now keyed.
+
+* -T could be bypassed through the fallback with a ClientHello the
+  parser gave up on before reading its version, such as one whose
+  handshake header was split over two records. Such a ClientHello is
+  now refused, and a split header is read.
+
+* A reload turning on proxy_protocol or source client no longer applies
+  to connections accepted before it, which the new ACL had not checked
+  and which could then send a forged PROXY header.
+
+* Linux sandbox: the processes are non-dumpable, so a compromised helper
+  can no longer rewrite the main process through /proc when sniproxy
+  runs without root; the resolver and binder only open files for
+  reading; each helper only creates the sockets it uses and only
+  signals itself; a binder running as root keeps only
+  CAP_NET_BIND_SERVICE and CAP_DAC_OVERRIDE; the main process and the
+  logger lose file system calls they never make.
+
+* OpenBSD: unveil covers the pidfile, the log files and the listening
+  unix sockets themselves rather than their directories, and the
+  connection dump directory is made at startup for the user sniproxy
+  runs as, instead of all of /tmp and /var/run being unveiled.
+
+* Smaller fixes: the main process closes the descriptors it inherits,
+  except one a -c path such as /dev/fd/7 names; a logged unix socket
+  path cut short no longer carries uninitialised bytes.
+
 sniproxy 0.19.0 (2026-10-07)
 ===============================
 

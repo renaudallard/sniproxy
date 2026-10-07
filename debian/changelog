@@ -1,3 +1,12 @@
+sniproxy (0.19.1) unstable; urgency=medium
+
+  * Fixes from a security review of 0.19.0: forged DTLS datagrams no
+    longer use up the per-IP limits of TCP, a keyed UDP session hash, -T
+    no longer bypassed through the fallback, and a tighter sandbox. See
+    NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 07 Oct 2026 19:38:41 +0200
+
 sniproxy (0.19.0) unstable; urgency=medium
 
   * Fixes from another review of the whole tree, among them DNS-over-TLS

@@ -1,5 +1,25 @@
 2026-10-07  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.19.1
+	- udp: sessions have their own per-IP allowance and count, apart from
+	  TCP connections; the session hash is keyed with an arc4random value.
+	- tls: a ClientHello whose version cannot be checked against -T is
+	  refused instead of going to the fallback; a handshake header split
+	  over records is read.
+	- connection: PROXY header trust and source client are taken at
+	  accept, so a reload does not change them for open connections.
+	- sandbox: Linux processes are non-dumpable; the resolver and binder
+	  only open files for reading; helpers only create the sockets they
+	  use and only signal themselves; a root binder keeps only
+	  CAP_NET_BIND_SERVICE and CAP_DAC_OVERRIDE; unused file system calls
+	  are refused to the main process and the logger; OpenBSD unveils the
+	  files themselves and makes the dump directory at startup.
+	- sniproxy: the main process closes inherited descriptors, except the
+	  one a -c path names; address: no uninitialised bytes in a logged
+	  unix socket path cut short.
+
+2026-10-07  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.19.0
 	- resolver: dot:// servers keep their port with c-ares before 1.24
 	  instead of being queried in cleartext on port 53, and DoT works with

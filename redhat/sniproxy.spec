@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.19.0
+Version: 0.19.1
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -71,6 +71,12 @@ fi
 
 
 %changelog
+* Wed Oct 07 2026 Renaud Allard <renaud@allard.it> 0.19.1-1
+- UDP sessions are limited per IP apart from TCP connections, so forged
+  datagrams no longer lock a victim out of TCP; the session hash is keyed.
+- A ClientHello whose version cannot be checked is refused rather than
+  sent to the fallback, and the sandboxes are tightened. See NEWS.
+
 * Wed Oct 07 2026 Renaud Allard <renaud@allard.it> 0.19.0-1
 - Resolver: DNS-over-TLS uses TLS with c-ares before 1.24, and a dot://
   server given by name no longer crashes or stops the resolver.
