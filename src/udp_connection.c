@@ -75,7 +75,7 @@ struct UDPSession {
     socklen_t server_addr_len;
     int server_fd;              /* per-session connected socket */
     int holds_socket_budget;    /* counted by connections_udp_socket_acquire() */
-    int per_ip_counted;         /* counted in the per-IP connection counts */
+    int per_ip_counted;         /* counted in the per-IP UDP session counts */
     struct sockaddr_storage local_addr; /* where the client sent to */
     socklen_t local_addr_len;   /* 0 when sent from the listener's own */
     struct ev_io server_watcher;
@@ -116,7 +116,7 @@ static struct UDPSession *udp_session_create(struct Listener *listener,
         const struct sockaddr_storage *addr, socklen_t addr_len,
         uint32_t hash, struct ev_loop *loop);
 static void udp_session_destroy(struct UDPSession *, struct ev_loop *);
-static int udp_session_charge_per_ip(struct UDPSession *, struct ev_loop *);
+static int udp_session_charge_per_ip(struct UDPSession *);
 static socklen_t udp_datagram_dst(struct msghdr *, struct sockaddr_storage *);
 static int udp_send_from(int, const void *, size_t, const struct UDPSession *);
 
@@ -167,7 +167,7 @@ udp_sessions_recount_per_ip(void) {
     for (size_t i = 0; i < UDP_SESSION_BUCKETS; i++)
         for (struct UDPSession *s = session_table[i]; s != NULL; s = s->next)
             if (s->per_ip_counted)
-                connections_conn_count_increment(&s->client_addr);
+                connections_udp_session_count_increment(&s->client_addr);
 }
 
 void
@@ -219,7 +219,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
              * It is not compared with the first, so this stops single
              * spoofed packets, not an attacker who forges two. Repeat
              * already swapped to idle timeout above. */
-            if (!udp_session_charge_per_ip(session, loop)) {
+            if (!udp_session_charge_per_ip(session)) {
                 udp_session_destroy(session, loop);
                 return;
             }
@@ -241,10 +241,10 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         return;
     }
 
-    /* The per-IP limits, shared with TCP, apply once the source has shown
-     * it is real, see udp_session_charge_per_ip(): a forged first datagram
-     * must not use up the allowance of the address it names. Until then a
-     * rate of its own keeps one source from filling the session table. */
+    /* New sessions have a per-IP rate of their own, apart from that of
+     * TCP connections: a forged datagram must not use up the allowance of
+     * the address it names. It keeps one source from filling the session
+     * table. */
     if (!connections_udp_session_rate_limit_allow(&client_addr, ev_now(loop))) {
         debug("UDP session rate limited");
         return;
@@ -491,23 +491,18 @@ udp_session_create(struct Listener *listener,
 }
 
 /*
- * Charge a session to its client's per-IP rate and connection count, shared
- * with TCP, once its second datagram has come from the same address and
- * port. Returns 0 if a limit refuses it.
+ * Count a session against its client's per-IP limit of UDP sessions, apart
+ * from its TCP connections, once its second datagram has come from the
+ * same address and port. Returns 0 if the limit refuses it.
  */
 static int
-udp_session_charge_per_ip(struct UDPSession *session, struct ev_loop *loop) {
-    if (!connections_rate_limit_allow(&session->client_addr, ev_now(loop))) {
-        debug("UDP session rate limited");
-        return 0;
-    }
-
-    if (!connections_conn_count_allow(&session->client_addr)) {
+udp_session_charge_per_ip(struct UDPSession *session) {
+    if (!connections_udp_session_count_allow(&session->client_addr)) {
         debug("UDP session denied by per-IP connection limit");
         return 0;
     }
 
-    connections_conn_count_increment(&session->client_addr);
+    connections_udp_session_count_increment(&session->client_addr);
     session->per_ip_counted = 1;
     return 1;
 }
@@ -531,7 +526,7 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
     if (session->state == UDP_VALIDATING)
         TAILQ_REMOVE(&validating_sessions, session, validating_entries);
     if (session->per_ip_counted)
-        connections_conn_count_decrement(&session->client_addr);
+        connections_udp_session_count_decrement(&session->client_addr);
 
     /* Cancel pending DNS query */
     if (session->query_handle != NULL) {

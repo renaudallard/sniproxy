@@ -384,10 +384,12 @@ timeout_collect_interval 0.005
 # the file descriptor limit: 80% of it, two descriptors per connection.
 max_connections 20000
 
-# Per-IP token-bucket rate (TCP + UDP, default 30/s; 0 disables).
+# Per-IP token-bucket rate, for TCP connections and for UDP sessions
+# apart (default 30/s; 0 disables).
 per_ip_connection_rate 50
 
-# Per-IP cap on simultaneous connections (default 0, disabled).
+# Per-IP cap on simultaneous connections, and on UDP sessions apart
+# (default 0, disabled).
 per_ip_max_connections 100
 
 # Prefix length used to group native IPv6 clients for every limit keyed on
