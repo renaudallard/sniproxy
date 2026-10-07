@@ -32,6 +32,7 @@
 #if defined(__linux__) && defined(HAVE_SECCOMP)
 
 #include <errno.h>
+#include <fcntl.h>
 #include <seccomp.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -69,8 +70,14 @@ static const char *const common_syscalls[] = {
     NULL,
 };
 
-static const char *const fs_read_syscalls[] = {
+/* Opening files, in any mode: the main process and the logger write
+ * files. The resolver and binder only read them, see allow_open_read(). */
+static const char *const open_syscalls[] = {
     "open", "openat", "openat2",
+    NULL,
+};
+
+static const char *const fs_read_syscalls[] = {
     "stat", "stat64", "lstat", "lstat64", "newfstatat", "fstatat64",
     "fstatfs", "fstatfs64", "statfs", "statfs64", "statx",
     "readlink", "readlinkat",
@@ -227,6 +234,24 @@ allow_ioctl(scmp_filter_ctx ctx) {
     return 0;
 }
 
+/* open() and openat() for reading only. openat2() takes its flags in a
+ * structure the filter cannot read, and no libc uses it for open(). */
+static int
+allow_open_read(scmp_filter_ctx ctx) {
+    const uint64_t mask = O_ACCMODE | O_CREAT | O_TRUNC;
+    int nr = seccomp_syscall_resolve_name("open");
+    int rc = 0;
+
+    if (nr != __NR_SCMP_ERROR)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, mask, O_RDONLY));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat), 1,
+                SCMP_A2(SCMP_CMP_MASKED_EQ, mask, O_RDONLY));
+
+    return rc;
+}
+
 /* The sockets the main process may create: unix and netlink sockets, and
  * stream and datagram sockets over IPv4 and IPv6, which is all it and the
  * helpers it restarts use. With "source client" it keeps CAP_NET_RAW,
@@ -295,6 +320,7 @@ install_filter(enum seccomp_process_type type) {
         case SECCOMP_PROCESS_MAIN:
             if (allow_main_sockets(ctx) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
@@ -307,6 +333,7 @@ install_filter(enum seccomp_process_type type) {
 
         case SECCOMP_PROCESS_LOGGER:
             if (allow_syscalls(ctx, logger_network_syscalls) < 0 ||
+                allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
@@ -319,6 +346,7 @@ install_filter(enum seccomp_process_type type) {
         case SECCOMP_PROCESS_RESOLVER:
             if (allow_syscall(ctx, "socket") < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
@@ -333,6 +361,7 @@ install_filter(enum seccomp_process_type type) {
              * read /etc/localtime (openat + per-call newfstatat). Without it
              * the first err() would be killed by SCMP_ACT_KILL_PROCESS. */
             if (allow_syscalls(ctx, binder_network_syscalls) < 0 ||
+                allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
