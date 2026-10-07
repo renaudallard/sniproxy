@@ -79,6 +79,11 @@ struct Connection {
     struct ev_timer header_timer;
     struct Listener *listener;
     const struct Protocol *protocol; /* Snapshot at accept time */
+    /* Snapshots too: a reload that starts trusting PROXY headers, or
+     * connecting from the client's address, must not apply to connections
+     * that the listener's ACL, checked at accept, let in before. */
+    int accept_proxy_protocol;
+    int transparent_proxy;
     const char *hostname; /* Requested hostname */
     size_t hostname_len;
     size_t header_len;

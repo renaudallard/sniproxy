@@ -366,6 +366,8 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     }
     con->listener = listener_ref_get(listener);
     con->protocol = listener->protocol;
+    con->accept_proxy_protocol = listener->accept_proxy_protocol;
+    con->transparent_proxy = listener->transparent_proxy;
 
 #ifdef HAVE_ACCEPT4
     int accept_flags = SOCK_NONBLOCK;
@@ -2983,7 +2985,7 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
     char *hostname = NULL;
 
     /* Parse incoming PROXY protocol header if expected */
-    if (con->listener->accept_proxy_protocol && con->incoming_proxy_len == 0) {
+    if (con->accept_proxy_protocol && con->incoming_proxy_len == 0) {
         int rc = parse_incoming_proxy_header(con);
         if (rc == -1) {
             /* Incomplete: a v2 header may be up to 64 KiB long, so make
@@ -3204,7 +3206,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         snprintf(hostname_buf, sizeof(hostname_buf), "%s", hostname);
 
         int resolv_mode = RESOLV_MODE_DEFAULT;
-        if (con->listener->transparent_proxy) {
+        if (con->transparent_proxy) {
             char listener_address[ADDRESS_BUFFER_SIZE];
             struct sockaddr_storage client;
             (void)sockaddr_unmap_ipv4(&con->client.addr,
@@ -3451,7 +3453,7 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
     socklen_t source_len = sockaddr_unmap_ipv4(&con->client.addr,
             con->client.addr_len, &source);
 
-    if (con->listener->transparent_proxy &&
+    if (con->transparent_proxy &&
             source.ss_family == con->server.addr.ss_family) {
 #ifdef IP_TRANSPARENT
         int on = 1;

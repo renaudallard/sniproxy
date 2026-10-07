@@ -109,7 +109,11 @@ does, is safe\&.
 .B SIGHUP
 Reopen log files and reload the configuration file\&. Connections
 that are already routed keep their backend; the others, and new ones,
-use the updated configuration\&. Changes to user, group and pidfile,
+use the updated configuration, except that a listener's
+.B proxy_protocol
+and
+.B source client
+settings only apply to the TCP connections it accepts after the reload\&. Changes to user, group and pidfile,
 to the resolver's nameserver, search, mode and dnssec_validation, and
 to tcp_fastopen, reuseport and ipv6_v6only for listeners that already
 exist, only take effect on restart; the reload logs a warning for each
