@@ -58,6 +58,7 @@
 #include "logger.h"
 #include "tls.h"
 #include "fd_util.h"
+#include "util.h"
 #include "udp_connection.h"
 #include "capsicum.h"
 
@@ -296,15 +297,6 @@ static int rate_limit_allow_connection(const struct sockaddr_storage *,
         ev_tstamp, enum rate_limit_kind);
 static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
 
-/* SplitMix64-derived mixer reduced to 32 bits to improve avalanche for IPv6 hashing. */
-static inline uint32_t
-mix64_to_32(uint64_t v) {
-    v += 0x9e3779b97f4a7c15ULL;
-    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
-    v ^= (v >> 31);
-    return (uint32_t)(v ^ (v >> 32));
-}
 
 static int push_proxy_header(struct Connection *, const char *, size_t);
 
@@ -1461,9 +1453,9 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
             acc ^= (uint64_t)in6->sin6_scope_id;
 
             for (int i = 0; i < 4; i++)
-                acc = ((uint64_t)words[i] ^ acc) + mix64_to_32(acc);
+                acc = ((uint64_t)words[i] ^ acc) + hash_mix64_to_32(acc);
 
-            return mix64_to_32(acc);
+            return hash_mix64_to_32(acc);
         }
         default:
             return 0;

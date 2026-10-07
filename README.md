@@ -595,8 +595,8 @@ afterthought.
   applies to every TLS listener. A ClientHello whose version cannot be
   read is refused rather than sent to the fallback.
 - **Cryptographically random seeds**: the per-IP hashes (rate limiter,
-  connection counts, DNS client tracking, backend affinity) are keyed
-  with an arc4random seed, and the rate limiter and connection count
+  connection counts, DNS client tracking, backend affinity) and the UDP
+  session table are keyed with an arc4random seed, and the rate limiter and connection count
   tables refuse clients whose hash chain grows too long, to defeat
   spraying. Request IDs between the main loop and the resolver come from
   arc4random as well.

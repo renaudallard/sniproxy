@@ -60,6 +60,7 @@
 #include "tls.h"
 #include "logger.h"
 #include "fd_util.h"
+#include "util.h"
 
 enum udp_session_state {
     UDP_VALIDATING,     /* awaiting a second datagram from the same source */
@@ -107,7 +108,7 @@ static size_t session_count;
 /* Sessions still waiting for their second datagram, oldest first */
 static TAILQ_HEAD(, UDPSession) validating_sessions =
     TAILQ_HEAD_INITIALIZER(validating_sessions);
-static uint32_t udp_hash_seed;
+static uint64_t udp_hash_key;
 
 static struct UDPSession *udp_session_lookup(const struct sockaddr_storage *addr,
         socklen_t addr_len, uint32_t hash, const struct Listener *listener);
@@ -141,7 +142,7 @@ udp_init_sessions(void) {
     memset(session_table, 0, sizeof(session_table));
     session_count = 0;
     TAILQ_INIT(&validating_sessions);
-    udp_hash_seed = arc4random();
+    arc4random_buf(&udp_hash_key, sizeof(udp_hash_key));
 }
 
 void
@@ -964,41 +965,28 @@ udp_print_sessions(FILE *file) {
  */
 static uint32_t
 udp_hash_addr(const struct sockaddr_storage *addr, socklen_t addr_len) {
-    uint32_t h = udp_hash_seed;
-
     (void)addr_len;
 
     switch (addr->ss_family) {
     case AF_INET: {
         const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
-        h ^= (uint32_t)in->sin_addr.s_addr;
-        h = (h << 16) | (h >> 16);
-        h ^= (uint32_t)in->sin_port;
-        h *= 0x9e3779b9u;
-        break;
+        uint64_t v = ((uint64_t)ntohl(in->sin_addr.s_addr) << 16) |
+                ntohs(in->sin_port);
+
+        return hash_mix64_to_32(udp_hash_key ^ v);
     }
     case AF_INET6: {
         const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
-        uint32_t words[4];
+        uint64_t words[2];
+
         memcpy(words, &in6->sin6_addr, sizeof(words));
-        for (int i = 0; i < 4; i++) {
-            h ^= words[i];
-            h *= 0x9e3779b9u;
-        }
-        h ^= (uint32_t)in6->sin6_port;
-        h *= 0x9e3779b9u;
-        break;
+        uint64_t h = hash_mix64(udp_hash_key ^ words[0]);
+        h = hash_mix64(h ^ words[1]);
+        return hash_mix64_to_32(h ^ ntohs(in6->sin6_port));
     }
     default:
-        break;
+        return 0;
     }
-
-    /* Final mix */
-    h ^= h >> 16;
-    h *= 0x45d9f3bu;
-    h ^= h >> 16;
-
-    return h;
 }
 
 static int

@@ -28,11 +28,30 @@
 #define UTIL_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <strings.h>
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+/* The SplitMix64 finalizer, a bijection on 64 bit values that spreads
+ * every input bit over the whole result. Hash tables key it with an
+ * arc4random value, mixed in before it, so that which inputs share a
+ * bucket cannot be known without the key. */
+static inline uint64_t
+hash_mix64(uint64_t v) {
+    v += 0x9e3779b97f4a7c15ULL;
+    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
+    return v ^ (v >> 31);
+}
+
+static inline uint32_t
+hash_mix64_to_32(uint64_t v) {
+    v = hash_mix64(v);
+    return (uint32_t)(v ^ (v >> 32));
+}
 
 /* 1 for yes, true or on, 0 for no, false or off, in any case, and -1 for
  * anything else. */
