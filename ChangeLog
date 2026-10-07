@@ -1,3 +1,44 @@
+2026-10-07  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.19.0
+	- resolver: dot:// servers keep their port with c-ares before 1.24
+	  instead of being queried in cleartext on port 53, and DoT works with
+	  c-ares 1.18 and 1.19; servers given by name are set once c-ares has
+	  returned and keep up to four addresses; the 64 address limit of a
+	  lookup applies to each family.
+	- connection: a fast open backend gets the client's end of data once
+	  connected; no abort message after the backend's end of data, nor
+	  counted as received from it; peers that went away and clients that
+	  reset before accept() are not logged; a large max_connections no
+	  longer wraps; PROXY headers that do not follow the protocol are
+	  refused; on OpenBSD a spliced backend failure is handled as an
+	  unspliced one, and splicing is used on OpenBSD only.
+	- udp: sessions are charged to the per-IP limits once validated, with
+	  an allowance of their own until then; wildcard dtls listeners answer
+	  from the address the client sent to.
+	- parsers: only server_name is limited to 4096 bytes; a ClientHello
+	  may span several records; HTTP/2 header blocks over 64 KiB are
+	  routed; the Minecraft 1.6 server list ping goes to the fallback.
+	- config: a port after a unix address, a unix source address, portless
+	  entries for unix listeners, a protocol or log setting given twice
+	  and a directory are refused; words up to 4096 bytes; refused values
+	  named in the errors.
+	- sniproxy: a relative -c path keeps its symbolic link; a daemon moves
+	  to / before starting the logger; a reload or dump requested during
+	  startup is acted on; the descriptor limit is raised up to the hard
+	  limit; open connections are logged at shutdown; stopped helpers and
+	  a binder that does not answer no longer hold up shutdown or reloads;
+	  the binder and logger report crashes; riscv64 allows the instruction
+	  cache flush; the OpenBSD logger unveils before dropping privileges.
+	- packaging: the Debian service is not enabled or started on install,
+	  debhelper compat 12; the Debian init script restarts with ENABLED=0;
+	  the systemd unit splits SNIPROXY_OPTS into words; the unused Red Hat
+	  init script is removed.
+	- tests and docs: bad_request, fallback, bind_source and
+	  transparent_proxy tests able to fail, new half_close_test, TLS and
+	  DTLS fuzzers seeded, test objects built apart from src/; manual,
+	  README and ARCHITECTURE.md corrections.
+
 2026-09-25  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.18.0

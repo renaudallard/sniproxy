@@ -1,3 +1,82 @@
+sniproxy 0.19.0 (2026-10-07)
+===============================
+
+Fixes from another review of the whole tree.
+
+Upgrade note: some configurations earlier releases accepted are now
+refused: a port after a unix socket address, a unix socket as a
+listener's source address, a table entry or fallback without a port
+used by a unix socket listener (only a warning when a listener with a
+port shares the table), a protocol or log setting given twice, and a
+directory given as the configuration file. On proxy_protocol listeners
+a PROXY header that does not follow the protocol now ends the
+connection. The Debian package no longer enables or starts its service
+on install. A daemon refuses a relative -c path it cannot make
+absolute.
+
+Highlights:
+
+* DNS-over-TLS with c-ares before 1.24, as in Debian 12 and Rocky 9,
+  queried every dot:// server in cleartext on port 53, and nothing
+  showed it. It now uses TLS on the configured port, which a firewall
+  may have to allow.
+
+* A dot:// server given by name crashed the resolver on every start
+  with c-ares 1.27 (Ubuntu 24.04) and an unpatched 1.34.5, and made it
+  exit with 1.18 and 1.19. Up to four of its addresses are now kept,
+  instead of only the first.
+
+* The Debian package enabled and started sniproxy on install, with the
+  example configuration listening on ports 80 and 443.
+
+* TLS: ClientHello extensions over 4096 bytes, such as a TLS 1.3
+  resumption with a client certificate or post-quantum key shares, are
+  accepted; only server_name keeps that limit. A ClientHello split over
+  several records is read whole.
+
+* HTTP/2: a request whose header block exceeds 64 KiB, as with a large
+  Kerberos token, is routed on the fields found in its first 64 KiB
+  instead of failing.
+
+* DTLS: a wildcard listener answers from the address the client sent
+  to, so that handshakes to a secondary or virtual address complete.
+  Forged first datagrams no longer lock an address out of the TCP
+  listeners through the per-IP limits.
+
+* A reload requested during startup killed the new process, or was
+  lost in daemon mode. On riscv64 the seccomp filter killed every
+  reload when PCRE2 has JIT. A relative -c path to a symbolic link now
+  follows the link on reload.
+
+* Shutdown no longer waits for a stopped helper, a binder that does not
+  answer no longer freezes the proxy during a reload, and connections
+  still open at shutdown are logged.
+
+* OpenBSD: a spliced backend that fails before answering gets the
+  client the 503 or TLS alert instead of a reset, and an answer sent
+  just before a reset is no longer lost; a log file in a directory only
+  root can search no longer stops the logger.
+
+* The systemd unit passes several options in SNIPROXY_OPTS as separate
+  words, and the Debian init script no longer fails a restart while
+  disabled.
+
+* Smaller fixes: tcp_fastopen with a client that ends its data right
+  after its request; a very large max_connections refusing every
+  connection; the descriptor limit raised as far as the hard limit
+  allows; lookups keeping the addresses of both families; the
+  Minecraft 1.6 server list ping reaching the fallback; configuration
+  words up to 4096 bytes; a daemon no longer keeps the directory it was
+  started from in use; FreeBSD no longer uses the splicing written for
+  OpenBSD; the binder and logger say when they crash; clearer messages
+  for refused values and for the header timeout; no warnings for peers
+  that went away or clients that reset before being accepted.
+
+* Tests: bad_request_test, fallback_test, bind_source_test and
+  transparent_proxy_test now test what they claim, a new test covers
+  half-closing clients and failing backends, and the TLS and DTLS
+  fuzzers start from real ClientHellos.
+
 sniproxy 0.18.0 (2026-09-25)
 ===============================
 

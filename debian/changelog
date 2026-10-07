@@ -1,3 +1,12 @@
+sniproxy (0.19.0) unstable; urgency=medium
+
+  * Fixes from another review of the whole tree, among them DNS-over-TLS
+    with older c-ares and a service started on install. Some
+    configurations and malformed PROXY headers are now refused. See NEWS
+    and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 07 Oct 2026 14:18:40 +0200
+
 sniproxy (0.18.0) unstable; urgency=medium
 
   * TCP half-close, backend failures reported to clients, and fixes from a
