@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 /* The lists name each call in all its forms: 32-bit ABIs such as i386 and
  * ARM have their own for some of them (mmap2, fcntl64, getuid32, _llseek,
@@ -59,11 +60,11 @@ static const char *const common_syscalls[] = {
     "getegid", "getegid32", "getgroups", "getgroups32", "getcwd",
     "uname", "sysinfo",
     "futex", "futex_time64", "set_robust_list", "set_tid_address",
-    "sched_yield", "sched_getaffinity", "sched_getparam", "sched_setscheduler",
+    "sched_yield", "sched_getaffinity", "sched_getparam",
     "restart_syscall", "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
-    "sigreturn", "sigaltstack", "tgkill", "tkill", "rt_sigtimedwait",
+    "sigreturn", "sigaltstack", "rt_sigtimedwait",
     "rt_sigtimedwait_time64",
-    "prctl", "prlimit64", "getrlimit", "ugetrlimit", "setrlimit",
+    "prctl", "getrlimit", "ugetrlimit", "setrlimit",
     "getrandom",
     "umask",
     "exit", "exit_group",
@@ -179,6 +180,16 @@ static const char *const process_syscalls[] = {
     NULL,
 };
 
+/* Calls that may name another process. raise() and abort() send a
+ * signal to the caller with tgkill or, with musl, tkill, and setrlimit()
+ * is prlimit64 on pid 0. The main process may use them on any process:
+ * the helpers it forks run under its filter too. Each helper may only
+ * name itself, see allow_self_calls(). */
+static const char *const self_syscalls[] = {
+    "tgkill", "tkill", "prlimit64", "sched_setscheduler",
+    NULL,
+};
+
 static const char *const privilege_syscalls[] = {
     "setgid", "setgid32", "setuid", "setuid32", "setgroups", "setgroups32",
     NULL,
@@ -229,6 +240,29 @@ allow_ioctl(scmp_filter_ctx ctx) {
         int rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1,
                 SCMP_A1(SCMP_CMP_MASKED_EQ, mask,
                     ~(uint64_t)TIOCSTI & mask));
+        if (rc < 0 && rc != -EEXIST)
+            return rc;
+    }
+
+    return 0;
+}
+
+/* The calls of self_syscalls, for the calling process only: its pid, or
+ * 0 where that means the caller. */
+static int
+allow_self_calls(scmp_filter_ctx ctx) {
+    const uint64_t self = (uint64_t)getpid();
+
+    for (size_t i = 0; self_syscalls[i] != NULL; i++) {
+        int nr = seccomp_syscall_resolve_name(self_syscalls[i]);
+        if (nr == __NR_SCMP_ERROR)
+            continue;
+
+        int rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A0(SCMP_CMP_EQ, self));
+        if (rc == 0)
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                    SCMP_A0(SCMP_CMP_EQ, 0));
         if (rc < 0 && rc != -EEXIST)
             return rc;
     }
@@ -329,6 +363,7 @@ install_filter(enum seccomp_process_type type) {
             if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
                     SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscalls(ctx, self_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
@@ -341,7 +376,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_LOGGER:
-            if (allow_sockets(ctx, SOCKETS_UNIX) < 0 ||
+            if (allow_self_calls(ctx) < 0 ||
+                allow_sockets(ctx, SOCKETS_UNIX) < 0 ||
                 allow_syscalls(ctx, logger_network_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
@@ -354,7 +390,8 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_RESOLVER:
-            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
+            if (allow_self_calls(ctx) < 0 ||
+                allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
                     SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_open_read(ctx) < 0 ||
@@ -371,7 +408,8 @@ install_filter(enum seccomp_process_type type) {
              * and both the timestamp path (localtime/strftime) and vsyslog
              * read /etc/localtime (openat + per-call newfstatat). Without it
              * the first err() would be killed by SCMP_ACT_KILL_PROCESS. */
-            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_INET) < 0 ||
+            if (allow_self_calls(ctx) < 0 ||
+                allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, binder_network_syscalls) < 0 ||
                 allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
