@@ -515,8 +515,11 @@ binder_main(int sockfd) {
     /* A binder restarted after the privilege drop must not inherit the
      * CAP_NET_RAW the main process may keep for "source client". Only
      * that one goes: started without root but with file capabilities,
-     * the binder still needs CAP_NET_BIND_SERVICE. */
-    if (getuid() != 0 && geteuid() != 0 && caps_drop_net_raw() < 0) {
+     * the binder still needs CAP_NET_BIND_SERVICE. A binder running as
+     * root keeps only the capabilities binding needs. */
+    int caps_rc = getuid() != 0 && geteuid() != 0 ?
+            caps_drop_net_raw() : caps_limit_binder();
+    if (caps_rc < 0) {
         err("binder: capset failed: %s", strerror(errno));
         binder_child_exit(EXIT_FAILURE);
     }

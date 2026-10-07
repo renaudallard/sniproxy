@@ -41,5 +41,6 @@ int caps_keep_on_setuid(void);
 int caps_limit_to_net_raw(void);
 int caps_drop_all(void);
 int caps_drop_net_raw(void);
+int caps_limit_binder(void);
 
 #endif /* SNIPROXY_SECCOMP_FILTER_H */

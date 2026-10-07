@@ -475,17 +475,19 @@ seccomp_install_filter(enum seccomp_process_type type) {
 #include <sys/syscall.h>
 #include <unistd.h>
 
+/* Keep the count capabilities listed in keep, permitted and effective,
+ * and drop every other one */
 static int
-caps_set(int keep_net_raw) {
+caps_set(const int *keep, size_t count) {
     struct __user_cap_header_struct hdr;
     struct __user_cap_data_struct data[_LINUX_CAPABILITY_U32S_3];
 
     memset(&hdr, 0, sizeof(hdr));
     memset(data, 0, sizeof(data));
     hdr.version = _LINUX_CAPABILITY_VERSION_3;
-    if (keep_net_raw) {
-        data[CAP_TO_INDEX(CAP_NET_RAW)].permitted = CAP_TO_MASK(CAP_NET_RAW);
-        data[CAP_TO_INDEX(CAP_NET_RAW)].effective = CAP_TO_MASK(CAP_NET_RAW);
+    for (size_t i = 0; i < count; i++) {
+        data[CAP_TO_INDEX(keep[i])].permitted |= CAP_TO_MASK(keep[i]);
+        data[CAP_TO_INDEX(keep[i])].effective |= CAP_TO_MASK(keep[i]);
     }
     return (int)syscall(SYS_capset, &hdr, data);
 }
@@ -497,14 +499,40 @@ caps_keep_on_setuid(void) {
 
 int
 caps_limit_to_net_raw(void) {
-    if (caps_set(1) < 0)
+    static const int keep[] = { CAP_NET_RAW };
+
+    if (caps_set(keep, sizeof(keep) / sizeof(keep[0])) < 0)
         return -1;
     return prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0);
 }
 
 int
 caps_drop_all(void) {
-    return caps_set(0);
+    return caps_set(NULL, 0);
+}
+
+/* What a binder running as root uses of it: binding privileged ports, and
+ * unix sockets in a directory under /run that another user may own */
+int
+caps_limit_binder(void) {
+    static const int wanted[] = { CAP_NET_BIND_SERVICE, CAP_DAC_OVERRIDE };
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct cur[_LINUX_CAPABILITY_U32S_3];
+    int keep[sizeof(wanted) / sizeof(wanted[0])];
+    size_t count = 0;
+
+    /* capset() refuses to add a capability the process does not hold,
+     * as when the bounding set of a service or container left it out */
+    memset(&hdr, 0, sizeof(hdr));
+    memset(cur, 0, sizeof(cur));
+    hdr.version = _LINUX_CAPABILITY_VERSION_3;
+    if (syscall(SYS_capget, &hdr, cur) < 0)
+        return -1;
+    for (size_t i = 0; i < sizeof(wanted) / sizeof(wanted[0]); i++)
+        if (cur[CAP_TO_INDEX(wanted[i])].permitted & CAP_TO_MASK(wanted[i]))
+            keep[count++] = wanted[i];
+
+    return caps_set(keep, count);
 }
 
 int
@@ -547,6 +575,11 @@ caps_limit_to_net_raw(void) {
 
 int
 caps_drop_all(void) {
+    return 0;
+}
+
+int
+caps_limit_binder(void) {
     return 0;
 }
 

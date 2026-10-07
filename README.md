@@ -137,7 +137,8 @@ SNIProxy runs as four cooperating processes:
    is forked from the main loop, until sniproxy is restarted. It idles
    otherwise, and only binds Unix
    socket paths whose directory really lies under `/run` or `/var/run`,
-   symlinks resolved.
+   symlinks resolved. On Linux it keeps root's uid but only the
+   `CAP_NET_BIND_SERVICE` and `CAP_DAC_OVERRIDE` capabilities.
 3. **`sniproxy-logger`**: writes the log files. The main loop sends it
    log lines over an encrypted, authenticated Unix socket.
 4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.
