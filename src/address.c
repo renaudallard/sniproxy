@@ -607,10 +607,10 @@ display_sockaddr(const void *sa_ptr, socklen_t sa_len, char *buffer, size_t buff
                 if (isprint(ch) && ch != '\\') {
                     buffer[pos++] = (char)ch;
                 } else {
-                    if (pos + 4 >= buffer_len) {
-                        pos = buffer_len - 1;
+                    /* The escape does not fit: end the string here, as
+                     * the bytes after pos were never written */
+                    if (pos + 4 >= buffer_len)
                         break;
-                    }
 
                     int written = snprintf(buffer + pos, buffer_len - pos,
                             "\\x%02x", ch);
