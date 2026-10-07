@@ -86,16 +86,20 @@ static const char *const fs_read_syscalls[] = {
     NULL,
 };
 
+/* Changes to files the logger makes: dropping group and world write
+ * permission from a log file, and handing log files over to the user at
+ * the privilege drop, on their descriptors only */
 static const char *const fs_write_syscalls[] = {
-    "fchmod", "fchmodat", "chmod",
-    "fchown", "fchown32", "fchownat", "chown", "chown32", "lchown",
-    "lchown32",
+    "fchmod",
+    "fchown", "fchown32",
+    NULL,
+};
+
+/* What the main process adds: creating the connection dump directory,
+ * and removing the dump file, the pidfile and stale unix sockets */
+static const char *const main_fs_write_syscalls[] = {
     "unlink", "unlinkat",
-    "mkdir", "mkdirat", "rmdir",
-    "rename", "renameat", "renameat2",
-    "link", "linkat",
-    "symlink", "symlinkat",
-    "truncate", "ftruncate", "truncate64", "ftruncate64",
+    "mkdir", "mkdirat",
     NULL,
 };
 
@@ -367,6 +371,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
+                allow_syscalls(ctx, main_fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, process_syscalls) < 0 ||
                 allow_syscalls(ctx, jit_syscalls) < 0) {
