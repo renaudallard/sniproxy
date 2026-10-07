@@ -752,6 +752,44 @@ int main(void) {
     assert(0 == strcmp("localhost", hostname));
     free(hostname);
 
+    /* The same with the 4 byte handshake header itself split */
+    split_len = split_client_hello(padded, padded_len, 2, split);
+    for (size_t prefix = 0; prefix < split_len; prefix++) {
+        hostname = NULL;
+        result = tls_protocol->parse_packet((char *)split, prefix, &hostname);
+        assert(result == -1);
+        assert(hostname == NULL);
+    }
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)split, split_len, &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    assert(0 == strcmp("localhost", hostname));
+    free(hostname);
+
+    /* Splitting the header must not get a version below the minimum past
+     * the -T check to the fallback */
+    split_len = split_client_hello(tls10_client_hello,
+            sizeof(tls10_client_hello), 2, split);
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)split, split_len, &hostname);
+    assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
+    assert(hostname == NULL);
+
+    /* Nor may a ClientHello too short to hold its version */
+    {
+        static const unsigned char short_hello[] = {
+            0x16, 0x03, 0x01, 0x00, 0x08,
+            0x01, 0x00, 0x00, 0x04, 0x03, 0x03, 0x00, 0x00,
+        };
+
+        hostname = NULL;
+        result = tls_protocol->parse_packet((const char *)short_hello,
+                sizeof(short_hello), &hostname);
+        assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
+        assert(hostname == NULL);
+    }
+
     hostname = NULL;
     result = tls_protocol->parse_packet(legacy_tls10.packet, legacy_tls10.len, &hostname);
     assert(result < 0);

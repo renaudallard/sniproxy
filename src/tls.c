@@ -61,6 +61,8 @@ static int parse_tls_header(const char *, size_t, char **);
 static int join_client_hello(const uint8_t *, size_t, size_t, uint8_t **);
 static int parse_client_hello(const uint8_t *, size_t, uint8_t, uint8_t,
         char **);
+static int parse_client_hello_fields(const uint8_t *, size_t, uint8_t,
+        uint8_t, char **, int *);
 
 static uint8_t min_client_hello_version_major = 3;
 static uint8_t min_client_hello_version_minor = 3;
@@ -157,12 +159,24 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
      * Handshake
      */
     size_t record_remaining = len - pos;
-    if (record_remaining < 4)
-        return -5;
-
     const uint8_t *handshake = data + pos;
+    uint8_t *joined = NULL;
+    int result;
+
+    /* A handshake message may span several records (RFC 8446 5.1), its
+     * 4 byte header included. Records that cannot carry a ClientHello are
+     * refused rather than sent to the fallback: its version would not
+     * have been checked against the -T minimum. */
+    if (record_remaining < 4) {
+        result = join_client_hello(data, data_len, 4, &joined);
+        if (result < 0)
+            return result == -5 ? TLS_ERR_UNSUPPORTED_CLIENT_HELLO : result;
+        handshake = joined;
+    }
+
     if (handshake[0] != TLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
         debug("Not a client hello");
+        free(joined);
 
         return -5;
     }
@@ -170,16 +184,16 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
     len = ((size_t)handshake[1] << 16) +
         ((size_t)handshake[2] << 8) +
         (size_t)handshake[3];
+    free(joined);
+    joined = NULL;
 
     if (len + 4 <= record_remaining)
-        return parse_client_hello(handshake, len, tls_version_major,
+        return parse_client_hello(data + pos, len, tls_version_major,
                 tls_version_minor, hostname);
 
-    /* A handshake message may span several records (RFC 8446 5.1) */
-    uint8_t *joined = NULL;
-    int result = join_client_hello(data, data_len, len + 4, &joined);
+    result = join_client_hello(data, data_len, len + 4, &joined);
     if (result < 0)
-        return result;
+        return result == -5 ? TLS_ERR_UNSUPPORTED_CLIENT_HELLO : result;
 
     result = parse_client_hello(joined, len, tls_version_major,
             tls_version_minor, hostname);
@@ -245,12 +259,30 @@ join_client_hello(const uint8_t *data, size_t data_len, size_t hello_len,
 
 /*
  * Parse a ClientHello handshake message, its 4 byte header included, whose
- * body is hello_len bytes long.
+ * body is hello_len bytes long. A ClientHello found invalid before its
+ * version could be checked against the -T minimum is refused, rather than
+ * left for the fallback, which would accept it whatever its version.
  */
 static int
 parse_client_hello(const uint8_t *handshake, size_t hello_len,
         uint8_t tls_version_major, uint8_t tls_version_minor,
         char **hostname) {
+    int version_checked = 0;
+    int result = parse_client_hello_fields(handshake, hello_len,
+            tls_version_major, tls_version_minor, hostname,
+            &version_checked);
+
+    if (result < -4 && !version_checked)
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+    return result;
+}
+
+/* parse_client_hello(), which sets *version_checked once the version has
+ * been checked against the -T minimum */
+static int
+parse_client_hello_fields(const uint8_t *handshake, size_t hello_len,
+        uint8_t tls_version_major, uint8_t tls_version_minor,
+        char **hostname, int *version_checked) {
     const uint8_t *body = handshake + 4;
     const uint8_t *body_end = body + hello_len;
     size_t len;
@@ -283,6 +315,8 @@ parse_client_hello(const uint8_t *handshake, size_t hello_len,
               client_hello_version_major, client_hello_version_minor);
         return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     }
+    if (!require_supported_versions)
+        *version_checked = 1;
     body += CLIENT_HELLO_VERSION_RANDOM_LEN;
 
     /* Session ID */
@@ -337,6 +371,7 @@ parse_client_hello(const uint8_t *handshake, size_t hello_len,
             return sv;
         if (sv == 0)
             return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+        *version_checked = 1;
     }
 
     return sni_parse_extensions(body, len, hostname,
