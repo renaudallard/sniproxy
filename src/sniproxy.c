@@ -83,6 +83,7 @@ static void daemonize(void);
 static int write_pidfile(const char *, pid_t);
 static rlim_t set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
+static void lookup_user(const char *, const char *, uid_t *, gid_t *);
 static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
@@ -238,14 +239,54 @@ openbsd_unveil_path(const char *path, const char *permissions, int allow_create)
     if (path[0] == '\0')
         return;
 
+    /* A path that does not exist yet may still be created once unveiled,
+     * so its directory needs no unveil of its own, which would open all
+     * of it, as all of /var/run for a pidfile there */
     if (unveil(path, permissions) == -1) {
         if (!(allow_create && errno == ENOENT)) {
             fatal("unveil %s failed: %s", path, strerror(errno));
         }
     }
+}
 
-    if (allow_create)
-        openbsd_unveil_parent(path, permissions);
+/*
+ * Make the directory print_connections() will write its dump to, owned by
+ * the user sniproxy runs as once privileges are dropped, and unveil only
+ * it: an unveiled path that does not exist yet can be made a directory but
+ * not filled, and unveiling its parent would open all of /tmp or
+ * /var/run. The candidates are the two get_secure_temp_dir() can reach
+ * under unveil, in its order and with its checks: it first looks at
+ * $XDG_RUNTIME_DIR itself, which stays hidden.
+ */
+static void
+openbsd_unveil_dump_dir(uid_t uid, gid_t gid) {
+    char dirs[2][PATH_MAX];
+    struct stat st;
+
+    /* drop_perms() refuses a start without root as another user: make
+     * nothing for it */
+    if (geteuid() != 0 && geteuid() != uid)
+        return;
+
+    (void)strlcpy(dirs[0], "/var/run/sniproxy", sizeof(dirs[0]));
+    (void)snprintf(dirs[1], sizeof(dirs[1]), "/tmp/sniproxy-%lu",
+            (unsigned long)uid);
+
+    for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        if (mkdir(dirs[i], 0700) == 0 && geteuid() != uid &&
+                chown(dirs[i], uid, gid) < 0) {
+            warn("chown %s: %s", dirs[i], strerror(errno));
+            continue;
+        }
+
+        if (lstat(dirs[i], &st) == 0 && S_ISDIR(st.st_mode) &&
+                st.st_uid == uid &&
+                (st.st_mode & (S_IRWXG | S_IRWXO)) == 0) {
+            if (unveil(dirs[i], "rwc") == -1)
+                fatal("unveil %s failed: %s", dirs[i], strerror(errno));
+            return;
+        }
+    }
 }
 
 static void
@@ -560,6 +601,16 @@ main(int argc, char **argv) {
         struct Listener *listener;
         struct Table *table;
 
+        /* Before the first unveil(), which hides every other path: the
+         * password database, and where the dump directory is made */
+        uid_t run_uid;
+        gid_t run_gid;
+        lookup_user(config->user ? config->user : default_username,
+                config->group, &run_uid, &run_gid);
+
+        /* The directory print_connections() writes the SIGUSR1 dump to */
+        openbsd_unveil_dump_dir(run_uid, run_gid);
+
         /* Readable so that a SIGHUP reload can parse it again. */
         openbsd_unveil_path(config_file, "r", 0);
 
@@ -597,34 +648,6 @@ main(int argc, char **argv) {
             table = SLIST_NEXT(table, entries);
         }
 
-        /* Unveil temp directories for print_connections() debug output.
-         * This is triggered by SIGUSR1 and needs write access to create
-         * temporary connection dump files. */
-        const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
-        if (xdg_runtime != NULL && xdg_runtime[0] == '/') {
-            /* SECURITY: Validate XDG_RUNTIME_DIR is not a symlink before unveiling.
-             * An attacker could set this to a symlink pointing to a privileged
-             * location. Using lstat() rejects symlinks, preventing this attack. */
-            struct stat xdg_st;
-            if (lstat(xdg_runtime, &xdg_st) == 0 &&
-                S_ISDIR(xdg_st.st_mode) && !S_ISLNK(xdg_st.st_mode) &&
-                xdg_st.st_uid == getuid()) {
-                /* XDG_RUNTIME_DIR/sniproxy for user-specific temp files */
-                char xdg_path[PATH_MAX];
-                if (snprintf(xdg_path, sizeof(xdg_path), "%s/sniproxy",
-                            xdg_runtime) < (int)sizeof(xdg_path)) {
-                    openbsd_unveil_path(xdg_path, "rwc", 1);
-                }
-            }
-        }
-        /* System-wide temp directory */
-        openbsd_unveil_path("/var/run/sniproxy", "rwc", 1);
-        /* User-specific fallback temp directory */
-        char tmp_path[PATH_MAX];
-        if (snprintf(tmp_path, sizeof(tmp_path), "/tmp/sniproxy-%u",
-                    getuid()) < (int)sizeof(tmp_path)) {
-            openbsd_unveil_path(tmp_path, "rwc", 1);
-        }
 
         /* Allow resolver child to read the default CA bundle */
         openbsd_unveil_path("/etc/ssl/cert.pem", "r", 0);
@@ -887,36 +910,48 @@ set_limits(rlim_t max_nofiles) {
     return fd_limit.rlim_cur;
 }
 
+/* The uid and gid of the user and group sniproxy runs as */
 static void
-drop_perms(const char *username, const char *groupname) {
+lookup_user(const char *username, const char *groupname, uid_t *uid,
+        gid_t *gid) {
+    /* errno only says something when no entry is returned */
     errno = 0;
     struct passwd *user = getpwnam(username);
-    if (errno)
+    if (user == NULL && errno != 0)
         fatal("getpwnam(): %s", strerror(errno));
     else if (user == NULL)
         fatal("getpwnam(): user %s does not exist", username);
 
-    gid_t gid = user->pw_gid;
+    *uid = user->pw_uid;
+    *gid = user->pw_gid;
 
     if (groupname != NULL) {
       errno = 0;
       struct group *group = getgrnam(groupname);
-      if (errno)
+      if (group == NULL && errno != 0)
         fatal("getgrnam(): %s", strerror(errno));
       else if (group == NULL)
         fatal("getgrnam(): group %s does not exist", groupname);
 
-      gid = group->gr_gid;
+      *gid = group->gr_gid;
     }
+}
+
+static void
+drop_perms(const char *username, const char *groupname) {
+    uid_t uid;
+    gid_t gid;
+
+    lookup_user(username, groupname, &uid, &gid);
 
     /* check if we are already running as the requested user */
     if (getuid() != 0 || geteuid() != 0) {
-        if (getuid() != user->pw_uid || geteuid() != user->pw_uid)
+        if (getuid() != uid || geteuid() != uid)
             fatal("Process UID does not match configured user %s", username);
         if (getgid() != gid || getegid() != gid)
             fatal("Process GID does not match configured gid %lu", (unsigned long)gid);
         /* Still notify logger child so it can tighten sandboxing */
-        if (logger_drop_privileges(user->pw_uid, gid) < 0)
+        if (logger_drop_privileges(uid, gid) < 0)
             fatal("logger_drop_privileges(): %s", strerror(errno));
         return;
     }
@@ -932,7 +967,7 @@ drop_perms(const char *username, const char *groupname) {
      * 5. Then communicate with child processes */
 
     /* Chown log files to the target user so SIGHUP can reopen them */
-    logger_chown_files(user->pw_uid, gid);
+    logger_chown_files(uid, gid);
 
     /* drop any supplementary groups */
     if (setgroups(1, &gid) < 0)
@@ -951,7 +986,7 @@ drop_perms(const char *username, const char *groupname) {
         fatal("keeping CAP_NET_RAW for source client: %s", strerror(errno));
 
     /* set the main uid - this is irreversible */
-    if (setuid(user->pw_uid) < 0)
+    if (setuid(uid) < 0)
         fatal("setuid(): %s", strerror(errno));
 
     /* verify privileges were actually dropped */
@@ -963,7 +998,7 @@ drop_perms(const char *username, const char *groupname) {
         fatal("limiting capabilities to CAP_NET_RAW: %s", strerror(errno));
 
     /* Now that main process is unprivileged, tell logger child to drop too */
-    if (logger_drop_privileges(user->pw_uid, gid) < 0)
+    if (logger_drop_privileges(uid, gid) < 0)
         fatal("logger_drop_privileges(): %s", strerror(errno));
 }
 

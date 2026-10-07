@@ -639,7 +639,12 @@ afterthought.
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it
   forks afterwards, to the paths they need, which include
-  `/etc/resolv.conf` and `/etc/hosts` read only for the resolver. That
+  `/etc/resolv.conf` and `/etc/hosts`, read only, for the resolver, the
+  log files, the pidfile and listening Unix socket paths themselves
+  rather than their directories (the directory of a Unix backend or
+  fallback socket is unveiled for reading and search), and the
+  connection dump directory, made at startup for the user sniproxy
+  runs as. That
   view is fixed at startup, so a Unix socket path that a reload names
   outside it only works after a restart, and a reload cannot follow a
   configuration file symlink repointed to a file outside it. The

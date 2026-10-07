@@ -155,9 +155,10 @@ and
 \fBunveil\fR(2)
 to restrict each process to the system calls it needs and the files it
 uses\&. The main process and the binder and resolver it forks see the
-configuration, the resolver files, the certificate bundle, and the
-directories holding the log files, the pidfile, listening Unix sockets
-and connection dumps, in which they may create files\&. That view is
+configuration, the resolver files, the certificate bundle, the log
+files, the pidfile and listening Unix sockets, which they may create,
+but not the rest of their directories, and the directory for connection
+dumps, made at startup for the user sniproxy runs as\&. That view is
 fixed at startup: a Unix socket listener, backend or fallback that a
 reload names outside it cannot be bound or reached until sniproxy is
 restarted, and a reload cannot follow a configuration file symlink
