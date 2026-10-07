@@ -366,6 +366,9 @@ main(int argc, char **argv) {
         }
     }
 
+    /* Before the helpers are forked, which inherit it */
+    make_undumpable();
+
     logger_prepare_process_title(argc, argv);
 
     while ((opt = getopt(argc, argv, "fc:gn:tT:Vd")) != -1) {
@@ -954,6 +957,7 @@ drop_perms(const char *username, const char *groupname) {
     /* verify privileges were actually dropped */
     if (getuid() == 0 || geteuid() == 0 || getgid() == 0 || getegid() == 0)
         fatal("Failed to drop privileges");
+    make_undumpable();
 
     if (keep_net_raw && caps_limit_to_net_raw() < 0)
         fatal("limiting capabilities to CAP_NET_RAW: %s", strerror(errno));

@@ -2113,6 +2113,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                             "sniproxy logger: failed to drop privileges\n");
                     logger_child_exit(EXIT_FAILURE);
                 }
+                make_undumpable();
             }
 #ifdef __OpenBSD__
             /* Tighten pledge - no longer need id or unveil. Runs whether

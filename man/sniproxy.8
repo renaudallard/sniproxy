@@ -185,6 +185,10 @@ was built with libseccomp\&.
 Set
 .B SNIPROXY_DISABLE_SECCOMP
 to any non-empty value in the environment to disable it\&.
+Its processes are also made non-dumpable, so that another process of
+the same user cannot reach their memory through
+.IR /proc ;
+they leave no core file\&.
 
 .SH FILES
 .TP

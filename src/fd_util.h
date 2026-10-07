@@ -35,6 +35,9 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 /*
  * musl libc (Alpine) provides closefrom() but does not declare it in
@@ -61,6 +64,19 @@ set_cloexec(int fd)
 #else
     (void)fd;
     return 0;
+#endif
+}
+
+/* Keep other processes of the user, a compromised helper included, from
+ * tracing this one or reaching its memory through /proc/<pid>/mem; it
+ * leaves no core file either. setuid() resets the flag to the
+ * fs.suid_dumpable sysctl, so this is done again after each privilege
+ * drop. */
+static inline void
+make_undumpable(void)
+{
+#ifdef __linux__
+    (void)prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
 #endif
 }
 

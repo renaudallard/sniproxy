@@ -655,7 +655,10 @@ afterthought.
   armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
   and refuse the TIOCSTI ioctl, so that a process started with `-f`
   cannot push input into the operator's terminal.
-  `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging.
+  `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. Every process
+  is also made non-dumpable, so that another process of the same user,
+  a compromised helper included, cannot read or write its memory through
+  `/proc`; as a consequence no core file is written.
 - **macOS has no sandbox**: `sandbox_init(3)` and its named profiles
   are deprecated, and a process opting into one is killed outright when
   built against the macOS 27.0 SDK or later, so adopting them would buy a
