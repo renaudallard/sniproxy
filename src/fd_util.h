@@ -64,6 +64,22 @@ set_cloexec(int fd)
 #endif
 }
 
+/* Close every descriptor from lowfd up */
+static inline void
+close_descriptors_from(int lowfd)
+{
+#ifdef HAVE_CLOSEFROM
+    closefrom(lowfd);
+#else
+    long max_fd = sysconf(_SC_OPEN_MAX);
+    if (max_fd < 0)
+        max_fd = 256;
+
+    for (int current = (int)max_fd - 1; current >= lowfd; current--)
+        close(current);
+#endif
+}
+
 /*
  * Prepare a freshly forked helper process. Its signal disposition is set
  * first: a helper forked after the parent started its libev signal
@@ -113,16 +129,7 @@ fd_child_setup(int fd)
         close(fd);
     }
 
-#ifdef HAVE_CLOSEFROM
-    closefrom(3);
-#else
-    long max_fd = sysconf(_SC_OPEN_MAX);
-    if (max_fd < 0)
-        max_fd = 256;
-
-    for (int current = (int)max_fd - 1; current >= 3; current--)
-        close(current);
-#endif
+    close_descriptors_from(3);
 
     for (int target = 1; target <= 2; target++) {
         if (fcntl(target, F_GETFD) != -1)

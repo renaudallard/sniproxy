@@ -75,6 +75,7 @@
 #include "address.h"
 #include "table.h"
 #include "backend.h"
+#include "fd_util.h"
 
 
 static void usage(void);
@@ -307,6 +308,28 @@ openbsd_unveil_address(const struct Address *address, const char *permissions,
 #endif
 
 
+/* The descriptor a configuration path such as /dev/fd/7 names, or -1 */
+static int
+config_path_descriptor(const char *path) {
+    static const char *const prefixes[] = { "/dev/fd/", "/proc/self/fd/" };
+
+    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
+        size_t len = strlen(prefixes[i]);
+        char *end;
+
+        if (strncmp(path, prefixes[i], len) != 0)
+            continue;
+
+        errno = 0;
+        long fd = strtol(path + len, &end, 10);
+        if (errno == 0 && end != path + len && *end == '\0' &&
+                fd > STDERR_FILENO && fd <= INT_MAX)
+            return (int)fd;
+    }
+
+    return -1;
+}
+
 int
 main(int argc, char **argv) {
     const char *config_file = "/etc/sniproxy.conf";
@@ -344,10 +367,6 @@ main(int argc, char **argv) {
     }
 
     logger_prepare_process_title(argc, argv);
-
-    if (ipc_crypto_system_init() < 0) {
-        fatal("Unable to initialize IPC crypto");
-    }
 
     while ((opt = getopt(argc, argv, "fc:gn:tT:Vd")) != -1) {
         switch (opt) {
@@ -407,6 +426,24 @@ main(int argc, char **argv) {
                 usage();
                 return EXIT_FAILURE;
         }
+    }
+
+    /* Nothing above the standard descriptors is ours: one inherited from
+     * whatever started sniproxy, a file opened as root for instance, would
+     * otherwise stay open after the privilege drop. Only the one a -c
+     * path such as /dev/fd/7, or <(...) in a shell, names is kept. This
+     * comes before anything here opens a descriptor of its own. */
+    int config_fd = config_path_descriptor(config_file);
+    if (config_fd < 0) {
+        close_descriptors_from(STDERR_FILENO + 1);
+    } else {
+        for (int fd = STDERR_FILENO + 1; fd < config_fd; fd++)
+            (void)close(fd);
+        close_descriptors_from(config_fd + 1);
+    }
+
+    if (ipc_crypto_system_init() < 0) {
+        fatal("Unable to initialize IPC crypto");
     }
 
     /* Make the config path absolute, as a daemon moves to / and would then
