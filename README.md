@@ -625,6 +625,8 @@ afterthought.
   not compared with the first and no HelloVerifyRequest is sent, so an
   attacker who sends two spoofed packets does get through; from there it
   is the backend's own DTLS cookie exchange that limits amplification.
+  A session ends after 30 seconds without a datagram from its client,
+  whatever its backend sends.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages.

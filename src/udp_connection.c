@@ -308,7 +308,9 @@ udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             debug("UDP send to client failed: %s", strerror(errno));
     }
 
-    ev_timer_again(loop, &session->idle_timer);
+    /* The idle timer is left alone: only the client keeps a session
+     * alive, as its address may be forged, and a backend sending on its
+     * own would otherwise have sniproxy send to that address forever. */
 }
 
 /*
