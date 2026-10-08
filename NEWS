@@ -1,3 +1,22 @@
+sniproxy 0.19.2 (2026-10-08)
+===============================
+
+Highlights:
+
+* The resolver watched at most 16 of the sockets c-ares opened and
+  never read answers arriving on any other, so those lookups timed out.
+  c-ares 1.34.6, the version OpenBSD 8.0 ships, opens a new UDP socket
+  for each query sent to a nameserver that has failed once, so a short
+  outage of the nameserver was enough to turn some of the lookups made
+  during it into 503 errors. Every socket is now watched.
+
+* OpenBSD: the resolver no longer pledges "unix", which it never used.
+
+* The backend_acl advice for wildcard backends now lists IPv6 unique
+  local addresses (fc00::/7), and behind NAT64 the translation prefix
+  when it reaches private IPv4 addresses: neither is matched against
+  the IPv4 ranges.
+
 sniproxy 0.19.1 (2026-10-07)
 ===============================
 

@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.19.1
+Version: 0.19.2
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -71,6 +71,10 @@ fi
 
 
 %changelog
+* Thu Oct 08 2026 Renaud Allard <renaud@allard.it> 0.19.2-1
+- The resolver watches every socket c-ares opens, so lookups no longer
+  time out after a nameserver failure with c-ares 1.34.6. See NEWS.
+
 * Wed Oct 07 2026 Renaud Allard <renaud@allard.it> 0.19.1-1
 - UDP sessions are limited per IP apart from TCP connections, so forged
   datagrams no longer lock a victim out of TCP; the session hash is keyed.

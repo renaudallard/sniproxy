@@ -1,3 +1,13 @@
+2026-10-08  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.19.2
+	- resolver: every socket c-ares opens is watched, instead of the first
+	  16, so lookups no longer time out once c-ares 1.34.6 opens more of
+	  them after a nameserver failure; OpenBSD: the resolver no longer
+	  pledges "unix".
+	- docs: the allow_except advice lists IPv6 unique local addresses and
+	  the NAT64 prefix.
+
 2026-10-07  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.19.1
