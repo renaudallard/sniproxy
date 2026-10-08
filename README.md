@@ -667,7 +667,11 @@ afterthought.
   has no seccomp otherwise). The filters cover 32-bit systems (i386,
   armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
   and refuse the TIOCSTI ioctl, so that a process started with `-f`
-  cannot push input into the operator's terminal.
+  cannot push input into the operator's terminal. The main process may
+  fork but not create namespaces, and netlink sockets are limited to
+  NETLINK_ROUTE, except where socket(2) goes through socketcall(2), as
+  on i386, so that a compromised process cannot reach kernel interfaces
+  such as nf_tables from a user namespace of its own.
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. Every process
   is also made non-dumpable, so that another process of the same user,
   a compromised helper included, cannot read or write its memory through

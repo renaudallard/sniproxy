@@ -30,12 +30,17 @@
 #if defined(__linux__) && defined(HAVE_SECCOMP)
 
 #include <errno.h>
+#include <linux/netlink.h>
 #include <pthread.h>
+#include <sched.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 #include <sys/ptrace.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include "../src/seccomp_filter.h"
@@ -106,6 +111,88 @@ test_blocked_ptrace(void) {
 
     /* Returning normally would mean the disallowed syscall was not blocked */
     return 1;
+}
+
+/* Run fn in a child and check that the filter kills it */
+static int
+expect_killed(void (*fn)(void)) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return 1;
+    } else if (pid == 0) {
+        fn();
+        _exit(0);
+    }
+
+    int status;
+    if (waitpid(pid, &status, 0) < 0) {
+        perror("waitpid");
+        return 1;
+    }
+
+    return WIFSIGNALED(status) && WTERMSIG(status) == SIGSYS ? 0 : 1;
+}
+
+static void
+clone_new_user(void) {
+#if defined(__s390__) || defined(__s390x__)
+    /* The stack comes first there */
+    pid_t pid = (pid_t)syscall(SYS_clone, 0, CLONE_NEWUSER | SIGCHLD, 0, 0, 0);
+#else
+    pid_t pid = (pid_t)syscall(SYS_clone, CLONE_NEWUSER | SIGCHLD, 0, 0, 0, 0);
+#endif
+    if (pid == 0)
+        _exit(0);
+}
+
+static void
+netlink_netfilter(void) {
+    (void)socket(AF_NETLINK, SOCK_RAW, NETLINK_NETFILTER);
+}
+
+static void
+ioctl_tiocsti(void) {
+    char c = 0;
+    (void)ioctl(STDIN_FILENO, TIOCSTI, &c);
+}
+
+/* Under the main filter: no process in new namespaces, no netlink but
+ * NETLINK_ROUTE, no TIOCSTI; clone3() fails with ENOSYS, so that libc
+ * falls back to clone(), and other requests near TIOCSTI still reach
+ * the kernel. */
+static int
+test_process_and_socket_limits(void) {
+    if (expect_killed(clone_new_user) != 0)
+        return 1;
+    if (expect_killed(netlink_netfilter) != 0)
+        return 1;
+    if (expect_killed(ioctl_tiocsti) != 0)
+        return 1;
+
+#ifdef SYS_clone3
+    errno = 0;
+    if (syscall(SYS_clone3, NULL, 0) != -1 || errno != ENOSYS)
+        return 1;
+#endif
+
+    int nl = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (nl < 0)
+        return 1;
+    close(nl);
+
+    int fds[2];
+    if (pipe(fds) < 0)
+        return 1;
+    static const unsigned long near[] = { TIOCGWINSZ, TIOCSWINSZ, FIONREAD };
+    for (size_t i = 0; i < sizeof(near) / sizeof(near[0]); i++) {
+        struct winsize ws = { 0 };
+        (void)ioctl(fds[0], near[i], &ws);
+    }
+    close(fds[0]);
+    close(fds[1]);
+
+    return 0;
 }
 
 struct thread_sync_state {
@@ -254,6 +341,9 @@ main(void) {
         return 1;
 
     if (run_child_with_seccomp(test_blocked_ptrace) != 0)
+        return 1;
+
+    if (run_child_with_seccomp(test_process_and_socket_limits) != 0)
         return 1;
 
     if (test_tsync_applies_to_threads() != 0)

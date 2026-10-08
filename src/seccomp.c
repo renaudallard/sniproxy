@@ -33,6 +33,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/netlink.h>
+#include <sched.h>
 #include <seccomp.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -169,8 +171,9 @@ static const char *const event_syscalls[] = {
     NULL,
 };
 
+/* clone and clone3 are added by allow_clone() */
 static const char *const process_syscalls[] = {
-    "clone", "clone3", "fork", "vfork",
+    "fork", "vfork",
     "wait4", "waitid",
     "kill",
     "setpgid", "getpgid", "getsid", "setsid",
@@ -251,6 +254,39 @@ allow_ioctl(scmp_filter_ctx ctx) {
     return 0;
 }
 
+/* Process creation for the main process, which forks the helpers, but no
+ * new namespaces: in a user namespace of its own, a compromised process
+ * could reach kernel interfaces such as nf_tables that are kept from
+ * unprivileged users. clone3() takes its flags in a structure the filter
+ * cannot read, so it fails with ENOSYS, on which libc falls back to
+ * clone(). */
+static int
+allow_clone(scmp_filter_ctx ctx) {
+    uint64_t ns = CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |
+            CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNET;
+#ifdef CLONE_NEWCGROUP
+    ns |= CLONE_NEWCGROUP;
+#endif
+    int rc;
+
+#if defined(__s390__) || defined(__s390x__)
+    /* The stack comes first there */
+    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clone), 1,
+            SCMP_A1(SCMP_CMP_MASKED_EQ, ns, 0));
+#else
+    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(clone), 1,
+            SCMP_A0(SCMP_CMP_MASKED_EQ, ns, 0));
+#endif
+    if (rc < 0)
+        return rc;
+
+    int nr = seccomp_syscall_resolve_name("clone3");
+    if (nr == __NR_SCMP_ERROR)
+        return 0;
+
+    return seccomp_rule_add(ctx, SCMP_ACT_ERRNO(ENOSYS), nr, 0);
+}
+
 /* The calls of self_syscalls, for the calling process only: its pid, or
  * 0 where that means the caller. */
 static int
@@ -315,9 +351,13 @@ allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
     if (kinds & SOCKETS_UNIX)
         rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
                 SCMP_A0(SCMP_CMP_EQ, AF_UNIX));
+    /* libc reads the interface addresses over NETLINK_ROUTE, for
+     * getaddrinfo() with AI_ADDRCONFIG and for getifaddrs(). The other
+     * protocols, such as NETLINK_NETFILTER, are not needed. */
     if (rc == 0 && (kinds & SOCKETS_NETLINK))
-        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
-                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK));
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 2,
+                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK),
+                SCMP_A2(SCMP_CMP_EQ, NETLINK_ROUTE));
     /* The low four bits of the type argument hold the socket type, the
      * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. */
     for (size_t f = 0; rc == 0 && (kinds & SOCKETS_INET) &&
@@ -374,6 +414,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, main_fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, process_syscalls) < 0 ||
+                allow_clone(ctx) < 0 ||
                 allow_syscalls(ctx, jit_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
