@@ -597,8 +597,9 @@ that connection is closed instead, as is a ClientHello refused by the
 TLS version policy or one that attempts a renegotiation, and a DTLS
 session whose ClientHello attempts one is dropped. On a tls listener, a
 connection that starts with a TLS record other than a handshake, or
-whose ClientHello is larger than the client buffer, is closed too. This
-should be
+whose ClientHello is larger than the client buffer, is closed too. So
+is a connection whose hostname could not be matched against a table
+entry's pattern, see TABLE. This should be
 an IP address and port or an absolute unix socket path; a hostname is
 accepted with a warning, and without a port the listener's port is
 used, which a unix socket listener does not have. sniproxy
@@ -714,7 +715,11 @@ table http_hosts {
 
 Tables define how to map each hostname to a backend server. Each
 request's hostname is matched against entries in the table in order
-until a match is found and that server is used. The server address may
+until a match is found and that server is used. Matches are bounded by
+a step limit that grows with the hostname's length; a hostname whose
+match against an entry runs into it is refused, with a warning naming
+the pattern, and goes neither to a later entry nor to the fallback.
+The server address may
 be either an IP, an IP and port, an absolute unix socket path prefixed
 with \&'unix:', a hostname, or '*'. A '*' connects to the hostname the client
 asked for, looked up through the resolver, and may carry a port as in

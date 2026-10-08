@@ -278,8 +278,14 @@ valid_backend(const struct Backend *backend) {
     return 1;
 }
 
+/* The first entry whose pattern matches name, or NULL. When matching a
+ * pattern fails, as on reaching the match limit, *match_error is set and
+ * NULL returned: whether the name matches that entry is unknown, and the
+ * later entries or the fallback could send it where that entry was meant
+ * to keep it from. */
 struct Backend *
-lookup_backend(const struct Backend_head *head, const char *name, size_t name_len) {
+lookup_backend(const struct Backend_head *head, const char *name,
+        size_t name_len, int *match_error) {
     struct Backend *iter;
 
     /* Match context should already be initialized by init_backend(),
@@ -309,6 +315,16 @@ lookup_backend(const struct Backend_head *head, const char *name, size_t name_le
         int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, backend_match_ctx);
         if (ret >= 0)
             return iter;
+        if (ret != PCRE2_ERROR_NOMATCH) {
+            PCRE2_UCHAR msg[128];
+
+            if (pcre2_get_error_message(ret, msg, sizeof(msg)) < 0)
+                snprintf((char *)msg, sizeof(msg), "error %d", ret);
+            warn("Matching %.*s against pattern %s failed: %s, refusing",
+                    (int)name_len, name, iter->pattern, (const char *)msg);
+            *match_error = 1;
+            return NULL;
+        }
     }
 
     return NULL;

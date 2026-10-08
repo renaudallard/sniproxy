@@ -62,6 +62,8 @@ struct LookupResult {
     const struct Address *address;
     int caller_free_address;
     enum proxy_protocol_mode use_proxy_header;
+    /* No address, and the fallback must not be used either */
+    int refused;
 };
 
 struct Table *new_table(void);

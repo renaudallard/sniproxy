@@ -46,8 +46,9 @@ static void table_cache_clear(struct Table *);
 
 
 static inline struct Backend *
-table_lookup_backend(const struct Table *table, const char *name, size_t name_len) {
-    return lookup_backend(&table->backends, name, name_len);
+table_lookup_backend(const struct Table *table, const char *name,
+        size_t name_len, int *match_error) {
+    return lookup_backend(&table->backends, name, name_len, match_error);
 }
 
 static inline uint32_t
@@ -278,7 +279,11 @@ table_lookup_server_address(struct Table *table, const char *name, size_t name_l
     }
 
     if (backend == NULL) {
-        backend = table_lookup_backend(table, name, name_len);
+        int match_error = 0;
+
+        backend = table_lookup_backend(table, name, name_len, &match_error);
+        if (match_error)
+            return (struct LookupResult){.address = NULL, .refused = 1};
         if (backend == NULL) {
             if (name != NULL)
                 info("No match found for %.*s", (int)name_len, name);

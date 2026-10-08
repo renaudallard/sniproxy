@@ -617,7 +617,9 @@ afterthought.
   connection (64 KiB) and globally (4 MiB), and a larger request header
   block is routed on the fields in its first 64 KiB.
 - **Regex DoS mitigation**: PCRE2 match limits scale with hostname
-  length so a crafted SNI cannot trigger catastrophic backtracking.
+  length so a crafted SNI cannot trigger catastrophic backtracking. A
+  hostname that runs into the limit is refused rather than tried
+  against the next entries or sent to the fallback.
 - **DTLS amplification defense**: a new UDP session is held until a
   second datagram arrives from the same source address and port within
   3 seconds, and nothing is sent to the client or a backend before that.

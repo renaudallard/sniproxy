@@ -1069,7 +1069,9 @@ listener_lookup_server_address(const struct Listener *listener,
     struct LookupResult table_result =
         table_lookup_server_address(listener->table, name, name_len);
 
-    if (table_result.address == NULL) {
+    if (table_result.refused) {
+        return table_result;
+    } else if (table_result.address == NULL) {
         /* No match in table, use fallback address if present */
         return (struct LookupResult){
             .address = listener->fallback_address,

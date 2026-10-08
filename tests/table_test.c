@@ -35,6 +35,7 @@
 static void test_empty_table(void);
 static void test_single_entry_table(void);
 static void test_invalid_regex_backend_removed(void);
+static void test_match_error_refused(void);
 static void append_entry(struct Table *, const char *, const char *);
 static void add_new_table(struct Table_head *, const char *, const char **);
 static void test_add_table(void);
@@ -52,6 +53,7 @@ int main(void) {
     test_add_table();
     test_tables_reload();
     test_invalid_regex_backend_removed();
+    test_match_error_refused();
     test_table_validation();
     test_literal_auto_anchor();
     test_pattern_case_insensitive();
@@ -312,6 +314,36 @@ test_invalid_regex_backend_removed(void) {
     const char *no_match = "other.example";
     result = table_lookup_server_address(table, no_match, strlen(no_match));
     assert(result.address == NULL);
+
+    table_ref_put(table);
+}
+
+/* A name whose match against an entry fails, here on the match limit, is
+ * refused: neither a later entry nor the fallback may take it */
+static void
+test_match_error_refused(void) {
+    struct Table *table = new_table();
+    assert(table != NULL);
+
+    table_ref_get(table);
+
+    append_entry(table,
+            "^(([a-z0-9]+)-?)+(\\.(([a-z0-9]+)-?)+)*\\.internal\\.example\\.com$",
+            "192.0.2.10");
+    append_entry(table, ".*", "192.0.2.11");
+
+    init_table(table);
+
+    const char *name = "aaaaaaaaaaaaaaaaaaaaaaaa.internal.example.com";
+    struct LookupResult result = table_lookup_server_address(table,
+            name, strlen(name));
+    assert(result.address == NULL);
+    assert(result.refused);
+
+    const char *other = "other.example";
+    result = table_lookup_server_address(table, other, strlen(other));
+    assert(result.address != NULL);
+    assert(!result.refused);
 
     table_ref_put(table);
 }
