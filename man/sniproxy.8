@@ -90,7 +90,8 @@ ignored, since TLS 1.3 clients set it to 1.2, and the supported_versions
 extension must list 1.3 or later\&. A ClientHello found invalid before
 its version could be checked is refused, even on a listener with a
 fallback, and so is a connection that starts with a TLS record other
-than a handshake, such as an alert\&. The default is 1.2\&. It applies to TLS listeners only, not
+than a handshake, such as an alert, or a ClientHello larger than the
+client buffer\&. The default is 1.2\&. It applies to TLS listeners only, not
 to DTLS\&.
 
 .TP

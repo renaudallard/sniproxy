@@ -3115,6 +3115,11 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
                         con->client.addr_len,
                         client, sizeof(client)),
                     buffer_size(con->client.buffer));
+            /* The version of a ClientHello too large for the buffer has
+             * not been checked against the -T minimum, so it must not go
+             * to the fallback */
+            if (con->protocol == tls_protocol)
+                fatal_parse_error = 1;
         } else if (result == TLS_ERR_CLIENT_RENEGOTIATION) {
             /* A renegotiation hello cannot open a connection, so the
              * fallback would only receive a handshake it cannot finish. */
