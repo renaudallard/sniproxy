@@ -995,7 +995,8 @@ udp_hash_addr(const struct sockaddr_storage *addr, socklen_t addr_len) {
         memcpy(words, &in6->sin6_addr, sizeof(words));
         uint64_t h = hash_mix64(udp_hash_key ^ words[0]);
         h = hash_mix64(h ^ words[1]);
-        return hash_mix64_to_32(h ^ ntohs(in6->sin6_port));
+        return hash_mix64_to_32(h ^ ((uint64_t)in6->sin6_scope_id << 16 |
+                    ntohs(in6->sin6_port)));
     }
     default:
         return 0;
@@ -1021,7 +1022,9 @@ udp_sockaddr_equal(const struct sockaddr_storage *a, socklen_t alen,
     case AF_INET6: {
         const struct sockaddr_in6 *a6 = (const struct sockaddr_in6 *)a;
         const struct sockaddr_in6 *b6 = (const struct sockaddr_in6 *)b;
+        /* The same link-local address may be in use on two links */
         return a6->sin6_port == b6->sin6_port &&
+            a6->sin6_scope_id == b6->sin6_scope_id &&
             memcmp(&a6->sin6_addr, &b6->sin6_addr,
                     sizeof(a6->sin6_addr)) == 0;
     }
