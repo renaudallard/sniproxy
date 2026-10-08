@@ -542,7 +542,9 @@ table secure_hosts {
 
 All listener `acl` blocks must use the same policy: mixing
 `allow_except` and `deny_except` across listeners aborts startup. The
-`backend_acl` policy is independent of them. IPv4 and IPv6 networks
+`backend_acl` policy is independent of them. On a `dtls` listener the
+`acl` only checks the datagrams' source address, which can be forged,
+so rely on ingress filtering to keep forged sources out. IPv4 and IPv6 networks
 can be mixed in the same block; IPv4-mapped IPv6 connections are matched
 against the IPv4 CIDRs, and a CIDR written in that form
 (`::ffff:192.0.2.0/120`) is read as the IPv4 one it stands for. With a `backend_acl`, a backend address of

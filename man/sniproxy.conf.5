@@ -712,6 +712,10 @@ The policy choice is shared by all listeners: mixing allow_except and
 deny_except acl blocks across listeners is a configuration error, which
 stops sniproxy at startup and makes a reload keep the running
 configuration. The backend_acl policy is chosen independently.
+On a dtls listener the acl only checks the source address of a
+session's datagrams, which a sender can forge: datagrams that claim an
+allowed address reach the backend, so keep forged sources out with
+ingress filtering on the network instead of relying on the acl alone.
 
 The access log configuration may be overridden on each listener.
 
