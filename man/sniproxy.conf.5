@@ -442,7 +442,13 @@ The optional \fBmax_concurrent_queries_per_client\fR directive limits how many
 DNS lookups a single source IP may have in flight at once (default 16). Set to
 0 to disable the per-client guard. A lookup counts against both limits until
 the resolver has finished it, even when the client closes its connection
-before the answer arrives.
+before the answer arrives. Since a datagram's source address can be
+forged, the lookups of DTLS sessions are counted apart from those of TCP
+connections, each against the per-client limit, and may take at most
+half of \fBmax_concurrent_queries\fR, which TCP connections then always
+have left: forged datagrams can hold back DTLS sessions, but not the
+lookups of TCP connections. With \fBmax_concurrent_queries\fR at 1 the
+one lookup is shared.
 
 Set \fBdnssec_validation\fR to one of 'off', 'relaxed', or 'strict'. The
 default is relaxed, which turns on EDNS0 in c-ares; 'off' leaves c-ares at

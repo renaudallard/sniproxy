@@ -127,15 +127,17 @@ void connections_set_per_ip_ipv6_prefix(unsigned int prefix);
 void connections_set_dns_query_limit(size_t limit);
 void connections_set_dns_query_per_client_limit(size_t limit);
 
-/* Protocol-agnostic DNS query accounting keyed on the client address, used by
- * the UDP/DTLS path so it is subject to the same global and per-client limits
- * as TCP. On DNS_ACQUIRE_OK, *out_entry holds the per-client tracking entry
- * (NULL when per-client limiting is disabled) and must be handed back to
+/* DNS query accounting keyed on the client address, for TCP connections
+ * and, with udp set, for UDP sessions, which are counted apart and may
+ * have at most half of the lookups in flight. On DNS_ACQUIRE_OK,
+ * *out_entry holds the per-client tracking entry (NULL when per-client
+ * limiting is disabled) and must be handed back, with the same udp, to
  * connections_dns_query_release_entry exactly once. */
 enum dns_acquire_status connections_dns_query_acquire_addr(
-        const struct sockaddr_storage *addr,
+        const struct sockaddr_storage *addr, int udp,
         struct DnsClientUsageEntry **out_entry);
-void connections_dns_query_release_entry(struct DnsClientUsageEntry *entry);
+void connections_dns_query_release_entry(struct DnsClientUsageEntry *entry,
+        int udp);
 void connections_set_buffer_limits(size_t client_limit, size_t server_limit);
 void connections_set_global_limit(size_t limit);
 int connections_udp_socket_acquire(void);

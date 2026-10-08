@@ -265,11 +265,14 @@ static size_t conn_count_free_count;
 #define CONN_COUNT_MAX_FREE 2048
 static size_t per_ip_max_connections_limit;
 
+/* Lookups of UDP sessions are counted apart from those of TCP connections,
+ * as a datagram's source address may be forged */
 struct DnsClientUsageEntry {
     struct sockaddr_storage addr;
     uint32_t addr_hash;
     uint32_t addr_v4;
     int is_v4;
+    int udp;
     size_t outstanding;
     struct DnsClientUsageEntry *next;
 };
@@ -1619,12 +1622,12 @@ dns_client_bucket_index(uint32_t hash) {
 
 static struct DnsClientUsageEntry *
 dns_client_lookup_entry(const struct sockaddr_storage *addr, uint32_t hash,
-        uint32_t addr_v4, int is_v4) {
+        uint32_t addr_v4, int is_v4, int udp) {
     size_t bucket = dns_client_bucket_index(hash);
     struct DnsClientUsageEntry *entry = dns_client_table[bucket];
 
     while (entry != NULL) {
-        if (entry->addr_hash == hash) {
+        if (entry->addr_hash == hash && entry->udp == udp) {
             if (is_v4 && entry->is_v4 && entry->addr_v4 == addr_v4)
                 return entry;
             if (!is_v4 && !entry->is_v4 &&
@@ -1641,7 +1644,7 @@ dns_client_lookup_entry(const struct sockaddr_storage *addr, uint32_t hash,
  * On success *out_entry holds the tracking entry (NULL when per-client
  * limiting is disabled) for a later dns_client_decrement_entry. */
 static int
-dns_client_increment_addr(const struct sockaddr_storage *addr,
+dns_client_increment_addr(const struct sockaddr_storage *addr, int udp,
         struct DnsClientUsageEntry **out_entry) {
     *out_entry = NULL;
 
@@ -1652,7 +1655,7 @@ dns_client_increment_addr(const struct sockaddr_storage *addr,
     int is_v4 = 0;
     uint32_t hash = hash_sockaddr_ip(addr, &addr_v4, &is_v4);
     struct DnsClientUsageEntry *entry = dns_client_lookup_entry(
-            addr, hash, addr_v4, is_v4);
+            addr, hash, addr_v4, is_v4, udp);
 
     if (entry == NULL) {
         entry = calloc(1, sizeof(*entry));
@@ -1664,6 +1667,7 @@ dns_client_increment_addr(const struct sockaddr_storage *addr,
         entry->addr_hash = hash;
         entry->addr_v4 = addr_v4;
         entry->is_v4 = is_v4;
+        entry->udp = udp;
         size_t bucket = dns_client_bucket_index(hash);
         entry->next = dns_client_table[bucket];
         dns_client_table[bucket] = entry;
@@ -1974,26 +1978,42 @@ conn_count_decrement(const struct sockaddr_storage *addr,
 
 static size_t max_concurrent_dns_queries = DEFAULT_DNS_QUERY_CONCURRENCY;
 static size_t active_dns_queries;
+static size_t active_udp_dns_queries;
+
+/* UDP sessions may have at most half of the lookups in flight, so that
+ * datagrams from forged sources cannot keep TCP connections from
+ * resolving */
+static size_t
+udp_dns_query_limit(void) {
+    return max_concurrent_dns_queries > 1 ?
+            max_concurrent_dns_queries / 2 : 1;
+}
 
 enum dns_acquire_status
 connections_dns_query_acquire_addr(const struct sockaddr_storage *addr,
-        struct DnsClientUsageEntry **out_entry) {
+        int udp, struct DnsClientUsageEntry **out_entry) {
     *out_entry = NULL;
 
-    if (active_dns_queries >= max_concurrent_dns_queries)
+    if (active_dns_queries >= max_concurrent_dns_queries ||
+            (udp && active_udp_dns_queries >= udp_dns_query_limit()))
         return DNS_ACQUIRE_GLOBAL_LIMIT;
 
-    if (!dns_client_increment_addr(addr, out_entry))
+    if (!dns_client_increment_addr(addr, udp, out_entry))
         return DNS_ACQUIRE_PER_CLIENT_LIMIT;
 
     active_dns_queries++;
+    if (udp)
+        active_udp_dns_queries++;
     return DNS_ACQUIRE_OK;
 }
 
 void
-connections_dns_query_release_entry(struct DnsClientUsageEntry *entry) {
+connections_dns_query_release_entry(struct DnsClientUsageEntry *entry,
+        int udp) {
     if (active_dns_queries > 0)
         active_dns_queries--;
+    if (udp && active_udp_dns_queries > 0)
+        active_udp_dns_queries--;
 
     dns_client_decrement_entry(entry);
 }
@@ -3260,7 +3280,7 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         }
 
         enum dns_acquire_status dns_status =
-                connections_dns_query_acquire_addr(&con->client.addr,
+                connections_dns_query_acquire_addr(&con->client.addr, 0,
                         &cb_data->dns_client_usage);
         if (dns_status != DNS_ACQUIRE_OK) {
             char client[INET6_ADDRSTRLEN + 8];
@@ -3390,7 +3410,7 @@ static void
 free_resolv_cb_data(void *data) {
     struct resolv_cb_data *cb_data = (struct resolv_cb_data *)data;
     if (cb_data->dns_slot)
-        connections_dns_query_release_entry(cb_data->dns_client_usage);
+        connections_dns_query_release_entry(cb_data->dns_client_usage, 0);
     if (cb_data->cb_free_addr)
         free((void *)cb_data->address);
     free(cb_data);

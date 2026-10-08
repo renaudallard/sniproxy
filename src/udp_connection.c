@@ -682,7 +682,7 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
          * the same caps the TCP path enforces, so UDP/DTLS cannot drive
          * unbounded concurrent upstream resolutions. */
         enum dns_acquire_status dns_status =
-                connections_dns_query_acquire_addr(&session->client_addr,
+                connections_dns_query_acquire_addr(&session->client_addr, 1,
                         &cb_data->dns_client_usage);
         if (dns_status != DNS_ACQUIRE_OK) {
             notice("UDP: DNS query for %s rejected: %s limit reached", hn,
@@ -768,7 +768,7 @@ udp_free_resolv_cb_data(void *data) {
     if (cb_data == NULL)
         return;
     if (cb_data->dns_slot)
-        connections_dns_query_release_entry(cb_data->dns_client_usage);
+        connections_dns_query_release_entry(cb_data->dns_client_usage, 1);
     free(cb_data->address);
     free(cb_data);
 }
