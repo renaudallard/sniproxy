@@ -226,6 +226,12 @@ static int logger_parent_fs_locked = 0;
  * logger_parent_notify_pledged(). */
 static int logger_parent_pledged = 0;
 
+/* Set once a start as root has handed the log files over to the user
+ * sniproxy runs as. That user may then append to them but not read them,
+ * so that a helper process compromised from the network, which runs as
+ * the same user, cannot read what every other client did. */
+static int log_files_write_only = 0;
+
 /* Set in a logger child restarted after the main process pledged, which
  * only gets the promises needed to write its files, see
  * logger_child_main(). */
@@ -401,6 +407,7 @@ new_file_logger(const char *filepath) {
  * same filesystem. */
 static int
 log_file_open(int dirfd, const char *path, struct stat *st) {
+    mode_t create_mode = log_files_write_only ? 0200 : 0600;
     int open_flags = O_WRONLY | O_APPEND | O_CREAT | O_NONBLOCK;
 #ifdef O_CLOEXEC
     open_flags |= O_CLOEXEC;
@@ -411,9 +418,9 @@ log_file_open(int dirfd, const char *path, struct stat *st) {
 
     int fd;
     if (dirfd >= 0)
-        fd = openat(dirfd, path, open_flags, 0600);
+        fd = openat(dirfd, path, open_flags, create_mode);
     else
-        fd = open(path, open_flags, 0600);
+        fd = open(path, open_flags, create_mode);
     if (fd < 0)
         return -1;
 
@@ -431,6 +438,19 @@ log_file_open(int dirfd, const char *path, struct stat *st) {
     }
 
     return fd;
+}
+
+/* The permission bits a log file must not have: group and world write,
+ * and, once the files are handed over from root to the user sniproxy
+ * runs as, the owner's read and execute bits */
+static mode_t
+log_file_forbidden_mode(void) {
+    mode_t forbidden = S_IWGRP | S_IWOTH;
+
+    if (log_files_write_only)
+        forbidden |= S_IRUSR | S_IXUSR;
+
+    return forbidden;
 }
 
 /* Open a log file defensively and verify the fd still refers to the on-disk path.
@@ -564,12 +584,39 @@ void
 logger_chown_files(uid_t uid, gid_t gid) {
     struct LogSink *sink;
 
+    /* Inherited by the logger processes forked from now on */
+    log_files_write_only = 1;
+
     sink = SLIST_FIRST(&sinks);
     while (sink != NULL) {
         if (sink->type == LOG_SINK_FILE && sink->fd != NULL && sink->fd_owned) {
             int fd = fileno(sink->fd);
             if (fd >= 0 && fchown(fd, uid, gid) < 0)
                 warn("Failed to chown log file %s: %s",
+                        sink->filepath, strerror(errno));
+        }
+        sink = SLIST_NEXT(sink, entries);
+    }
+}
+
+/* Called once the user the log files were handed to is the only one
+ * left: as their owner it may take their read permission away, which
+ * root could only do with CAP_FOWNER, missing from the systemd unit. */
+void
+logger_restrict_files(void) {
+    struct LogSink *sink;
+
+    sink = SLIST_FIRST(&sinks);
+    while (sink != NULL) {
+        if (sink->type == LOG_SINK_FILE && sink->fd != NULL && sink->fd_owned) {
+            int fd = fileno(sink->fd);
+            struct stat st;
+
+            if (fd >= 0 && fstat(fd, &st) == 0 &&
+                    (st.st_mode & log_file_forbidden_mode()) != 0 &&
+                    fchmod(fd, (st.st_mode & 07777) &
+                        ~log_file_forbidden_mode()) < 0)
+                warn("Failed to restrict permissions on log file %s: %s",
                         sink->filepath, strerror(errno));
         }
         sink = SLIST_NEXT(sink, entries);
@@ -998,10 +1045,11 @@ obtain_file_sink(const char *filepath) {
             return NULL;
         }
 
-        if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0 &&
+        if ((st.st_mode & log_file_forbidden_mode()) != 0 &&
                 !logger_parent_pledged) {
-            if (fchmod(fd, st.st_mode & ~(S_IWGRP | S_IWOTH)) != 0) {
-                warn("Failed to drop group/world write permission on log file %s: %s",
+            if (fchmod(fd, (st.st_mode & 07777) &
+                        ~log_file_forbidden_mode()) != 0) {
+                warn("Failed to restrict permissions on log file %s: %s",
                         filepath, strerror(errno));
             }
         }
@@ -1782,12 +1830,13 @@ logger_child_unveil(void) {
 }
 #endif
 
-/* Drop group and world write permission from a log file, when the
- * child's pledge allows it. */
+/* Drop the permissions a log file must not have, see
+ * log_file_forbidden_mode(), when the child's pledge allows it. */
 static void
 logger_child_restrict_mode(int fd, mode_t mode) {
-    if ((mode & (S_IWGRP | S_IWOTH)) != 0 && !logger_child_reduced_pledge)
-        (void)fchmod(fd, mode & ~(S_IWGRP | S_IWOTH));
+    if ((mode & log_file_forbidden_mode()) != 0 &&
+            !logger_child_reduced_pledge)
+        (void)fchmod(fd, (mode & 07777) & ~log_file_forbidden_mode());
 }
 
 static FILE *
@@ -2091,6 +2140,7 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 gid_t groups[1];
 
                 groups[0] = gid;
+                log_files_write_only = 1;
                 if (setgroups(1, groups) < 0) {
                     fprintf(stderr, "sniproxy logger: setgroups: %s\n",
                             strerror(errno));
@@ -2304,9 +2354,9 @@ logger_parent_notify_fs_locked(void) {
     logger_parent_fs_locked = 1;
 }
 
-/* The main process's pledge(2) has no fattr, so a log file it opens
- * from then on, with the logger process gone, is left as it is instead
- * of having fchmod() abort the process. */
+/* The main process's pledge(2) has no fattr once privileges are
+ * dropped, so a log file it opens from then on, with the logger process
+ * gone, is left as it is instead of having fchmod() abort the process. */
 void
 logger_parent_notify_pledged(void) {
     logger_parent_pledged = 1;

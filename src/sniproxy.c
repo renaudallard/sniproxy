@@ -656,10 +656,11 @@ main(int argc, char **argv) {
             fatal("unveil commit failed: %s", strerror(errno));
         }
 
-        /* chown is needed until drop_perms() has handed the log files
-         * over to the unprivileged user with fchown(); the pledge after
-         * the privilege drop no longer includes it. */
-        if (pledge("stdio getpw inet dns rpath proc id wpath cpath chown unix sendfd recvfd", NULL) == -1) {
+        /* chown and fattr are needed until drop_perms() has handed the
+         * log files over to the unprivileged user with fchown() and,
+         * once it is that user, restricted them with fchmod(); the
+         * pledge after the privilege drop no longer includes them. */
+        if (pledge("stdio getpw inet dns rpath proc id wpath cpath chown fattr unix sendfd recvfd", NULL) == -1) {
             fatal("main: pledge failed: %s", strerror(errno));
         }
         logger_parent_notify_pledged();
@@ -695,9 +696,9 @@ main(int argc, char **argv) {
          * unveil bounds it to the pre-unveiled paths (pidfile, temp
          * dir, etc.).  wpath is kept so the SIGUSR1 connection dump
          * (print_connections) can write its temp file; unveil bounds
-         * writes to the temp directories. chown stays until the
-         * privilege drop below has chowned the log files. */
-        if (pledge("stdio getpw inet dns rpath wpath proc id cpath chown unix sendfd recvfd", NULL) == -1) {
+         * writes to the temp directories. chown and fattr stay until the
+         * privilege drop below has handed the log files over. */
+        if (pledge("stdio getpw inet dns rpath wpath proc id cpath chown fattr unix sendfd recvfd", NULL) == -1) {
             fatal("main: pledge failed: %s", strerror(errno));
         }
         logger_parent_notify_fs_locked();
@@ -993,6 +994,10 @@ drop_perms(const char *username, const char *groupname) {
     if (getuid() == 0 || geteuid() == 0 || getgid() == 0 || getegid() == 0)
         fatal("Failed to drop privileges");
     make_undumpable();
+
+    /* Now the owner of the log files, take their read permission away
+     * from that user */
+    logger_restrict_files();
 
     if (keep_net_raw && caps_limit_to_net_raw() < 0)
         fatal("limiting capabilities to CAP_NET_RAW: %s", strerror(errno));

@@ -807,9 +807,11 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   started as when that is not root, and grant no permission to group
   or others; `-g` allows group read.
 - Log files are created at startup, before privileges are dropped, and
-  handed over to that user. If logs are rotated by renaming them, the
-  log directory must be writable by that user so SIGHUP can create the
-  new file. A log path that is a symlink, a FIFO or a file with more
+  handed over to that user, which may append to them but not read them:
+  they lose their owner's read permission, and files created later have
+  mode 0200. Read them as root or through a group read permission. If
+  logs are rotated by renaming them, the log directory must be writable
+  by that user so SIGHUP can create the new file. A log path that is a symlink, a FIFO or a file with more
   than one hard link is refused ("Too many links" for the latter).
 - On OpenBSD, the directories holding the log files and the pidfile
   must already exist before launch, because unveil cannot reveal what is
