@@ -151,6 +151,14 @@ netlink_netfilter(void) {
     (void)socket(AF_NETLINK, SOCK_RAW, NETLINK_NETFILTER);
 }
 
+#ifdef TIOCLINUX
+static void
+ioctl_tiolinux(void) {
+    char arg = 0;
+    (void)ioctl(STDIN_FILENO, TIOCLINUX, &arg);
+}
+#endif
+
 static void
 ioctl_tiocsti(void) {
     char c = 0;
@@ -158,15 +166,19 @@ ioctl_tiocsti(void) {
 }
 
 /* Under the main filter: no process in new namespaces, no netlink but
- * NETLINK_ROUTE, no TIOCSTI; clone3() fails with ENOSYS, so that libc
- * falls back to clone(), and other requests near TIOCSTI still reach
- * the kernel. */
+ * NETLINK_ROUTE, no TIOCSTI or TIOCLINUX; clone3() fails with ENOSYS,
+ * so that libc falls back to clone(), and other requests near the
+ * refused ones still reach the kernel. */
 static int
 test_process_and_socket_limits(void) {
     if (expect_killed(clone_new_user) != 0)
         return 1;
     if (expect_killed(netlink_netfilter) != 0)
         return 1;
+#ifdef TIOCLINUX
+    if (expect_killed(ioctl_tiolinux) != 0)
+        return 1;
+#endif
     if (expect_killed(ioctl_tiocsti) != 0)
         return 1;
 

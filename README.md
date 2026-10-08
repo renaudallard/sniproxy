@@ -666,8 +666,8 @@ afterthought.
   built with libseccomp (configure uses it if it finds it, and the build
   has no seccomp otherwise). The filters cover 32-bit systems (i386,
   armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
-  and refuse the TIOCSTI ioctl, so that a process started with `-f`
-  cannot push input into the operator's terminal. The main process may
+  and refuse the TIOCSTI and TIOCLINUX ioctls, so that a process
+  started with `-f` cannot push input into the operator's terminal. The main process may
   fork but not create namespaces, and netlink sockets are limited to
   NETLINK_ROUTE, except where socket(2) goes through socketcall(2), as
   on i386, so that a compromised process cannot reach kernel interfaces

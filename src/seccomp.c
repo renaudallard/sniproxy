@@ -234,22 +234,49 @@ allow_syscalls(scmp_filter_ctx ctx, const char *const *names) {
     return 0;
 }
 
-/* ioctl, except TIOCSTI: run with -f, every process shares the terminal
- * sniproxy was started from, and TIOCSTI would let one push input into
- * it. The kernel reads the request as 32 bits, so bits set above them
- * must not get it past the filter; and an unconditional rule would
- * override one refusing TIOCSTI. So allow each request whose low 32 bits
- * differ from TIOCSTI in at least one bit, with a rule per bit. */
+/* ioctl, except TIOCSTI and TIOCLINUX: run with -f, every process
+ * shares the terminal sniproxy was started from, and TIOCSTI would let
+ * one push input into it, as would pasting a selection with TIOCLINUX on
+ * a virtual console. The kernel reads the request as 32 bits, so bits
+ * set above them must not get it past the filter; and an unconditional
+ * rule would override one refusing them. So allow each request whose low
+ * 32 bits differ from both in a bit where they agree, with a rule per
+ * bit, then each remaining value of the bits where they differ but the
+ * two refused ones. */
 static int
 allow_ioctl(scmp_filter_ctx ctx) {
+    const uint64_t low = 0xffffffffu;
+    const uint64_t sti = TIOCSTI;
+#ifdef TIOCLINUX
+    const uint64_t linux_req = TIOCLINUX;
+#else
+    const uint64_t linux_req = TIOCSTI;
+#endif
+    const uint64_t differ = sti ^ linux_req;
+    int rc;
+
     for (unsigned int bit = 0; bit < 32; bit++) {
         uint64_t mask = (uint64_t)1 << bit;
-        int rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1,
-                SCMP_A1(SCMP_CMP_MASKED_EQ, mask,
-                    ~(uint64_t)TIOCSTI & mask));
+        if (differ & mask)
+            continue;
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, mask, ~sti & mask));
         if (rc < 0 && rc != -EEXIST)
             return rc;
     }
+
+    /* Every subset of the differing bits, set on the bits they share */
+    uint64_t sub = 0;
+    do {
+        uint64_t req = (sti & ~differ) | sub;
+        if (req != sti && req != linux_req) {
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(ioctl), 1,
+                    SCMP_A1(SCMP_CMP_MASKED_EQ, low, req));
+            if (rc < 0 && rc != -EEXIST)
+                return rc;
+        }
+        sub = (sub - differ) & differ;
+    } while (sub != 0);
 
     return 0;
 }
