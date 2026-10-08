@@ -50,6 +50,7 @@
 #include <signal.h>
 #include <poll.h>
 #include <sys/uio.h>
+#include <sys/queue.h>
 #include <ares.h>
 #include <ares_dns.h>
 #ifdef HAVE_BSD_STDLIB_H
@@ -70,10 +71,6 @@
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 #include "tests/include/resolver_fuzz.h"
 #endif
-#ifndef ARES_GETSOCK_MAXNUM
-#define ARES_GETSOCK_MAXNUM 16
-#endif
-
 #if !(defined(HAVE_ARC4RANDOM) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__))
 #error "arc4random() is required (available on OpenBSD, FreeBSD, NetBSD, macOS, and modern Linux)."
 #endif
@@ -431,13 +428,16 @@ static struct ev_timer child_dns_timeout_watcher;
 static struct ev_timer child_deferred_free_timer;
 static struct ev_timer child_dot_apply_timer;
 static struct ResolverChildQuery *child_queries_to_free = NULL;
+/* One per socket c-ares asked to watch, with no fixed limit: c-ares 1.34.6
+ * opens a new UDP socket for each query sent to a server that has failed. */
 struct resolver_child_cares_io {
     struct ev_io watcher;
     ares_socket_t fd;
     int events;
-    int active;
+    SLIST_ENTRY(resolver_child_cares_io) entries;
 };
-static struct resolver_child_cares_io child_dns_watchers[ARES_GETSOCK_MAXNUM];
+static SLIST_HEAD(, resolver_child_cares_io) child_dns_watchers =
+    SLIST_HEAD_INITIALIZER(child_dns_watchers);
 
 struct ResolverChildQuery {
     uint32_t id;
@@ -1780,12 +1780,6 @@ static void
 resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         char **search_domains, int default_mode, int dnssec_mode) {
     struct ares_options options;
-    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
-        child_dns_watchers[i].active = 0;
-        child_dns_watchers[i].events = 0;
-        child_dns_watchers[i].fd = ARES_SOCKET_BAD;
-    }
-
     struct ares_options *options_ptr = NULL;
     int optmask = 0;
     memset(&options, 0, sizeof(options));
@@ -1869,13 +1863,11 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
     resolver_child_free_processed_nameservers(child_pending_nameservers);
     child_pending_nameservers = NULL;
 
-    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
-        if (child_dns_watchers[i].active) {
-            ev_io_stop(loop, &child_dns_watchers[i].watcher);
-            child_dns_watchers[i].active = 0;
-        }
-        child_dns_watchers[i].events = 0;
-        child_dns_watchers[i].fd = ARES_SOCKET_BAD;
+    struct resolver_child_cares_io *io;
+    while ((io = SLIST_FIRST(&child_dns_watchers)) != NULL) {
+        SLIST_REMOVE_HEAD(&child_dns_watchers, entries);
+        ev_io_stop(loop, &io->watcher);
+        free(io);
     }
 
     if (ev_is_active(&child_dns_timeout_watcher))
@@ -2295,66 +2287,45 @@ resolver_child_free_query(struct ResolverChildQuery *query) {
     debug_log("resolver child: free_query END query_id=%u", query_id);
 }
 
-static struct resolver_child_cares_io *
-resolver_child_find_watch_slot(ares_socket_t fd) {
-    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++) {
-        if (child_dns_watchers[i].active && child_dns_watchers[i].fd == fd)
-            return &child_dns_watchers[i];
-    }
-
-    return NULL;
-}
-
-static struct resolver_child_cares_io *
-resolver_child_get_free_watch_slot(void) {
-    for (size_t i = 0; i < sizeof(child_dns_watchers) / sizeof(child_dns_watchers[0]); i++)
-        if (!child_dns_watchers[i].active)
-            return &child_dns_watchers[i];
-
-    return NULL;
-}
-
 static void
 resolver_child_watch_fd(struct ev_loop *loop, ares_socket_t fd, int events) {
-    struct resolver_child_cares_io *slot = resolver_child_find_watch_slot(fd);
+    struct resolver_child_cares_io *io;
+
+    SLIST_FOREACH(io, &child_dns_watchers, entries)
+        if (io->fd == fd)
+            break;
 
     if (events == 0) {
-        if (slot != NULL && slot->active) {
-            ev_io_stop(loop, &slot->watcher);
-            slot->active = 0;
-            slot->events = 0;
-            slot->fd = ARES_SOCKET_BAD;
+        if (io != NULL) {
+            /* May run from this watcher's own callback, which does not
+             * touch the watcher after c-ares returns. */
+            ev_io_stop(loop, &io->watcher);
+            SLIST_REMOVE(&child_dns_watchers, io, resolver_child_cares_io,
+                    entries);
+            free(io);
         }
         return;
     }
 
-    if (slot == NULL) {
-        slot = resolver_child_get_free_watch_slot();
-        if (slot == NULL) {
-            err("resolver child: no free watcher slots for DNS sockets");
+    if (io == NULL) {
+        io = malloc(sizeof(*io));
+        if (io == NULL) {
+            err("resolver child: failed to allocate a DNS socket watcher");
             return;
         }
-        slot->fd = fd;
-        slot->events = events;
-        ev_io_init(&slot->watcher, resolver_child_cares_io_cb, fd, events);
-        slot->active = 1;
-        ev_io_start(loop, &slot->watcher);
+        io->fd = fd;
+        io->events = events;
+        ev_io_init(&io->watcher, resolver_child_cares_io_cb, fd, events);
+        ev_io_start(loop, &io->watcher);
+        SLIST_INSERT_HEAD(&child_dns_watchers, io, entries);
         return;
     }
 
-    if (!slot->active) {
-        ev_io_init(&slot->watcher, resolver_child_cares_io_cb, fd, events);
-        slot->events = events;
-        slot->active = 1;
-        ev_io_start(loop, &slot->watcher);
-        return;
-    }
-
-    if (slot->events != events) {
-        ev_io_stop(loop, &slot->watcher);
-        ev_io_set(&slot->watcher, fd, events);
-        slot->events = events;
-        ev_io_start(loop, &slot->watcher);
+    if (io->events != events) {
+        ev_io_stop(loop, &io->watcher);
+        ev_io_set(&io->watcher, fd, events);
+        io->events = events;
+        ev_io_start(loop, &io->watcher);
     }
 }
 
