@@ -420,11 +420,12 @@ http_max_headers 200
 # be used to reach arbitrary hosts. allow_except does the opposite:
 # everything except the listed ranges, e.g. to keep a wildcard backend
 # out of internal address space, which then has to list loopback
-# (127.0.0.0/8, ::1/128), link-local (169.254.0.0/16, fe80::/10) and
-# IPv6 unique local (fc00::/7) addresses too, and behind NAT64 the
-# translation prefix when it reaches private IPv4 addresses, such as
-# 64:ff9b:1::/48. Unix socket backends match no range, and 0.0.0.0, ::
-# and multicast addresses are always refused.
+# (127.0.0.0/8, ::1/128), link-local (169.254.0.0/16, fe80::/10), IPv6
+# unique local (fc00::/7) and shared (100.64.0.0/10) addresses and the
+# host's own public addresses too, and behind NAT64 the translation
+# prefix when it reaches private IPv4 addresses, such as 64:ff9b:1::/48.
+# Unix socket backends match no range, and 0.0.0.0, :: and multicast
+# addresses are always refused.
 backend_acl deny_except {
     10.0.0.0/8
     172.16.0.0/12
