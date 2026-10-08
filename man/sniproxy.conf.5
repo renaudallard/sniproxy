@@ -243,9 +243,13 @@ listed ranges). When the block is omitted all addresses are permitted.
 This prevents abuse of sniproxy as an open proxy: the example above only
 lets it reach the private ranges. To keep it out of internal address
 space with \fBallow_except\fR instead, list loopback (127.0.0.0/8,
-::1/128) and link-local (169.254.0.0/16, fe80::/10) addresses as well
-as the private ranges, since a wildcard backend reaches whatever the
-client's hostname resolves to, localhost included. The addresses 0.0.0.0
+::1/128), link-local (169.254.0.0/16, fe80::/10) and IPv6 unique local
+(fc00::/7) addresses as well as the private ranges, since a wildcard
+backend reaches whatever the client's hostname resolves to, localhost
+included. Behind NAT64, also list the translation prefix when it
+reaches private IPv4 addresses, such as 64:ff9b:1::/48: only
+IPv4-mapped addresses (::ffff:0:0/96) are matched against the IPv4
+ranges. The addresses 0.0.0.0
 and :: are refused whatever the policy, because connecting to them
 reaches the local host. Unix socket
 backends match no range, so \fBdeny_except\fR refuses them. Only one
