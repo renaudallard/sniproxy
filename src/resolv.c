@@ -1725,7 +1725,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 
 #ifdef __OpenBSD__
     /* Allow rpath so OpenSSL can read trusted CA bundles for DoT verification. */
-    if (pledge("stdio rpath inet dns unix", NULL) == -1) {
+    if (pledge("stdio rpath inet dns", NULL) == -1) {
         err("resolver: pledge failed: %s", strerror(errno));
         resolver_child_exit(EXIT_FAILURE);
     }
