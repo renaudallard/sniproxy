@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <pwd.h>
 #include <unistd.h>
 #include "binder.h"
 
@@ -60,6 +61,26 @@ free_port(void) {
     return ntohs(addr.sin_port);
 }
 
+/* A privileged loopback port nothing is bound to right now, or 0 */
+static int
+free_privileged_port(void) {
+    for (int port = 1023; port >= 600; port--) {
+        struct sockaddr_in addr = {
+            .sin_family = AF_INET,
+            .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+            .sin_port = htons(port),
+        };
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        assert(fd >= 0);
+        int rc = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+        close(fd);
+        if (rc == 0)
+            return port;
+    }
+
+    return 0;
+}
+
 int main(void) {
     int i;
 
@@ -68,9 +89,20 @@ int main(void) {
         return 77;
     }
 
-    start_binder();
+    /* Started as root, the binder becomes this user on Linux and must
+     * still bind privileged ports */
+    struct passwd *pw = getpwnam("nobody");
+    if (pw == NULL) {
+        fprintf(stderr, "binder_test needs a nobody user; skipping\n");
+        return 77;
+    }
+    start_binder(pw->pw_uid, pw->pw_gid, 0);
     for (i = 0; i < 5; i++)
         test_binder(free_port());
+
+    int privileged = free_privileged_port();
+    if (privileged != 0)
+        test_binder(privileged);
 
     test_binder_reuseport(free_port());
 

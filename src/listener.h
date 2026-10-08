@@ -26,6 +26,7 @@
  */
 #ifndef LISTENER_H
 #define LISTENER_H
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdint.h>
@@ -95,6 +96,7 @@ void init_listeners(struct Listener_head *, const struct Table_head *, struct ev
 void listeners_reload(struct Listener_head *, struct Listener_head *, const struct Table_head *, struct ev_loop *);
 void free_listeners(struct Listener_head *, struct ev_loop *);
 void listeners_set_tcp_fastopen(int enabled);
+void listeners_set_socket_owner(uid_t);
 
 int valid_listener(const struct Listener *);
 struct LookupResult listener_lookup_server_address(const struct Listener *,

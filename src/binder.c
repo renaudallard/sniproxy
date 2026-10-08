@@ -139,8 +139,18 @@ binder_child_exit(int status) {
     _exit(status);
 }
 
+/* The user a binder started as root switches to, and whether it keeps
+ * the capability to create unix sockets in directories of other users */
+static uid_t binder_run_uid;
+static gid_t binder_run_gid;
+static int binder_unix_listeners;
+
 void
-start_binder(void) {
+start_binder(uid_t uid, gid_t gid, int unix_listeners) {
+    binder_run_uid = uid;
+    binder_run_gid = gid;
+    binder_unix_listeners = unix_listeners;
+
     if (binder_spawn_child() < 0)
         err("failed to start binder helper");
 }
@@ -515,14 +525,19 @@ binder_main(int sockfd) {
     /* A binder restarted after the privilege drop must not inherit the
      * CAP_NET_RAW the main process may keep for "source client". Only
      * that one goes: started without root but with file capabilities,
-     * the binder still needs CAP_NET_BIND_SERVICE. A binder running as
-     * root keeps only the capabilities binding needs. */
+     * the binder still needs CAP_NET_BIND_SERVICE. A binder started as
+     * root on Linux becomes the user sniproxy runs as and keeps only the
+     * capabilities binding needs; elsewhere it needs root to bind. */
     int caps_rc = getuid() != 0 && geteuid() != 0 ?
-            caps_drop_net_raw() : caps_limit_binder();
+            caps_drop_net_raw() :
+            caps_binder_drop_root(binder_run_uid, binder_run_gid,
+                    binder_unix_listeners);
     if (caps_rc < 0) {
-        err("binder: capset failed: %s", strerror(errno));
+        err("binder: dropping privileges failed: %s", strerror(errno));
         binder_child_exit(EXIT_FAILURE);
     }
+    /* setuid() makes a process dumpable again */
+    make_undumpable();
 
 #ifdef __OpenBSD__
     if (pledge("stdio unix inet sendfd", NULL) == -1) {

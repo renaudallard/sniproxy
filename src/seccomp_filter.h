@@ -26,6 +26,8 @@
 #ifndef SNIPROXY_SECCOMP_FILTER_H
 #define SNIPROXY_SECCOMP_FILTER_H
 
+#include <sys/types.h>
+
 enum seccomp_process_type {
     SECCOMP_PROCESS_MAIN = 0,
     SECCOMP_PROCESS_BINDER,
@@ -41,6 +43,6 @@ int caps_keep_on_setuid(void);
 int caps_limit_to_net_raw(void);
 int caps_drop_all(void);
 int caps_drop_net_raw(void);
-int caps_limit_binder(void);
+int caps_binder_drop_root(uid_t, gid_t, int);
 
 #endif /* SNIPROXY_SECCOMP_FILTER_H */

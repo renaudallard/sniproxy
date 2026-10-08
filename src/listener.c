@@ -43,6 +43,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
+#ifdef __linux__
+#include <sys/fsuid.h>
+#endif
 #include "address.h"
 #include "listener.h"
 #include "logger.h"
@@ -69,6 +72,7 @@ static int unix_listener_is_stale(const struct Listener *, const char *);
 static void accept_cb(struct ev_loop *, struct ev_io *, int);
 static void backoff_timer_cb(struct ev_loop *, struct ev_timer *, int);
 static int init_listener(struct Listener *, const struct Table_head *, struct ev_loop *);
+static int listener_socket(int, int);
 static void listener_update(struct Listener *, struct Listener *,  const struct Table_head *);
 static void free_listener(struct Listener *);
 static void remove_listener(struct Listener_head *, struct Listener *, struct ev_loop *);
@@ -77,6 +81,7 @@ static int accept_boolean(const char *);
 
 static void listener_acl_clear(struct Listener *);
 static int listener_tcp_fastopen;
+static uid_t listener_socket_uid = (uid_t)-1;
 static void listener_acl_move(struct Listener *, struct Listener *);
 static int listener_acl_contains(const struct Listener *, const struct sockaddr_storage *);
 static int listener_acl_rule_match_v4(const struct ListenerACLRule *, const struct in_addr *);
@@ -816,6 +821,40 @@ valid_listener(const struct Listener *listener) {
     return 1;
 }
 
+/*
+ * Linux lets sockets share a port with SO_REUSEPORT only when the same user
+ * created them. The binder and the main process after the privilege drop
+ * create theirs as the user sniproxy runs as, so a start as root creates
+ * its IP listeners as that user too.
+ */
+static int
+listener_socket(int family, int type) {
+#ifdef __linux__
+    if (listener_socket_uid != (uid_t)-1 && geteuid() == 0 &&
+            (family == AF_INET || family == AF_INET6)) {
+        uid_t prev = (uid_t)setfsuid(listener_socket_uid);
+        int fd, saved_errno;
+
+        if ((uid_t)setfsuid((uid_t)-1) != listener_socket_uid) {
+            errno = EPERM;
+            return -1;
+        }
+        fd = socket(family, type, 0);
+        saved_errno = errno;
+        setfsuid(prev);
+        if ((uid_t)setfsuid((uid_t)-1) != prev) {
+            if (fd >= 0)
+                close(fd);
+            errno = EPERM;
+            return -1;
+        }
+        errno = saved_errno;
+        return fd;
+    }
+#endif
+    return socket(family, type, 0);
+}
+
 static int
 init_listener(struct Listener *listener, const struct Table_head *tables,
         struct ev_loop *loop) {
@@ -846,7 +885,8 @@ init_listener(struct Listener *listener, const struct Table_head *tables,
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;
 #endif
-    sockfd = socket(address_sa(listener->address)->sa_family, socket_type, 0);
+    sockfd = listener_socket(address_sa(listener->address)->sa_family,
+            socket_type);
     if (sockfd < 0) {
         err("socket failed: %s", strerror(errno));
         rc = sockfd;
@@ -1368,6 +1408,11 @@ free_listener(struct Listener *listener) {
 void
 listeners_set_tcp_fastopen(int enabled) {
     listener_tcp_fastopen = enabled;
+}
+
+void
+listeners_set_socket_owner(uid_t uid) {
+    listener_socket_uid = uid;
 }
 
 void

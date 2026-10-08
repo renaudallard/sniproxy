@@ -129,16 +129,21 @@ SNIProxy runs as four cooperating processes:
 
 1. **`sniproxy-mainloop`**: accepts connections, parses the first protocol
    header, picks a backend and forwards bidirectionally.
-2. **`sniproxy-binder`**: keeps root so that a listener added by a
-   SIGHUP reload can still bind a privileged port once the main loop has
-   dropped its privileges; the initial listeners are bound by the main
-   loop before it drops root. A binder restarted after it died, or after
-   it left a request unanswered for 30 seconds, runs without root, as it
-   is forked from the main loop, until sniproxy is restarted. It idles
+2. **`sniproxy-binder`**: keeps the privilege to bind so that a
+   listener added by a SIGHUP reload can still bind a privileged port
+   once the main loop has dropped its privileges; the initial listeners
+   are bound by the main loop before it drops root. A binder restarted
+   after it died, or after it left a request unanswered for 30 seconds,
+   runs without that privilege, as it is forked from the main loop,
+   until sniproxy is restarted. It idles
    otherwise, and only binds Unix
    socket paths whose directory really lies under `/run` or `/var/run`,
-   symlinks resolved. On Linux it keeps root's uid but only the
-   `CAP_NET_BIND_SERVICE` and `CAP_DAC_OVERRIDE` capabilities.
+   symlinks resolved. On Linux it does not keep root: it switches to the
+   configured user with only the `CAP_NET_BIND_SERVICE` capability, and
+   `CAP_DAC_OVERRIDE` as well when a listener is a Unix socket at
+   startup, so a Unix socket listener a reload adds in a directory that
+   user cannot write needs one already configured, or a restart. With
+   `CAP_DAC_OVERRIDE` a compromised binder could still read any file.
 3. **`sniproxy-logger`**: writes the log files. The main loop sends it
    log lines over an encrypted, authenticated Unix socket.
 4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.
@@ -152,7 +157,8 @@ generated and locked in memory once in the parent and inherited across
 when its child starts, so children never have to read key material from
 disk or call `mlock()` after `pledge()`. The logger drops root once the
 listeners are bound and the resolver is started after that, so both run
-unprivileged; the binder keeps root, which is its purpose. On a platform
+unprivileged; the binder keeps the privilege to bind, which is its
+purpose, as root or, on Linux, as capabilities. On a platform
 that provides one (pledge/unveil, Capsicum, or seccomp), each process
 enters its sandbox before it handles client traffic; on FreeBSD only the
 logger enters capability mode (see Installation).
@@ -758,7 +764,10 @@ also reduces spoofing exposure and upstream query volume.
   interpreter there.
 - **HPACK ring buffer**: HTTP/2 dynamic table inserts are O(1).
 - **SO_REUSEPORT**: run several sniproxy instances on the same port;
-  on Linux 3.9+ the kernel spreads new connections across them.
+  on Linux 3.9+ the kernel spreads new connections across them. Linux
+  only lets sockets share a port when the same user created them, so
+  sniproxy creates its listeners as the user it runs as, even when
+  started as root: instances sharing a port must run as the same user.
 - **Hot reload**: SIGHUP updates routing tables in place; connections
   that are already routed keep their backend.
 

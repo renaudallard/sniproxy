@@ -362,7 +362,8 @@ allow_open_read(scmp_filter_ctx ctx) {
 /* The sockets a process may create, among unix sockets, netlink sockets,
  * and stream and datagram sockets over IPv4 and IPv6. With "source
  * client" the main process keeps CAP_NET_RAW, and raw or packet sockets
- * would let it read the host's traffic; the binder keeps root. Where
+ * would let it read the host's traffic; the binder keeps the right to
+ * bind privileged ports. Where
  * socket() goes through socketcall(2), as on i386, its arguments are out
  * of the filter's reach, so any socket stays allowed there. */
 static int
@@ -542,6 +543,7 @@ seccomp_install_filter(enum seccomp_process_type type) {
  */
 #if defined(__linux__) && defined(HAVE_LINUX_CAPABILITY_H)
 
+#include <grp.h>
 #include <linux/capability.h>
 #include <string.h>
 #include <sys/prctl.h>
@@ -584,15 +586,28 @@ caps_drop_all(void) {
     return caps_set(NULL, 0);
 }
 
-/* What a binder running as root uses of it: binding privileged ports, and
- * unix sockets in a directory under /run that another user may own */
+/* What a binder started as root uses of it: binding privileged ports,
+ * and, with keep_dac_override, unix sockets in a directory under /run
+ * that another user may own. It switches to the user sniproxy runs as,
+ * so that services trusting a peer by its uid, such as the system
+ * manager's control socket, no longer take it for root. Without
+ * keep_dac_override it cannot read the files root owns either. */
 int
-caps_limit_binder(void) {
+caps_binder_drop_root(uid_t uid, gid_t gid, int keep_dac_override) {
     static const int wanted[] = { CAP_NET_BIND_SERVICE, CAP_DAC_OVERRIDE };
+    size_t wanted_count = keep_dac_override ? 2 : 1;
     struct __user_cap_header_struct hdr;
     struct __user_cap_data_struct cur[_LINUX_CAPABILITY_U32S_3];
     int keep[sizeof(wanted) / sizeof(wanted[0])];
     size_t count = 0;
+
+    if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) < 0 ||
+            setgroups(1, &gid) < 0 || setgid(gid) < 0 || setuid(uid) < 0)
+        return -1;
+    if (getuid() == 0 || geteuid() == 0 || getgid() == 0 || getegid() == 0) {
+        errno = EPERM;
+        return -1;
+    }
 
     /* capset() refuses to add a capability the process does not hold,
      * as when the bounding set of a service or container left it out */
@@ -601,11 +616,13 @@ caps_limit_binder(void) {
     hdr.version = _LINUX_CAPABILITY_VERSION_3;
     if (syscall(SYS_capget, &hdr, cur) < 0)
         return -1;
-    for (size_t i = 0; i < sizeof(wanted) / sizeof(wanted[0]); i++)
+    for (size_t i = 0; i < wanted_count; i++)
         if (cur[CAP_TO_INDEX(wanted[i])].permitted & CAP_TO_MASK(wanted[i]))
             keep[count++] = wanted[i];
 
-    return caps_set(keep, count);
+    if (caps_set(keep, count) < 0)
+        return -1;
+    return prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0);
 }
 
 int
@@ -652,7 +669,10 @@ caps_drop_all(void) {
 }
 
 int
-caps_limit_binder(void) {
+caps_binder_drop_root(uid_t uid, gid_t gid, int keep_dac_override) {
+    (void)uid;
+    (void)gid;
+    (void)keep_dac_override;
     return 0;
 }
 

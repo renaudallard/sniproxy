@@ -84,6 +84,7 @@ static int write_pidfile(const char *, pid_t);
 static rlim_t set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
 static void lookup_user(const char *, const char *, uid_t *, gid_t *);
+static int config_has_unix_listener(const struct Config *);
 static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
@@ -592,6 +593,14 @@ main(int argc, char **argv) {
     warn("SECURITY WARNING: sniproxy built with DEBUG; stack traces and memory addresses may be logged. Not for production use.");
 #endif
 
+    /* Looked up before the first unveil() on OpenBSD, which hides the
+     * password database. A binder started as root on Linux switches to
+     * this user, and the SIGUSR1 dump directory is made for it. */
+    uid_t run_uid;
+    gid_t run_gid;
+    lookup_user(config->user ? config->user : default_username,
+            config->group, &run_uid, &run_gid);
+
 #ifdef __OpenBSD__
     {
         struct openbsd_unveil_data data = {
@@ -602,13 +611,7 @@ main(int argc, char **argv) {
         struct Table *table;
 
         /* Before the first unveil(), which hides every other path: the
-         * password database, and where the dump directory is made */
-        uid_t run_uid;
-        gid_t run_gid;
-        lookup_user(config->user ? config->user : default_username,
-                config->group, &run_uid, &run_gid);
-
-        /* The directory print_connections() writes the SIGUSR1 dump to */
+         * directory print_connections() writes the SIGUSR1 dump to */
         openbsd_unveil_dump_dir(run_uid, run_gid);
 
         /* Readable so that a SIGHUP reload can parse it again. */
@@ -705,7 +708,7 @@ main(int argc, char **argv) {
     }
 #endif
 
-    start_binder();
+    start_binder(run_uid, run_gid, config_has_unix_listener(config));
 
     /* Seed binder allowlist with configured listener addresses so the binder
      * child will refuse unexpected bind requests. */
@@ -736,6 +739,7 @@ main(int argc, char **argv) {
             &config->backend_acl_rules);
     connections_set_tcp_fastopen(config->tcp_fastopen);
     listeners_set_tcp_fastopen(config->tcp_fastopen);
+    listeners_set_socket_owner(run_uid);
     http_set_max_headers(config->http_max_headers);
 
     init_listeners(&config->listeners, &config->tables, loop);
@@ -1005,6 +1009,19 @@ drop_perms(const char *username, const char *groupname) {
     /* Now that main process is unprivileged, tell logger child to drop too */
     if (logger_drop_privileges(uid, gid) < 0)
         fatal("logger_drop_privileges(): %s", strerror(errno));
+}
+
+static int
+config_has_unix_listener(const struct Config *cfg) {
+    const struct Listener *listener;
+
+    SLIST_FOREACH(listener, &cfg->listeners, entries) {
+        const struct sockaddr *sa = address_sa(listener->address);
+        if (sa != NULL && sa->sa_family == AF_UNIX)
+            return 1;
+    }
+
+    return 0;
 }
 
 static int
