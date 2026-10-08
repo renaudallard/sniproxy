@@ -251,7 +251,9 @@ reaches private IPv4 addresses, such as 64:ff9b:1::/48: only
 IPv4-mapped addresses (::ffff:0:0/96) are matched against the IPv4
 ranges. The addresses 0.0.0.0
 and :: are refused whatever the policy, because connecting to them
-reaches the local host. Unix socket
+reaches the local host. Multicast addresses (224.0.0.0/4, ff00::/8)
+are refused even without a backend_acl block: a DTLS session to one
+would send its client's datagrams to every member of the group. Unix socket
 backends match no range, so \fBdeny_except\fR refuses them. Only one
 backend_acl block may appear in the
 configuration. IPv4 and IPv6 ranges may be mixed freely, and

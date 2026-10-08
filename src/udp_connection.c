@@ -775,6 +775,22 @@ udp_free_resolv_cb_data(void *data) {
 
 static void
 udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
+    if (sockaddr_is_multicast(&session->server_addr)) {
+        char server[INET6_ADDRSTRLEN + 8];
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("UDP: refusing multicast backend address %s for %.*s from %s",
+                display_sockaddr(&session->server_addr,
+                    session->server_addr_len,
+                    server, sizeof(server)),
+                (int)session->hostname_len,
+                session->hostname ? session->hostname : "",
+                display_sockaddr(&session->client_addr,
+                    session->client_addr_len,
+                    client, sizeof(client)));
+        udp_session_destroy(session, loop);
+        return;
+    }
+
     if (!backend_acl_allows(&session->server_addr)) {
         char server[INET6_ADDRSTRLEN + 8];
         char client[INET6_ADDRSTRLEN + 8];

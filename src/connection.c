@@ -2116,6 +2116,28 @@ sockaddr_is_unspecified(const struct sockaddr_storage *addr) {
     return 0;
 }
 
+/* An IPv4 or IPv6 multicast group, the IPv4-mapped form included. Such
+ * a group is never a backend: a TCP connect to one fails, but a DTLS
+ * session would send its client's datagrams to every member, so a
+ * hostname resolving to one is refused with or without a backend ACL. */
+int
+sockaddr_is_multicast(const struct sockaddr_storage *addr) {
+    if (addr->ss_family == AF_INET) {
+        const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
+        return IN_MULTICAST(ntohl(sin->sin_addr.s_addr));
+    }
+
+    if (addr->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)addr;
+
+        return IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr) ||
+                (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr) &&
+                 (sin6->sin6_addr.s6_addr[12] & 0xf0) == 0xe0);
+    }
+
+    return 0;
+}
+
 int
 backend_acl_allows(const struct sockaddr_storage *addr) {
     if (backend_acl_mode == LISTENER_ACL_MODE_DISABLED)
@@ -3376,6 +3398,22 @@ free_resolv_cb_data(void *data) {
 
 static void
 initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
+    if (sockaddr_is_multicast(&con->server.addr)) {
+        char server[INET6_ADDRSTRLEN + 8];
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("Refusing multicast backend address %s for %.*s from %s",
+                display_sockaddr(&con->server.addr,
+                    con->server.addr_len,
+                    server, sizeof(server)),
+                (int)con->hostname_len,
+                con->hostname ? con->hostname : "",
+                display_sockaddr(&con->client.addr,
+                    con->client.addr_len,
+                    client, sizeof(client)));
+        abort_connection(con, loop);
+        return;
+    }
+
     if (!backend_acl_allows(&con->server.addr)) {
         char server[INET6_ADDRSTRLEN + 8];
         char client[INET6_ADDRSTRLEN + 8];

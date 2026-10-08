@@ -143,6 +143,7 @@ void connections_udp_socket_release(void);
 void connections_set_backend_acl(int mode,
         struct ListenerACLRule_head *rules);
 int backend_acl_allows(const struct sockaddr_storage *);
+int sockaddr_is_multicast(const struct sockaddr_storage *);
 void connections_set_tcp_fastopen(int enabled);
 
 /* The per-IP rate and count of UDP sessions, kept apart from those of TCP

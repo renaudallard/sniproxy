@@ -417,8 +417,8 @@ http_max_headers 200
 # (127.0.0.0/8, ::1/128), link-local (169.254.0.0/16, fe80::/10) and
 # IPv6 unique local (fc00::/7) addresses too, and behind NAT64 the
 # translation prefix when it reaches private IPv4 addresses, such as
-# 64:ff9b:1::/48. Unix socket backends match no range, and 0.0.0.0 and
-# :: are always refused.
+# 64:ff9b:1::/48. Unix socket backends match no range, and 0.0.0.0, ::
+# and multicast addresses are always refused.
 backend_acl deny_except {
     10.0.0.0/8
     172.16.0.0/12
@@ -536,7 +536,9 @@ against the IPv4 CIDRs, and a CIDR written in that form
 (`::ffff:192.0.2.0/120`) is read as the IPv4 one it stands for. With a `backend_acl`, a backend address of
 0.0.0.0 or `::` is refused whatever the policy, since connecting to it
 reaches the local host, so a hostname resolving to it cannot get around
-a block of the loopback range.
+a block of the loopback range. Multicast addresses (224.0.0.0/4,
+`ff00::/8`) are refused even without a `backend_acl`: a DTLS session to
+one would send its client's datagrams to every member of the group.
 
 ### XMPP
 
