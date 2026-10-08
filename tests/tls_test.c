@@ -790,6 +790,32 @@ int main(void) {
         assert(hostname == NULL);
     }
 
+    /* Nor may a record of another type in front of it, such as a warning
+     * alert some servers skip, while data that is not TLS still goes to
+     * the fallback */
+    {
+        static const unsigned char alert[] = {
+            0x15, 0x03, 0x03, 0x00, 0x02, 0x01, 0x5a,
+        };
+        static unsigned char prefixed[sizeof(alert) + sizeof(tls10_client_hello)];
+        static const char not_tls[] = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+
+        memcpy(prefixed, alert, sizeof(alert));
+        memcpy(prefixed + sizeof(alert), tls10_client_hello,
+                sizeof(tls10_client_hello));
+        hostname = NULL;
+        result = tls_protocol->parse_packet((const char *)prefixed,
+                sizeof(prefixed), &hostname);
+        assert(result == TLS_ERR_NOT_HANDSHAKE);
+        assert(hostname == NULL);
+
+        hostname = NULL;
+        result = tls_protocol->parse_packet(not_tls, sizeof(not_tls) - 1,
+                &hostname);
+        assert(result == -5);
+        assert(hostname == NULL);
+    }
+
     hostname = NULL;
     result = tls_protocol->parse_packet(legacy_tls10.packet, legacy_tls10.len, &hostname);
     assert(result < 0);

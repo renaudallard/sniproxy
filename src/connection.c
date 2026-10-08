@@ -3129,6 +3129,16 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
                         con->client.addr_len,
                         client, sizeof(client)));
             fatal_parse_error = 1;
+        } else if (result == TLS_ERR_NOT_HANDSHAKE) {
+            /* A ClientHello may follow it, unchecked against the -T
+             * minimum, so the fallback must not get it */
+            warn("Request from %s began with a TLS record other than a handshake, rejecting",
+                    display_sockaddr(&con->client.addr,
+                        con->client.addr_len,
+                        client, sizeof(client)));
+            if (con->listener->log_bad_requests)
+                log_bad_request(con, payload, payload_len, result);
+            fatal_parse_error = 1;
         } else if (result == -2) {
             warn("Request from %s did not include a hostname",
                     display_sockaddr(&con->client.addr,

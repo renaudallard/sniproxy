@@ -42,7 +42,9 @@
 
 #define SERVER_NAME_LEN 256
 #define TLS_HEADER_LEN 5
+#define TLS_CHANGE_CIPHER_SPEC_CONTENT_TYPE 0x14
 #define TLS_HANDSHAKE_CONTENT_TYPE 0x16
+#define TLS_HEARTBEAT_CONTENT_TYPE 0x18
 #define TLS_HANDSHAKE_TYPE_CLIENT_HELLO 0x01
 #define CLIENT_HELLO_VERSION_RANDOM_LEN 34
 /* Bounds on a ClientHello split over several records */
@@ -134,6 +136,16 @@ parse_tls_header(const char *data_char, size_t data_len, char **hostname) {
 
     tls_content_type = data[0];
     if (tls_content_type != TLS_HANDSHAKE_CONTENT_TYPE) {
+        /* Some servers skip a record such as a warning alert before the
+         * ClientHello, so the fallback would take a ClientHello whose
+         * version was never checked against the -T minimum. Data that is
+         * not TLS at all may still go there. */
+        if (tls_content_type >= TLS_CHANGE_CIPHER_SPEC_CONTENT_TYPE &&
+                tls_content_type <= TLS_HEARTBEAT_CONTENT_TYPE &&
+                data[1] == 3) {
+            debug("Request began with a TLS record other than a handshake.");
+            return TLS_ERR_NOT_HANDSHAKE;
+        }
         debug("Request did not begin with TLS handshake.");
         return -5;
     }

@@ -40,5 +40,6 @@ void tls_set_min_client_hello_version(uint8_t major, uint8_t minor);
 #define TLS_ERR_CLIENT_RENEGOTIATION (-6)
 #define TLS_ERR_UNSUPPORTED_CLIENT_HELLO (-7)
 #define TLS_ERR_INVALID_CLIENT_HELLO (-8)
+#define TLS_ERR_NOT_HANDSHAKE (-9)
 
 #endif

@@ -511,7 +511,8 @@ listener [::]:443 {
     # Fallback for requests with no hostname, that cannot be parsed, or
     # that match no table entry, sent with a PROXY v1 header. When a
     # matching backend's name fails to resolve, the connection is closed
-    # instead.
+    # instead, as it is when the -T check refuses or cannot read the
+    # ClientHello.
     fallback 192.0.2.50:443
     fallback proxy_protocol
     # ...or v2:
