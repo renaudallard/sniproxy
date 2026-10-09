@@ -624,6 +624,18 @@ static const unsigned char tls13_client_hello[] = {
     0x00, 0x03, 0x02, 0x03, 0x04,
 };
 
+/* the same hello with a legacy_version of TLS 1.2 advertising
+ * supported_versions [TLS 1.1] only */
+static const unsigned char tls11_supported_versions_client_hello[] = {
+    0x16, 0x03, 0x01, 0x00, 0x48, 0x01, 0x00, 0x00, 0x44, 0x03, 0x03, 0x11,
+    0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+    0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+    0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x00, 0x00, 0x02, 0x13, 0x01,
+    0x01, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00,
+    0x09, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x00, 0x2b,
+    0x00, 0x03, 0x02, 0x03, 0x02,
+};
+
 /*
  * A ClientHello for "localhost" followed by a padding extension of
  * pad_len bytes, which only the server_name extension's size limit could
@@ -851,6 +863,31 @@ int main(void) {
     free(hostname);
 
     tls_set_min_client_hello_version(3, 3);
+
+    /* Below TLS 1.3 the legacy_version passes, but a server takes the
+     * version from supported_versions when it is sent, so that is checked
+     * too: listing only TLS 1.1 is refused, TLS 1.3 or GREASE next to 1.2
+     * is not. */
+    hostname = NULL;
+    result = tls_protocol->parse_packet(
+            (char *)tls11_supported_versions_client_hello,
+            sizeof(tls11_supported_versions_client_hello), &hostname);
+    assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)tls13_client_hello,
+            sizeof(tls13_client_hello), &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    free(hostname);
+
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)tls13_grease_client_hello,
+            sizeof(tls13_grease_client_hello), &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    free(hostname);
 
     for (i = 0; i < sizeof(bad) / sizeof(struct test_packet); i++) {
         hostname = NULL;

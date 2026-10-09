@@ -315,7 +315,9 @@ parse_client_hello_fields(const uint8_t *handshake, size_t hello_len,
     /* TLS 1.3+ clients set legacy_version to 0x0303 (TLS 1.2) per RFC 8446
      * and advertise the real version via the supported_versions extension.
      * Only enforce the legacy version field when the minimum is TLS 1.2 or
-     * below; for TLS 1.3+ minimums, rely on the supported_versions check. */
+     * below; for TLS 1.3+ minimums, rely on the supported_versions check.
+     * A server takes the version from that extension whenever it is sent,
+     * so it is checked against any minimum, and required for TLS 1.3+. */
     int require_supported_versions = (min_client_hello_version_major > 3) ||
         (min_client_hello_version_major == 3 && min_client_hello_version_minor >= 4);
 
@@ -372,19 +374,15 @@ parse_client_hello_fields(const uint8_t *handshake, size_t hello_len,
     if ((size_t)(body_end - body) < len)
         return -5;
 
-    if (require_supported_versions) {
-        int sv = sni_extensions_have_required_version(body, len,
-                min_client_hello_version_major,
-                min_client_hello_version_minor,
-                tls_max_extensions);
-        if (sv == TLS_ERR_UNSUPPORTED_CLIENT_HELLO)
-            return sv;
-        if (sv < 0)
-            return sv;
-        if (sv == 0)
-            return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
-        *version_checked = 1;
-    }
+    int sv = sni_extensions_have_required_version(body, len,
+            min_client_hello_version_major,
+            min_client_hello_version_minor,
+            tls_max_extensions);
+    if (sv < 0)
+        return sv;
+    if (sv == 0 && require_supported_versions)
+        return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
+    *version_checked = 1;
 
     return sni_parse_extensions(body, len, hostname,
             tls_max_extensions, tls_max_extension_length);

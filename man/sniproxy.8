@@ -85,9 +85,11 @@ Print the version of SNIProxy and exit\&.
 -T \fImin-tls-version\fR
 Set the minimum TLS ClientHello version that will be accepted\&. The
 value must be one of 1.0, 1.1, 1.2, or 1.3\&. For 1.0 to 1.2 the legacy
-version field of the ClientHello is checked; for 1.3 that field is
-ignored, since TLS 1.3 clients set it to 1.2, and the supported_versions
-extension must list 1.3 or later\&. A ClientHello found invalid before
+version field of the ClientHello is checked, and a supported_versions
+extension, which a server takes the version from when it is sent, must
+list that version or a later one; for 1.3 the legacy field is ignored,
+since TLS 1.3 clients set it to 1.2, and the supported_versions
+extension must be there and list 1.3 or later\&. A ClientHello found invalid before
 its version could be checked is refused, even on a listener with a
 fallback, and so is a connection that starts with a TLS record other
 than a handshake, such as an alert, or a ClientHello larger than the

@@ -615,8 +615,10 @@ afterthought.
 
 - **TLS 1.2+ by default**: older clients can be re-enabled with
   `-T 1.1` or `-T 1.0`, or TLS 1.3 required with `-T 1.3`. The flag
-  applies to every TLS listener. A ClientHello whose version cannot be
-  read is refused rather than sent to the fallback.
+  applies to every TLS listener and is checked against the
+  supported_versions extension too, when a ClientHello sends one, as
+  that is where a server takes the version from. A ClientHello whose
+  version cannot be read is refused rather than sent to the fallback.
 - **Cryptographically random seeds**: the per-IP hashes (rate limiter,
   connection counts, DNS client tracking, backend affinity) and the UDP
   session table are keyed with an arc4random seed, and the rate limiter and connection count
