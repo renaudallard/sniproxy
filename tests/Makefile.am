@@ -22,6 +22,7 @@ TESTS += functional_test \
          bad_request_test \
          bind_source_test \
          connection_reset_test \
+         dtls_proxy_test \
          fallback_test \
          fd_limit_test \
          half_close_test \
@@ -53,6 +54,7 @@ EXTRA_DIST = check_output.sh \
              bad_request_test \
              bind_source_test \
              connection_reset_test \
+             dtls_proxy_test \
              fallback_test \
              fd_limit_test \
              half_close_test \

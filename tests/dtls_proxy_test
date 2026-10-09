@@ -1,0 +1,141 @@
+#!/usr/bin/env perl
+
+# A dtls listener holds a new session until a second datagram comes from
+# the same address and port, then forwards it to the backend its SNI
+# names and passes the backend's datagrams back. A single datagram, as a
+# forged source sends, never reaches the backend.
+
+use strict;
+use warnings;
+use File::Basename;
+use lib dirname (__FILE__);
+use TestUtils;
+use File::Temp;
+use IO::Select;
+use IO::Socket::INET;
+
+# A DTLS 1.2 ClientHello for "localhost", as in dtls_test.c
+my $hello = pack('H*',
+    '16fefd0000000000000000004c0100004000000000000000' .
+    '40fefd0102030405060708090a0b0c0d0e0f101112131415' .
+    '161718191a1b1c1d1e1f2000000004002f00ff0100001200' .
+    '00000e000c0000096c6f63616c686f7374');
+
+sub proxy {
+    my $config = shift;
+
+    exec(@_, '../src/sniproxy', '-f', '-c', $config);
+}
+
+# Log each datagram received and answer it
+sub udp_backend($$) {
+    my ($port, $log) = @_;
+
+    my $socket = IO::Socket::INET->new(LocalAddr => '127.0.0.1',
+                                       LocalPort => $port,
+                                       Proto => 'udp')
+        or die "couldn't bind $port: $!";
+
+    my $datagram;
+    while (my $peer = $socket->recv($datagram, 65536)) {
+        open(my $fh, '>>', $log) or die "couldn't open $log: $!";
+        print $fh length($datagram), "\n";
+        close($fh);
+        $socket->send('pong', 0, $peer);
+    }
+    exit 0;
+}
+
+sub datagrams_received($) {
+    my $log = shift;
+
+    open(my $fh, '<', $log) or return 0;
+    my @lines = <$fh>;
+    close($fh);
+
+    return scalar(@lines);
+}
+
+sub client($) {
+    my $port = shift;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => 'udp')
+        or die "couldn't create client socket: $!";
+
+    return $socket;
+}
+
+sub main {
+    my $proxy_port = find_free_port();
+    my $http_port = find_free_port();
+    my $backend_port = find_free_port();
+    my ($log_fh, $log) = File::Temp::tempfile();
+    close($log_fh);
+
+    my ($fh, $config) = File::Temp::tempfile();
+    print $fh <<END;
+user @{[test_user()]}
+group @{[test_group()]}
+
+listen 127.0.0.1 $proxy_port {
+    proto dtls
+    table dtls
+}
+
+listen 127.0.0.1 $http_port {
+    proto http
+    table dtls
+}
+
+table dtls {
+    localhost 127.0.0.1 $backend_port
+}
+END
+    close($fh);
+
+    start_child('backend', \&udp_backend, $backend_port, $log);
+    my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+    wait_for_port(port => $http_port);
+
+    my $failed = 0;
+
+    # A single datagram is held
+    my $lone = client($proxy_port);
+    $lone->send($hello);
+    my $session = client($proxy_port);
+    $session->send($hello);
+    sleep 1;
+    if (datagrams_received($log) != 0) {
+        print "a first datagram reached the backend\n";
+        $failed = 1;
+    }
+
+    # The second one from the same source is forwarded and answered
+    $session->send($hello);
+    my $answer = '';
+    if (IO::Select->new($session)->can_read(5)) {
+        $session->recv($answer, 65536);
+    }
+    if ($answer ne 'pong') {
+        print "no answer from the backend through the session\n";
+        $failed = 1;
+    }
+    sleep 1;
+    if (datagrams_received($log) != 1) {
+        printf "the backend received %d datagrams instead of 1\n",
+                datagrams_received($log);
+        $failed = 1;
+    }
+
+    kill 15, $proxy_pid;
+    sleep 1;
+    unlink($config);
+    unlink($log);
+    reap_children();
+
+    exit $failed;
+}
+
+main();
