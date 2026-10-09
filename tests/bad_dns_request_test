@@ -11,9 +11,9 @@ use IO::Socket::INET;
 
 my $bad_requests = [
     {
-        # Test bad name server
+        # Test bad name server: the lookup fails and the client is told so
         request => "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
-        client => \&http_client,
+        client => \&http_client_503,
     },
     {
         # Invalid hostname
@@ -63,6 +63,33 @@ sub http_client($$) {
     $socket->recv($buffer, 16384);
 
     $socket->close();
+
+    return undef;
+}
+
+sub http_client_503($$) {
+    my $port = shift;
+    my $request = shift;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => "tcp",
+                                       Type => SOCK_STREAM)
+        or die "couldn't connect $!";
+
+    $socket->send($request);
+
+    my $response = '';
+    my $buffer;
+    while (defined($socket->recv($buffer, 16384)) && length($buffer) > 0) {
+        $response .= $buffer;
+    }
+
+    $socket->close();
+
+    return "expected a 503 for a failed lookup, got \"" .
+            substr($response, 0, 40) . "\""
+        unless $response =~ m{^HTTP/1\.1 503 };
 
     return undef;
 }
