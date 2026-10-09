@@ -425,6 +425,11 @@ DNS-over-TLS upstream is never silently downgraded. Up to four of the
 addresses it finds are used, those the host can reach first, and queries
 move on to the next one when a server does not answer.
 
+Each DNS-over-TLS lookup not answered from the c-ares cache opens a new
+connection, with its TCP and TLS handshakes, and closes it once answered.
+Connections are not kept open between lookups, as some servers drop such
+a connection with a query on it still unanswered.
+
 All configured nameservers form a single failover pool. Listing a cleartext
 nameserver alongside a \fBdot://\fR one therefore allows queries to fall back
 to unauthenticated DNS if the TLS handshake fails; a warning is logged for

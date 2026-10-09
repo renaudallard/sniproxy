@@ -496,6 +496,11 @@ nameserver dot://9.9.9.9/dns.quad9.net
 nameserver dot://dns.quad9.net
 ```
 
+Each DoT lookup not answered from the c-ares cache opens a new
+connection, with its TCP and TLS handshakes, and closes it once
+answered. Connections are not kept open between lookups, as some
+servers drop such a connection with a query on it still unanswered.
+
 ### Listener and table
 
 ```nginx
