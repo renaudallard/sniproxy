@@ -3439,6 +3439,25 @@ error:
     return -1;
 }
 
+/* What made a TLS call fail with errcode: the OpenSSL error, or for a
+ * socket error, which leaves none, the errno it set, if any */
+static const char *
+resolver_child_dot_error(int errcode, int saved_errno, char *buf, size_t len) {
+    unsigned long ssl_err = ERR_get_error();
+
+    if (ssl_err != 0)
+        ERR_error_string_n(ssl_err, buf, len);
+    else if (errcode == SSL_ERROR_SYSCALL && saved_errno != 0)
+        snprintf(buf, len, "%s", strerror(saved_errno));
+    else if (errcode == SSL_ERROR_SYSCALL)
+        snprintf(buf, len, "connection closed by the server");
+    else
+        snprintf(buf, len, "TLS error %d", errcode);
+    ERR_clear_error();
+
+    return buf;
+}
+
 static int
 resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
     if (sock == NULL || sock->ssl == NULL)
@@ -3455,7 +3474,9 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
     /* Empty the thread error queue so SSL_get_error()/ERR_get_error()
      * below reflect only this operation (OpenSSL SSL_get_error(3)). */
     ERR_clear_error();
+    errno = 0;
     int ret = SSL_do_handshake(sock->ssl);
+    int saved_errno = errno;
     if (ret == 1) {
         sock->handshake_complete = 1;
         if (sock->forcing_events) {
@@ -3491,11 +3512,9 @@ resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
         }
     }
 
-    unsigned long ssl_err = ERR_get_error();
     char buf[256];
-    ERR_error_string_n(ssl_err, buf, sizeof(buf));
-    err("resolver child: DoT handshake failed: %s", buf);
-    ERR_clear_error();
+    err("resolver child: DoT handshake failed: %s",
+            resolver_child_dot_error(errcode, saved_errno, buf, sizeof(buf)));
     sock->failed = 1;
     errno = ECONNABORTED;
     return -1;
@@ -3563,7 +3582,9 @@ resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int fla
     if (len > INT_MAX)
         len = INT_MAX;
     ERR_clear_error();
+    errno = 0;
     int ret = SSL_read(sock->ssl, buffer, (int)len);
+    int saved_errno = errno;
     if (ret > 0)
         return ret;
 
@@ -3579,11 +3600,9 @@ resolver_child_dot_arecvfrom(ares_socket_t fd, void *buffer, size_t len, int fla
         return 0;
     }
 
-    unsigned long ssl_err = ERR_get_error();
     char buf[256];
-    ERR_error_string_n(ssl_err, buf, sizeof(buf));
-    err("resolver child: DoT read failed: %s", buf);
-    ERR_clear_error();
+    err("resolver child: DoT read failed: %s",
+            resolver_child_dot_error(errcode, saved_errno, buf, sizeof(buf)));
     sock->failed = 1;
     errno = ECONNABORTED;
     return -1;
@@ -3639,7 +3658,9 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
     }
 
     ERR_clear_error();
+    errno = 0;
     int ret = SSL_write(sock->ssl, buf, (int)total);
+    int saved_errno = errno;
     if (use_heap)
         free(buf);
 
@@ -3652,11 +3673,9 @@ resolver_child_dot_asendv(ares_socket_t fd, const struct iovec *iov, int iovcnt,
         return -1;
     }
 
-    unsigned long ssl_err = ERR_get_error();
     char errbuf[256];
-    ERR_error_string_n(ssl_err, errbuf, sizeof(errbuf));
-    err("resolver child: DoT write failed: %s", errbuf);
-    ERR_clear_error();
+    err("resolver child: DoT write failed: %s",
+            resolver_child_dot_error(errcode, saved_errno, errbuf, sizeof(errbuf)));
     sock->failed = 1;
     errno = ECONNABORTED;
     return -1;
