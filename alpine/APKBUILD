@@ -30,7 +30,8 @@ build() {
 		--host=$CHOST \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--mandir=/usr/share/man
+		--mandir=/usr/share/man \
+		--enable-seccomp
 	make
 }
 

@@ -9,7 +9,7 @@ URL: https://github.com/renaudallard/sniproxy
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires: gcc, make, autoconf, automake, curl, libev-devel, pcre2-devel, gettext-devel, c-ares-devel, openssl-devel, libbsd-devel, libseccomp-devel, systemd-rpm-macros
+BuildRequires: gcc, make, autoconf, automake, curl, libev-devel, pcre2-devel, gettext-devel, c-ares-devel, openssl-devel, libbsd-devel, libseccomp-devel, pkgconfig, systemd-rpm-macros
 
 %description
 Proxies incoming HTTP and TLS connections based on the hostname contained in
@@ -23,7 +23,7 @@ proxy machine.
 
 
 %build
-%configure CFLAGS="%{optflags} -I/usr/include/libev"
+%configure --enable-seccomp CFLAGS="%{optflags} -I/usr/include/libev"
 make %{?_smp_mflags}
 
 

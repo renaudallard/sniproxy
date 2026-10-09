@@ -254,7 +254,10 @@ in `/etc/conf.d/sniproxy` (`SNIPROXY_CONFIG`, `SNIPROXY_OPTS`).
 - autoconf 2.71 or later and automake
 - libev, libpcre2-8, c-ares, OpenSSL (or LibreSSL) development headers
 - On Linux, libseccomp: optional, but without it the build has no
-  seccomp sandbox (configure warns when it is missing)
+  seccomp sandbox (configure warns when it is missing, and fails with
+  `--enable-seccomp`, which the packages use; it finds the header
+  through pkg-config where it is not in the default path, as on
+  openSUSE; `--disable-seccomp` leaves it out)
 - libbsd, only where libc lacks `arc4random` or `strlcpy`, such as
   glibc before 2.38 (OpenBSD, FreeBSD and macOS have both)
 - Perl and cURL for the test suite

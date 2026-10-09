@@ -61,6 +61,12 @@ AC_DEFUN([SNIPROXY_APPEND_LDFLAG], [
 AC_PROG_CC
 AM_PROG_CC_C_O
 
+AC_ARG_ENABLE([seccomp],
+  [AS_HELP_STRING([--enable-seccomp],
+    [Fail on Linux when libseccomp is missing instead of building without the seccomp sandbox, which --disable-seccomp asks for])],
+  [enable_seccomp=$enableval],
+  [enable_seccomp=auto])
+
 AC_ARG_ENABLE([hardening],
   [AS_HELP_STRING([--disable-hardening], [Disable compiler and linker hardening flags])],
   [enable_hardening=$enableval],
@@ -258,28 +264,44 @@ AC_ARG_ENABLE([rfc3339-timestamps],
 # seccomp.c, so defining it without the header would make compilation
 # fail (some distros split header and lib packages).
 LIBSECCOMP_LIBS=""
+LIBSECCOMP_CFLAGS=""
 case "$host_os" in
   linux*)
     sniproxy_have_seccomp=no
-    AC_CHECK_HEADER([seccomp.h], [sniproxy_have_seccomp_h=yes],
-        [sniproxy_have_seccomp_h=no])
-    AS_IF([test "x$sniproxy_have_seccomp_h" = "xyes"], [
-      AC_SEARCH_LIBS([seccomp_init], [seccomp], [
-        AS_IF([test "x$ac_cv_search_seccomp_init" != "xnone required"],
-          [LIBSECCOMP_LIBS="$ac_cv_search_seccomp_init"],
-          [LIBSECCOMP_LIBS=""])
-        AC_DEFINE([HAVE_SECCOMP], 1,
-            [Define to 1 if libseccomp and seccomp.h are available])
-        sniproxy_have_seccomp=yes
+    AS_IF([test "x$enable_seccomp" = "xno"],
+      [AC_MSG_NOTICE([building without the seccomp sandbox])], [
+      # openSUSE installs the header below /usr/include/libseccomp and
+      # names that directory in libseccomp.pc only.
+      AC_PATH_TOOL([PKG_CONFIG], [pkg-config])
+      AS_IF([test -n "$PKG_CONFIG"],
+        [LIBSECCOMP_CFLAGS=`$PKG_CONFIG --cflags libseccomp 2>/dev/null`])
+      sniproxy_save_CPPFLAGS="$CPPFLAGS"
+      CPPFLAGS="$CPPFLAGS $LIBSECCOMP_CFLAGS"
+      AC_CHECK_HEADER([seccomp.h], [sniproxy_have_seccomp_h=yes],
+          [sniproxy_have_seccomp_h=no])
+      CPPFLAGS="$sniproxy_save_CPPFLAGS"
+      AS_IF([test "x$sniproxy_have_seccomp_h" = "xyes"], [
+        AC_SEARCH_LIBS([seccomp_init], [seccomp], [
+          AS_IF([test "x$ac_cv_search_seccomp_init" != "xnone required"],
+            [LIBSECCOMP_LIBS="$ac_cv_search_seccomp_init"],
+            [LIBSECCOMP_LIBS=""])
+          AC_DEFINE([HAVE_SECCOMP], 1,
+              [Define to 1 if libseccomp and seccomp.h are available])
+          sniproxy_have_seccomp=yes
+        ])
+      ])
+      AS_IF([test "x$sniproxy_have_seccomp" != "xyes"], [
+        AS_IF([test "x$enable_seccomp" = "xyes"],
+          [AC_MSG_ERROR([libseccomp not found and --enable-seccomp given])])
+        AC_MSG_WARN([libseccomp not found: building without the seccomp sandbox])
       ])
     ])
-    AS_IF([test "x$sniproxy_have_seccomp" != "xyes"],
-      [AC_MSG_WARN([libseccomp not found: building without the seccomp sandbox])])
     # Needed to keep CAP_NET_RAW for "source client" after dropping root.
     AC_CHECK_HEADERS([linux/capability.h])
     ;;
 esac
 AC_SUBST([LIBSECCOMP_LIBS])
+AC_SUBST([LIBSECCOMP_CFLAGS])
 
 # Check for Capsicum (FreeBSD only)
 case "$host_os" in

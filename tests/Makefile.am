@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/src -g $(LIBEV_CFLAGS) $(PCRE2_CFLAGS) $(HARDEN_CPPFLAGS)
+AM_CPPFLAGS = -I$(top_srcdir)/src -g $(LIBEV_CFLAGS) $(PCRE2_CFLAGS) $(LIBSECCOMP_CFLAGS) $(HARDEN_CPPFLAGS)
 AM_CFLAGS = -fno-strict-aliasing -Wall -Wextra -Wpedantic -Wwrite-strings $(HARDEN_CFLAGS) $(SANITIZER_CFLAGS)
 AM_LDFLAGS = $(HARDEN_LDFLAGS) $(SANITIZER_LDFLAGS)
 
