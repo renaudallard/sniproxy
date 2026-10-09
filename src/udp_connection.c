@@ -131,6 +131,8 @@ static void udp_connect_server(struct UDPSession *, struct ev_loop *);
 static void udp_resolv_cb(struct Address *, void *);
 static void udp_free_resolv_cb_data(void *);
 static void udp_server_cb(struct ev_loop *, struct ev_io *, int);
+static int udp_server_recv_one(struct ev_loop *, struct UDPSession *);
+static int udp_recv_one(struct ev_loop *, struct Listener *, int);
 static void udp_session_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static uint32_t udp_hash_addr(const struct sockaddr_storage *, socklen_t);
 static int udp_sockaddr_equal(const struct sockaddr_storage *, socklen_t,
@@ -173,14 +175,24 @@ udp_sessions_recount_per_ip(void) {
 void
 udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct Listener *listener = (struct Listener *)w->data;
+
+    if (!(revents & EV_READ))
+        return;
+
+    for (int i = 0; i < UDP_READ_BATCH; i++)
+        if (!udp_recv_one(loop, listener, w->fd))
+            break;
+}
+
+/* Read and handle one datagram from a listener socket. Returns 0 when
+ * there was none to read. */
+static int
+udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
     char buf[UDP_MAX_DGRAM];
     struct sockaddr_storage client_addr;
     struct iovec iov = { buf, sizeof(buf) };
     union udp_control control;
     struct msghdr msg;
-
-    if (!(revents & EV_READ))
-        return;
 
     memset(&msg, 0, sizeof(msg));
     msg.msg_name = &client_addr;
@@ -190,9 +202,11 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     msg.msg_control = control.buf;
     msg.msg_controllen = sizeof(control.buf);
 
-    ssize_t n = recvmsg(w->fd, &msg, 0);
-    if (n <= 0)
-        return;
+    ssize_t n = recvmsg(fd, &msg, 0);
+    if (n < 0)
+        return 0;
+    if (n == 0)
+        return 1;
     socklen_t addr_len = msg.msg_namelen;
 
     uint32_t hash = udp_hash_addr(&client_addr, addr_len);
@@ -221,7 +235,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
              * already swapped to idle timeout above. */
             if (!udp_session_charge_per_ip(session)) {
                 udp_session_destroy(session, loop);
-                return;
+                return 1;
             }
             udp_parse_and_resolve(session, buf, (size_t)n, loop);
             break;
@@ -229,7 +243,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
             /* Drop; DTLS client will retransmit after resolution */
             break;
         }
-        return;
+        return 1;
     }
 
     /* ACL check */
@@ -238,7 +252,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         debug("UDP connection from %s denied by ACL",
                 display_sockaddr(&client_addr, addr_len,
                         client, sizeof(client)));
-        return;
+        return 1;
     }
 
     /* New sessions have a per-IP rate of their own, apart from that of
@@ -247,7 +261,7 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
      * table. */
     if (!connections_udp_session_rate_limit_allow(&client_addr, ev_now(loop))) {
         debug("UDP session rate limited");
-        return;
+        return 1;
     }
 
     if (session_count >= UDP_MAX_SESSIONS) {
@@ -259,14 +273,14 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         if (oldest == NULL) {
             debug("UDP session limit (%d) reached, dropping datagram",
                     UDP_MAX_SESSIONS);
-            return;
+            return 1;
         }
         udp_session_destroy(oldest, loop);
     }
 
     session = udp_session_create(listener, &client_addr, addr_len, hash, loop);
     if (session == NULL)
-        return;
+        return 1;
     session->local_addr_len = udp_datagram_dst(&msg, &session->local_addr);
 
     /* Session starts in UDP_VALIDATING state. The datagram is not forwarded
@@ -274,23 +288,35 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
      * clients send by design (RFC 6347 section 4.2.4). A single spoofed
      * packet therefore never reaches a backend; an attacker who forges
      * more than one is left to the backend's own cookie exchange. */
+
+    return 1;
 }
 
 static void
 udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct UDPSession *session = (struct UDPSession *)w->data;
-    char buf[UDP_MAX_DGRAM];
 
     if (!(revents & EV_READ))
         return;
 
+    for (int i = 0; i < UDP_READ_BATCH; i++)
+        if (!udp_server_recv_one(loop, session))
+            break;
+}
+
+/* Pass one datagram from the backend on to the client. Returns 0 when
+ * there was none to read or the session is gone. */
+static int
+udp_server_recv_one(struct ev_loop *loop, struct UDPSession *session) {
+    char buf[UDP_MAX_DGRAM];
+
     ssize_t n = recv(session->server_fd, buf, sizeof(buf), 0);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return;
+            return 0;
         debug("UDP recv from server failed: %s", strerror(errno));
         udp_session_destroy(session, loop);
-        return;
+        return 0;
     }
 
     /* n == 0 is a valid zero-length UDP datagram, not a connection close */
@@ -301,7 +327,7 @@ udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
      * with EBADF instead of writing to a recycled fd number. */
     int listener_fd = session->listener->watcher.fd;
     if (listener_fd < 0)
-        return;
+        return 0;
 
     if (udp_send_from(listener_fd, buf, (size_t)n, session) < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK)
@@ -311,6 +337,8 @@ udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     /* The idle timer is left alone: only the client keeps a session
      * alive, as its address may be forged, and a backend sending on its
      * own would otherwise have sniproxy send to that address forever. */
+
+    return 1;
 }
 
 /*

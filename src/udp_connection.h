@@ -44,5 +44,7 @@ void udp_print_sessions(FILE *);
 #define UDP_MAX_DGRAM 65535
 #define UDP_MAX_PENDING_DGRAM 4096
 #define UDP_MAX_SESSIONS 16384
+/* Datagrams read from one socket per wakeup */
+#define UDP_READ_BATCH 64
 
 #endif
