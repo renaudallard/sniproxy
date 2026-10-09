@@ -532,10 +532,19 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
 
-    FILE *file = fopen(config->filename, "r");
+    /* O_NONBLOCK keeps a FIFO with no writer from blocking the open,
+     * which is then refused below */
+    int config_fd = open(config->filename, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    int config_flags;
+    FILE *file = NULL;
+    if (config_fd >= 0 && (config_flags = fcntl(config_fd, F_GETFL)) != -1 &&
+            fcntl(config_fd, F_SETFL, config_flags & ~O_NONBLOCK) != -1)
+        file = fdopen(config_fd, "r");
     if (file == NULL) {
         err("%s: unable to open configuration file: %s",
                 __func__, config->filename);
+        if (config_fd >= 0)
+            close(config_fd);
         free_config(config, loop);
         return NULL;
     }
@@ -556,9 +565,23 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     }
 
     /* Reading a directory fails, which would otherwise look like the
-     * end of an empty configuration */
+     * end of an empty configuration, and so does reading a FIFO no one
+     * writes to. A pipe named by a path such as /dev/stdin or /dev/fd/63,
+     * as <(...) in a shell gives, has a writer: the path is then not a
+     * FIFO itself. */
     if (S_ISDIR(config_st.st_mode)) {
         err("%s: configuration file %s is a directory",
+                __func__, config->filename);
+        fclose(file);
+        free_config(config, loop);
+        return NULL;
+    }
+    struct stat path_st;
+    if (!S_ISREG(config_st.st_mode) &&
+            !(S_ISFIFO(config_st.st_mode) &&
+                lstat(config->filename, &path_st) == 0 &&
+                !S_ISFIFO(path_st.st_mode))) {
+        err("%s: configuration file %s is not a regular file",
                 __func__, config->filename);
         fclose(file);
         free_config(config, loop);
