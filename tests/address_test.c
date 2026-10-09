@@ -87,6 +87,11 @@ static const char *bad[] = {
     "[::1]:80:81",
     "[::1]junk",
     "[::1]:80x",
+    /* brackets hold an IPv6 address and nothing else */
+    "[192.0.2.1]",
+    "[192.0.2.1]:80",
+    "[backend.example]:8080",
+    "[]:80",
     /* unix socket paths must be absolute */
     "unix:",
     "unix:relative.sock"

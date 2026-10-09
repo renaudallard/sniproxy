@@ -168,10 +168,12 @@ new_address(const char *hostname_or_ip) {
         }
 
         /* [IPv6 address], nothing may follow the closing bracket once the
-         * port has been split off */
+         * port has been split off. Brackets hold nothing else: what they
+         * hold is not looked at as a hostname. */
         memset(&s, 0, sizeof(s));
-        if (input[0] == '[' &&
-                (port = strchr(input, ']')) != NULL && port[1] == '\0') {
+        if (input[0] == '[') {
+            if ((port = strchr(input, ']')) == NULL || port[1] != '\0')
+                return NULL;
             len = (size_t)(port - input - 1);
             if (len >= sizeof(ip_buf))
                 return NULL;
@@ -185,12 +187,12 @@ new_address(const char *hostname_or_ip) {
             ip_buf[len] = '\0';
 
             if (inet_pton(AF_INET6, ip_buf,
-                          &s.in6.sin6_addr) == 1) {
-                s.in6.sin6_family = AF_INET6;
+                          &s.in6.sin6_addr) != 1)
+                return NULL;
+            s.in6.sin6_family = AF_INET6;
 
-                return apply_port_if_needed(new_address_sa(&s.a, sizeof(s.in6)),
-                        has_port, parsed_port);
-            }
+            return apply_port_if_needed(new_address_sa(&s.a, sizeof(s.in6)),
+                    has_port, parsed_port);
         }
 
         /* hostname */
