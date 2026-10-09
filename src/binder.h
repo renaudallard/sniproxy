@@ -32,6 +32,7 @@
 
 void start_binder(uid_t, gid_t, int);
 int binder_register_allowed_address(const struct sockaddr *, size_t);
+int binder_unix_path_allowed(const char *);
 /* ipv6_v6only: -1 keeps the system default, 0 clears IPV6_V6ONLY, 1 sets it */
 int bind_socket(const struct sockaddr *, size_t, int sock_type, int ipv6_v6only,
         int reuseport);

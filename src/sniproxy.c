@@ -55,9 +55,9 @@
 #include <bsd/unistd.h>
 #endif
 #include <libgen.h>
+#include <sys/un.h>
 #ifdef __OpenBSD__
 #include <limits.h>
-#include <sys/un.h>
 #endif
 #include <ev.h>
 #include "binder.h"
@@ -1011,13 +1011,17 @@ drop_perms(const char *username, const char *groupname) {
         fatal("logger_drop_privileges(): %s", strerror(errno));
 }
 
+/* Whether a unix socket listener is in a directory the binder could bind
+ * one in again after a reload */
 static int
 config_has_unix_listener(const struct Config *cfg) {
     const struct Listener *listener;
 
     SLIST_FOREACH(listener, &cfg->listeners, entries) {
         const struct sockaddr *sa = address_sa(listener->address);
-        if (sa != NULL && sa->sa_family == AF_UNIX)
+        if (sa != NULL && sa->sa_family == AF_UNIX &&
+                binder_unix_path_allowed(
+                    ((const struct sockaddr_un *)sa)->sun_path))
             return 1;
     }
 

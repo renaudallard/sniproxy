@@ -932,18 +932,22 @@ binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
              * applies only when actually binding so that allowlist
              * registration of user-bindable listener paths cannot fail.
              * No ".." component may escape the prefix. */
-            for (const char *p = sun->sun_path;
-                    (p = strstr(p, "/..")) != NULL; p += 3)
-                if (p[3] == '/' || p[3] == '\0')
-                    return 0;
-            if (strncmp(sun->sun_path, "/run/", 5) != 0 &&
-                    strncmp(sun->sun_path, "/var/run/", 9) != 0)
-                return 0;
-            return 1;
+            return binder_unix_path_allowed(sun->sun_path);
         }
         default:
             return 0;
     }
+}
+
+/* Whether the binder may create a unix socket at path: below /run or
+ * /var/run, with no ".." component */
+int
+binder_unix_path_allowed(const char *path) {
+    for (const char *p = path; (p = strstr(p, "/..")) != NULL; p += 3)
+        if (p[3] == '/' || p[3] == '\0')
+            return 0;
+
+    return strncmp(path, "/run/", 5) == 0 || strncmp(path, "/var/run/", 9) == 0;
 }
 
 static int

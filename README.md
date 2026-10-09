@@ -140,9 +140,10 @@ SNIProxy runs as four cooperating processes:
    socket paths whose directory really lies under `/run` or `/var/run`,
    symlinks resolved. On Linux it does not keep root: it switches to the
    configured user with only the `CAP_NET_BIND_SERVICE` capability, and
-   `CAP_DAC_OVERRIDE` as well when a listener is a Unix socket at
-   startup, so a Unix socket listener a reload adds in a directory that
-   user cannot write needs one already configured, or a restart. With
+   `CAP_DAC_OVERRIDE` as well when a Unix socket listener at startup
+   is under `/run` or `/var/run`, so a Unix socket listener a reload adds
+   in a directory that user cannot write needs one already configured
+   there, or a restart. With
    `CAP_DAC_OVERRIDE` a compromised binder could still read any file.
 3. **`sniproxy-logger`**: writes the log files. The main loop sends it
    log lines over an encrypted, authenticated Unix socket.
