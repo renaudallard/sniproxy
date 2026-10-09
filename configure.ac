@@ -314,7 +314,7 @@ case "$host_os" in
     ;;
 esac
 
-AC_CHECK_FUNCS([accept4 closefrom daemon setproctitle setproctitle_init mkostemp explicit_bzero memset_s])
+AC_CHECK_FUNCS([accept4 closefrom daemon setproctitle setproctitle_init explicit_bzero memset_s])
 
 # Enable large file support (so we can log more than 2GB)
 AC_SYS_LARGEFILE

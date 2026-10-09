@@ -59,6 +59,7 @@ void logger_set_daemon_mode(void);
 void logger_parent_notify_pledged(void);
 void logger_chown_files(uid_t uid, gid_t gid);
 void logger_restrict_files(void);
+int logger_files_write_only(void);
 int logger_drop_privileges(uid_t uid, gid_t gid);
 void logger_start_health_check(struct ev_loop *loop);
 void logger_stop_health_check(void);

@@ -139,14 +139,16 @@ it runs without that privilege\&.
 .TP
 .B SIGUSR1
 Dump all active TCP connections and UDP sessions to a new
-.I connections-XXXXXX
+.I connections-XXXXXXXX
 file for debugging, and log its path at notice priority\&. The file is
 created in
 .I $XDG_RUNTIME_DIR/sniproxy\fR,
 .I /var/run/sniproxy\fR,
 or
 .I /tmp/sniproxy-<uid>
-(tried in that order)\&.
+(tried in that order)\&. When sniproxy was started as root, the file has
+mode 0200, like the log files, so that a helper process running as the
+same user cannot read it: read it as root\&.
 
 .TP
 .B SIGINT\fR, \fBSIGTERM

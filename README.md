@@ -370,9 +370,10 @@ the resolver's `nameserver`, `search`, `mode` and `dnssec_validation`
 `tcp_fastopen`, `reuseport` and `ipv6_v6only`. So does a `source client`
 added by a reload when sniproxy was started as root with no listener
 using it. SIGUSR1 dumps the live connection table to a temporary
-`connections-XXXXXX` file under
+`connections-XXXXXXXX` file under
 `$XDG_RUNTIME_DIR/sniproxy`, `/var/run/sniproxy`, or
-`/tmp/sniproxy-<uid>` (tried in that order). Both signals are meant for
+`/tmp/sniproxy-<uid>` (tried in that order); after a root start it has
+mode 0200, as the log files do, so read it as root. Both signals are meant for
 the main process; the helper processes ignore them, so signalling them
 all, as `pkill -HUP sniproxy` does, is safe.
 

@@ -558,9 +558,8 @@ Once CONNECTED, the connection enters steady-state proxying:
   mistakes do not leak secrets when starting or reloading the daemon.
 - **Configuration hardening (0.9.8)**: Reloads repeat the permission checks,
   all configured paths must be absolute, resolver cancellation takes the
-  query list mutex, and temporary connection dumps are created by
-  `mkostemp()` with O_CLOEXEC, whose O_CREAT|O_EXCL already refuses to
-  follow a symlink.
+  query list mutex, and temporary connection dumps are created with
+  O_CREAT|O_EXCL and O_CLOEXEC, which refuses to follow a symlink.
 
 ### PROXY Protocol Support
 

@@ -743,8 +743,17 @@ print_connections(void) {
     }
 
     char filename[PATH_MAX];
-    int fd;
-    int need_set_cloexec = 1;
+    char dump_name[64];
+    int fd = -1;
+    int attempts = 0;
+    int open_flags = O_WRONLY | O_CREAT | O_EXCL;
+    /* Like the log files, write-only once they were handed over by root:
+     * a helper process compromised from the network runs as the same
+     * user and must not read the clients' addresses from the dump */
+    mode_t dump_mode = logger_files_write_only() ? S_IWUSR : S_IRUSR | S_IWUSR;
+#ifdef O_CLOEXEC
+    open_flags |= O_CLOEXEC;
+#endif
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
     /* basename used by unlinkat() on the cap-mode cleanup paths.  Empty
      * string means we never opened via openat (so use plain unlink). */
@@ -752,59 +761,32 @@ print_connections(void) {
     cap_basename[0] = '\0';
 #endif
 
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-    if (tempdir_fd >= 0) {
-        /* In capability mode, use openat() with a random name */
-        int attempts = 0;
-        do {
-            uint32_t rnd = arc4random();
-            snprintf(cap_basename, sizeof(cap_basename),
-                    "connections-%08x", rnd);
-            fd = openat(tempdir_fd, cap_basename,
-                    O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
-            if (fd >= 0) {
-                need_set_cloexec = 0;
-                snprintf(filename, sizeof(filename), "%s/%s",
-                        temp_dir, cap_basename);
-                break;
-            }
-        } while (errno == EEXIST && ++attempts < 16);
-        if (fd < 0) {
-            warn("openat failed: %s", strerror(errno));
-            return;
-        }
-    } else
-#endif
-    {
-        if (snprintf(filename, sizeof(filename), "%s/connections-XXXXXX",
-                    temp_dir) >= (int)sizeof(filename)) {
+    /* O_CREAT | O_EXCL refuses to follow a symlink at the chosen name */
+    mode_t old_umask = umask(077);
+    do {
+        snprintf(dump_name, sizeof(dump_name), "connections-%08x",
+                (unsigned int)arc4random());
+        if (snprintf(filename, sizeof(filename), "%s/%s", temp_dir,
+                    dump_name) >= (int)sizeof(filename)) {
+            umask(old_umask);
             warn("Temp filename path too long");
             return;
         }
-
-        mode_t old_umask = umask(077);
-#ifdef HAVE_MKOSTEMP
-        /* O_CREAT | O_EXCL, which mkostemp() uses, already refuses to
-         * follow a symlink at the chosen name. O_NOFOLLOW would add
-         * nothing and OpenBSD rejects it, and any flag other than
-         * O_APPEND, O_CLOEXEC, O_CLOFORK and O_SYNC, with EINVAL. */
-        int mkostemp_flags = 0;
-#ifdef O_CLOEXEC
-        mkostemp_flags |= O_CLOEXEC;
-#endif
-        fd = mkostemp(filename, mkostemp_flags);
-#ifdef O_CLOEXEC
-        if (mkostemp_flags & O_CLOEXEC)
-            need_set_cloexec = 0;
-#endif
-#else
-        fd = mkstemp(filename);
-#endif
-        umask(old_umask);
-        if (fd < 0) {
-            warn("mkstemp failed: %s", strerror(errno));
-            return;
+#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
+        /* In capability mode, only openat() relative to the directory */
+        if (tempdir_fd >= 0) {
+            fd = openat(tempdir_fd, dump_name, open_flags, dump_mode);
+            if (fd >= 0)
+                memcpy(cap_basename, dump_name, sizeof(cap_basename));
+            continue;
         }
+#endif
+        fd = open(filename, open_flags, dump_mode);
+    } while (fd < 0 && errno == EEXIST && ++attempts < 16);
+    umask(old_umask);
+    if (fd < 0) {
+        warn("Failed to create %s: %s", filename, strerror(errno));
+        return;
     }
 
     /* Cleanup helper: in cap mode, unlinkat(tempdir_fd, cap_basename) is
@@ -821,30 +803,14 @@ print_connections(void) {
 #define CLEANUP_DUMP_FILE() (void)unlink(filename)
 #endif
 
-    if (need_set_cloexec && set_cloexec(fd) < 0) {
+#ifndef O_CLOEXEC
+    if (set_cloexec(fd) < 0) {
         warn("set_cloexec failed for %s: %s", filename, strerror(errno));
         close(fd);
         CLEANUP_DUMP_FILE();
         return;
     }
-
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
-        warn("fstat failed for %s: %s", filename, strerror(errno));
-        close(fd);
-        CLEANUP_DUMP_FILE();
-        return;
-    }
-
-    mode_t desired_mode = S_IRUSR | S_IWUSR;
-    if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
-        if (fchmod(fd, desired_mode) != 0) {
-            warn("fchmod failed for %s: %s", filename, strerror(errno));
-            close(fd);
-            CLEANUP_DUMP_FILE();
-            return;
-        }
-    }
+#endif
 
     FILE *temp = fdopen(fd, "w");
     if (temp == NULL) {

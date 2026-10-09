@@ -705,6 +705,12 @@ logger_for_each_file_sink(void (*callback)(const char *, void *), void *userdata
     }
 }
 
+/* Whether files handed over by root lose their owner's read permission */
+int
+logger_files_write_only(void) {
+    return log_files_write_only;
+}
+
 void
 logger_chown_files(uid_t uid, gid_t gid) {
     struct LogSink *sink;
