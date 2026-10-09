@@ -1,0 +1,90 @@
+#!/usr/bin/env perl
+
+# per_ip_connection_rate refuses the connections a client opens past its
+# rate, and lets it in again once its allowance has come back.
+
+use strict;
+use warnings;
+use File::Basename;
+use lib dirname (__FILE__);
+use TestUtils;
+use TestHTTPD;
+use File::Temp;
+use IO::Socket::INET;
+
+sub proxy {
+    my $config = shift;
+
+    exec(@_, '../src/sniproxy', '-f', '-c', $config);
+}
+
+# Whether a request through the proxy got an answer
+sub answered($) {
+    my $port = shift;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => 'tcp')
+        or die "couldn't connect: $!";
+    $socket->send("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n");
+
+    my $reply = '';
+    my $buffer;
+    while (defined($socket->recv($buffer, 16384)) && length($buffer) > 0) {
+        $reply .= $buffer;
+    }
+    $socket->close();
+
+    return $reply =~ m{\AHTTP/1\.1 200} ? 1 : 0;
+}
+
+sub main {
+    my $proxy_port = find_free_port();
+    my $httpd_port = find_free_port();
+
+    my ($fh, $config) = File::Temp::tempfile();
+    print $fh <<END;
+user @{[test_user()]}
+group @{[test_group()]}
+per_ip_connection_rate 2
+
+listen 127.0.0.1 $proxy_port {
+    proto http
+}
+
+table {
+    localhost 127.0.0.1 $httpd_port
+}
+END
+    close($fh);
+
+    my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+    start_child('server', \&TestHTTPD::httpd, port => $httpd_port);
+    wait_for_port(port => $httpd_port);
+    wait_for_port(port => $proxy_port);
+    # Let the allowance the port check used come back
+    sleep 2;
+
+    my ($ok, $refused) = (0, 0);
+    for (my $i = 0; $i < 10; $i++) {
+        answered($proxy_port) ? $ok++ : $refused++;
+    }
+    sleep 2;
+    my $later = answered($proxy_port);
+
+    kill 15, $proxy_pid;
+    sleep 1;
+    unlink($config);
+    reap_children();
+
+    # A burst of two at most, and one more per half second
+    if ($ok < 2 || $refused < 3 || !$later) {
+        print "$ok answered and $refused refused of 10 at once, " .
+                ($later ? "" : "not ") . "answered 2 s later\n";
+        exit 1;
+    }
+
+    exit 0;
+}
+
+main();

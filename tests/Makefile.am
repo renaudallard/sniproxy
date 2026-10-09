@@ -27,6 +27,7 @@ TESTS += functional_test \
          half_close_test \
          ipv6_v6only_test \
          proxy_header_test \
+         rate_limit_test \
          reload_test \
          reuseport_test \
          slow_client_test \
@@ -57,6 +58,7 @@ EXTRA_DIST = check_output.sh \
              half_close_test \
              ipv6_v6only_test \
              proxy_header_test \
+             rate_limit_test \
              reload_test \
              reuseport_test \
              slow_client_test \
