@@ -30,22 +30,13 @@ command_args="-c ${sniproxy_config} ${sniproxy_flags}"
 required_files="${sniproxy_config}"
 
 extra_commands="reload"
-reload_cmd="${name}_reload"
+sig_reload="HUP"
 start_precmd="${name}_prestart"
 
 sniproxy_prestart()
 {
 	if [ ! -f "${sniproxy_config}" ]; then
 		err 1 "${sniproxy_config} not found"
-	fi
-}
-
-sniproxy_reload()
-{
-	if [ -f "${pidfile}" ]; then
-		kill -HUP $(cat "${pidfile}")
-	else
-		err 1 "${name} is not running"
 	fi
 }
 

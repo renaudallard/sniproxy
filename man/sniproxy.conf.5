@@ -68,7 +68,10 @@ Specify the path to the pid file, which must be absolute and contain no
 startup is refused while the file names a running process, and
 otherwise it is written before privileges are dropped\&. It is removed at
 exit by the unprivileged process, so its directory must be writable by
-the user sniproxy runs as for that to work.
+the user sniproxy runs as for that to work. In a directory only root can
+write, such as \fI/var/run\fR, the file stays behind after a stop and the
+next start replaces it, unless its process ID has been taken by another
+running process in the meantime, which makes that start fail.
 
 .SS MAX_CONNECTIONS
 
