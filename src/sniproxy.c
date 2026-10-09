@@ -580,6 +580,16 @@ main(int argc, char **argv) {
              "Ensure the config file group is restricted to "
              "the sniproxy user group.");
 
+    /* Looked up before the first unveil() on OpenBSD, which hides the
+     * password database, and before -t returns, so that it fails on a
+     * user or group that a start would. A binder started as root on
+     * Linux switches to this user, and the SIGUSR1 dump directory is
+     * made for it. */
+    uid_t run_uid;
+    gid_t run_gid;
+    lookup_user(config->user ? config->user : default_username,
+            config->group, &run_uid, &run_gid);
+
     if (test_config) {
         fprintf(stderr, "configuration file %s test is successful\n",
                 config_file);
@@ -592,14 +602,6 @@ main(int argc, char **argv) {
 #ifdef DEBUG
     warn("SECURITY WARNING: sniproxy built with DEBUG; stack traces and memory addresses may be logged. Not for production use.");
 #endif
-
-    /* Looked up before the first unveil() on OpenBSD, which hides the
-     * password database. A binder started as root on Linux switches to
-     * this user, and the SIGUSR1 dump directory is made for it. */
-    uid_t run_uid;
-    gid_t run_gid;
-    lookup_user(config->user ? config->user : default_username,
-            config->group, &run_uid, &run_gid);
 
 #ifdef __OpenBSD__
     {
@@ -940,6 +942,15 @@ lookup_user(const char *username, const char *groupname, uid_t *uid,
 
       *gid = group->gr_gid;
     }
+
+    /* Root drops its privileges to them, and checks they are gone after */
+    if (geteuid() == 0 && *uid == 0)
+        fatal("user %s is root: sniproxy must run as another user", username);
+    if (geteuid() == 0 && *gid == 0 && groupname != NULL)
+        fatal("group %s is gid 0: sniproxy must run as another group",
+                groupname);
+    if (geteuid() == 0 && *gid == 0)
+        fatal("user %s has gid 0: give sniproxy another group", username);
 }
 
 static void

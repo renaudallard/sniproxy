@@ -62,7 +62,8 @@ logged at startup when this flag is used\&.
 .TP
 -t
 Test configuration and exit\&. Parses the configuration file and reports
-whether it is valid without starting the proxy\&. The log files it names
+whether it is valid without starting the proxy, the user and group to
+run as included: they must exist, and when run as root, not be root's\&. The log files it names
 are opened as they would be at startup, so missing ones are created\&.
 
 .TP
