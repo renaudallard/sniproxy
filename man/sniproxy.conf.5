@@ -614,7 +614,9 @@ the initial client request. If no table directive is specified the
 default, unnamed, table will be used.
 
 The fallback directive specifies a server to be used if the client
-request cannot be parsed or no table entry matches the hostname. It is
+request cannot be parsed, no table entry matches the hostname, or the
+hostname is an IP literal or all digits in its last label where the
+matching entry's target is '*'. It is
 not used when the address of a matching table entry fails to resolve;
 that connection is closed instead, as is a ClientHello refused by the
 TLS version policy or one that attempts a renegotiation, and a DTLS
@@ -762,7 +764,8 @@ unless a listener with a port shares the table, in which case the
 entries without one are only good for that listener and a warning is
 logged.
 IP literals, and names whose last label is
-all digits such as 127.0.0.01, are refused as a '*' target, but a
+all digits such as 127.0.0.01, are not used as a '*' target: the
+request goes to the fallback, or is closed without one. A
 client can still name any host its hostname resolves to: localhost and
 other loopback names included, which with no port on the '*' entry
 leads sniproxy back to its own listener when that listens on a loopback

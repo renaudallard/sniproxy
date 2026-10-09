@@ -185,8 +185,9 @@ listener 0.0.0.0:443 {
     protocol tls
     table https_hosts
 
-    # Used when the ClientHello has no usable SNI, cannot be parsed, or
-    # names a host that matches no table entry
+    # Used when the ClientHello has no usable SNI, cannot be parsed,
+    # names a host that matches no table entry, or names an IP literal
+    # that a '*' entry matches
     fallback 192.0.2.50:443
 
     access_log {
