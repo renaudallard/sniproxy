@@ -100,6 +100,10 @@
 #define RESOLVER_CMD_RESULT     3u
 #define RESOLVER_CMD_SHUTDOWN   4u
 #define RESOLVER_CMD_CRASH     5u
+/* The answer to a query whose lookup of the other address family still
+ * runs, and the end of that lookup */
+#define RESOLVER_CMD_EARLY_RESULT 6u
+#define RESOLVER_CMD_DONE      7u
 
 #define RESOLVER_MAX_HOSTNAME_LEN    1023
 #define RESOLVER_IPC_MAX_PAYLOAD     4096
@@ -307,6 +311,10 @@ static int resolver_restart_timer_active = 0;
 #define RESOLVER_ABANDONED_TIMEOUT 60.0
 static struct ev_timer resolver_abandoned_timer;
 static int resolver_abandoned_timer_active = 0;
+/* Queries answered while the child still looks up their other address
+ * family, linked by next_host: kept until it reports the lookup done, so
+ * that they still count against the DNS limits */
+static struct ResolverPending *resolver_answered = NULL;
 static struct ResolverPending *resolver_pending_restart_list = NULL;
 static pthread_mutex_t resolver_pending_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ResolverDotServer *child_dot_servers = NULL;
@@ -339,6 +347,8 @@ static void resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
 static void resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
+static void resolver_handle_early_result(uint32_t, const uint8_t *, size_t);
+static void resolver_handle_done(uint32_t);
 static int resolver_emit_query(struct ResolverPending *pending);
 static int resolver_submit_query(struct ResolverPending *pending);
 static void resolver_send_unsent(void);
@@ -368,6 +378,9 @@ static void resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int rev
 static void resolver_child_submit_query(uint32_t id, int mode,
         uint32_t affinity_seed, const char *hostname, size_t hostname_len);
 static void resolver_child_send_result(uint32_t id, const struct Address *address, int status);
+static void resolver_child_send_answer(uint32_t, uint32_t,
+        const struct Address *, int);
+static void resolver_child_send(uint32_t, uint32_t, const uint8_t *, size_t);
 static void resolver_child_cancel_all(void);
 static void resolver_child_remove_query(struct ResolverChildQuery *query);
 static void resolver_child_free_query(struct ResolverChildQuery *query);
@@ -452,6 +465,7 @@ struct ResolverChildQuery {
     int pending_v4;
     int pending_v6;
     int marked_for_free;  /* Prevents duplicate marking for deferred free */
+    int answered_early;   /* Answered while a family was still looked up */
     char *hostname;
     struct Address *best_address;
     struct ResolverChildQuery *next;
@@ -939,6 +953,18 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
             iter = next;
         }
     }
+    for (struct ResolverPending **iter = &resolver_answered; *iter != NULL;) {
+        struct ResolverPending *pending = *iter;
+
+        if (now - pending->abandoned >= RESOLVER_ABANDONED_TIMEOUT) {
+            *iter = pending->next_host;
+            pending->next_host = expired;
+            expired = pending;
+        } else {
+            remaining = 1;
+            iter = &pending->next_host;
+        }
+    }
     pthread_mutex_unlock(&resolver_queries_lock);
 
     resolver_free_pending_list(expired, 0);
@@ -1110,6 +1136,12 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
         case RESOLVER_CMD_RESULT:
             resolver_handle_result(id, payload, payload_len);
             break;
+        case RESOLVER_CMD_EARLY_RESULT:
+            resolver_handle_early_result(id, payload, payload_len);
+            break;
+        case RESOLVER_CMD_DONE:
+            resolver_handle_done(id);
+            break;
         case RESOLVER_CMD_CRASH:
             resolver_handle_crash_notice(payload, payload_len);
             break;
@@ -1142,18 +1174,10 @@ resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len) {
     err("%s", message);
 }
 
-static void
-resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) {
-    struct ResolverPending *pending = resolver_take_query(id);
-    if (pending == NULL)
-        return;
-
-    /* Extract the detached clients list from temporary storage.
-     * resolver_take_query() stored it in next_id to safely transfer
-     * ownership of the list to us without holding the mutex. */
-    struct ResolvQuery *clients = (struct ResolvQuery *)pending->next_id;
-    pending->next_id = NULL;
-
+/* The address an answer from the child carries, or NULL for a failed
+ * lookup */
+static struct Address *
+resolver_parse_result(const uint8_t *payload, size_t payload_len) {
     int32_t status = -1;
     struct Address *address = NULL;
 
@@ -1196,6 +1220,23 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
         address = NULL;
     }
 
+    return address;
+}
+
+static void
+resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) {
+    struct ResolverPending *pending = resolver_take_query(id);
+    if (pending == NULL)
+        return;
+
+    /* Extract the detached clients list from temporary storage.
+     * resolver_take_query() stored it in next_id to safely transfer
+     * ownership of the list to us without holding the mutex. */
+    struct ResolvQuery *clients = (struct ResolvQuery *)pending->next_id;
+    pending->next_id = NULL;
+
+    struct Address *address = resolver_parse_result(payload, payload_len);
+
     /* Process the detached clients list. This is now safe from concurrent
      * modification by resolv_cancel() because:
      * 1. The pending is no longer in the hash tables (removed by resolver_take_query)
@@ -1207,7 +1248,7 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
     while (client != NULL) {
         struct ResolvQuery *next_client = client->next_client;
         if (client->client_cb != NULL)
-            client->client_cb((status == 0) ? address : NULL, client->client_cb_data);
+            client->client_cb(address, client->client_cb_data);
         if (client->client_free_cb != NULL)
             client->client_free_cb(client->client_cb_data);
         free(client);
@@ -1219,6 +1260,64 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
 
     free(pending->hostname);
     free(pending);
+}
+
+/* Answer the clients of a query while the child still looks up its other
+ * address family. The query and its handles are kept until the child
+ * reports that lookup done, when their free callbacks release the DNS
+ * limits; it is not shared with new clients, who start one of their own. */
+static void
+resolver_handle_early_result(uint32_t id, const uint8_t *payload,
+        size_t payload_len) {
+    struct ResolverPending *pending = resolver_take_query(id);
+    if (pending == NULL)
+        return;
+
+    struct ResolvQuery *clients = (struct ResolvQuery *)pending->next_id;
+    pending->next_id = NULL;
+
+    struct Address *address = resolver_parse_result(payload, payload_len);
+
+    for (struct ResolvQuery *client = clients; client != NULL;
+            client = client->next_client) {
+        void (*client_cb)(struct Address *, void *) = client->client_cb;
+
+        client->client_cb = NULL;
+        if (client_cb != NULL)
+            client_cb(address, client->client_cb_data);
+    }
+
+    if (address != NULL)
+        free(address);
+
+    pthread_mutex_lock(&resolver_queries_lock);
+    pending->clients = clients;
+    if (resolver_loop_ref != NULL)
+        pending->abandoned = ev_now(resolver_loop_ref);
+    pending->next_host = resolver_answered;
+    resolver_answered = pending;
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    resolver_watch_abandoned();
+}
+
+static void
+resolver_handle_done(uint32_t id) {
+    struct ResolverPending *pending = NULL;
+
+    pthread_mutex_lock(&resolver_queries_lock);
+    for (struct ResolverPending **iter = &resolver_answered; *iter != NULL;
+            iter = &(*iter)->next_host) {
+        if ((*iter)->id == id) {
+            pending = *iter;
+            *iter = pending->next_host;
+            pending->next_host = NULL;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&resolver_queries_lock);
+
+    resolver_free_pending_list(pending, 0);
 }
 
 static int
@@ -1463,6 +1562,13 @@ resolver_detach_pending_queries(void) {
         }
     }
     memset(resolver_queries, 0, sizeof(resolver_queries));
+    /* The child that ran their lookups is gone */
+    while (resolver_answered != NULL) {
+        struct ResolverPending *pending = resolver_answered;
+        resolver_answered = pending->next_host;
+        pending->next_host = pending_list;
+        pending_list = pending;
+    }
     while (resolver_unsent_head != NULL) {
         struct ResolverPending *pending = resolver_unsent_head;
         resolver_unsent_head = pending->next_unsent;
@@ -2085,6 +2191,12 @@ resolver_child_submit_query(uint32_t id, int mode,
 
 static void
 resolver_child_send_result(uint32_t id, const struct Address *address, int status) {
+    resolver_child_send_answer(RESOLVER_CMD_RESULT, id, address, status);
+}
+
+static void
+resolver_child_send_answer(uint32_t type, uint32_t id,
+        const struct Address *address, int status) {
     uint32_t addr_len = 0;
 
     if (status == 0) {
@@ -2108,20 +2220,29 @@ resolver_child_send_result(uint32_t id, const struct Address *address, int statu
     if (status == 0 && addr_len > 0)
         memcpy(payload + offset, address_sa(address), addr_len);
 
-    struct resolver_ipc_header header;
-    header.type = htonl(RESOLVER_CMD_RESULT);
-    header.id = htonl(id);
-    header.payload_len = htonl((uint32_t)(offset + (status == 0 ? addr_len : 0)));
+    resolver_child_send(type, id, payload,
+            offset + (status == 0 ? addr_len : 0));
+}
 
-    uint8_t buffer[sizeof(header) + sizeof(payload)];
+static void
+resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
+        size_t payload_len) {
+    struct resolver_ipc_header header;
+    header.type = htonl(type);
+    header.id = htonl(id);
+    header.payload_len = htonl((uint32_t)payload_len);
+
+    uint8_t buffer[sizeof(header) + RESOLVER_IPC_MAX_PAYLOAD];
+    if (payload_len > RESOLVER_IPC_MAX_PAYLOAD)
+        return;
     memcpy(buffer, &header, sizeof(header));
-    memcpy(buffer + sizeof(header), payload, offset + (status == 0 ? addr_len : 0));
+    if (payload_len > 0)
+        memcpy(buffer + sizeof(header), payload, payload_len);
 
     uint8_t *frame = NULL;
     size_t frame_len = 0;
     if (ipc_crypto_seal(&resolver_ipc_crypto, buffer,
-            sizeof(header) + offset + (status == 0 ? addr_len : 0),
-            &frame, &frame_len) < 0) {
+            sizeof(header) + payload_len, &frame, &frame_len) < 0) {
         err("resolver child: crypto seal failed");
         return;
     }
@@ -2539,8 +2660,13 @@ resolver_child_process_callback(struct ResolverChildQuery *query) {
     }
 
     if (!query->cancelled) {
+        /* With a lookup of the other family still running the parent is
+         * told so, and keeps counting the query until it is done */
+        query->answered_early = query->pending_v4 > 0 || query->pending_v6 > 0;
         debug_log("resolver child: sending result for query_id=%u", query->id);
-        resolver_child_send_result(query->id, best_address, best_address == NULL ? -1 : 0);
+        resolver_child_send_answer(query->answered_early ?
+                RESOLVER_CMD_EARLY_RESULT : RESOLVER_CMD_RESULT,
+                query->id, best_address, best_address == NULL ? -1 : 0);
     }
 
     /* Query lifetime is managed by the caller once pending lookups finish. */
@@ -3564,6 +3690,9 @@ resolver_child_maybe_free_query(struct ResolverChildQuery *query) {
                   query->id, query->callback_completed, query->cancelled);
 
         query->marked_for_free = 1;
+
+        if (query->answered_early && !query->cancelled && !child_shutting_down)
+            resolver_child_send(RESOLVER_CMD_DONE, query->id, NULL, 0);
 
         /* Move the query onto the deferred free list, taking it off the
          * active list first so it lives on exactly one list. During normal
