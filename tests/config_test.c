@@ -33,6 +33,7 @@
 #include <grp.h>
 #include <arpa/inet.h>
 #include "config.h"
+#include "connection.h"
 #include "listener.h"
 
 static char *generated_log_path;
@@ -361,6 +362,67 @@ test_duplicate_listener_rejected(void) {
     return 0;
 }
 
+static int
+backend_allowed(int family, const char *ip) {
+    struct sockaddr_storage ss;
+
+    memset(&ss, 0, sizeof(ss));
+    ss.ss_family = (sa_family_t)family;
+    if (family == AF_INET)
+        inet_pton(AF_INET, ip, &((struct sockaddr_in *)&ss)->sin_addr);
+    else
+        inet_pton(AF_INET6, ip, &((struct sockaddr_in6 *)&ss)->sin6_addr);
+
+    return !sockaddr_is_multicast(&ss) && backend_acl_allows(&ss);
+}
+
+/* A backend_acl refuses the ranges it lists, their IPv4-mapped form and
+ * the unspecified addresses, and multicast groups are refused with or
+ * without one. */
+static int
+test_backend_acl(void) {
+    struct Config *config = load_test_config(
+            "backend_acl allow_except {\n"
+            "    10.0.0.0/8\n"
+            "}\n"
+            "listen 127.0.0.1:8080 {\n"
+            "    proto http\n"
+            "}\n"
+            "table {\n"
+            "    example.com 192.0.2.1:80\n"
+            "}\n");
+    int ok;
+
+    if (config == NULL) {
+        fprintf(stderr, "backend_acl test config failed to load\n");
+        return 1;
+    }
+
+    connections_set_backend_acl(config->backend_acl_mode,
+            &config->backend_acl_rules);
+    ok = !backend_allowed(AF_INET, "10.1.2.3") &&
+            !backend_allowed(AF_INET6, "::ffff:10.1.2.3") &&
+            !backend_allowed(AF_INET, "0.0.0.0") &&
+            !backend_allowed(AF_INET6, "::") &&
+            !backend_allowed(AF_INET, "239.255.42.42") &&
+            backend_allowed(AF_INET, "192.0.2.1") &&
+            backend_allowed(AF_INET6, "2001:db8::1");
+
+    connections_set_backend_acl(LISTENER_ACL_MODE_DISABLED, NULL);
+    ok = ok && !backend_allowed(AF_INET, "224.0.0.1") &&
+            !backend_allowed(AF_INET6, "ff02::1") &&
+            !backend_allowed(AF_INET6, "::ffff:239.1.1.1") &&
+            backend_allowed(AF_INET, "10.1.2.3");
+
+    free_config(config, EV_DEFAULT);
+    if (!ok) {
+        fprintf(stderr, "backend_acl or multicast check failed\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -414,6 +476,9 @@ int main(int argc, char **argv) {
         return 1;
 
     if (test_duplicate_listener_rejected() != 0)
+        return 1;
+
+    if (test_backend_acl() != 0)
         return 1;
 
     return 0;
