@@ -56,6 +56,7 @@ sub make_transparent_config($$) {
 
 user @{[test_user()]}
 group @{[test_group()]}
+per_ip_connection_rate 0
 
 listen 192.0.2.5 $proxy_port {
     proto http
