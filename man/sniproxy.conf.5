@@ -323,7 +323,8 @@ without \&.\&. components, and these two options are mutually
 exclusive. The file must be a regular file with a single link: a
 symlink, a FIFO or a file with more than one hard link is refused,
 because log files are opened as root and then handed to the configured
-user. That user may append to them but not read them: when sniproxy is
+user. For the same reason, when sniproxy is started as root, a symlink
+among the directories of the path is only followed when root owns it. That user may append to them but not read them: when sniproxy is
 started as root, a log file loses its owner's read permission, and one
 created later, as by a reopen after rotation, has mode 0200, so that a
 helper process compromised from the network, which runs as that user,

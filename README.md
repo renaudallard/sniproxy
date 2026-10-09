@@ -656,7 +656,8 @@ afterthought.
   are treated as literal suffixes, not re-parsed by the system resolver.
   Pidfiles refuse to be written over stale sockets, FIFOs or symlinks,
   and log files must be regular files with a single link: a symlink,
-  FIFO or hard link at a log path is refused rather than opened as root.
+  FIFO or hard link at a log path is refused rather than opened as root,
+  and so is a symlink among its directories that root does not own.
 - **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`. The only capability that survives
   the drop is CAP_NET_RAW, on Linux, and only when a listener uses
@@ -830,7 +831,9 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   mode 0200. Read them as root or through a group read permission. If
   logs are rotated by renaming them, the log directory must be writable
   by that user so SIGHUP can create the new file. A log path that is a symlink, a FIFO or a file with more
-  than one hard link is refused ("Too many links" for the latter).
+  than one hard link is refused ("Too many links" for the latter), and
+  on a root start so is one with a symlink not owned by root among its
+  directories.
 - On OpenBSD, the directories holding the log files and the pidfile
   must already exist before launch, because unveil cannot reveal what is
   not there. The files themselves may be missing.

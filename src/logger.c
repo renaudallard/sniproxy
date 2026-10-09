@@ -398,6 +398,120 @@ new_file_logger(const char *filepath) {
     return logger;
 }
 
+/* Symbolic links followed while opening the directory of a log file */
+#define LOG_DIR_MAX_LINKS 16
+
+/*
+ * Open the directory of an absolute log path for root, who hands the file
+ * over to the unprivileged user: a symbolic link on the way is only
+ * followed when root owns it, as a user who can write to one of the
+ * directories could otherwise replace the next one with a link to a
+ * directory of root's and be handed a file created there. Each directory
+ * is opened from the one before with O_NOFOLLOW, so none can be swapped
+ * between a check and the open. Returns a descriptor of the directory and
+ * points *file_basename at the last component of path.
+ */
+static int
+log_dir_open_as_root(const char *path, const char **file_basename) {
+    char rest[PATH_MAX], next[PATH_MAX];
+    const char *slash = strrchr(path, '/');
+    unsigned int links = 0;
+    /* Search permission on each directory is enough, as with an open()
+     * of the whole path */
+#ifdef O_PATH
+    int dir_flags = O_PATH | O_DIRECTORY;
+#else
+    int dir_flags = O_RDONLY | O_DIRECTORY;
+#endif
+#ifdef O_CLOEXEC
+    dir_flags |= O_CLOEXEC;
+#endif
+
+    if (path[0] != '/' || slash == NULL || slash[1] == '\0' ||
+            (size_t)(slash - path) >= sizeof(rest)) {
+        errno = EINVAL;
+        return -1;
+    }
+    *file_basename = slash + 1;
+    memcpy(rest, path, (size_t)(slash - path));
+    rest[slash - path] = '\0';
+
+    int fd = open("/", dir_flags);
+    if (fd < 0)
+        return -1;
+
+    char *p = rest;
+    for (;;) {
+        while (*p == '/')
+            p++;
+        if (*p == '\0')
+            return fd;
+
+        char *end = strchr(p, '/');
+        if (end != NULL)
+            *end = '\0';
+
+        int next_fd = openat(fd, p, dir_flags | O_NOFOLLOW);
+        if (next_fd >= 0) {
+            close(fd);
+            fd = next_fd;
+            if (end == NULL)
+                return fd;
+            p = end + 1;
+            continue;
+        }
+
+        int saved_errno = errno;
+        struct stat st;
+        if (fstatat(fd, p, &st, AT_SYMLINK_NOFOLLOW) < 0 ||
+                !S_ISLNK(st.st_mode)) {
+            close(fd);
+            errno = saved_errno;
+            return -1;
+        }
+        if (st.st_uid != 0) {
+            warn("Refusing log file %s: %s is a symbolic link not owned by root",
+                    path, p);
+            close(fd);
+            errno = EPERM;
+            return -1;
+        }
+        if (++links > LOG_DIR_MAX_LINKS) {
+            close(fd);
+            errno = ELOOP;
+            return -1;
+        }
+
+        char target[PATH_MAX];
+        ssize_t n = readlinkat(fd, p, target, sizeof(target) - 1);
+        if (n <= 0) {
+            saved_errno = n < 0 ? errno : ENOENT;
+            close(fd);
+            errno = saved_errno;
+            return -1;
+        }
+        target[n] = '\0';
+
+        /* Carry on with the link's target and what followed the link */
+        int len = snprintf(next, sizeof(next), "%s/%s", target,
+                end != NULL ? end + 1 : "");
+        if (len < 0 || (size_t)len >= sizeof(next)) {
+            close(fd);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        memcpy(rest, next, (size_t)len + 1);
+        p = rest;
+
+        if (target[0] == '/') {
+            close(fd);
+            fd = open("/", dir_flags);
+            if (fd < 0)
+                return -1;
+        }
+    }
+}
+
 /* Open a log file for appending, relative to dirfd unless it is -1, and
  * fill in st. The file is opened as root at startup and then handed to
  * the unprivileged user, so it must be the regular file named by the
@@ -417,10 +531,21 @@ log_file_open(int dirfd, const char *path, struct stat *st) {
 #endif
 
     int fd;
-    if (dirfd >= 0)
+    if (dirfd >= 0) {
         fd = openat(dirfd, path, open_flags, create_mode);
-    else
+    } else if (geteuid() == 0) {
+        const char *file_basename;
+        int root_dirfd = log_dir_open_as_root(path, &file_basename);
+
+        if (root_dirfd < 0)
+            return -1;
+        fd = openat(root_dirfd, file_basename, open_flags, create_mode);
+        int saved_errno = errno;
+        close(root_dirfd);
+        errno = saved_errno;
+    } else {
         fd = open(path, open_flags, create_mode);
+    }
     if (fd < 0)
         return -1;
 
