@@ -675,7 +675,11 @@ connecting to the backend server. In most cases it is better to omit
 this option and allow the operating system to select the outgoing
 address automatically. Do not include a port number in this address,
 because doing so will limit the proxy to one simultaneous connection to
-each server at a time. The special argument \fBclient\fR enables
+each server at a time. The address only applies to backends of its
+family: TCP connections to a unix socket or to an address of the other
+family leave from the address the operating system selects, while dtls
+sessions to an address of the other family are refused. The special
+argument \fBclient\fR enables
 transparent proxy mode (IP_TRANSPARENT) where supported, preserving the
 original source address when connecting to the backend. A hostname
 backend is then looked up in the client's address family only, but an

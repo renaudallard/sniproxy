@@ -3552,7 +3552,9 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
             abort_connection(con, loop);
             return;
         }
-    } else if (con->listener->source_address) {
+    } else if (con->listener->source_address != NULL &&
+            address_sa(con->listener->source_address)->sa_family ==
+            con->server.addr.ss_family) {
         int on = 1;
         int result = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
         if (result < 0) {
