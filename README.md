@@ -662,11 +662,13 @@ afterthought.
   FIFO or hard link at a log path is refused rather than opened as root,
   and so is a symlink among its directories that root does not own.
 - **Privilege drop verification**: startup aborts if real or effective
-  UID is still 0 after `setuid()`. The only capability that survives
-  the drop is CAP_NET_RAW, on Linux, and only when a listener uses
-  `source client`; the seccomp filter keeps the main process from
-  using it for raw or packet sockets, except on i386, s390x and other
-  systems where socket() goes through socketcall(2).
+  UID is still 0 after `setuid()`. On Linux the main process keeps
+  CAP_NET_RAW, and only when a listener uses `source client`; the
+  seccomp filter keeps it from using it for raw or packet sockets,
+  except on i386, s390x and other systems where socket() goes through
+  socketcall(2). The binder keeps CAP_NET_BIND_SERVICE, and
+  CAP_DAC_OVERRIDE with a Unix socket listener under `/run` or
+  `/var/run`; the logger and resolver keep none.
 - **OpenBSD sandboxing**: every process runs under pledge(2), and the
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it
