@@ -1,3 +1,78 @@
+sniproxy 0.21.0 (2026-10-09)
+===============================
+
+Fixes from a review of 0.20.0.
+
+Upgrade note: a bracketed address that is not an IPv6 address, such as
+[192.0.2.1]:80 in a table entry, fallback or dot:// nameserver, no
+longer loads, and neither does a configuration path that is a named
+pipe. The -t check now looks up the configured user and group, and
+refuses user or group ID 0 when run as root. io_collect_interval now
+defaults to 0. A listener's source address is only bound for backends
+of its address family. After a start as root the SIGUSR1 dump is
+write-only for the user sniproxy runs as, like the log files. On Linux
+the binder keeps CAP_DAC_OVERRIDE only when a unix socket listener at
+startup is under /run or /var/run.
+
+Highlights:
+
+* On OpenBSD every proxied request took about 60 ms instead of 1, and a
+  dtls listener passed at most about 60 datagrams a second: libev slept
+  before each poll, a sleep the kernel rounds up to its clock tick.
+  io_collect_interval now defaults to 0.
+
+* The openSUSE and SUSE packages were built without the seccomp
+  sandbox, as configure did not find seccomp.h there. configure now
+  asks pkg-config, and the packages pass --enable-seccomp, so a build
+  without the sandbox fails.
+
+* A flood of DTLS datagrams from forged sources grew the per-IP rate
+  limiter without bound and made it refuse new TCP clients. Entries
+  made for UDP sources are now limited to 65536 and to half of any
+  chain.
+
+* dtls listeners read up to 64 datagrams per wakeup instead of one, so
+  a flood from one source no longer starves the other clients.
+
+* A ClientHello whose supported_versions extension listed only versions
+  below the -T minimum passed when its legacy version was TLS 1.2. It
+  is now refused.
+
+* HTTP/2 requests whose header fields decode to a little over 64 KiB
+  were refused while smaller and larger ones were routed. They are now
+  routed on the fields before the limit.
+
+* In mode default, ipv4_first and ipv6_first a lookup keeps its place
+  under max_concurrent_queries and max_concurrent_queries_per_client
+  until both address families are done, so lookups whose other family
+  never answers can no longer pile up past the limits.
+
+* After a start as root, a log file's directory is only reached through
+  symlinks owned by root, so a user who can write to a directory above
+  a log file cannot be handed a file created elsewhere.
+
+* A DoT failure at the socket level is logged with its errno instead of
+  "error:00000000:lib(0)::reason(0)".
+
+* A listener's source address no longer makes connections to unix
+  socket backends, or to backends of the other address family, fail.
+
+* A configuration path that is a FIFO no longer blocks the -t check,
+  the startup or a reload.
+
+* The FreeBSD rc script reloads through rc.subr, which only signals a
+  process with sniproxy's name, instead of whatever process ID a stale
+  pidfile held.
+
+* Tests: the backend ACL, the TLS refusals on a listener with a
+  fallback, the per-IP connection rate and a DTLS session are now
+  tested, and CI runs the tests that need root.
+
+* Docs: IP literals matched by a '*' entry go to the fallback; a
+  pidfile in a directory only root can write stays behind after a stop;
+  each DoT lookup opens a new connection; which capabilities the Linux
+  processes keep after the privilege drop.
+
 sniproxy 0.20.0 (2026-10-09)
 ===============================
 

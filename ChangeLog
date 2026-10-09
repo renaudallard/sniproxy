@@ -1,5 +1,37 @@
 2026-10-09  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.21.0
+	- config: io_collect_interval defaults to 0; a bracketed address
+	  must be IPv6; a configuration path that is a FIFO is refused; -t
+	  looks up the user and group, and refuses ID 0 for a root start.
+	- build: seccomp.h is found through pkg-config; --enable-seccomp
+	  makes a missing libseccomp an error and the packages pass it;
+	  --disable-seccomp builds without it.
+	- connection: entries made for UDP sources in the rate limiter are
+	  limited; a full chain is logged as no room for the client; a
+	  listener's source address is only bound for backends of its
+	  family; the SIGUSR1 dump is mode 0200 after a root start.
+	- udp: up to 64 datagrams are read per wakeup.
+	- tls: supported_versions is checked against every -T minimum.
+	- http2: blocks whose fields decode past 64 KiB are routed on the
+	  fields before the limit.
+	- resolv: a lookup keeps its place under the DNS limits until both
+	  address families are done; DoT socket errors are logged with their
+	  errno.
+	- logger: a log file's directory is only reached through symlinks
+	  owned by root after a root start.
+	- binder: CAP_DAC_OVERRIDE is kept only for unix socket listeners
+	  under /run or /var/run.
+	- rc: the FreeBSD script reloads through rc.subr.
+	- tests: backend ACL, TLS refusals with a fallback, per-IP rate,
+	  DTLS session and the 503 of bad_dns_request_test; CI runs the
+	  tests that need root.
+	- docs: IP literals matched by a '*' entry go to the fallback; a
+	  pidfile in a root-only directory stays behind; each DoT lookup
+	  opens a new connection; capabilities kept after the drop.
+
+2026-10-09  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.20.0
 	- tls: a first record that is not a handshake and a ClientHello that
 	  outgrows the client buffer are refused instead of going to the

@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.20.0
+Version: 0.21.0
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -71,6 +71,11 @@ fi
 
 
 %changelog
+* Fri Oct 09 2026 Renaud Allard <renaud@allard.it> 0.21.0-1
+- Fixes from a review of 0.20.0: no sleep before each poll by default,
+  the seccomp sandbox on openSUSE and SUSE, forged DTLS sources can no
+  longer fill the rate limiter. See NEWS.
+
 * Fri Oct 09 2026 Renaud Allard <renaud@allard.it> 0.20.0-1
 - Fixes from a security review of 0.19.2: -T can no longer be bypassed
   through the fallback, DTLS lookups have their own DNS limits, the
