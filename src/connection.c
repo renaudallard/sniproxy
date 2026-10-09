@@ -457,12 +457,17 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     ev_tstamp now = loop_now(loop);
 
-    if (!rate_limit_allow_connection(&con->client.addr, now,
-            RATE_LIMIT_CONNECTION)) {
+    int allowed = rate_limit_allow_connection(&con->client.addr, now,
+            RATE_LIMIT_CONNECTION);
+    if (allowed <= 0) {
         char addrbuf[INET6_ADDRSTRLEN];
         const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
 
-        info("Per-IP connection rate exceeded for %s", ip != NULL ? ip : "(unknown)");
+        if (allowed < 0)
+            info("Per-IP rate limiter has no room for %s, refusing its connection",
+                    ip != NULL ? ip : "(unknown)");
+        else
+            info("Per-IP connection rate exceeded for %s", ip != NULL ? ip : "(unknown)");
         rc = 1;
         goto cleanup;
     }
@@ -1516,6 +1521,9 @@ sockaddr_equal_ip(const struct sockaddr_storage *a, const struct sockaddr_storag
     return 0;
 }
 
+/* Returns 1 when the source may open a connection or session of this kind,
+ * 0 when it went over its rate, and -1 when it cannot be tracked: its
+ * chain is full or its bucket could not be made. */
 static int
 rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
         enum rate_limit_kind kind) {
@@ -1549,7 +1557,7 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
                      chain_length, RATE_LIMIT_MAX_CHAIN_LENGTH, bucket_index);
                 last_warning = now;
             }
-            return 0;  /* Reject connection to prevent rate limit bypass */
+            return -1;  /* Reject connection to prevent rate limit bypass */
         }
 
         if (bucket->addr_hash == hash && bucket->is_v4 == is_v4) {
@@ -1567,12 +1575,12 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
 
         if (udp_created && (rate_limit_udp_count >= RATE_LIMIT_MAX_UDP_BUCKETS ||
                     chain_length >= RATE_LIMIT_MAX_UDP_CHAIN_LENGTH))
-            return 0;
+            return -1;
 
         bucket = rate_limit_bucket_acquire();
         if (bucket == NULL) {
             err("rate limit bucket allocation failed: %s; rejecting connection", strerror(errno));
-            return 0;  /* Fail-closed: reject connection when we can't track rate limits */
+            return -1;  /* Fail-closed: reject connection when we can't track rate limits */
         }
 
         bucket->addr = *addr;
@@ -2243,7 +2251,7 @@ connections_set_tcp_fastopen(int enabled) {
 int
 connections_udp_session_rate_limit_allow(const struct sockaddr_storage *addr,
         ev_tstamp now) {
-    return rate_limit_allow_connection(addr, now, RATE_LIMIT_UDP_SESSION);
+    return rate_limit_allow_connection(addr, now, RATE_LIMIT_UDP_SESSION) > 0;
 }
 
 int
