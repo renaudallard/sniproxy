@@ -191,6 +191,12 @@ static void splice_server_failed(struct Connection *, struct ev_loop *, int);
 #define RATE_LIMIT_IDLE_TTL 300.0
 #define RATE_LIMIT_CLEANUP_INTERVAL 60.0
 #define RATE_LIMIT_MAX_CHAIN_LENGTH 32
+/* Buckets for sources first seen in a UDP datagram, whose address may be
+ * forged: they are limited in number and may only fill half of a chain,
+ * so that forged datagrams cannot grow the table without bound or leave
+ * no room for TCP clients. */
+#define RATE_LIMIT_MAX_UDP_BUCKETS 65536
+#define RATE_LIMIT_MAX_UDP_CHAIN_LENGTH (RATE_LIMIT_MAX_CHAIN_LENGTH / 2)
 
 /* What a source is allowed: TCP connections have one token bucket, and
  * new UDP sessions, whose source address may be forged, one of their own,
@@ -212,6 +218,7 @@ struct RateLimitBucket {
     uint32_t addr_hash;
     uint32_t addr_v4;
     int is_v4;
+    int udp_created;
 };
 
 static struct RateLimitBucket *rate_limit_bucket_acquire(void);
@@ -221,6 +228,7 @@ static struct RateLimitBucket *rate_limit_table[RATE_LIMIT_TABLE_SIZE];
 /* Buckets in the table: an empty table is never scanned, as on OpenBSD
  * even reading an untouched page makes it resident */
 static size_t rate_limit_count;
+static size_t rate_limit_udp_count;
 static struct RateLimitBucket *rate_limit_free_list;
 static size_t rate_limit_free_count;
 #define RATE_LIMIT_MAX_FREE 2048
@@ -1364,6 +1372,7 @@ rate_limit_reset(void) {
     }
 
     rate_limit_count = 0;
+    rate_limit_udp_count = 0;
     rate_limit_last_cleanup = 0.0;
 }
 
@@ -1386,6 +1395,8 @@ rate_limit_cleanup(ev_tstamp now) {
 
             if (now - last_check > RATE_LIMIT_IDLE_TTL) {
                 *current = bucket->next;
+                if (bucket->udp_created)
+                    rate_limit_udp_count--;
                 rate_limit_bucket_release(bucket);
                 rate_limit_count--;
             } else {
@@ -1552,6 +1563,12 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
     }
 
     if (bucket == NULL) {
+        int udp_created = (kind == RATE_LIMIT_UDP_SESSION);
+
+        if (udp_created && (rate_limit_udp_count >= RATE_LIMIT_MAX_UDP_BUCKETS ||
+                    chain_length >= RATE_LIMIT_MAX_UDP_CHAIN_LENGTH))
+            return 0;
+
         bucket = rate_limit_bucket_acquire();
         if (bucket == NULL) {
             err("rate limit bucket allocation failed: %s; rejecting connection", strerror(errno));
@@ -1567,9 +1584,12 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
             bucket->limit[k].allowance = capacity;
         }
         bucket->limit[kind].allowance -= 1.0;
+        bucket->udp_created = udp_created;
         bucket->next = rate_limit_table[bucket_index];
         rate_limit_table[bucket_index] = bucket;
         rate_limit_count++;
+        if (udp_created)
+            rate_limit_udp_count++;
         return 1;
     }
 

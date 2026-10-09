@@ -110,7 +110,12 @@ to 0 to disable per-IP rate limiting entirely. New UDP sessions are
 limited at the same rate with an allowance of their own, apart from TCP
 connections: a datagram's source address can be forged, so forged
 datagrams can hold back the new DTLS sessions of the address they name,
-but never its TCP connections.
+but never its TCP connections. For the same reason at most 65536
+sources first seen in a datagram are tracked at a time, and they may
+take at most half of the room in the rate limiter's table: a flood of
+forged datagrams can make new DTLS sessions be refused until its entries
+expire, about five minutes after their last datagram, but leaves room for TCP
+clients.
 
 .SS PER_IP_MAX_CONNECTIONS
 
