@@ -20,7 +20,8 @@ jobs:
           sudo apt-get install -y \
             autoconf automake libtool pkg-config \
             libev-dev libpcre2-dev libc-ares-dev \
-            libssl-dev libseccomp-dev clang
+            libssl-dev libseccomp-dev clang \
+            iptables tcpdump
           for version in 19 18 17 16 15 14; do
             if sudo apt-get install -y \
               "clang-${version}" \
@@ -51,6 +52,11 @@ jobs:
 
       - name: Run tests
         run: make check
+
+      # They skip without root: the binder's privileged binds as the
+      # configured user, and source client in network namespaces
+      - name: Run the tests that need root
+        run: sudo make -C tests check TESTS="binder_test transparent_proxy_test"
 
       - name: Run fuzzers
         env:
