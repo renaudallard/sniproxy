@@ -543,6 +543,7 @@ seccomp_install_filter(enum seccomp_process_type type) {
  */
 #if defined(__linux__) && defined(HAVE_LINUX_CAPABILITY_H)
 
+#include <errno.h>
 #include <grp.h>
 #include <linux/capability.h>
 #include <string.h>
