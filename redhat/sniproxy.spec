@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.19.2
+Version: 0.20.0
 Release: 1%{?dist}
 Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
 
@@ -71,6 +71,11 @@ fi
 
 
 %changelog
+* Fri Oct 09 2026 Renaud Allard <renaud@allard.it> 0.20.0-1
+- Fixes from a security review of 0.19.2: -T can no longer be bypassed
+  through the fallback, DTLS lookups have their own DNS limits, the
+  Linux binder runs as the configured user. See NEWS.
+
 * Thu Oct 08 2026 Renaud Allard <renaud@allard.it> 0.19.2-1
 - The resolver watches every socket c-ares opens, so lookups no longer
   time out after a nameserver failure with c-ares 1.34.6. See NEWS.

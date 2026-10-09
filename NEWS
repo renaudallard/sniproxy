@@ -1,3 +1,61 @@
+sniproxy 0.20.0 (2026-10-09)
+===============================
+
+Fixes from a security review of 0.19.2.
+
+Upgrade note: on tls listeners, a connection whose first record is a TLS
+record other than a handshake, or whose ClientHello outgrows the client
+buffer, is refused instead of going to the fallback, and so is any
+hostname whose pattern match fails, as on the PCRE2 match limit.
+Multicast backend addresses are refused. After a start as root, the
+user sniproxy runs as can no longer read the log files. On Linux the
+binder runs as that user, so a unix socket listener that a reload adds
+in a directory under /run needs a restart unless one was configured at
+startup, and listeners are created as that user too, so instances
+sharing a port through reuseport must run as the same user.
+
+Highlights:
+
+* -T could still be bypassed through the fallback, by sending a record
+  such as a warning alert before the ClientHello, which Go's crypto/tls
+  and LibreSSL skip, or a ClientHello larger than a lowered
+  client_buffer_limit. Both are now refused.
+
+* Forged DTLS datagrams could still hold back a victim's TCP
+  connections, because UDP lookups used the per-client DNS budget of TCP
+  and the whole global pool. They now have their own per-client count
+  and take at most half of max_concurrent_queries.
+
+* A backend that kept sending to a forged DTLS client kept the session
+  alive and sent its stream to the forged address. Only the client's
+  datagrams now restart the 30 second idle timer.
+
+* A wildcard DTLS table could send a client's datagrams to a multicast
+  group. Multicast backend addresses are now refused.
+
+* A hostname whose pattern match failed, for example on the match limit
+  of a pattern that backtracks heavily, went on to the later entries and
+  the fallback. It is now refused, and the pattern is logged.
+
+* UDP clients using the same link-local address on two links no longer
+  share one session.
+
+* Linux sandbox: a binder started as root runs as the configured user
+  with only CAP_NET_BIND_SERVICE, plus CAP_DAC_OVERRIDE when a unix
+  socket listener is configured at startup, instead of keeping uid 0;
+  the main process can no longer create namespaces, clone3 fails with
+  ENOSYS, and netlink sockets are limited to NETLINK_ROUTE; TIOCLINUX
+  is refused like TIOCSTI.
+
+* A resolver compromised through a DNS answer could read the access
+  and error logs. After a start as root they are write-only for the
+  user sniproxy runs as.
+
+* Docs: the allow_except advice adds 100.64.0.0/10 and the proxy host's
+  own addresses; the acl of a dtls listener only checks source addresses
+  that can be forged; a reload does not change the acl of connections
+  already accepted.
+
 sniproxy 0.19.2 (2026-10-08)
 ===============================
 

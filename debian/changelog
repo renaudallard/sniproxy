@@ -1,3 +1,11 @@
+sniproxy (0.20.0) unstable; urgency=medium
+
+  * Fixes from a security review of 0.19.2: -T can no longer be bypassed
+    through the fallback, DTLS lookups have their own DNS limits, the
+    Linux binder runs as the configured user. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Fri, 09 Oct 2026 09:00:00 +0200
+
 sniproxy (0.19.2) unstable; urgency=medium
 
   * The resolver watches every socket c-ares opens, so lookups no longer

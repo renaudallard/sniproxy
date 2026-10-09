@@ -1,3 +1,26 @@
+2026-10-09  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.20.0
+	- tls: a first record that is not a handshake and a ClientHello that
+	  outgrows the client buffer are refused instead of going to the
+	  fallback, so -T cannot be bypassed through it.
+	- table: a hostname whose pattern match fails is refused instead of
+	  trying the later entries and the fallback.
+	- connection: multicast backend addresses are refused; UDP lookups
+	  have their own per-client DNS count and at most half of
+	  max_concurrent_queries.
+	- udp: only client datagrams restart a session's idle timer; the
+	  session key includes the IPv6 scope.
+	- logger: after a start as root the log files are write-only for the
+	  user sniproxy runs as.
+	- sandbox: the Linux binder runs as the configured user, and IP
+	  listeners are created as that user; the main process cannot create
+	  namespaces, clone3 fails with ENOSYS, netlink is NETLINK_ROUTE only;
+	  TIOCLINUX is refused like TIOCSTI.
+	- docs: allow_except advice adds 100.64.0.0/10 and the host's own
+	  addresses; a dtls acl only checks forgeable sources; a reload keeps
+	  the acl of accepted connections.
+
 2026-10-08  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.19.2
