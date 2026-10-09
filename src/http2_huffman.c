@@ -24,9 +24,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef HAVE_BSD_STDLIB_H
-#include <bsd/stdlib.h>
-#endif
 #include "util.h"
 
 #include "http2_huffman.h"
@@ -44,25 +41,23 @@ struct huffman_node {
     int16_t value;
 };
 
-static struct huffman_node *huffman_tree;
-static size_t huffman_tree_cap;
-static size_t huffman_tree_size;
+/* A full binary tree with one leaf per symbol */
+#define HUFFMAN_TREE_NODES (2 * HPACK_HUFFMAN_TABLE_LENGTH - 1)
+
+static struct huffman_node huffman_tree[HUFFMAN_TREE_NODES];
 static int huffman_built;
 
 static int build_huffman_tree(void);
 
 static int
 build_huffman_tree(void) {
+    size_t size = 1;
+
     if (huffman_built)
         return 1;
 
-    huffman_tree_cap = 512;
-    huffman_tree = calloc(huffman_tree_cap, sizeof(struct huffman_node));
-    if (huffman_tree == NULL)
-        return 0;
-    for (size_t j = 0; j < huffman_tree_cap; j++)
+    for (size_t j = 0; j < HUFFMAN_TREE_NODES; j++)
         huffman_tree[j].value = -1;
-    huffman_tree_size = 1;
 
     for (size_t i = 0; i < HPACK_HUFFMAN_TABLE_LENGTH; i++) {
         uint32_t code = hpack_huffman_table[i].code;
@@ -74,28 +69,9 @@ build_huffman_tree(void) {
             int direction = (code >> (32 - length + bit)) & 0x1;
             int16_t next = huffman_tree[node].child[direction];
             if (next == 0) {
-                if (huffman_tree_size == huffman_tree_cap) {
-                    if (huffman_tree_cap > SIZE_MAX / 2)
-                        return 0;
-
-                    size_t new_cap = huffman_tree_cap * 2;
-                    struct huffman_node *tmp = reallocarray(huffman_tree, new_cap, sizeof(struct huffman_node));
-                    if (tmp == NULL) {
-                        free(huffman_tree);
-                        huffman_tree = NULL;
-                        huffman_tree_cap = 0;
-                        huffman_tree_size = 0;
-                        return 0;
-                    }
-                    memset(tmp + huffman_tree_cap, 0, (new_cap - huffman_tree_cap) * sizeof(struct huffman_node));
-                    for (size_t j = huffman_tree_cap; j < new_cap; j++)
-                        tmp[j].value = -1;
-                    huffman_tree = tmp;
-                    huffman_tree_cap = new_cap;
-                }
-                if (huffman_tree_size > INT16_MAX)
+                if (size == HUFFMAN_TREE_NODES)
                     return 0;
-                next = (int16_t)huffman_tree_size++;
+                next = (int16_t)size++;
                 huffman_tree[node].child[direction] = next;
             }
             node = next;
