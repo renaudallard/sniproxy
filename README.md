@@ -380,10 +380,10 @@ user daemon
 group daemon
 pidfile /var/run/sniproxy.pid
 
-# Let libev batch I/O readiness and timer wakeups (seconds).
-# Defaults trade a tiny amount of latency for throughput; set 0 for
-# the lowest possible latency.
-io_collect_interval      0.0005
+# Let libev batch I/O readiness and timer wakeups (seconds). A
+# non-zero io_collect_interval delays every read by at least one
+# clock tick, 10 ms on OpenBSD; its default is 0.
+io_collect_interval      0
 timeout_collect_interval 0.005
 
 # Cap total simultaneous connections. 0 (the default) derives it from

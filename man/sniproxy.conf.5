@@ -291,12 +291,12 @@ is ignored with an informational log message.
 
 .PP
 .nf
-io_collect_interval 0.0005
+io_collect_interval 0
 timeout_collect_interval 0.005
 .fi
 .PP
 
-Tune how libev batches readiness notifications. \fBio_collect_interval\fR delays the next poll by up to the specified number of seconds so that multiple sockets can become ready before the kernel is queried again. \fBtimeout_collect_interval\fR performs the same batching for timers. Small non-zero values reduce system call pressure and improve throughput on busy instances at the cost of a few hundred microseconds of additional latency. The defaults are the values shown above. Set either value to 0 to disable batching. Larger values than 0.1 for \fBio_collect_interval\fR and 0.5 for \fBtimeout_collect_interval\fR are lowered to those with a warning.
+Tune how libev batches readiness notifications. \fBio_collect_interval\fR makes the main loop sleep up to the specified number of seconds before each poll, so that more sockets are ready when the kernel is queried. Every read then waits for that sleep, which the kernel rounds up to its clock tick: on a system running at 100 Hz, such as OpenBSD, any non-zero value costs 10 to 20 milliseconds per wakeup, several times per connection. \fBtimeout_collect_interval\fR lets timers due within the specified number of seconds fire together; it does not delay I/O. The defaults are the values shown above. Set either value to 0 to disable batching. Larger values than 0.1 for \fBio_collect_interval\fR and 0.5 for \fBtimeout_collect_interval\fR are lowered to those with a warning.
 
 .SS ERROR_LOG
 
