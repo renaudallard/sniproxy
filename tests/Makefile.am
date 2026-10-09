@@ -30,6 +30,7 @@ TESTS += functional_test \
          reload_test \
          reuseport_test \
          slow_client_test \
+         tls_policy_test \
          transparent_proxy_test
 TESTS += config_test \
          resolv_test \
@@ -59,6 +60,7 @@ EXTRA_DIST = check_output.sh \
              reload_test \
              reuseport_test \
              slow_client_test \
+             tls_policy_test \
              transparent_proxy_test \
              bad_dns_request_test \
              TestUtils.pm \

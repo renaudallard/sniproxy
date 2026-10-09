@@ -1,0 +1,183 @@
+#!/usr/bin/env perl
+
+# On a tls listener with a fallback, ClientHellos the -T minimum refuses,
+# or whose version cannot be checked, must not reach the fallback, while
+# one that only matches no table entry does.
+
+use strict;
+use warnings;
+use File::Basename;
+use lib dirname (__FILE__);
+use TestUtils;
+use File::Temp;
+use IO::Select;
+use IO::Socket::INET;
+
+sub proxy {
+    my $config = shift;
+
+    exec(@_, '../src/sniproxy', '-f', '-c', $config);
+}
+
+# Accept connections, and append to the log how many bytes each sent
+sub fallback_server($$) {
+    my ($port, $log) = @_;
+
+    my $server = IO::Socket::INET->new(LocalAddr => '127.0.0.1',
+                                       LocalPort => $port,
+                                       Proto => 'tcp',
+                                       Listen => 10,
+                                       ReuseAddr => 1)
+        or die "couldn't listen on $port: $!";
+
+    while (my $client = $server->accept()) {
+        my $received = 0;
+        my $select = IO::Select->new($client);
+        my $buffer;
+        while ($select->can_read(1)) {
+            my $n = sysread($client, $buffer, 65536);
+            last unless $n;
+            $received += $n;
+        }
+        $client->close();
+
+        open(my $fh, '>>', $log) or die "couldn't open $log: $!";
+        print $fh "$received\n";
+        close($fh);
+    }
+    exit 0;
+}
+
+sub fallback_bytes($) {
+    my $log = shift;
+    my $total = 0;
+
+    open(my $fh, '<', $log) or return 0;
+    while (my $line = <$fh>) {
+        $total += $line;
+    }
+    close($fh);
+
+    return $total;
+}
+
+# A ClientHello for host, in records of at most 16384 bytes, with
+# supported_versions listing the versions given, if any, and cipher
+# suites making the hello cipher_bytes long or more
+sub client_hello {
+    my ($host, $versions, $cipher_bytes) = @_;
+    $cipher_bytes = 2 unless $cipher_bytes;
+
+    my $ext = pack('n n n C n', 0, length($host) + 5, length($host) + 3, 0,
+            length($host)) . $host;
+    $ext .= pack('n n C n*', 0x2b, 1 + 2 * @$versions, 2 * @$versions,
+            @$versions) if $versions;
+
+    my $ciphers = pack('n', 0x1301) x int($cipher_bytes / 2);
+    my $body = pack('n', 0x0303) . ("\x11" x 32) . pack('C', 0) .
+            pack('n', length($ciphers)) . $ciphers . pack('C C', 1, 0) .
+            pack('n', length($ext)) . $ext;
+    my $handshake = pack('C', 1) . substr(pack('N', length($body)), 1) . $body;
+
+    my $records = '';
+    for (my $offset = 0; $offset < length($handshake); $offset += 16384) {
+        my $fragment = substr($handshake, $offset, 16384);
+        $records .= pack('C n n', 0x16, 0x0301, length($fragment)) . $fragment;
+    }
+
+    return $records;
+}
+
+# Send data and return what the proxy answers until it closes
+sub exchange($$) {
+    my ($port, $data) = @_;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => 'tcp')
+        or die "couldn't connect: $!";
+    $socket->send($data);
+
+    my $reply = '';
+    my $select = IO::Select->new($socket);
+    my $buffer;
+    while ($select->can_read(5)) {
+        my $n = sysread($socket, $buffer, 65536);
+        last unless $n;
+        $reply .= $buffer;
+    }
+    $socket->close();
+
+    return $reply;
+}
+
+sub main {
+    my $proxy_port = find_free_port();
+    my $fallback_port = find_free_port();
+    my ($log_fh, $log) = File::Temp::tempfile();
+    close($log_fh);
+
+    my ($fh, $config) = File::Temp::tempfile();
+    print $fh <<END;
+user @{[test_user()]}
+group @{[test_group()]}
+per_ip_connection_rate 0
+client_buffer_limit 16K
+
+listen 127.0.0.1 $proxy_port {
+    proto tls
+    fallback 127.0.0.1:$fallback_port
+}
+
+table {
+    example\\.com 127.0.0.1:1
+}
+END
+    close($fh);
+
+    start_child('fallback', \&fallback_server, $fallback_port, $log);
+    my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+    wait_for_port(port => $proxy_port);
+    wait_for_port(port => $fallback_port);
+    # wait_for_port connected to the fallback once
+    sleep 1;
+    my $seen = fallback_bytes($log);
+
+    my @cases = (
+        [ 'a ClientHello matching no table entry', 1,
+          client_hello('unknown.test') ],
+        [ 'an alert record before the ClientHello', 0,
+          "\x15\x03\x03\x00\x02\x01\x00" . client_hello('unknown.test') ],
+        [ 'a ClientHello larger than the client buffer', 0,
+          client_hello('unknown.test', undef, 20000) ],
+        [ 'a ClientHello offering TLS 1.1 in supported_versions', 0,
+          client_hello('unknown.test', [0x0302]) ],
+    );
+
+    my $failed = 0;
+    foreach my $case (@cases) {
+        my ($name, $expected, $data) = @$case;
+
+        exchange($proxy_port, $data);
+        sleep 1;
+        my $now = fallback_bytes($log);
+        my $reached = $now > $seen ? 1 : 0;
+        $seen = $now;
+
+        if ($reached != $expected) {
+            printf "%s %s the fallback\n", $name,
+                    $reached ? 'reached' : 'did not reach';
+            $failed = 1;
+        }
+    }
+
+    kill 15, $proxy_pid;
+    sleep 1;
+    unlink($config);
+    unlink($log);
+    reap_children();
+
+    exit $failed;
+}
+
+main();
