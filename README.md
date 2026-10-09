@@ -628,8 +628,9 @@ afterthought.
 - **Bounded parsers**: TLS rejects SSL 2.0/3.0 ClientHellos and NUL
   bytes in server names; HTTP caps headers (default 100); TLS extension
   count is capped at 64 on every code path; HTTP/2 HPACK is bounded per
-  connection (64 KiB) and globally (4 MiB), and a larger request header
-  block is routed on the fields in its first 64 KiB.
+  connection (64 KiB) and globally (4 MiB), and a request header block
+  that is larger, or whose fields decode to more, is routed on the
+  fields that fit in the first 64 KiB.
 - **Regex DoS mitigation**: PCRE2 match limits scale with hostname
   length so a crafted SNI cannot trigger catastrophic backtracking. A
   hostname that runs into the limit is refused rather than tried

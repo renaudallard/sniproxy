@@ -250,11 +250,12 @@ hpack_put_int(unsigned char *out, size_t value, unsigned prefix_bits,
  * A prior knowledge request for "localhost" whose header block also holds
  * an authorization field of token_len bytes, before or after :authority,
  * in frames of 16384 bytes. With bad_field, a field whose value length
- * does not fit a size_t follows :authority. Returns its length.
+ * does not fit a size_t follows :authority. With huffman, the token is
+ * Huffman coded: token_len letters 'a', 5 bits each. Returns its length.
  */
 static size_t
 build_large_http2_request(unsigned char *buf, size_t token_len,
-        int authority_first, int bad_field) {
+        int authority_first, int bad_field, int huffman) {
     static unsigned char block[200000];
     size_t block_len = 0, pos = 0, sent = 0;
     unsigned char authority[16], token_header[16];
@@ -264,9 +265,10 @@ build_large_http2_request(unsigned char *buf, size_t token_len,
     authority[authority_len++] = 9;
     memcpy(authority + authority_len, "localhost", 9);
     authority_len += 9;
+    size_t token_bytes = huffman ? (token_len * 5 + 7) / 8 : token_len;
     token_header_len = hpack_put_int(token_header, 23, 4, 0x00);
     token_header_len += hpack_put_int(token_header + token_header_len,
-            token_len, 7, 0x00);
+            token_bytes, 7, huffman ? 0x80 : 0x00);
 
     block[block_len++] = 0x82;      /* :method GET */
     block[block_len++] = 0x86;      /* :scheme http */
@@ -283,8 +285,17 @@ build_large_http2_request(unsigned char *buf, size_t token_len,
     }
     memcpy(block + block_len, token_header, token_header_len);
     block_len += token_header_len;
-    memset(block + block_len, 'A', token_len);
-    block_len += token_len;
+    if (huffman) {
+        /* 'a' is 00011; the last byte is padded with 1 bits (EOS) */
+        memset(block + block_len, 0xff, token_bytes);
+        for (size_t bit = 0; bit < token_len * 5; bit++) {
+            if (bit % 5 < 3)
+                block[block_len + bit / 8] &= (unsigned char)~(0x80 >> (bit % 8));
+        }
+    } else {
+        memset(block + block_len, 'A', token_len);
+    }
+    block_len += token_bytes;
     if (!authority_first) {
         memcpy(block + block_len, authority, authority_len);
         block_len += authority_len;
@@ -345,7 +356,7 @@ int main(void) {
      * make, is routed on the :authority found before the limit */
     {
         static unsigned char large[220000];
-        size_t large_len = build_large_http2_request(large, 70000, 1, 0);
+        size_t large_len = build_large_http2_request(large, 70000, 1, 0, 0);
 
         hostname = NULL;
         result = http_protocol->parse_packet((const char *)large,
@@ -355,7 +366,24 @@ int main(void) {
         assert(strcmp("localhost", hostname) == 0);
         free(hostname);
 
-        large_len = build_large_http2_request(large, 70000, 0, 0);
+        large_len = build_large_http2_request(large, 70000, 0, 0, 0);
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)large,
+                large_len, &hostname);
+        assert(result == -2);
+        assert(hostname == NULL);
+
+        /* So is a block within the limit whose fields decode past it */
+        large_len = build_large_http2_request(large, 80000, 1, 0, 1);
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)large,
+                large_len, &hostname);
+        assert(result == (int)strlen("localhost"));
+        assert(hostname != NULL);
+        assert(strcmp("localhost", hostname) == 0);
+        free(hostname);
+
+        large_len = build_large_http2_request(large, 80000, 0, 0, 1);
         hostname = NULL;
         result = http_protocol->parse_packet((const char *)large,
                 large_len, &hostname);
@@ -364,14 +392,14 @@ int main(void) {
 
         /* A malformed field before the limit is refused whatever the
          * size of the block */
-        large_len = build_large_http2_request(large, 70000, 1, 1);
+        large_len = build_large_http2_request(large, 70000, 1, 1, 0);
         hostname = NULL;
         result = http_protocol->parse_packet((const char *)large,
                 large_len, &hostname);
         assert(result == -4);
         assert(hostname == NULL);
 
-        large_len = build_large_http2_request(large, 10, 1, 1);
+        large_len = build_large_http2_request(large, 10, 1, 1, 0);
         hostname = NULL;
         result = http_protocol->parse_packet((const char *)large,
                 large_len, &hostname);

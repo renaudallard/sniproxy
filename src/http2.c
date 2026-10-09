@@ -553,9 +553,9 @@ decode_oversized_header_block(struct hpack_decoder *decoder,
 }
 
 /*
- * Decode the fields of a header block, collecting the host they name. A
- * partial block, cut at the size limit, ends at the first field that does
- * not fit.
+ * Decode the fields of a header block, collecting the host they name.
+ * Decoding ends at the first field that takes the decoded size past the
+ * limit, and in a partial block, cut at that limit, at a field cut short.
  */
 static int
 decode_header_block(struct hpack_decoder *decoder,
@@ -565,7 +565,7 @@ decode_header_block(struct hpack_decoder *decoder,
     size_t decoded_budget = HTTP2_MAX_HEADER_BLOCK_SIZE;
     size_t header_count = 0;
     size_t table_size_updates = 0;
-    /* What a field cut short, or too large to decode, returns */
+    /* What a field cut short returns */
     const int cut_short = partial ? 0 : -4;
     int rc;
 
@@ -631,7 +631,7 @@ decode_header_block(struct hpack_decoder *decoder,
                 return rc == HPACK_TRUNCATED ? cut_short : -4;
             if (name_len > decoded_budget) {
                 free(name);
-                return cut_short;
+                return 0;
             }
             decoded_budget -= name_len;
             pos += str_consumed;
@@ -643,7 +643,7 @@ decode_header_block(struct hpack_decoder *decoder,
             if (existing_len > SIZE_MAX - 1)
                 return -4;
             if (existing_len > decoded_budget)
-                return cut_short;
+                return 0;
 
             name = malloc(existing_len + 1);
             if (name == NULL)
@@ -665,7 +665,7 @@ decode_header_block(struct hpack_decoder *decoder,
         if (value_len > decoded_budget) {
             free(name);
             free(value);
-            return cut_short;
+            return 0;
         }
         pos += str_consumed;
         decoded_budget -= value_len;
