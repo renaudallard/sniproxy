@@ -167,6 +167,45 @@ static const struct http_request_case good[] = {
         "\r\n",
         "[2001:db8::1]"
     },
+    /* An absolute-form target names the host, which the Host header
+     * must agree with when there is one */
+    {
+        "GET http://Example.com:8080/path HTTP/1.1\r\n"
+        "Host: example.com.:8080\r\n"
+        "\r\n",
+        "example.com"
+    },
+    {
+        "GET http://example.com HTTP/1.0\r\n"
+        "\r\n",
+        "example.com"
+    },
+    {
+        "\r\n"
+        "GET HTTPS://example.com?q HTTP/1.1\r\n"
+        "Host: example.com\r\n"
+        "\r\n",
+        "example.com"
+    },
+    {
+        "GET http://[2001:DB8::1]:80/ HTTP/1.1\r\n"
+        "Host: [2001:db8::1]\r\n"
+        "\r\n",
+        "[2001:db8::1]"
+    },
+    /* Neither the path nor CONNECT's authority-form is an absolute target */
+    {
+        "GET /go?to=http://other.example/ HTTP/1.1\r\n"
+        "Host: example.com\r\n"
+        "\r\n",
+        "example.com"
+    },
+    {
+        "CONNECT other.example:443 HTTP/1.1\r\n"
+        "Host: example.com\r\n"
+        "\r\n",
+        "example.com"
+    },
 };
 static const char *bad[] = {
     "GET / HTTP/1.0\r\n"
@@ -527,6 +566,36 @@ int main(void) {
             sizeof(client_proxy) - 1, &hostname);
     assert(result == -5);
     assert(hostname == NULL);
+
+    /* An absolute-form target naming another host than the Host header,
+     * or one with user information, no host or a bad one, is invalid */
+    static const char *const bad_target[] = {
+        "GET http://internal.example/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "\n"
+            "GET http://internal.example/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "GET  http://example.com:81/ HTTP/1.1\r\n"
+            "Host: example.org:81\r\n"
+            "\r\n",
+        "GET http://user@example.com/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "GET http:///x HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "GET http://exa*mple.com/ HTTP/1.0\r\n"
+            "\r\n",
+    };
+    for (i = 0; i < sizeof(bad_target) / sizeof(bad_target[0]); i++) {
+        hostname = NULL;
+        result = http_protocol->parse_packet(bad_target[i],
+                strlen(bad_target[i]), &hostname);
+        assert(result <= -5);
+        assert(hostname == NULL);
+    }
 
     return 0;
 }

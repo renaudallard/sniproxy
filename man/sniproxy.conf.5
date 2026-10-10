@@ -567,6 +567,10 @@ Protocol defines how the client request should be parsed to obtain the
 requested hostname. Five protocols are supported: tls, the default,
 http, xmpp, minecraft, and dtls. Their default ports are 443 for tls
 and dtls, 80 for http, 5222 for xmpp and 25565 for minecraft.
+An http request is routed on its Host header, or, when its target is in
+absolute form, as in GET http://example.com/ HTTP/1.1, on the host of
+that target, which servers use instead of the Host header: a request
+whose Host header names another host is then invalid.
 The dtls protocol proxies DTLS (TLS over UDP) connections by extracting
 the SNI extension from the DTLS ClientHello, enabling proxying by
 hostname without decryption of DTLS protocols whose clients send SNI,

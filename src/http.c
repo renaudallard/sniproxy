@@ -47,6 +47,8 @@ http_set_max_headers(size_t max_headers) {
 }
 
 static int parse_http_header(const char *, size_t, char **);
+static int http_host_name(char *, size_t);
+static const char *absolute_form_authority(const char *, size_t, size_t *);
 static int http_request_may_complete(const char *, size_t, size_t);
 static int get_header(const char *, size_t, const char *, size_t, char **);
 static size_t next_header(const char **, size_t *);
@@ -111,12 +113,66 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
         return proxy_cmp < sizeof(proxy_v1) - 1 ? -1 : -5;
 
     static const char host_header[] = "Host:";
-    result = get_header(host_header, sizeof(host_header) - 1, data, data_len, hostname);
-    if (result < 0)
+    char *host = NULL;
+    result = get_header(host_header, sizeof(host_header) - 1, data, data_len, &host);
+    if (result < 0 && result != -2)
         return result;
+    if (result >= 0) {
+        result = http_host_name(host, (size_t)result);
+        if (result < 0) {
+            free(host);
+            return result;
+        }
+    }
 
-    char *buffer = *hostname;
-    size_t hostname_len = (size_t)result;
+    /* A server uses the host of an absolute-form request target and
+     * ignores the Host header (RFC 9112 3.2.2), so the request is routed
+     * on that host, and refused when the Host header names another */
+    size_t authority_len;
+    const char *authority = absolute_form_authority(data, data_len,
+            &authority_len);
+    if (authority == NULL) {
+        if (host == NULL)
+            return -2;
+        *hostname = host;
+        return result;
+    }
+
+    if (authority_len == 0 || authority_len >= SERVER_NAME_LEN ||
+            memchr(authority, '@', authority_len) != NULL) {
+        free(host);
+        return -5;
+    }
+
+    char *target = malloc(authority_len + 1);
+    if (target == NULL) {
+        free(host);
+        return -4;
+    }
+    memcpy(target, authority, authority_len);
+    target[authority_len] = '\0';
+
+    int target_result = http_host_name(target, authority_len);
+    if (target_result < 0 ||
+            (host != NULL && strcmp(host, target) != 0)) {
+        free(target);
+        free(host);
+        return target_result < 0 ? target_result : -5;
+    }
+
+    free(host);
+    *hostname = target;
+    return target_result;
+}
+
+/*
+ * Removes the port from the host of a Host header or request target in
+ * buffer, which is NUL terminated, and checks what is left.
+ *
+ * Returns the length of the hostname, or < -4 when it is invalid.
+ */
+static int
+http_host_name(char *buffer, size_t hostname_len) {
     size_t first_colon = hostname_len;
     size_t last_colon = hostname_len;
 
@@ -156,19 +212,58 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
         }
     }
 
-    if (!sanitize_hostname(*hostname, &hostname_len, SERVER_NAME_LEN - 1)) {
-        free(*hostname);
-        *hostname = NULL;
+    if (!sanitize_hostname(buffer, &hostname_len, SERVER_NAME_LEN - 1))
         return TLS_ERR_INVALID_CLIENT_HELLO;
-    }
 
-    if (hostname_len > 0 && (*hostname)[0] != '[' && strchr(*hostname, ':') != NULL) {
-        free(*hostname);
-        *hostname = NULL;
+    if (hostname_len > 0 && buffer[0] != '[' && strchr(buffer, ':') != NULL)
         return -5;
-    }
 
     return (int)hostname_len;
+}
+
+/*
+ * Returns the authority of an absolute-form request target, as in
+ * GET http://example.com/ HTTP/1.1, and its length in *len, or NULL when
+ * the request line has a target of another form.
+ */
+static const char *
+absolute_form_authority(const char *data, size_t data_len, size_t *len) {
+    const char *end;
+
+    /* A server may skip empty lines ahead of the request line (RFC 9112
+     * 2.2) */
+    while ((end = memchr(data, '\n', data_len)) != NULL &&
+            (end == data || (end == data + 1 && *data == '\r'))) {
+        data_len -= (size_t)(end - data) + 1;
+        data = end + 1;
+    }
+    if (end == NULL)
+        return NULL;
+
+    /* The method, then the target after any blanks */
+    const char *p = data;
+    while (p < end && *p != ' ' && *p != '\t')
+        p++;
+    while (p < end && (*p == ' ' || *p == '\t'))
+        p++;
+
+    /* A scheme, as RFC 3986 3.1 defines it, followed by :// */
+    if (p == end || !isalpha((unsigned char)*p))
+        return NULL;
+    while (p < end && (isalnum((unsigned char)*p) ||
+                *p == '+' || *p == '-' || *p == '.'))
+        p++;
+    if (end - p < 3 || memcmp(p, "://", 3) != 0)
+        return NULL;
+    p += 3;
+
+    const char *authority = p;
+    while (p < end && *p != '/' && *p != '?' && *p != '#' &&
+            *p != ' ' && *p != '\t' && *p != '\r')
+        p++;
+
+    *len = (size_t)(p - authority);
+    return authority;
 }
 
 /* An HTTP/1 header block only ends with a new line, so data holding none
