@@ -11,7 +11,9 @@
 # sniproxy_config (path):	Path to sniproxy configuration file.
 #				Default: "/usr/local/etc/sniproxy.conf"
 # sniproxy_flags (str):	Extra flags passed to sniproxy.
-#				Default: ""
+#				Default: "-g", so that a reload, which reads
+#				the config as the configured user, can read
+#				it through its group (root:<group> 0640)
 
 . /etc/rc.subr
 
@@ -22,11 +24,12 @@ load_rc_config $name
 
 : ${sniproxy_enable:="NO"}
 : ${sniproxy_config:="/usr/local/etc/sniproxy.conf"}
-: ${sniproxy_flags:=""}
+: ${sniproxy_flags="-g"}
 
 pidfile="/var/run/${name}.pid"
 command="/usr/local/sbin/${name}"
-command_args="-c ${sniproxy_config} ${sniproxy_flags}"
+# rc.subr adds sniproxy_flags itself
+command_args="-c ${sniproxy_config}"
 required_files="${sniproxy_config}"
 
 extra_commands="reload"

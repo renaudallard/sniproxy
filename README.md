@@ -337,7 +337,10 @@ sudo service sniproxy start
 The rc script runs sniproxy with `-c /usr/local/etc/sniproxy.conf`
 (change it with `sysrc sniproxy_config=...`), and its `stop` and
 `reload` find the process through `/var/run/sniproxy.pid`, so the
-config needs `pidfile /var/run/sniproxy.pid`.
+config needs `pidfile /var/run/sniproxy.pid`. It passes `-g`
+(`sniproxy_flags`), as a reload reads the config as the configured
+user: give the file that user's group, for example
+`chown root:daemon /usr/local/etc/sniproxy.conf` and `chmod 640`.
 
 Only the logger runs in Capsicum capability mode. The main process and
 the resolver have to connect() to backends and nameservers, which

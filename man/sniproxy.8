@@ -233,6 +233,12 @@ Enable with
 .B sysrc sniproxy_enable=YES
 and control with
 .B service sniproxy start|stop|reload\fR\&.
+It passes
+.B -g
+(set by
+.BR sniproxy_flags ),
+so the configuration file should be owned by root with the configured
+user's group and mode 0640\&.
 .TP
 .I /etc/init.d/sniproxy
 On Alpine, the OpenRC service installed by the package\&.
