@@ -22,6 +22,9 @@ description="Proxy routing TLS and HTTP connections by hostname"
 command="/usr/sbin/sniproxy"
 command_args="-f -c $SNIPROXY_CONFIG $SNIPROXY_OPTS"
 command_background=true
+# A start refused before the error log is open, as for an unknown user,
+# is reported on standard error, which a background command would lose
+error_logger="logger -t $RC_SVCNAME -p daemon.err"
 pidfile="/run/$RC_SVCNAME.pid"
 required_files="$SNIPROXY_CONFIG"
 extra_started_commands="reload"
