@@ -485,7 +485,9 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
 
     if (!descriptor_budget_allows(connection_active_count + 1,
                 udp_socket_count)) {
-        if (now - max_connections_log_throttle >= 1.0) {
+        /* A last time later than now means the wall clock went back */
+        if (now < max_connections_log_throttle ||
+                now - max_connections_log_throttle >= 1.0) {
             char addrbuf[INET6_ADDRSTRLEN];
             const char *ip = format_sockaddr_ip(&con->client.addr, addrbuf, sizeof(addrbuf));
             notice("Maximum global connections (%zu) reached; dropping %s",
@@ -1522,8 +1524,9 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
          * If chain is too long, reject the connection to prevent bypass of rate limiting. */
         if (chain_length > RATE_LIMIT_MAX_CHAIN_LENGTH) {
             static ev_tstamp last_warning = 0.0;
-            /* Throttle warnings to once per minute */
-            if (now - last_warning > 60.0) {
+            /* Throttle warnings to once per minute, or the wall clock
+             * set back would silence them for as long */
+            if (now < last_warning || now - last_warning > 60.0) {
                 warn("Rate limit hash collision detected: chain length %zu exceeds maximum %d (bucket %zu) - rejecting connection",
                      chain_length, RATE_LIMIT_MAX_CHAIN_LENGTH, bucket_index);
                 last_warning = now;
@@ -2482,8 +2485,9 @@ shrink_candidate_insert(struct Connection *con) {
         static ev_tstamp last_warning = 0.0;
         ev_tstamp now = ev_time();
 
-        /* Throttle warnings to once per minute */
-        if (now - last_warning > 60.0) {
+        /* Throttle warnings to once per minute, or the wall clock set
+         * back would silence them for as long */
+        if (now < last_warning || now - last_warning > 60.0) {
             warn("Shrink candidates queue full (%zu entries), applying backpressure",
                  (size_t)SHRINK_CANDIDATES_MAX_SIZE);
             last_warning = now;

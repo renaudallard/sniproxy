@@ -841,7 +841,8 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
      * so that sessions cannot use up the descriptors it leaves. */
     if (!connections_udp_socket_acquire()) {
         static ev_tstamp last_logged;
-        if (ev_now(loop) - last_logged >= 1.0) {
+        /* A last time later than now means the wall clock went back */
+        if (ev_now(loop) < last_logged || ev_now(loop) - last_logged >= 1.0) {
             char client[INET6_ADDRSTRLEN + 8];
             notice("UDP: connection limit reached, dropping session from %s",
                     display_sockaddr(&session->client_addr,
