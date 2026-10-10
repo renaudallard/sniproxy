@@ -763,6 +763,24 @@ logger_writable_before_owner_check(const struct Logger *logger) {
             logger->sink->type != LOG_SINK_FILE || logger->sink->trusted == 1;
 }
 
+/* Whether the file st describes was created by this start under another
+ * path, as when two log paths name it through a symlinked directory */
+static int
+log_file_created_here(const struct stat *st) {
+    struct LogSink *sink;
+
+    SLIST_FOREACH(sink, &sinks, entries) {
+        struct stat created;
+
+        if (sink->type == LOG_SINK_FILE && sink->fd != NULL &&
+                sink->trusted == 2 && fstat(fileno(sink->fd), &created) == 0 &&
+                created.st_dev == st->st_dev && created.st_ino == st->st_ino)
+            return 1;
+    }
+
+    return 0;
+}
+
 /* After a start as root, whether the log files may be handed over to uid:
  * each must have been created here, be in a directory only root may write
  * to, or be owned by uid already. Any other file at a log path, such as a
@@ -783,7 +801,7 @@ logger_check_file_owners(uid_t uid) {
                     strerror(errno));
             return -1;
         }
-        if (st.st_uid != uid) {
+        if (st.st_uid != uid && !log_file_created_here(&st)) {
             err("Log file %s is owned by uid %u, not by the user sniproxy "
                     "runs as: remove it or change its owner",
                     sink->filepath, (unsigned int)st.st_uid);
