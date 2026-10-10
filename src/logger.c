@@ -753,6 +753,16 @@ logger_files_write_only(void) {
     return log_files_write_only;
 }
 
+/* Whether a start as root may write to logger before the log file owner
+ * check: syslog and standard error always, a file only when it was found
+ * in a directory only root may write to. One created by this start is
+ * left empty, to be removed if the start fails. */
+int
+logger_writable_before_owner_check(const struct Logger *logger) {
+    return logger == NULL || logger->sink == NULL ||
+            logger->sink->type != LOG_SINK_FILE || logger->sink->trusted == 1;
+}
+
 /* After a start as root, whether the log files may be handed over to uid:
  * each must have been created here, be in a directory only root may write
  * to, or be owned by uid already. Any other file at a log path, such as a
