@@ -497,6 +497,20 @@ static const char *const dnssec_validation_mode_names[] = {
 };
 
 
+/* Whether path, its symlinks followed, is a FIFO in the filesystem. On
+ * Linux /dev/fd/N leads to a link to "pipe:[...]", which names nothing;
+ * elsewhere it is a character device. */
+static int
+path_names_fifo(const char *path) {
+    struct stat st;
+    char *resolved = realpath(path, NULL);
+    int fifo = resolved != NULL && lstat(resolved, &st) == 0 &&
+        S_ISFIFO(st.st_mode);
+
+    free(resolved);
+    return fifo;
+}
+
 struct Config *
 init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error) {
     struct Config *config = calloc(1, sizeof(struct Config));
@@ -567,8 +581,8 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     /* Reading a directory fails, which would otherwise look like the
      * end of an empty configuration, and so does reading a FIFO no one
      * writes to. A pipe named by a path such as /dev/stdin or /dev/fd/63,
-     * as <(...) in a shell gives, has a writer: the path is then not a
-     * FIFO itself. */
+     * as <(...) in a shell gives, has a writer: that path does not lead
+     * to a FIFO in the filesystem, even through symlinks. */
     if (S_ISDIR(config_st.st_mode)) {
         err("%s: configuration file %s is a directory",
                 __func__, config->filename);
@@ -576,11 +590,9 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         free_config(config, loop);
         return NULL;
     }
-    struct stat path_st;
     if (!S_ISREG(config_st.st_mode) &&
             !(S_ISFIFO(config_st.st_mode) &&
-                lstat(config->filename, &path_st) == 0 &&
-                !S_ISFIFO(path_st.st_mode))) {
+                !path_names_fifo(config->filename))) {
         err("%s: configuration file %s is not a regular file",
                 __func__, config->filename);
         fclose(file);
