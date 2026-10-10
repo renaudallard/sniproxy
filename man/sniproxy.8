@@ -160,6 +160,14 @@ or
 hidden)\&. When sniproxy was started as root, the file has
 mode 0200, like the log files, so that a helper process running as the
 same user cannot read it: read it as root\&.
+Under the packaged systemd unit,
+.I /run/sniproxy
+belongs to root and
+.I /tmp
+is private to the service, so the logged
+.I /tmp/sniproxy-<uid>
+path is found on the host under
+.IR /tmp/systemd-private-*-sniproxy.service-*/tmp \&.
 
 .TP
 .B SIGINT\fR, \fBSIGTERM
