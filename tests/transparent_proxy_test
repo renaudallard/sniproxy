@@ -116,8 +116,6 @@ sub main {
     my $proxy_namespace = $PROXY_NAMESPACE;
     my $client_namespace = $CLIENT_NAMESPACE;
 
-    my $config = make_transparent_config($proxy_port, $httpd_port);
-
     unless ($> == 0 and $^O eq 'linux') {
         print STDERR "This test requires Linux and root privileges\n";
         exit 77;
@@ -140,6 +138,8 @@ sub main {
         exit 77;
     }
     system('sh', '-c', "ip netns del $proxy_namespace >/dev/null 2>&1");
+
+    my $config = make_transparent_config($proxy_port, $httpd_port);
 
     # Setup a test network using network namespaces with the ns-test-proxy
     # namespace configured like a normal transparent proxy box.

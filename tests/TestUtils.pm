@@ -238,7 +238,7 @@ sub test_group { $TEST_GROUP }
 # write to the directory, as anyone may to /tmp: so the file goes to
 # that user.
 sub log_tempfile {
-    my (undef, $filename) = File::Temp::tempfile();
+    my (undef, $filename) = File::Temp::tempfile(UNLINK => 1);
     if ($> == 0) {
         my $uid = $TEST_USER =~ /^\d+$/ ? $TEST_USER : getpwnam($TEST_USER);
         my $gid = $TEST_GROUP =~ /^\d+$/ ? $TEST_GROUP : getgrnam($TEST_GROUP);
