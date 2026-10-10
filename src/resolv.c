@@ -141,6 +141,7 @@ struct ResolverPending {
     struct ResolverPending *next_unsent;
     int unsent;             /* waiting for room on the IPC socket */
     ev_tstamp abandoned;    /* when the last client cancelled, or 0 */
+    ev_tstamp sent;         /* when last sent to the child, or 0 */
 };
 
 enum dot_min_tls_version {
@@ -310,8 +311,11 @@ static int resolver_restart_timer_active = 0;
 /* A query no client waits for any more is kept until the child answers
  * it, so that it still counts against the DNS limits. One whose answer
  * never comes, because the child could not deliver it, is given up this
- * long after, which is well past any c-ares timeout. */
+ * long after it was abandoned, or sent if clients still wait for it, which
+ * is well past any c-ares timeout: new clients would join it, and keep
+ * their DNS limits taken, for as long as the hostname is asked for. */
 #define RESOLVER_ABANDONED_TIMEOUT 60.0
+#define RESOLVER_ABANDONED_CHECK 10.0
 static struct ev_timer resolver_abandoned_timer;
 static int resolver_abandoned_timer_active = 0;
 /* Queries answered while the child still looks up their other address
@@ -930,13 +934,15 @@ resolv_cancel(struct ResolvQuery *handle) {
         resolver_watch_abandoned();
 }
 
-/* Give up the queries abandoned long enough ago, and stop checking once
- * none is left. */
+/* Give up the queries abandoned, or left unanswered, long enough ago, and
+ * stop checking once none is left. The times come from the wall clock,
+ * which can be set back: a time later than now counts as now. */
 static void
 resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
         int revents __attribute__((unused))) {
     ev_tstamp now = ev_now(loop);
     struct ResolverPending *expired = NULL;
+    struct ResolverPending *unanswered = NULL;
     int remaining = 0;
 
     pthread_mutex_lock(&resolver_queries_lock);
@@ -946,13 +952,29 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
         while (iter != NULL) {
             struct ResolverPending *next = iter->next_host;
 
+            if (iter->abandoned > now)
+                iter->abandoned = now;
+            if (iter->sent > now)
+                iter->sent = now;
+
             /* An unsent one is dropped when its turn to be sent comes */
-            if (iter->abandoned != 0.0 && !iter->unsent &&
-                    !resolver_pending_wanted(iter)) {
+            if (iter->unsent) {
+                iter = next;
+                continue;
+            }
+            if (iter->abandoned != 0.0 && !resolver_pending_wanted(iter)) {
                 if (now - iter->abandoned >= RESOLVER_ABANDONED_TIMEOUT) {
                     resolver_remove_pending(iter);
                     iter->next_host = expired;
                     expired = iter;
+                } else {
+                    remaining = 1;
+                }
+            } else if (iter->sent != 0.0) {
+                if (now - iter->sent >= RESOLVER_ABANDONED_TIMEOUT) {
+                    resolver_remove_pending(iter);
+                    iter->next_host = unanswered;
+                    unanswered = iter;
                 } else {
                     remaining = 1;
                 }
@@ -963,6 +985,8 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
     for (struct ResolverPending **iter = &resolver_answered; *iter != NULL;) {
         struct ResolverPending *pending = *iter;
 
+        if (pending->abandoned > now)
+            pending->abandoned = now;
         if (now - pending->abandoned >= RESOLVER_ABANDONED_TIMEOUT) {
             *iter = pending->next_host;
             pending->next_host = expired;
@@ -975,6 +999,11 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
     pthread_mutex_unlock(&resolver_queries_lock);
 
     resolver_free_pending_list(expired, 0);
+    for (struct ResolverPending *pending = unanswered; pending != NULL;
+            pending = pending->next_host)
+        warn("No answer from the resolver for %s after %.0f seconds, "
+                "giving up", pending->hostname, RESOLVER_ABANDONED_TIMEOUT);
+    resolver_free_pending_list(unanswered, 1);
 
     if (!remaining) {
         ev_timer_stop(loop, w);
@@ -988,7 +1017,7 @@ resolver_watch_abandoned(void) {
         return;
 
     ev_timer_init(&resolver_abandoned_timer, resolver_abandoned_cb,
-            RESOLVER_ABANDONED_TIMEOUT / 2, RESOLVER_ABANDONED_TIMEOUT / 2);
+            RESOLVER_ABANDONED_CHECK, RESOLVER_ABANDONED_CHECK);
     ev_timer_start(resolver_loop_ref, &resolver_abandoned_timer);
     resolver_abandoned_timer_active = 1;
 }
@@ -1344,8 +1373,15 @@ resolver_emit_query(struct ResolverPending *pending) {
     memcpy(payload + sizeof(mode_net) + sizeof(seed_net),
             pending->hostname, hostname_len);
 
-    return resolver_send_message(RESOLVER_CMD_QUERY, pending->id,
+    int rc = resolver_send_message(RESOLVER_CMD_QUERY, pending->id,
             payload, sizeof(mode_net) + sizeof(seed_net) + hostname_len);
+    /* A lost answer would otherwise keep the query, and the DNS limits
+     * of the clients that join it, for good */
+    if (rc == 0 && resolver_loop_ref != NULL) {
+        pending->sent = ev_now(resolver_loop_ref);
+        resolver_watch_abandoned();
+    }
+    return rc;
 }
 
 static void

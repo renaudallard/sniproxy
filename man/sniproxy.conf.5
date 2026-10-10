@@ -470,7 +470,9 @@ The optional \fBmax_concurrent_queries_per_client\fR directive limits how many
 DNS lookups a single source IP may have in flight at once (default 16). Set to
 0 to disable the per-client guard. A lookup counts against both limits until
 the resolver has finished it, even when the client closes its connection
-before the answer arrives. Since a datagram's source address can be
+before the answer arrives, or for at most 60 seconds: a lookup whose
+answer is lost, as when the resolver could not hand it over for a
+second, is then given up, and its waiting clients get an error. Since a datagram's source address can be
 forged, the lookups of DTLS sessions are counted apart from those of TCP
 connections, each against the per-client limit, and may take at most
 half of \fBmax_concurrent_queries\fR, which TCP connections then always
