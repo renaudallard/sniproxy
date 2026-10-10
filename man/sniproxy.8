@@ -41,7 +41,9 @@ reload with such a file is refused and keeps the running configuration\&.
 Specify configuration file to use. The default is
 /etc/sniproxy\&.conf\&. It must be a regular file, or a pipe named by a
 path such as /dev/stdin or /dev/fd/63, as \fB<(...)\fR in a shell gives,
-but not a named pipe\&.
+but not a named pipe\&. A pipe is read once: a reload finds it empty
+and keeps the running configuration, as for any file that defines no
+listener\&.
 
 .TP
 -f

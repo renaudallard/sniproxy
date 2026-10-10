@@ -530,6 +530,8 @@ listener 0.0.0.0 4443 {
 .PP
 
 Define a listening address to accept new connections from clients on.
+A configuration must define at least one listener: one without is
+refused, by \fB\-t\fR, at startup and on reload\&.
 Addresses may be specified as an IPv4 literal followed by a port
 number, an IPv6 literal followed by a port number, a bare port
 number, which listens on [::] (IPv4 included only where ipv6_v6only

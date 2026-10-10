@@ -665,6 +665,15 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     /* Reset global ACL policy state - only needed during parsing */
     global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
 
+    /* An empty file, or a pipe read to its end before, parses without
+     * error; applied by a reload it would close every listener */
+    if (config != NULL && SLIST_EMPTY(&config->listeners)) {
+        err("%s: configuration file %s defines no listener", __func__,
+                config->filename);
+        free_config(config, loop);
+        config = NULL;
+    }
+
     /* Listeners without access logger defined used global access log */
     if (config != NULL && config->access_log != NULL) {
         struct Listener *listener = SLIST_FIRST(&config->listeners);
