@@ -636,11 +636,15 @@ open_log_file_checked(const char *filepath) {
     /* Ensure the path we opened still refers to the same inode to block
      * post-open symlink/hardlink swaps. */
     struct stat st_path;
-    if (lstat(filepath, &st_path) != 0 ||
-            !S_ISREG(st_path.st_mode) ||
+    int saved_errno = 0;
+    if (lstat(filepath, &st_path) != 0)
+        saved_errno = errno;
+    else if (!S_ISREG(st_path.st_mode) ||
             st_fd.st_dev != st_path.st_dev ||
-            st_fd.st_ino != st_path.st_ino) {
-        int saved_errno = errno != 0 ? errno : EINVAL;
+            st_fd.st_ino != st_path.st_ino)
+        /* errno is left from earlier calls, so name the replacement */
+        saved_errno = ESTALE;
+    if (saved_errno != 0) {
         close(fd);
         errno = saved_errno;
         return NULL;
@@ -648,7 +652,7 @@ open_log_file_checked(const char *filepath) {
 
     FILE *file = fdopen(fd, "a");
     if (file == NULL) {
-        int saved_errno = errno != 0 ? errno : EINVAL;
+        saved_errno = errno != 0 ? errno : EINVAL;
         close(fd);
         errno = saved_errno;
         return NULL;
