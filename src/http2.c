@@ -749,7 +749,8 @@ append_hostname_if_needed(struct host_accumulator *hosts,
 
     char *port = strrchr(buffer, ':');
     if (port != NULL) {
-        int digits_only = 1;
+        /* An empty port is refused, as in an HTTP/1 Host header */
+        int digits_only = port[1] != '\0';
 
         for (char *p = port + 1; *p != '\0'; p++)
             if (!isdigit((unsigned char)*p)) {

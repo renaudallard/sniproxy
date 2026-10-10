@@ -73,6 +73,14 @@ static const unsigned char http2_authority_with_nul[] =
     "\x82\x87\x84\x41\x0e"
     "a.com:443\0evil";
 
+/* An empty port is refused, as in an HTTP/1 Host header */
+static const unsigned char http2_authority_empty_port[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x0f\x01\x05\x00\x00\x00\x01"
+    "\x82\x87\x84\x41\x0a"
+    "localhost:";
+
 /* Only the first complete header block, the client's first request, is
  * searched for the host: a later block is not decoded, and a first block
  * without a host fails at once instead of waiting for more data. */
@@ -431,6 +439,12 @@ int main(void) {
     hostname = NULL;
     result = http_protocol->parse_packet((const char *)http2_authority_with_nul,
             sizeof(http2_authority_with_nul) - 1, &hostname);
+    assert(result < 0);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    result = http_protocol->parse_packet((const char *)http2_authority_empty_port,
+            sizeof(http2_authority_empty_port) - 1, &hostname);
     assert(result < 0);
     assert(hostname == NULL);
 
