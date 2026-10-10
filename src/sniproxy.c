@@ -84,6 +84,7 @@ static int write_pidfile(const char *, pid_t);
 static rlim_t set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
 static int lookup_user(const char *, const char *, uid_t *, gid_t *);
+static int running_as_user(uid_t, gid_t, const char *);
 static int config_has_unix_listener(const struct Config *);
 static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
@@ -592,7 +593,10 @@ main(int argc, char **argv) {
     if (geteuid() != 0 || logger_writable_before_owner_check(config->error_log))
         set_default_logger(config->error_log);
     if (lookup_user(config->user ? config->user : default_username,
-                config->group, &run_uid, &run_gid) < 0) {
+                config->group, &run_uid, &run_gid) < 0 ||
+            ((getuid() != 0 || geteuid() != 0) &&
+             running_as_user(run_uid, run_gid, config->user ?
+                 config->user : default_username) < 0)) {
         free_config(config, loop);
         return EXIT_FAILURE;
     }
@@ -998,6 +1002,23 @@ lookup_user(const char *username, const char *groupname, uid_t *uid,
     return 0;
 }
 
+/* Started without root, sniproxy must already run as the configured user
+ * and group, as it cannot switch to them: 0, or -1 after saying why not */
+static int
+running_as_user(uid_t uid, gid_t gid, const char *username) {
+    if (getuid() != uid || geteuid() != uid) {
+        err("Process UID does not match configured user %s", username);
+        return -1;
+    }
+    if (getgid() != gid || getegid() != gid) {
+        err("Process GID does not match configured gid %lu",
+                (unsigned long)gid);
+        return -1;
+    }
+
+    return 0;
+}
+
 static void
 drop_perms(const char *username, const char *groupname) {
     uid_t uid;
@@ -1008,10 +1029,8 @@ drop_perms(const char *username, const char *groupname) {
 
     /* check if we are already running as the requested user */
     if (getuid() != 0 || geteuid() != 0) {
-        if (getuid() != uid || geteuid() != uid)
-            fatal("Process UID does not match configured user %s", username);
-        if (getgid() != gid || getegid() != gid)
-            fatal("Process GID does not match configured gid %lu", (unsigned long)gid);
+        if (running_as_user(uid, gid, username) < 0)
+            exit(EXIT_FAILURE);
         /* Still notify logger child so it can tighten sandboxing */
         if (logger_drop_privileges(uid, gid) < 0)
             fatal("logger_drop_privileges(): %s", strerror(errno));

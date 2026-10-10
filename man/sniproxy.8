@@ -65,7 +65,9 @@ logged at startup when this flag is used\&.
 -t
 Test configuration and exit\&. Parses the configuration file and reports
 whether it is valid without starting the proxy, the user and group to
-run as included: they must exist, and when run as root, not be root's\&. The log files it names
+run as included: they must exist, and when run as root, not be root's;
+when not run as root, they must be the ones it runs as, since it cannot
+switch to others\&. The log files it names
 are opened as they would be at startup, so missing ones are created,
 and when run as root they are handed to that user, as a start would\&.
 
