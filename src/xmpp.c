@@ -173,6 +173,15 @@ find_stream_tag(const char *data, size_t data_len, size_t *tag_len) {
             continue;
         }
 
+        /* Only white space may come before the stream header, so that what
+         * a client sends ahead of it, such as a PROXY protocol header, does
+         * not reach the backend chosen by its name */
+        if (!in_xml_decl && *p != ' ' && *p != '\t' && *p != '\r' &&
+                *p != '\n') {
+            *tag_len = 1;
+            return NULL;
+        }
+
         p++;
     }
 

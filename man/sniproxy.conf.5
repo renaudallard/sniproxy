@@ -680,6 +680,11 @@ the PROXY headers sent to backends. A header that does not follow the
 protocol, such as a v1 line other than UNKNOWN without the five fields
 of TCP4 or TCP6, or a v2 header with an unassigned address family, ends
 the connection with the protocol's abort message.
+Without the directive, an http or xmpp request that starts with a PROXY
+header, or an xmpp stream with anything but white space before its
+header, is invalid and goes to the fallback, if any: a client could
+otherwise hand a backend that trusts PROXY headers from sniproxy a source
+address of its choosing.
 
 DTLS sessions neither read nor send PROXY headers: on a dtls listener
 \fBproxy_protocol\fR and a \fBproxy_protocol\fR option on the fallback

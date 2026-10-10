@@ -515,6 +515,19 @@ int main(void) {
         assert(hostname == NULL);
     }
 
+    /* A PROXY header the client sent itself is not a request line: the
+     * request is invalid, whatever its Host header says */
+    static const char client_proxy[] =
+        "PROXY TCP4 192.0.2.1 192.0.2.2 1234 80\r\n"
+        "GET / HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "\r\n";
+    hostname = NULL;
+    result = http_protocol->parse_packet(client_proxy,
+            sizeof(client_proxy) - 1, &hostname);
+    assert(result == -5);
+    assert(hostname == NULL);
+
     return 0;
 }
 

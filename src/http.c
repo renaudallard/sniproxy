@@ -101,6 +101,15 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
         }
     }
 
+    /* A PROXY protocol header the client sent itself would reach the
+     * backend chosen by the Host header ahead of the request; it is not
+     * an HTTP request line, so the request is invalid */
+    static const char proxy_v1[] = "PROXY ";
+    size_t proxy_cmp = data_len < sizeof(proxy_v1) - 1 ?
+            data_len : sizeof(proxy_v1) - 1;
+    if (proxy_cmp > 0 && memcmp(data, proxy_v1, proxy_cmp) == 0)
+        return proxy_cmp < sizeof(proxy_v1) - 1 ? -1 : -5;
+
     static const char host_header[] = "Host:";
     result = get_header(host_header, sizeof(host_header) - 1, data, data_len, hostname);
     if (result < 0)
