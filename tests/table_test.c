@@ -361,6 +361,9 @@ test_literal_auto_anchor(void) {
     /* Regex pattern (has metacharacters): left as-is */
     append_entry(table, ".*\\.example\\.net", "192.0.2.20");
 
+    /* A trailing dot is left out, as the parsers strip it from names */
+    append_entry(table, "example.org.", "192.0.2.30");
+
     init_table(table);
 
     struct LookupResult result;
@@ -389,6 +392,10 @@ test_literal_auto_anchor(void) {
     result = table_lookup_server_address(table, "example.net",
             strlen("example.net"));
     assert(result.address == NULL);
+
+    result = table_lookup_server_address(table, "example.org",
+            strlen("example.org"));
+    assert(result.address != NULL);
 
     table_ref_put(table);
 }

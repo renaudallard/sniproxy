@@ -160,13 +160,17 @@ pattern_has_regex_metachar(const char *p) {
 
 /*
  * Build "^<escaped>$" from a literal hostname: each '.' is escaped to
- * '\.'.  Caller must free the returned string.  Returns NULL on malloc
- * failure.
+ * '\.', and trailing dots are left out, as the parsers strip them from
+ * the names they look up. Caller must free the returned string. Returns
+ * NULL on malloc failure.
  */
 static char *
 anchor_literal_pattern(const char *pattern) {
     size_t len = strlen(pattern);
     size_t dots = 0;
+
+    while (len > 1 && pattern[len - 1] == '.')
+        len--;
 
     for (size_t i = 0; i < len; i++)
         if (pattern[i] == '.')

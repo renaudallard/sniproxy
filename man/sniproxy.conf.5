@@ -791,12 +791,15 @@ Table entries that contain no regex metacharacters (\fB\e * + ? [ ] ( ) { }
 ^ $ |\fR) are treated as literal hostnames: dots are escaped and the
 pattern is anchored with \fB^\fR and \fB$\fR automatically. For example,
 \fBexample.com\fR is compiled as \fB^example\\.com$\fR and will only
-match the exact hostname "example.com", not "sub.example.com". When
+match the exact hostname "example.com", not "sub.example.com". A
+trailing dot is left out, \fBexample.com.\fR giving the same pattern, as
+it is stripped from the hostnames looked up. When
 auto-anchoring is applied a notice-level log message is emitted showing
 the original and rewritten pattern. Entries that contain any regex
 metacharacter are compiled as-is, giving full PCRE2 regex control.
 
-Patterns are matched case insensitively, since hostnames are.
+Patterns are matched case insensitively, since hostnames are, against
+the hostname without its trailing dot.
 
 The configuration parser consumes a single backslash as an escape
 character, so a backslash intended for the regex must be doubled. Write
