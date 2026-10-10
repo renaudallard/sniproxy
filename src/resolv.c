@@ -3479,8 +3479,10 @@ resolver_child_dot_error(int errcode, int saved_errno, char *buf, size_t len) {
 
 static int
 resolver_child_dot_ensure_handshake(struct ResolverChildDotSocket *sock) {
-    if (sock == NULL || sock->ssl == NULL)
+    if (sock == NULL || sock->ssl == NULL) {
+        errno = ECONNABORTED;
         return -1;
+    }
 
     if (sock->failed) {
         errno = ECONNABORTED;
@@ -3574,8 +3576,13 @@ static int
 resolver_child_dot_aconnect(ares_socket_t fd, const struct sockaddr *address, ares_socklen_t addrlen, void *user_data __attribute__((unused))) {
     struct ResolverDotServer *server = resolver_child_find_dot_server_sa(address, addrlen);
     if (server != NULL) {
-        if (resolver_child_dot_socket_attach(fd, server) < 0)
+        if (resolver_child_dot_socket_attach(fd, server) < 0) {
+            /* A failed TLS setup need not set errno, and an EINPROGRESS
+             * left in it would make c-ares wait for a connection that
+             * was never started */
+            errno = EIO;
             return -1;
+        }
     }
 
     return connect(fd, address, addrlen);
