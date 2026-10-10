@@ -1520,7 +1520,10 @@ accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (accepted > 0)
         listener->backoff_seconds = 0;
 
-    if (last_errno == EMFILE || last_errno == ENFILE) {
+    /* Out of descriptors or of memory, the client stays queued and the
+     * listener readable: without a pause the loop would spin on it */
+    if (last_errno == EMFILE || last_errno == ENFILE ||
+            last_errno == ENOMEM || last_errno == ENOBUFS) {
         char address_buf[ADDRESS_BUFFER_SIZE];
 
         /* Exponential backoff: start at 2s, double each time, cap at 60s */
@@ -1531,8 +1534,9 @@ accept_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
         if (listener->backoff_seconds > 60)
             listener->backoff_seconds = 60;
 
-        err("File descriptor limit reached! "
-            "Suspending accepting new connections on %s for %d seconds",
+        err("%s! Suspending accepting new connections on %s for %d seconds",
+            last_errno == EMFILE || last_errno == ENFILE ?
+                "File descriptor limit reached" : "Out of memory",
             display_address(listener->address, address_buf, sizeof(address_buf)),
             listener->backoff_seconds);
         ev_io_stop(loop, w);
