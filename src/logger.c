@@ -256,6 +256,7 @@ static struct ev_timer logger_health_timer;
 static struct ev_loop *logger_health_loop = NULL;
 static uint32_t logger_ping_id = 0;
 static int logger_ping_pending = 0;
+static ev_tstamp logger_ping_sent_at = 0.0;
 /* Set when a check found the logger socket full, with the number of
  * messages sent to the logger by then */
 static int logger_ping_blocked = 0;
@@ -2817,6 +2818,16 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
         return;
     }
 
+    /* After a stall libev runs an overdue repeating timer twice in a row:
+     * a ping sent a moment ago has had no time to be answered. A send
+     * time later than now means the wall clock went back. */
+    ev_tstamp now = ev_now(loop);
+    if (logger_ping_pending && logger_ping_sent_at > now)
+        logger_ping_sent_at = now;
+    if (logger_ping_pending &&
+            now - logger_ping_sent_at < LOGGER_HEALTH_CHECK_TIMEOUT)
+        return;
+
     /* Check if previous ping got a response */
     if (logger_ping_pending && logger_check_pong() < 0) {
         logger_health_restart(loop, "did not answer the health check");
@@ -2838,6 +2849,7 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
                 "stopped reading its socket" : "could not be sent a ping");
         return;
     }
+    logger_ping_sent_at = now;
     logger_ping_blocked = 0;
 }
 
