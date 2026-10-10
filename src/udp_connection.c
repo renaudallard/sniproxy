@@ -821,6 +821,22 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
         return;
     }
 
+    /* A datagram sent to a unix socket from an unbound one carries no
+     * address the backend could answer to. A table may also serve TCP
+     * listeners, so such an entry is only refused here. */
+    if (session->server_addr.ss_family == AF_UNIX) {
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("UDP: dtls sessions cannot use the unix socket backend of %.*s, "
+                "refusing %s",
+                (int)session->hostname_len,
+                session->hostname ? session->hostname : "",
+                display_sockaddr(&session->client_addr,
+                    session->client_addr_len,
+                    client, sizeof(client)));
+        udp_session_destroy(session, loop);
+        return;
+    }
+
     if (!backend_acl_allows(&session->server_addr)) {
         char server[INET6_ADDRSTRLEN + 8];
         char client[INET6_ADDRSTRLEN + 8];

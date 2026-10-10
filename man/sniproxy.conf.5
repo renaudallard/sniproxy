@@ -574,7 +574,10 @@ such as CoAP. WebRTC and OpenConnect clients send no SNI, so their
 sessions can only go to the fallback, as do those of clients whose
 ClientHello is fragmented over several datagrams, as a small MTU or
 large post-quantum key shares can make it. A dtls listener cannot be a unix
-socket. One on a wildcard address answers each client from the local
+socket, nor send its sessions to one, whether as its fallback, which the
+configuration refuses, or from a table, where such a session is refused:
+a datagram from the proxy would carry no address the backend could answer
+to. One on a wildcard address answers each client from the local
 address the client sent to. To limit UDP
 reflection/amplification attacks, a new DTLS session is held until a
 second datagram arrives from the same

@@ -818,6 +818,16 @@ valid_listener(const struct Listener *listener) {
         return 0;
     }
 
+    /* A datagram sent to a unix socket from an unbound one carries no
+     * address the backend could answer to */
+    if (listener->protocol->sock_type == SOCK_DGRAM &&
+            listener->fallback_address != NULL &&
+            address_is_sockaddr(listener->fallback_address) &&
+            address_sa(listener->fallback_address)->sa_family == AF_UNIX) {
+        err("dtls listeners cannot use a unix socket fallback");
+        return 0;
+    }
+
     /* A socket path is bound once, and Linux refuses SO_REUSEPORT on
      * unix sockets, which would fail the start that -t accepted */
     if (listener->reuseport == 1 &&
