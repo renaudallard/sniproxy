@@ -469,6 +469,8 @@ test_config_permissions(void) {
 
     int ok = loads_with_mode(template, 0600, 0) == 1 &&
             loads_with_mode(template, 0640, 0) == 0 &&
+            loads_with_mode(template, 0604, 0) == 0 &&
+            loads_with_mode(template, 0602, 0) == 0 &&
             loads_with_mode(template, 0640, 1) == 1 &&
             loads_with_mode(template, 0604, 1) == 0 &&
             loads_with_mode(template, 0620, 1) == 0;
