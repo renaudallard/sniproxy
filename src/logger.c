@@ -2500,6 +2500,8 @@ logger_child_main(int sockfd) {
      * (e.g. macOS), writing to the IPC socket after the parent closes
      * it would deliver SIGPIPE and kill the child. */
     signal(SIGPIPE, SIG_IGN);
+    /* A log file at a file size limit fails the write with EFBIG */
+    signal(SIGXFSZ, SIG_IGN);
 
     /* The logger is also forked before daemonize() detaches the main
      * process from the terminal. Leave the session, so that the terminal

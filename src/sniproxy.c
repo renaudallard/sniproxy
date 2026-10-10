@@ -391,6 +391,10 @@ main(int argc, char **argv) {
     early.sa_flags = SA_RESTART;
     (void)sigaction(SIGHUP, &early, NULL);
     (void)sigaction(SIGUSR1, &early, NULL);
+    /* A log file or a connection dump reaching a file size limit fails
+     * the write with EFBIG instead of killing the process, from the
+     * first log line on; the helpers forked later inherit it */
+    signal(SIGXFSZ, SIG_IGN);
     uint8_t min_tls_major = 3;
     uint8_t min_tls_minor = 3;
     struct ev_loop *loop = NULL;
