@@ -232,6 +232,8 @@ static int logger_parent_pledged = 0;
  * so that a helper process compromised from the network, which runs as
  * the same user, cannot read what every other client did. */
 static int log_files_write_only = 0;
+/* Messages dropped because the logger's socket was full */
+static unsigned long logger_dropped = 0;
 /* Set once the log files opened as root went to the user */
 static int log_files_handed_over = 0;
 
@@ -1038,13 +1040,23 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
 
     if (logger_process_enabled && logger->sink != NULL && have_payload &&
             logger->sink->type != LOG_SINK_STDERR) {
-        if (send_logger_log(logger, priority, buffer, payload_len) == 0)
+        if (send_logger_log(logger, priority, buffer, payload_len) == 0) {
+            /* Say how many were lost, once the logger keeps up again */
+            if (logger_dropped > 0) {
+                unsigned long dropped = logger_dropped;
+
+                logger_dropped = 0;
+                warn("%lu log messages were dropped while the logger "
+                        "process could not keep up", dropped);
+            }
             return;
+        }
 
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             /* Socket buffer temporarily full under heavy logging.
              * Drop this message rather than permanently killing the
-             * logger child process. */
+             * logger child process, and count it. */
+            logger_dropped++;
             return;
         }
 
