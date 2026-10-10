@@ -601,7 +601,8 @@ balance the load that way. Setting reuseport to "yes" enables this
 functionality. Linux only lets sockets share a port when the same user
 created them, so sniproxy creates its IP listeners as the user it runs
 as, even when started as root: instances sharing a port must run as the
-same user.
+same user. A unix socket listener cannot use it: a socket path is bound
+once, and Linux refuses the option on unix sockets.
 
 The ipv6_v6only directive controls whether listening on the IPv6 any
 address '::' will accept connections to any IPv4 address as well as an

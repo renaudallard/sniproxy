@@ -818,6 +818,14 @@ valid_listener(const struct Listener *listener) {
         return 0;
     }
 
+    /* A socket path is bound once, and Linux refuses SO_REUSEPORT on
+     * unix sockets, which would fail the start that -t accepted */
+    if (listener->reuseport == 1 &&
+            address_sa(listener->address)->sa_family == AF_UNIX) {
+        err("reuseport cannot be used on a unix socket listener");
+        return 0;
+    }
+
     return 1;
 }
 
