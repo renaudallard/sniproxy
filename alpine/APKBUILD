@@ -36,8 +36,8 @@ build() {
 }
 
 check() {
-	# Unit tests only. Integration tests require bash and runtime
-	# dependencies not available in the build environment.
+	# Unit tests only. The integration tests need perl and curl, which
+	# are not in makedepends.
 	make -C tests check TESTS="address_test buffer_test cfg_tokenizer_test table_test http_test tls_test xmpp_test"
 }
 
