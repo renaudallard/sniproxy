@@ -331,7 +331,11 @@ among the directories of the path is only followed when root owns it,
 and a log file that already exists must be owned by that user, as one
 created by an earlier start is, unless only root may write to its
 directory: any other is refused, so that a user who can write to the
-directory cannot have a file of root's handed over. That user may append to them but not read them: when sniproxy is
+directory cannot have a file of root's handed over. Where any user may
+hard link another's files, as on the BSDs, keep the log directory
+writable only by root and that user: a third user who may write to it
+can link one of that user's files at the log path for the moment of the
+checks, and have the log written to that file. That user may append to them but not read them: when sniproxy is
 started as root, a log file loses its owner's read permission, and one
 created later, as by a reopen after rotation, has mode 0200, so that a
 helper process compromised from the network, which runs as that user,

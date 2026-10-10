@@ -865,7 +865,11 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   directories, or an existing file that user does not own in a directory
   others than root may write to. The files go to that user as soon as
   that is checked, so a start that fails later leaves none of root's
-  behind, and `-t` run as root hands them over too.
+  behind, and `-t` run as root hands them over too. Where any user may
+  hard link another's files, as on the BSDs, keep the log directory
+  writable only by root and that user: a third user who may write to it
+  can link one of that user's files at the log path for the moment of
+  the checks, and have the log written to that file.
 - On OpenBSD, the directories holding the log files and the pidfile
   must already exist before launch, because unveil cannot reveal what is
   not there. The files themselves may be missing.
