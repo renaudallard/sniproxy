@@ -2556,7 +2556,7 @@ shrink_candidate_update(struct Connection *con, struct ev_loop *loop, ev_tstamp 
     }
 
     ev_tstamp last_activity = connection_last_activity(con);
-    if (last_activity == 0.0)
+    if (last_activity == 0.0 || last_activity > now)
         last_activity = now;
 
     ev_tstamp deadline = last_activity + BUFFER_SHRINK_IDLE_SECONDS;
@@ -2578,6 +2578,16 @@ shrink_candidate_update(struct Connection *con, struct ev_loop *loop, ev_tstamp 
 static void
 shrink_idle_buffers(ev_tstamp now, int force) {
     struct Connection *con;
+
+    /* A deadline more than one idle period away was set before the wall
+     * clock went back: due one idle period from now instead. The queue is
+     * sorted, so such deadlines are at its end, and stay so. */
+    TAILQ_FOREACH_REVERSE(con, &shrink_candidates, BufferIdleQueue,
+            shrink_entries) {
+        if (con->shrink_deadline <= now + BUFFER_SHRINK_IDLE_SECONDS)
+            break;
+        con->shrink_deadline = now + BUFFER_SHRINK_IDLE_SECONDS;
+    }
 
     while ((con = TAILQ_FIRST(&shrink_candidates)) != NULL) {
         if (!force && con->shrink_deadline > now)
@@ -2612,7 +2622,8 @@ connection_memory_apply_pressure(void) {
     if (now == 0.0)
         now = ev_time();
 
-    if (buffer_pressure_last_run != 0.0 &&
+    /* A last run later than now means the wall clock went back */
+    if (buffer_pressure_last_run != 0.0 && now >= buffer_pressure_last_run &&
             now - buffer_pressure_last_run < CONNECTION_MEMORY_PRESSURE_COOLDOWN)
         return;
 

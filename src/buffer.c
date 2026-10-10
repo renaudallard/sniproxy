@@ -396,6 +396,14 @@ buffer_maybe_shrink_idle(struct Buffer *buf, ev_tstamp now, ev_tstamp idle_age) 
     if (buf->len != 0)
         return 0;
 
+    /* The times come from the wall clock, which can be set back: a time
+     * later than now counts as now, or the buffer would keep its size for
+     * as long as the clock went back */
+    if (buf->last_recv > now)
+        buf->last_recv = now;
+    if (buf->last_send > now)
+        buf->last_send = now;
+
     ev_tstamp last_activity = buf->last_recv > buf->last_send ?
             buf->last_recv : buf->last_send;
 
