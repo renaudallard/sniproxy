@@ -83,7 +83,7 @@ static void daemonize(void);
 static int write_pidfile(const char *, pid_t);
 static rlim_t set_limits(rlim_t);
 static void drop_perms(const char* username, const char* groupname);
-static void lookup_user(const char *, const char *, uid_t *, gid_t *);
+static int lookup_user(const char *, const char *, uid_t *, gid_t *);
 static int config_has_unix_listener(const struct Config *);
 static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
@@ -587,8 +587,11 @@ main(int argc, char **argv) {
      * made for it. */
     uid_t run_uid;
     gid_t run_gid;
-    lookup_user(config->user ? config->user : default_username,
-            config->group, &run_uid, &run_gid);
+    if (lookup_user(config->user ? config->user : default_username,
+                config->group, &run_uid, &run_gid) < 0) {
+        free_config(config, loop);
+        return EXIT_FAILURE;
+    }
 
     /* Checked before anything is written to them, and handed over before
      * anything else can fail, so that a failed start leaves no file of
@@ -939,40 +942,56 @@ set_limits(rlim_t max_nofiles) {
     return fd_limit.rlim_cur;
 }
 
-/* The uid and gid of the user and group sniproxy runs as */
-static void
+/* The uid and gid of the user and group sniproxy runs as, or -1 after
+ * logging why there are none to use. It returns rather than exits so
+ * that the caller frees the config, which removes the log files a start
+ * as root created and has not handed over yet. */
+static int
 lookup_user(const char *username, const char *groupname, uid_t *uid,
         gid_t *gid) {
     /* errno only says something when no entry is returned */
     errno = 0;
     struct passwd *user = getpwnam(username);
-    if (user == NULL && errno != 0)
-        fatal("getpwnam(): %s", strerror(errno));
-    else if (user == NULL)
-        fatal("getpwnam(): user %s does not exist", username);
+    if (user == NULL) {
+        if (errno != 0)
+            err("getpwnam(): %s", strerror(errno));
+        else
+            err("getpwnam(): user %s does not exist", username);
+        return -1;
+    }
 
     *uid = user->pw_uid;
     *gid = user->pw_gid;
 
     if (groupname != NULL) {
-      errno = 0;
-      struct group *group = getgrnam(groupname);
-      if (group == NULL && errno != 0)
-        fatal("getgrnam(): %s", strerror(errno));
-      else if (group == NULL)
-        fatal("getgrnam(): group %s does not exist", groupname);
+        errno = 0;
+        struct group *group = getgrnam(groupname);
+        if (group == NULL) {
+            if (errno != 0)
+                err("getgrnam(): %s", strerror(errno));
+            else
+                err("getgrnam(): group %s does not exist", groupname);
+            return -1;
+        }
 
-      *gid = group->gr_gid;
+        *gid = group->gr_gid;
     }
 
     /* Root drops its privileges to them, and checks they are gone after */
-    if (geteuid() == 0 && *uid == 0)
-        fatal("user %s is root: sniproxy must run as another user", username);
-    if (geteuid() == 0 && *gid == 0 && groupname != NULL)
-        fatal("group %s is gid 0: sniproxy must run as another group",
-                groupname);
-    if (geteuid() == 0 && *gid == 0)
-        fatal("user %s has gid 0: give sniproxy another group", username);
+    if (geteuid() == 0 && *uid == 0) {
+        err("user %s is root: sniproxy must run as another user", username);
+        return -1;
+    }
+    if (geteuid() == 0 && *gid == 0) {
+        if (groupname != NULL)
+            err("group %s is gid 0: sniproxy must run as another group",
+                    groupname);
+        else
+            err("user %s has gid 0: give sniproxy another group", username);
+        return -1;
+    }
+
+    return 0;
 }
 
 static void
@@ -980,7 +999,8 @@ drop_perms(const char *username, const char *groupname) {
     uid_t uid;
     gid_t gid;
 
-    lookup_user(username, groupname, &uid, &gid);
+    if (lookup_user(username, groupname, &uid, &gid) < 0)
+        exit(EXIT_FAILURE);
 
     /* check if we are already running as the requested user */
     if (getuid() != 0 || geteuid() != 0) {
