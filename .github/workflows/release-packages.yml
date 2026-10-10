@@ -184,14 +184,20 @@ jobs:
               # The result selects the opensuse/leap container image, so
               # only versions with a published tag are usable. Query the
               # registry rather than the download server: the latter also
-              # lists unreleased versions and the legacy 42.x series.
+              # lists unreleased versions and the legacy 42.x series. The
+              # registry publishes release candidates too, so take the
+              # version whose image is the one tagged latest.
               import re
               try:
                   data = fetch_text("https://hub.docker.com/v2/repositories/opensuse/leap/tags?page_size=100")
-                  tags = [t.get("name", "") for t in json.loads(data).get("results", [])]
-                  versions = [t for t in tags
-                              if re.fullmatch(r"[0-9]+\.[0-9]+", t)
-                              and not t.startswith("42.")]
+                  results = json.loads(data).get("results", [])
+                  latest = next((t.get("digest") for t in results
+                                 if t.get("name") == "latest"), None)
+                  versions = [t.get("name", "") for t in results
+                              if re.fullmatch(r"[0-9]+\.[0-9]+", t.get("name", ""))
+                              and not t.get("name", "").startswith("42.")
+                              and latest is not None
+                              and t.get("digest") == latest]
                   if versions:
                       versions_sorted = sorted(versions, key=lambda v: [int(x) for x in v.split(".")])
                       return versions_sorted[-1]
