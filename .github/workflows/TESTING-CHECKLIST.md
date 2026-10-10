@@ -60,7 +60,7 @@ When the workflow runs, it will:
 4. **MemorySanitizer Job**
    - Detects: use of uninitialized memory
    - Status: Active; builds and caches instrumented dependencies (libc++/libc++abi, libmd, libev, PCRE2, c-ares, LibreSSL, libbsd)
-   - Timing: First run ~60 minutes to build toolchain; cached runs ~5 minutes
+   - Timing: about 20 minutes without the cache, to build the instrumented dependencies; cached runs about 2 minutes
 
 ## Expected Output
 
