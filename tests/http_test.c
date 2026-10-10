@@ -515,6 +515,21 @@ int main(void) {
             sizeof(http2_single_request) - 1,
             sizeof(http2_single_request) - 2) == 1);
 
+    /* A start that was parsed as the HTTP/2 preface is parsed again when
+     * what follows departs from it, which ends the request, even without
+     * a new line; a request merely beginning with P is not */
+    static const char split_preface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\0\0";
+    assert(http_protocol->request_may_complete(split_preface,
+            sizeof(split_preface) - 1, 18) == 1);
+    hostname = NULL;
+    result = http_protocol->parse_packet(split_preface,
+            sizeof(split_preface) - 1, &hostname);
+    assert(result == -2);
+    assert(hostname == NULL);
+    static const char post[] = "POST / HTTP/1.1\r\nX-Pad: aaaa";
+    assert(http_protocol->request_may_complete(post, sizeof(post) - 1,
+            sizeof(post) - 5) == 0);
+
     size_t oversized_payload = HTTP2_MAX_HEADER_BLOCK_SIZE + 1;
     size_t oversized_total = sizeof(http2_preface) - 1 + 9 + oversized_payload;
     unsigned char *oversized = malloc(oversized_total);

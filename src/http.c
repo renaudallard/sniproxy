@@ -268,12 +268,16 @@ absolute_form_authority(const char *data, size_t data_len, size_t *len) {
 
 /* An HTTP/1 header block only ends with a new line, so data holding none
  * cannot have completed an incomplete request. HTTP/2 frames need not hold
- * one; their parse costs little, so it is always repeated. */
+ * one; their parse costs little, so it is always repeated. The last parse
+ * took the HTTP/2 path when what it read began as the preface did, and
+ * new data that departs from the preface then ends it as well. */
 static int
 http_request_may_complete(const char *data, size_t data_len, size_t parsed) {
     size_t preface_len = sizeof(http2_preface) - 1;
-    size_t cmp_len = data_len < preface_len ? data_len : preface_len;
+    size_t cmp_len = parsed < preface_len ? parsed : preface_len;
 
+    if (cmp_len > data_len)
+        cmp_len = data_len;
     if (memcmp(data, http2_preface, cmp_len) == 0)
         return 1;
 
