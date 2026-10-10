@@ -12,8 +12,33 @@ use File::Temp;
 
 sub proxy {
     my $config = shift;
+    my $log = shift;
 
+    open(STDOUT, '>>', $log) or die "open $log: $!";
+    open(STDERR, '>&', \*STDOUT) or die "dup: $!";
     exec(@_, '../src/sniproxy', '-f', '-c', $config);
+}
+
+# Print what the proxy logged, for check_output.sh to look at, and count
+# its lines: a proxy that keeps a reset client open retries the send and
+# logs its failure without end, which no exit status shows
+sub proxy_log_lines($) {
+    my $log = shift;
+
+    open(my $fh, '<', $log) or die "open $log: $!";
+    my @lines = <$fh>;
+    close($fh);
+    unlink($log);
+
+    if (@lines > 300) {
+        print @lines[0 .. 99];
+        printf "... %d lines left out ...\n", @lines - 200;
+        print @lines[-100 .. -1];
+    } else {
+        print @lines;
+    }
+
+    return scalar(@lines);
 }
 
 sub simple_server($) {
@@ -86,7 +111,10 @@ sub main {
     my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
 
     my $config = make_config($proxy_port, $httpd_port);
-    my $proxy_pid = start_child('sniproxy', \&proxy, $config, @ARGV);
+    my ($log_fh, $proxy_log) = File::Temp::tempfile();
+    close($log_fh);
+    my $proxy_pid = start_child('sniproxy', \&proxy, $config, $proxy_log,
+            @ARGV);
     my $httpd_pid = start_child('server', \&simple_server, $httpd_port);
 
     # Wait for proxy to load and parse config
@@ -118,8 +146,17 @@ sub main {
     # Delete our test configuration
     unlink($config);
 
+    # All of its output, what it logs while stopping included
+    wait_for_type('sniproxy');
+    my $lines = proxy_log_lines($proxy_log);
+
     # Kill off any remaining children
     reap_children();
+
+    if ($lines > 200) {
+        print "The proxy logged $lines lines for 10 reset clients\n";
+        exit 1;
+    }
 }
 
 main();
