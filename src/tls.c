@@ -378,8 +378,12 @@ parse_client_hello_fields(const uint8_t *handshake, size_t hello_len,
             min_client_hello_version_major,
             min_client_hello_version_minor,
             tls_max_extensions);
-    if (sv < 0)
+    /* Extensions it cannot read, or more than it reads, may hide a
+     * supported_versions below the minimum: the version is not checked */
+    if (sv < 0) {
+        *version_checked = 0;
         return sv;
+    }
     if (sv == 0 && require_supported_versions)
         return TLS_ERR_UNSUPPORTED_CLIENT_HELLO;
     *version_checked = 1;

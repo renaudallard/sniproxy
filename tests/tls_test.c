@@ -686,6 +686,63 @@ build_padded_client_hello(unsigned char *buf, size_t pad_len) {
 }
 
 /*
+ * A ClientHello for "localhost" with n empty extensions of unassigned
+ * types, then a supported_versions extension listing only version.
+ * Returns its length.
+ */
+static size_t
+build_many_extensions_client_hello(unsigned char *buf, size_t n,
+        uint16_t version) {
+    static const unsigned char sni[] = {
+        0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00, 0x09,
+        'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+    };
+    size_t ext_len = sizeof(sni) + 4 * n + 7;
+    size_t body_len = 2 + 32 + 1 + 4 + 2 + 2 + ext_len;
+    size_t pos = 0;
+
+    buf[pos++] = 0x16;
+    buf[pos++] = 0x03;
+    buf[pos++] = 0x01;
+    buf[pos++] = (unsigned char)((body_len + 4) >> 8);
+    buf[pos++] = (unsigned char)(body_len + 4);
+    buf[pos++] = 0x01;
+    buf[pos++] = 0x00;
+    buf[pos++] = (unsigned char)(body_len >> 8);
+    buf[pos++] = (unsigned char)body_len;
+    buf[pos++] = 0x03;
+    buf[pos++] = 0x03;
+    memset(buf + pos, 0x5a, 32);
+    pos += 32;
+    buf[pos++] = 0x00;                      /* session id */
+    buf[pos++] = 0x00;                      /* one cipher suite */
+    buf[pos++] = 0x02;
+    buf[pos++] = 0x13;
+    buf[pos++] = 0x01;
+    buf[pos++] = 0x01;                      /* null compression */
+    buf[pos++] = 0x00;
+    buf[pos++] = (unsigned char)(ext_len >> 8);
+    buf[pos++] = (unsigned char)ext_len;
+    memcpy(buf + pos, sni, sizeof(sni));
+    pos += sizeof(sni);
+    for (size_t i = 0; i < n; i++) {
+        buf[pos++] = 0xfa;
+        buf[pos++] = (unsigned char)i;
+        buf[pos++] = 0x00;
+        buf[pos++] = 0x00;
+    }
+    buf[pos++] = 0x00;                      /* supported_versions */
+    buf[pos++] = 0x2b;
+    buf[pos++] = 0x00;
+    buf[pos++] = 0x03;
+    buf[pos++] = 0x02;
+    buf[pos++] = (unsigned char)(version >> 8);
+    buf[pos++] = (unsigned char)version;
+
+    return pos;
+}
+
+/*
  * Copy the single record ClientHello in, of in_len bytes, to out as two
  * records, the first one carrying first_len bytes of the handshake.
  * Returns the length of out.
@@ -878,6 +935,23 @@ int main(void) {
     hostname = NULL;
     result = tls_protocol->parse_packet((char *)tls13_client_hello,
             sizeof(tls13_client_hello), &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    free(hostname);
+
+    /* More extensions than are read before supported_versions must not
+     * let a hello listing only TLS 1.0 through to the fallback */
+    hostname = NULL;
+    padded_len = build_many_extensions_client_hello(padded, 70, 0x0301);
+    result = tls_protocol->parse_packet((char *)padded, padded_len,
+            &hostname);
+    assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    padded_len = build_many_extensions_client_hello(padded, 3, 0x0303);
+    result = tls_protocol->parse_packet((char *)padded, padded_len,
+            &hostname);
     assert(result == 9);
     assert(NULL != hostname);
     free(hostname);
