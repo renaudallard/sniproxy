@@ -687,17 +687,18 @@ build_padded_client_hello(unsigned char *buf, size_t pad_len) {
 
 /*
  * A ClientHello for "localhost" with n empty extensions of unassigned
- * types, then a supported_versions extension listing only version.
- * Returns its length.
+ * types, then a supported_versions extension listing version, followed by
+ * second unless it is 0. Returns its length.
  */
 static size_t
 build_many_extensions_client_hello(unsigned char *buf, size_t n,
-        uint16_t version) {
+        uint16_t version, uint16_t second) {
+    size_t sv_len = second != 0 ? 4 : 2;
     static const unsigned char sni[] = {
         0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00, 0x09,
         'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
     };
-    size_t ext_len = sizeof(sni) + 4 * n + 7;
+    size_t ext_len = sizeof(sni) + 4 * n + 5 + sv_len;
     size_t body_len = 2 + 32 + 1 + 4 + 2 + 2 + ext_len;
     size_t pos = 0;
 
@@ -734,10 +735,14 @@ build_many_extensions_client_hello(unsigned char *buf, size_t n,
     buf[pos++] = 0x00;                      /* supported_versions */
     buf[pos++] = 0x2b;
     buf[pos++] = 0x00;
-    buf[pos++] = 0x03;
-    buf[pos++] = 0x02;
+    buf[pos++] = (unsigned char)(sv_len + 1);
+    buf[pos++] = (unsigned char)sv_len;
     buf[pos++] = (unsigned char)(version >> 8);
     buf[pos++] = (unsigned char)version;
+    if (second != 0) {
+        buf[pos++] = (unsigned char)(second >> 8);
+        buf[pos++] = (unsigned char)second;
+    }
 
     return pos;
 }
@@ -919,6 +924,23 @@ int main(void) {
     assert(0 == strcmp("localhost", hostname));
     free(hostname);
 
+    /* An unassigned version above TLS 1.3 next to TLS 1.2 does not make
+     * the hello a TLS 1.3 one: the server would pick 1.2 from the list */
+    hostname = NULL;
+    padded_len = build_many_extensions_client_hello(padded, 0, 0x0305, 0x0303);
+    result = tls_protocol->parse_packet((char *)padded, padded_len,
+            &hostname);
+    assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
+    assert(hostname == NULL);
+
+    hostname = NULL;
+    padded_len = build_many_extensions_client_hello(padded, 0, 0x0304, 0x0303);
+    result = tls_protocol->parse_packet((char *)padded, padded_len,
+            &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    free(hostname);
+
     tls_set_min_client_hello_version(3, 3);
 
     /* Below TLS 1.3 the legacy_version passes, but a server takes the
@@ -942,14 +964,14 @@ int main(void) {
     /* More extensions than are read before supported_versions must not
      * let a hello listing only TLS 1.0 through to the fallback */
     hostname = NULL;
-    padded_len = build_many_extensions_client_hello(padded, 70, 0x0301);
+    padded_len = build_many_extensions_client_hello(padded, 70, 0x0301, 0);
     result = tls_protocol->parse_packet((char *)padded, padded_len,
             &hostname);
     assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
     assert(hostname == NULL);
 
     hostname = NULL;
-    padded_len = build_many_extensions_client_hello(padded, 3, 0x0303);
+    padded_len = build_many_extensions_client_hello(padded, 3, 0x0303, 0);
     result = tls_protocol->parse_packet((char *)padded, padded_len,
             &hostname);
     assert(result == 9);
