@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
 #include <arpa/inet.h>
@@ -423,6 +424,63 @@ test_backend_acl(void) {
     return 0;
 }
 
+/* Whether the config in path loads with mode, as a reload would load it */
+static int
+loads_with_mode(const char *path, mode_t mode, int group_read) {
+    struct Config *config;
+
+    if (chmod(path, mode) != 0)
+        return -1;
+    config_set_allow_group_read(group_read);
+    config = init_config(path, EV_DEFAULT, 0);
+    config_set_allow_group_read(0);
+    if (config == NULL)
+        return 0;
+    free_config(config, EV_DEFAULT);
+    return 1;
+}
+
+/* The config may be read by its owner only, or with -g by its group too,
+ * and written by its owner only */
+static int
+test_config_permissions(void) {
+    char template[256];
+    if (snprintf(template, sizeof(template),
+                "%s/sniproxy-config-testXXXXXX",
+                config_test_tmpdir()) >= (int)sizeof(template))
+        return 1;
+    int fd = mkstemp(template);
+    if (fd < 0)
+        return 1;
+
+    FILE *fp = fdopen(fd, "w");
+    if (fp == NULL) {
+        close(fd);
+        unlink(template);
+        return 1;
+    }
+    fputs("listen 127.0.0.1 8080 {\n"
+            "    proto http\n"
+            "}\n"
+            "table {\n"
+            "    localhost 127.0.0.1 8081\n"
+            "}\n", fp);
+    fclose(fp);
+
+    int ok = loads_with_mode(template, 0600, 0) == 1 &&
+            loads_with_mode(template, 0640, 0) == 0 &&
+            loads_with_mode(template, 0640, 1) == 1 &&
+            loads_with_mode(template, 0604, 1) == 0 &&
+            loads_with_mode(template, 0620, 1) == 0;
+    unlink(template);
+    if (!ok) {
+        fprintf(stderr, "config permission check failed\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -479,6 +537,9 @@ int main(int argc, char **argv) {
         return 1;
 
     if (test_backend_acl() != 0)
+        return 1;
+
+    if (test_config_permissions() != 0)
         return 1;
 
     return 0;
