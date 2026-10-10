@@ -1,3 +1,23 @@
+sniproxy 0.21.1 (2026-10-10)
+===============================
+
+Fixes found by the CI of 0.21.0.
+
+Highlights:
+
+* On FreeBSD 15 the resolver could lose lookups and their answers.
+  FreeBSD ends a record on a SOCK_SEQPACKET socket only where the
+  sender marks it, so messages between the resolver and the main
+  process sent before the other side read came back as one and were
+  dropped. Concurrent lookups could hit this in earlier releases too.
+  Since 0.21.0 it also failed most lookups in mode default, ipv4_first
+  or ipv6_first of a name with both an IPv4 and an IPv6 address in
+  /etc/hosts, such as localhost, as the resolver sends two messages
+  for them at once. Each message is now marked.
+
+* The HPACK Huffman decoding tree is a static array instead of a heap
+  allocation kept for the life of the process.
+
 sniproxy 0.21.0 (2026-10-09)
 ===============================
 

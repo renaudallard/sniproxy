@@ -1,3 +1,10 @@
+sniproxy (0.21.1) unstable; urgency=medium
+
+  * Resolver lookups and answers are no longer lost on FreeBSD 15. See
+    NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Sat, 10 Oct 2026 11:31:35 +0200
+
 sniproxy (0.21.0) unstable; urgency=medium
 
   * Fixes from a review of 0.20.0: no sleep before each poll by default,

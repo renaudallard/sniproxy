@@ -1,3 +1,10 @@
+2026-10-10  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.21.1
+	- resolv: each IPC message is sent with MSG_EOR on a SOCK_SEQPACKET
+	  socket, so FreeBSD 15 no longer returns two in one read.
+	- http2: the Huffman decoding tree is a static array.
+
 2026-10-09  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.21.0
