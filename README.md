@@ -720,7 +720,10 @@ afterthought.
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. A helper
   killed by its filter, or on OpenBSD by a pledge violation, is logged
   by the main process as "process N was killed by signal S" before it
-  is restarted. Every process
+  is restarted. In daemon mode the first logger, forked before sniproxy
+  detaches, is not a child of the main process: its death is not logged,
+  and the health check restarts it within 30 seconds, logging that it
+  could not be pinged. Every process
   is also made non-dumpable, so that another process of the same user,
   a compromised helper included, cannot read or write its memory through
   `/proc`; as a consequence no core file is written.
