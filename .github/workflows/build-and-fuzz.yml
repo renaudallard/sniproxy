@@ -132,8 +132,8 @@ jobs:
           SKIP_BAD_REQUEST_TEST: 1
         run: |
           if ! make check; then
-            echo "::warning::Some integration tests failed (best-effort platform)"
             cat tests/test-suite.log 2>/dev/null || true
+            exit 1
           fi
 
   build-freebsd:
