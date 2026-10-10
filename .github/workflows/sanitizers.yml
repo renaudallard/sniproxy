@@ -41,7 +41,6 @@ jobs:
       - name: Run tests with ASAN
         env:
           ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:detect_stack_use_after_return=1:detect_invalid_pointer_pairs=2:strict_string_checks=1
-          SKIP_BAD_REQUEST_TEST: 1
         run: |
           set -euo pipefail
           make check
@@ -339,7 +338,6 @@ jobs:
       - name: Run tests with MSAN
         env:
           MSAN_OPTIONS: halt_on_error=1:print_stats=1:exitcode=1
-          SKIP_BAD_REQUEST_TEST: 1
         run: |
           set -euo pipefail
           make check
@@ -387,7 +385,6 @@ jobs:
       - name: Run tests with UBSan
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-          SKIP_BAD_REQUEST_TEST: 1
         run: |
           set -euo pipefail
           make check
@@ -436,7 +433,6 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:detect_stack_use_after_return=1:detect_invalid_pointer_pairs=2:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-          SKIP_BAD_REQUEST_TEST: 1
         run: |
           set -euo pipefail
           make check
