@@ -665,7 +665,11 @@ afterthought.
   Pidfiles refuse to be written over stale sockets, FIFOs or symlinks,
   and log files must be regular files with a single link: a symlink,
   FIFO or hard link at a log path is refused rather than opened as root,
-  and so is a symlink among its directories that root does not own.
+  and so is a symlink among its directories that root does not own. On
+  a root start an existing log file in a directory that others than root
+  may write to must already belong to the user sniproxy runs as, so that
+  a link to a file of root's, put there and removed again around the
+  single-link check, is not handed over.
 - **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`. On Linux the main process keeps
   CAP_NET_RAW, and only when a listener uses `source client`; the
@@ -843,7 +847,10 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   by that user so SIGHUP can create the new file. A log path that is a symlink, a FIFO or a file with more
   than one hard link is refused ("Too many links" for the latter), and
   on a root start so is one with a symlink not owned by root among its
-  directories.
+  directories, or an existing file that user does not own in a directory
+  others than root may write to. The files go to that user as soon as
+  that is checked, so a start that fails later leaves none of root's
+  behind, and `-t` run as root hands them over too.
 - On OpenBSD, the directories holding the log files and the pidfile
   must already exist before launch, because unveil cannot reveal what is
   not there. The files themselves may be missing.

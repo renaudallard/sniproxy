@@ -57,6 +57,7 @@ void logger_parent_capsicum_limit_rights(void);
 void logger_parent_notify_fs_locked(void);
 void logger_set_daemon_mode(void);
 void logger_parent_notify_pledged(void);
+int logger_check_file_owners(uid_t uid);
 void logger_chown_files(uid_t uid, gid_t gid);
 void logger_restrict_files(void);
 int logger_files_write_only(void);

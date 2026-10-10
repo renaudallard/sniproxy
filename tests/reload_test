@@ -44,7 +44,7 @@ sub make_reload_config($$$) {
     my $httpd_port = shift;
 
     my ($fh, $filename) = File::Temp::tempfile();
-    my ($unused, $logfile) = File::Temp::tempfile();
+    my $logfile = log_tempfile();
     # sniproxy reads the file again on SIGHUP after dropping to the test
     # user. Started as root it only accepts a file owned by root, so that
     # user reads it through its group, which -g allows.

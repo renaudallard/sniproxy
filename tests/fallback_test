@@ -21,7 +21,7 @@ sub make_fallback_config($$$) {
     my $fallback_port = shift;
 
     my ($fh, $filename) = File::Temp::tempfile();
-    my ($unused, $logfile) = File::Temp::tempfile();
+    my $logfile = log_tempfile();
 
     # Write out a test config file
     print $fh <<END;

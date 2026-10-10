@@ -121,7 +121,7 @@ sub main {
     my $iterations = $ENV{ITERATIONS} || 3;
     my $local_httpd = $ENV{LOCAL_HTTPD_PORT};
 
-    my ($unused, $logfile) = File::Temp::tempfile();
+    my $logfile = log_tempfile();
     my $config = make_fd_limit_config($proxy_port, $local_httpd || $httpd_port,
             $logfile);
 

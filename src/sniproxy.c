@@ -574,12 +574,6 @@ main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    if (config_get_allow_group_read())
-        warn("SECURITY WARNING: running with -g flag. "
-             "Config file group-read (0640) is permitted. "
-             "Ensure the config file group is restricted to "
-             "the sniproxy user group.");
-
     /* Looked up before the first unveil() on OpenBSD, which hides the
      * password database, and before -t returns, so that it fails on a
      * user or group that a start would. A binder started as root on
@@ -589,6 +583,24 @@ main(int argc, char **argv) {
     gid_t run_gid;
     lookup_user(config->user ? config->user : default_username,
             config->group, &run_uid, &run_gid);
+
+    /* Checked before anything is written to them, and handed over before
+     * anything else can fail, so that a failed start leaves no file of
+     * root's that the next one would refuse. -t hands them over too. */
+    if (geteuid() == 0) {
+        if (logger_check_file_owners(run_uid) < 0) {
+            free_config(config, loop);
+            return EXIT_FAILURE;
+        }
+        logger_chown_files(run_uid, run_gid);
+    }
+    set_default_logger(config->error_log);
+
+    if (config_get_allow_group_read())
+        warn("SECURITY WARNING: running with -g flag. "
+             "Config file group-read (0640) is permitted. "
+             "Ensure the config file group is restricted to "
+             "the sniproxy user group.");
 
     if (test_config) {
         fprintf(stderr, "configuration file %s test is successful\n",
@@ -981,9 +993,6 @@ drop_perms(const char *username, const char *groupname) {
      * 3. setuid()    - drop user privileges (irreversible)
      * 4. Verify drop succeeded
      * 5. Then communicate with child processes */
-
-    /* Chown log files to the target user so SIGHUP can reopen them */
-    logger_chown_files(uid, gid);
 
     /* drop any supplementary groups */
     if (setgroups(1, &gid) < 0)

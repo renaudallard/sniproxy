@@ -46,7 +46,7 @@ sub make_transparent_config($$) {
     my $httpd_port = shift;
 
     my ($fh, $filename) = File::Temp::tempfile();
-    my ($unused, $logfile) = File::Temp::tempfile();
+    my $logfile = log_tempfile();
 
     # Write out a test config file. As root, test_user() is an
     # unprivileged user, so "source client" relies on the CAP_NET_RAW

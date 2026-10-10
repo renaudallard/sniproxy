@@ -84,6 +84,7 @@ struct LogSink {
 
     FILE *fd;
     int fd_owned;
+    int trusted;        /* As root: 2 created here, 1 in a root-only dir */
     uint32_t id;
     int reference_count;
     SLIST_ENTRY(LogSink) entries;
@@ -231,6 +232,8 @@ static int logger_parent_pledged = 0;
  * so that a helper process compromised from the network, which runs as
  * the same user, cannot read what every other client did. */
 static int log_files_write_only = 0;
+/* Set once the log files opened as root went to the user */
+static int log_files_handed_over = 0;
 
 /* Set in a logger child restarted after the main process pledged, which
  * only gets the promises needed to write its files, see
@@ -512,15 +515,53 @@ log_dir_open_as_root(const char *path, const char **file_basename) {
     }
 }
 
+/* Open a log file as root in dirfd. *trusted tells whether no one but
+ * root can have put it there: 2 when it was created here, 1 when it is in
+ * a directory that only root may write to. An existing file is opened
+ * without O_CREAT, so that one appearing between the two opens cannot
+ * pass for a new one. */
+static int
+log_file_open_as_root(int dirfd, const char *name, int flags, mode_t mode,
+        int *trusted) {
+    for (int tries = 0; tries < 4; tries++) {
+        int fd = openat(dirfd, name, flags | O_EXCL, mode);
+        if (fd >= 0) {
+            if (trusted != NULL)
+                *trusted = 2;
+            return fd;
+        }
+        if (errno != EEXIST)
+            return -1;
+
+        fd = openat(dirfd, name, flags & ~O_CREAT);
+        if (fd >= 0) {
+            struct stat dir_st;
+
+            if (trusted != NULL && fstat(dirfd, &dir_st) == 0 &&
+                    dir_st.st_uid == 0 &&
+                    (dir_st.st_mode & (S_IWGRP | S_IWOTH)) == 0)
+                *trusted = 1;
+            return fd;
+        }
+        if (errno != ENOENT)
+            return -1;
+    }
+
+    return -1;
+}
+
 /* Open a log file for appending, relative to dirfd unless it is -1, and
  * fill in st. The file is opened as root at startup and then handed to
  * the unprivileged user, so it must be the regular file named by the
  * path: O_NOFOLLOW refuses a symlink, O_NONBLOCK keeps a FIFO from
  * blocking the open, and a file with more than one link is refused, as a
  * hard link planted in the log directory could name any file on the
- * same filesystem. */
+ * same filesystem. A link can be removed again between the open and the
+ * check, so as root *trusted also tells whether only root can have put
+ * the file there: logger_check_file_owners() refuses any other the user
+ * does not own. */
 static int
-log_file_open(int dirfd, const char *path, struct stat *st) {
+log_file_open(int dirfd, const char *path, struct stat *st, int *trusted) {
     mode_t create_mode = log_files_write_only ? 0200 : 0600;
     int open_flags = O_WRONLY | O_APPEND | O_CREAT | O_NONBLOCK;
 #ifdef O_CLOEXEC
@@ -539,7 +580,8 @@ log_file_open(int dirfd, const char *path, struct stat *st) {
 
         if (root_dirfd < 0)
             return -1;
-        fd = openat(root_dirfd, file_basename, open_flags, create_mode);
+        fd = log_file_open_as_root(root_dirfd, file_basename, open_flags,
+                create_mode, trusted);
         int saved_errno = errno;
         close(root_dirfd);
         errno = saved_errno;
@@ -584,7 +626,7 @@ log_file_forbidden_mode(void) {
 static FILE *
 open_log_file_checked(const char *filepath) {
     struct stat st_fd;
-    int fd = log_file_open(-1, filepath, &st_fd);
+    int fd = log_file_open(-1, filepath, &st_fd, NULL);
     if (fd < 0)
         return NULL;
 
@@ -711,12 +753,44 @@ logger_files_write_only(void) {
     return log_files_write_only;
 }
 
+/* After a start as root, whether the log files may be handed over to uid:
+ * each must have been created here, be in a directory only root may write
+ * to, or be owned by uid already. Any other file at a log path, such as a
+ * hard link to a file of root's planted by a user who can write to the
+ * directory, is refused before anything is written to it. */
+int
+logger_check_file_owners(uid_t uid) {
+    struct LogSink *sink;
+
+    SLIST_FOREACH(sink, &sinks, entries) {
+        struct stat st;
+
+        if (sink->type != LOG_SINK_FILE || sink->fd == NULL ||
+                !sink->fd_owned || sink->trusted)
+            continue;
+        if (fstat(fileno(sink->fd), &st) != 0) {
+            err("Unable to check log file %s: %s", sink->filepath,
+                    strerror(errno));
+            return -1;
+        }
+        if (st.st_uid != uid) {
+            err("Log file %s is owned by uid %u, not by the user sniproxy "
+                    "runs as: remove it or change its owner",
+                    sink->filepath, (unsigned int)st.st_uid);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 void
 logger_chown_files(uid_t uid, gid_t gid) {
     struct LogSink *sink;
 
     /* Inherited by the logger processes forked from now on */
     log_files_write_only = 1;
+    log_files_handed_over = 1;
 
     sink = SLIST_FIRST(&sinks);
     while (sink != NULL) {
@@ -1162,7 +1236,7 @@ obtain_file_sink(const char *filepath) {
 
     if (!logger_process_enabled || !logger_parent_fs_locked) {
         struct stat st;
-        int fd = log_file_open(-1, filepath, &st);
+        int fd = log_file_open(-1, filepath, &st, &sink->trusted);
         if (fd < 0) {
             int saved_errno = errno;
             free((char *)sink->filepath);
@@ -1176,8 +1250,10 @@ obtain_file_sink(const char *filepath) {
             return NULL;
         }
 
+        /* As root, not before logger_check_file_owners() accepted it */
         if ((st.st_mode & log_file_forbidden_mode()) != 0 &&
-                !logger_parent_pledged) {
+                !logger_parent_pledged &&
+                (geteuid() != 0 || sink->trusted)) {
             if (fchmod(fd, (st.st_mode & 07777) &
                         ~log_file_forbidden_mode()) != 0) {
                 warn("Failed to restrict permissions on log file %s: %s",
@@ -1281,6 +1357,29 @@ log_sink_ref_put(struct LogSink *sink) {
         free_sink(sink);
 }
 
+/* A log file a start as root created and dropped before handing it over,
+ * as when the configuration turns out invalid, would stay owned by root,
+ * and the next start would refuse it: remove it while it is empty and
+ * still the file at its path. */
+static void
+log_file_remove_unused(struct LogSink *sink) {
+    const char *file_basename;
+    struct stat st_fd, st_path;
+
+    if (sink->trusted != 2 || log_files_handed_over || geteuid() != 0 ||
+            sink->fd == NULL || fstat(fileno(sink->fd), &st_fd) != 0 ||
+            st_fd.st_size != 0)
+        return;
+
+    int dirfd = log_dir_open_as_root(sink->filepath, &file_basename);
+    if (dirfd < 0)
+        return;
+    if (fstatat(dirfd, file_basename, &st_path, AT_SYMLINK_NOFOLLOW) == 0 &&
+            st_path.st_dev == st_fd.st_dev && st_path.st_ino == st_fd.st_ino)
+        (void)unlinkat(dirfd, file_basename, 0);
+    close(dirfd);
+}
+
 static void
 free_sink(struct LogSink *sink) {
     if (sink == NULL)
@@ -1302,8 +1401,10 @@ free_sink(struct LogSink *sink) {
             sink->fd = NULL;
             break;
         case LOG_SINK_FILE:
-            if (sink->fd != NULL && sink->fd_owned)
+            if (sink->fd != NULL && sink->fd_owned) {
+                log_file_remove_unused(sink);
                 fclose(sink->fd);
+            }
             sink->fd = NULL;
             sink->fd_owned = 0;
             free((char *)sink->filepath);
@@ -1980,9 +2081,9 @@ logger_child_open_file(const char *filepath, int dirfd,
         return NULL;
 
     if (dirfd >= 0 && file_basename != NULL)
-        fd = log_file_open(dirfd, file_basename, &st);
+        fd = log_file_open(dirfd, file_basename, &st, NULL);
     else
-        fd = log_file_open(-1, filepath, &st);
+        fd = log_file_open(-1, filepath, &st, NULL);
     if (fd < 0)
         return NULL;
 
@@ -2015,7 +2116,7 @@ logger_prepare_sink_fd(struct LogSink *sink) {
     }
 
     struct stat st;
-    int fd = log_file_open(-1, sink->filepath, &st);
+    int fd = log_file_open(-1, sink->filepath, &st, NULL);
     if (fd < 0)
         return -1;
 

@@ -740,10 +740,9 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
         }
     }
 
-    /* The parsed config is valid; only now switch the error log. */
-    if (config != NULL)
-        set_default_logger(config->error_log);
-
+    /* The caller switches to the new error log once it takes the config:
+     * a failed reload keeps the running one, and a start as root first
+     * checks the log files it is about to write to */
     return(config);
 }
 
@@ -796,6 +795,7 @@ reload_config(struct Config *config, struct ev_loop *loop) {
         err("failed to reload %s", config->filename);
         return;
     }
+    set_default_logger(new_config->error_log);
 
     /* Warn if user or group changed since privileges cannot be re-dropped */
     if ((config->user == NULL) != (new_config->user == NULL) ||
@@ -840,9 +840,9 @@ reload_config(struct Config *config, struct ev_loop *loop) {
     logger_ref_put(config->access_log);
     config->access_log = logger_ref_get(new_config->access_log);
 
-    /* init_config() already made the new error log the default logger;
-     * adopt it here too so the one from the previous config is released
-     * instead of being pinned for the lifetime of the process. */
+    /* The new error log is the default logger now; adopt it here too so
+     * the one from the previous config is released instead of being
+     * pinned for the lifetime of the process. */
     logger_ref_put(config->error_log);
     config->error_log = logger_ref_get(new_config->error_log);
 
