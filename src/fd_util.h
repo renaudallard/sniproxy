@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include "logger.h"
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -272,6 +273,20 @@ helper_install_crash_handler(const char *name)
 }
 
 /*
+ * Log a helper process killed by a signal sniproxy never sends it, such as
+ * the SIGSYS of its seccomp filter or the SIGABRT of a pledge violation,
+ * which leave the helper no chance to say so itself
+ */
+static inline void
+helper_report_status(pid_t pid, int status)
+{
+    if (WIFSIGNALED(status) && WTERMSIG(status) != SIGTERM &&
+            WTERMSIG(status) != SIGKILL && WTERMSIG(status) != SIGINT)
+        err("process %d was killed by signal %d", (int)pid,
+                WTERMSIG(status));
+}
+
+/*
  * Reap a helper process that has been told to exit, giving it up to a
  * second, then kill it: one that is stuck, or stopped, which SIGKILL ends
  * too, must not hold up the main process. A helper that cannot be
@@ -282,9 +297,12 @@ static inline void
 helper_wait_exit(pid_t pid)
 {
     const struct timespec step = { 0, 10000000L };
+    int status;
 
     for (int i = 0; i < 100; i++) {
-        pid_t result = waitpid(pid, NULL, WNOHANG);
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result > 0)
+            helper_report_status(pid, status);
         if (result > 0 || (result < 0 && errno != EINTR))
             return;
         if (result == 0)

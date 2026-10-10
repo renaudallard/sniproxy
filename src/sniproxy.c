@@ -89,6 +89,7 @@ static int config_uses_transparent_proxy(const struct Config *);
 static void perror_exit(const char *);
 static void signal_cb(struct ev_loop *, struct ev_signal *, int revents);
 static void sigchld_cb(struct ev_loop *, struct ev_signal *, int revents);
+static void child_cb(struct ev_loop *, struct ev_child *, int revents);
 static void early_signal_cb(int);
 static void rename_main_process(void);
 static void apply_mainloop_settings(struct ev_loop *, const struct Config *);
@@ -122,6 +123,7 @@ static struct ev_signal sigusr1_watcher;
 static struct ev_signal sigint_watcher;
 static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
+static struct ev_child child_watcher;
 /* A reload or dump requested before the event loop took the signals */
 static volatile sig_atomic_t early_sighup = 0;
 static volatile sig_atomic_t early_sigusr1 = 0;
@@ -782,6 +784,10 @@ main(int argc, char **argv) {
     ev_signal_start(loop, &sigint_watcher);
     ev_signal_start(loop, &sigterm_watcher);
     ev_signal_start(loop, &sigchld_watcher);
+    /* On the default loop libev reaps the children itself, and only hands
+     * their status to child watchers */
+    ev_child_init(&child_watcher, child_cb, 0, 0);
+    ev_child_start(loop, &child_watcher);
 
     /* Hand the loop what arrived before it took the signals over */
     if (early_sighup)
@@ -1276,6 +1282,15 @@ sigchld_cb(struct ev_loop *loop __attribute__((unused)),
         int revents __attribute__((unused))) {
     /* Reap zombie children promptly.  Subsystem-specific waitpid() calls
      * in logger, resolver, and binder already handle ECHILD gracefully. */
-    while (waitpid(-1, NULL, WNOHANG) > 0)
-        ;
+    pid_t pid;
+    int status;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+        helper_report_status(pid, status);
+}
+
+static void
+child_cb(struct ev_loop *loop __attribute__((unused)), struct ev_child *w,
+        int revents __attribute__((unused))) {
+    helper_report_status(w->rpid, w->rstatus);
 }

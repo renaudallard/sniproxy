@@ -358,10 +358,13 @@ binder_cleanup_child(int block) {
         binder_pid = -1;
     } else if (binder_pid > 0) {
         pid_t result;
+        int status;
         do {
-            result = waitpid(binder_pid, NULL, WNOHANG);
+            result = waitpid(binder_pid, &status, WNOHANG);
         } while (result < 0 && errno == EINTR);
 
+        if (result > 0)
+            helper_report_status(binder_pid, status);
         if (result > 0 || (result < 0 && errno == ECHILD))
             binder_pid = -1;
     }

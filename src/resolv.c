@@ -725,6 +725,8 @@ resolv_shutdown(struct ev_loop *loop) {
     if (resolver_pid > 0) {
         int status;
         pid_t result = waitpid(resolver_pid, &status, WNOHANG);
+        if (result > 0)
+            helper_report_status(resolver_pid, status);
         if (result < 0) {
             /* ECHILD means child was already reaped, not an error */
             if (errno != ECHILD)

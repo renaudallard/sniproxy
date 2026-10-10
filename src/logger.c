@@ -1521,7 +1521,10 @@ disable_logger_process(void) {
     if (logger_pid > 0) {
         /* Use WNOHANG to avoid blocking the mainloop if the child
          * is stuck on filesystem I/O (e.g. hung NFS mount) */
-        int wr = waitpid(logger_pid, NULL, WNOHANG);
+        int status;
+        int wr = waitpid(logger_pid, &status, WNOHANG);
+        if (wr > 0)
+            helper_report_status(logger_pid, status);
         if (wr == 0) {
             kill(logger_pid, SIGKILL);
             waitpid(logger_pid, NULL, 0);

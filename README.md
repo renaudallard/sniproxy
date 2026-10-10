@@ -715,7 +715,10 @@ afterthought.
   NETLINK_ROUTE, except where socket(2) goes through socketcall(2), as
   on i386, so that a compromised process cannot reach kernel interfaces
   such as nf_tables from a user namespace of its own.
-  `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. Every process
+  `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. A helper
+  killed by its filter, or on OpenBSD by a pledge violation, is logged
+  by the main process as "process N was killed by signal S" before it
+  is restarted. Every process
   is also made non-dumpable, so that another process of the same user,
   a compromised helper included, cannot read or write its memory through
   `/proc`; as a consequence no core file is written.
