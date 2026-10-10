@@ -107,6 +107,7 @@
 
 #define RESOLVER_MAX_HOSTNAME_LEN    1023
 #define RESOLVER_IPC_MAX_PAYLOAD     4096
+#define RESOLVER_IPC_FRAMES_PER_READ      64
 #define RESOLVER_IPC_MAX_FRAME        (sizeof(struct resolver_ipc_header) + \
         RESOLVER_IPC_MAX_PAYLOAD + IPC_CRYPTO_OVERHEAD)
 #define RESOLVER_MAX_ADDR_LEN        ((size_t)sizeof(struct sockaddr_storage))
@@ -1095,7 +1096,11 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     if (!(revents & EV_READ))
         return;
 
-    for (;;) {
+    /* A bounded batch: the watcher is level triggered, so the rest is read
+     * on the next loop pass, after the other events. A child flooding the
+     * socket, such as one run by an attacker sending frames that each cost
+     * the rekey of a large generation gap, cannot hold the loop. */
+    for (int frames = 0; frames < RESOLVER_IPC_FRAMES_PER_READ; frames++) {
         uint8_t buffer[RESOLVER_IPC_MAX_FRAME];
         ssize_t len = recv(w->fd, buffer, sizeof(buffer), 0);
         if (len < 0) {
