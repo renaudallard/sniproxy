@@ -836,6 +836,15 @@ valid_listener(const struct Listener *listener) {
         return 0;
     }
 
+    /* A unix socket client has no address a range could match, so
+     * deny_except would refuse every one and allow_except none */
+    if (listener->acl_mode != LISTENER_ACL_MODE_DISABLED &&
+            address_sa(listener->address)->sa_family == AF_UNIX) {
+        err("acl cannot be used on a unix socket listener, "
+                "use the permissions of its directory instead");
+        return 0;
+    }
+
     return 1;
 }
 

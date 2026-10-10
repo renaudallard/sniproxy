@@ -90,7 +90,8 @@ fuzzing, and active maintenance.
   cutoffs defeat hash spraying.
 - **Backend ACLs**: `deny_except` or `allow_except` CIDR policies stop
   abuse as an open proxy to reach internal hosts.
-- **Listener ACLs**: the same CIDR policies, applied to inbound clients.
+- **Listener ACLs**: the same CIDR policies, applied to inbound clients
+  (unix socket listeners rely on the permissions of their directory).
 - **DNS-over-TLS upstreams**: `nameserver dot://9.9.9.9/dns.quad9.net/tls1.2`
   inside the `resolver` block; IP literals require a TLS hostname or an
   explicit `/insecure`. TLS 1.2 is enforced by default.

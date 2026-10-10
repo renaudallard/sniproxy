@@ -753,6 +753,9 @@ On a dtls listener the acl only checks the source address of a
 session's datagrams, which a sender can forge: datagrams that claim an
 allowed address reach the backend, so keep forged sources out with
 ingress filtering on the network instead of relying on the acl alone.
+A unix socket listener cannot have an acl, since its clients have no
+address to match: the permissions of the directory holding the socket
+decide who may connect to it.
 
 The access log configuration may be overridden on each listener.
 
