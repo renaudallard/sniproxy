@@ -37,31 +37,38 @@
 
 #define BACKEND_REGEX_DEPTH_LIMIT 1000
 
-#define BACKEND_REGEX_MATCH_LIMIT 10000
+/* Without JIT, a match of a name against an alternation tries every
+ * alternative at each label, so the steps a match needs grow with the
+ * length of both. One step per hostname character is allowed for every
+ * PATTERN_CHARS characters of the pattern, which leaves an alternation
+ * filling the longest word the configuration takes about twice what it
+ * needs, while a short pattern that backtracks stays bounded by the
+ * length of the name. The limit only guards the arithmetic, as names
+ * and patterns are too short to reach it. */
+#define BACKEND_REGEX_MATCH_LIMIT 1000000
 #define BACKEND_REGEX_MATCH_BASE 256
 #define BACKEND_REGEX_MATCH_PER_CHAR 32
+#define BACKEND_REGEX_MATCH_PATTERN_CHARS 8
 
 static const char *backend_config_options(const struct Backend *);
-static uint32_t backend_regex_match_limit_for_len(size_t len);
+static uint32_t backend_regex_match_limit(size_t, size_t);
 static int pattern_has_regex_metachar(const char *);
 static char *anchor_literal_pattern(const char *);
 
 static uint32_t
-backend_regex_match_limit_for_len(size_t len) {
-    uint64_t limit = BACKEND_REGEX_MATCH_BASE;
+backend_regex_match_limit(size_t name_len, size_t pattern_len) {
+    uint64_t per_char = BACKEND_REGEX_MATCH_PER_CHAR +
+        pattern_len / BACKEND_REGEX_MATCH_PATTERN_CHARS;
 
-    if (len > 0) {
-        uint64_t extra = (uint64_t)len * BACKEND_REGEX_MATCH_PER_CHAR;
-        if (extra > UINT32_MAX)
-            extra = UINT32_MAX;
-        limit += extra;
-    }
+    /* Either factor beyond the limit already reaches it */
+    if (name_len > BACKEND_REGEX_MATCH_LIMIT)
+        name_len = BACKEND_REGEX_MATCH_LIMIT;
+    if (per_char > BACKEND_REGEX_MATCH_LIMIT)
+        per_char = BACKEND_REGEX_MATCH_LIMIT;
 
+    uint64_t limit = BACKEND_REGEX_MATCH_BASE + (uint64_t)name_len * per_char;
     if (limit > BACKEND_REGEX_MATCH_LIMIT)
         limit = BACKEND_REGEX_MATCH_LIMIT;
-
-    if (limit < BACKEND_REGEX_MATCH_BASE)
-        limit = BACKEND_REGEX_MATCH_BASE;
 
     return (uint32_t)limit;
 }
@@ -305,8 +312,6 @@ lookup_backend(const struct Backend_head *head, const char *name,
         name_len = 0;
     }
 
-    uint32_t match_limit = backend_regex_match_limit_for_len(name_len);
-
     for (iter = STAILQ_FIRST(head); iter != NULL; iter = STAILQ_NEXT(iter, entries)) {
         if (iter->pattern_re == NULL)
             continue;
@@ -315,7 +320,8 @@ lookup_backend(const struct Backend_head *head, const char *name,
         if (md == NULL)
             continue;
 
-        pcre2_set_match_limit(backend_match_ctx, match_limit);
+        pcre2_set_match_limit(backend_match_ctx,
+                backend_regex_match_limit(name_len, strlen(iter->pattern)));
         int ret = pcre2_match(iter->pattern_re, (const uint8_t *)name, name_len, 0, 0, md, backend_match_ctx);
         if (ret >= 0)
             return iter;

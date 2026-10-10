@@ -774,7 +774,8 @@ table http_hosts {
 Tables define how to map each hostname to a backend server. Each
 request's hostname is matched against entries in the table in order
 until a match is found and that server is used. Matches are bounded by
-a step limit that grows with the hostname's length; a hostname whose
+a step limit that grows with the lengths of the hostname and of the
+pattern; a hostname whose
 match against an entry runs into it is refused, with a warning naming
 the pattern, and goes neither to a later entry nor to the fallback.
 The server address may
