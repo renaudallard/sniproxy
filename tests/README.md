@@ -18,5 +18,3 @@ You can then run the binary directly:
 ```sh
 ./tests/buffer_test
 ```
-
-These steps were used to rerun the buffer tests in this change.
