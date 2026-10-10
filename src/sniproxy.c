@@ -589,8 +589,10 @@ main(int argc, char **argv) {
     uid_t run_uid;
     gid_t run_gid;
     /* So that the refusals below reach the configured error log rather
-     * than standard error only, which a service manager may discard */
-    if (geteuid() != 0 || logger_writable_before_owner_check(config->error_log))
+     * than standard error only, which a service manager may discard; -t
+     * is run by hand and keeps them on standard error */
+    if (!test_config && (geteuid() != 0 ||
+                logger_writable_before_owner_check(config->error_log)))
         set_default_logger(config->error_log);
     if (lookup_user(config->user ? config->user : default_username,
                 config->group, &run_uid, &run_gid) < 0 ||
