@@ -2767,21 +2767,30 @@ logger_restart_child(void) {
 }
 
 /* Replace the logger, then say why: said before, the message would go
- * to the logger being replaced, which is stuck or gone. */
+ * to the logger being replaced, which is stuck or gone. A restart that
+ * fails, at the descriptor or process limit say, is tried again at each
+ * check, as the cause may not last; it is reported once. */
 static void
 logger_health_restart(struct ev_loop *loop, const char *reason) {
+    static int failing = 0;
+
+    (void)loop;
     logger_ping_pending = 0;
     logger_ping_blocked = 0;
 
     if (logger_restart_child()) {
-        warn("Logger process %s, restarted it", reason);
+        if (failing)
+            warn("Logger process restarted after failed attempts");
+        else
+            warn("Logger process %s, restarted it", reason);
+        failing = 0;
         return;
     }
 
-    err("Logger process %s and could not be restarted, "
-            "falling back to in-process logging", reason);
-    ev_timer_stop(loop, &logger_health_timer);
-    logger_health_check_active = 0;
+    if (!failing)
+        err("Logger process %s and could not be restarted, logging "
+                "in-process until it can be", reason);
+    failing = 1;
 }
 
 static void
@@ -2790,7 +2799,7 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
     (void)revents;
 
     /* A send failed since the last check, so the logger died or its
-     * channel broke; the timer is stopped when a restart fails. */
+     * channel broke, or a restart failed and is tried again */
     if (!logger_process_enabled) {
         logger_health_restart(loop, "was lost");
         return;
