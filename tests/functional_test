@@ -39,17 +39,18 @@ sub worker($$$$) {
 
 sub connection_dump_files() {
     # connection.c writes dumps as <secure-temp-dir>/connections-XXXXXX.
-    # The secure temp dir is whichever of these the daemon chose at
-    # startup (in priority order): $XDG_RUNTIME_DIR/sniproxy,
-    # /var/run/sniproxy, or /tmp/sniproxy-<uid>.
-    my @candidates;
-    if (defined $ENV{XDG_RUNTIME_DIR} && $ENV{XDG_RUNTIME_DIR} =~ m{^/}) {
-        push @candidates, "$ENV{XDG_RUNTIME_DIR}/sniproxy";
+    # The secure temp dir is whichever of these the daemon chose at its
+    # first dump (in priority order): $XDG_RUNTIME_DIR/sniproxy,
+    # /var/run/sniproxy, or /tmp/sniproxy-<uid>. The test gives it an
+    # XDG_RUNTIME_DIR of its own, which OpenBSD does not use, so that
+    # only there are the dumps of other runs seen.
+    my @candidates = ("$ENV{XDG_RUNTIME_DIR}/sniproxy");
+    if ($^O eq 'openbsd') {
+        push @candidates, '/var/run/sniproxy';
+        # The dump is written by the user sniproxy runs as, not by us
+        my ($uid) = test_ids();
+        push @candidates, "/tmp/sniproxy-$uid";
     }
-    push @candidates, '/var/run/sniproxy';
-    # The dump is written by the user sniproxy runs as, not by us
-    my $uid = (getpwnam(test_user()))[2];
-    push @candidates, "/tmp/sniproxy-$uid";
 
     my %files;
     foreach my $dir (@candidates) {
@@ -64,16 +65,22 @@ sub connection_dump_files() {
     return \%files;
 }
 
+# Asks for dumps until it is sent SIGTERM, then finishes the dump it
+# asked for, so that none is left behind
 sub dump_connections_worker($) {
     my ($proxy_pid) = @_;
+    my $stop = 0;
+    local $SIG{TERM} = sub { $stop = 1; };
 
     my $existing_dump_files = connection_dump_files();
 
-    while (kill('USR1', $proxy_pid)) {
-        # Sleep 100ms
-        select(undef, undef, undef, 0.25);
-
-        my @new_dump_files = grep { !$existing_dump_files->{$_} } keys %{connection_dump_files()};
+    while (!$stop && kill('USR1', $proxy_pid)) {
+        my @new_dump_files;
+        for (my $tries = 0; $tries < 200 && !@new_dump_files; $tries++) {
+            select(undef, undef, undef, 0.05);
+            @new_dump_files = grep { !$existing_dump_files->{$_} }
+                    keys %{connection_dump_files()};
+        }
 
         die "sniproxy didn't dump connections" unless @new_dump_files;
 
@@ -91,6 +98,15 @@ sub main {
     my $iterations = $ENV{ITERATIONS} || 10;
     my $local_httpd = $ENV{LOCAL_HTTPD_PORT};
 
+    # The connection dumps go to a directory of the test's own, which
+    # sniproxy only uses when it belongs to the user it runs as
+    my $runtime_dir = File::Temp::tempdir(CLEANUP => 1);
+    if ($> == 0) {
+        my ($uid, $gid) = test_ids();
+        chown($uid, $gid, $runtime_dir) or die "chown $runtime_dir: $!\n";
+    }
+    $ENV{XDG_RUNTIME_DIR} = $runtime_dir;
+
     my $config = make_config($proxy_port, $local_httpd || $httpd_port);
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
     my $httpd_pid = start_child('server', \&TestHTTPD::httpd, port => $httpd_port) unless $local_httpd;
@@ -99,7 +115,8 @@ sub main {
     wait_for_port(port => $httpd_port);
     wait_for_port(port => $proxy_port);
 
-    start_child('dump-connections-worker', \&dump_connections_worker, $proxy_pid);
+    my $dump_pid = start_child('dump-connections-worker',
+            \&dump_connections_worker, $proxy_pid);
 
     for (my $i = 0; $i < $workers; $i++) {
         start_child('worker', \&worker, 'localhost', '', $proxy_port, $iterations);
@@ -110,6 +127,10 @@ sub main {
 
     # Give the proxy a second to flush buffers and close server connections
     sleep 1;
+
+    # Let the dump worker remove its last dump before the proxy stops
+    kill 15, $dump_pid;
+    wait_for_type('dump-connections-worker');
 
     # For troubleshooting connections stuck in CLOSE_WAIT state
     #kill 10, $proxy_pid;

@@ -7,7 +7,7 @@ use IO::Socket::INET;
 require File::Temp;
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(start_child reap_children wait_for_type wait_for_port make_config find_free_port test_user test_group log_tempfile);
+our @EXPORT = qw(start_child reap_children wait_for_type wait_for_port make_config find_free_port test_user test_group test_ids log_tempfile);
 our $VERSION = '0.01';
 
 $SIG{CHLD} = \&REAPER;
@@ -233,6 +233,15 @@ if (defined $gid_list_env && $gid_list_env ne '') {
 sub test_user { $TEST_USER }
 sub test_group { $TEST_GROUP }
 
+# The uid and gid of the user and group sniproxy runs as
+sub test_ids {
+    my $uid = $TEST_USER =~ /^\d+$/ ? $TEST_USER : getpwnam($TEST_USER);
+    my $gid = $TEST_GROUP =~ /^\d+$/ ? $TEST_GROUP : getgrnam($TEST_GROUP);
+    defined $uid && defined $gid
+        or die "unknown user $TEST_USER or group $TEST_GROUP\n";
+    return ($uid, $gid);
+}
+
 # A file for sniproxy to log to. Started as root it only takes over an
 # existing log file the user it runs as owns, when others than root may
 # write to the directory, as anyone may to /tmp: so the file goes to
@@ -240,10 +249,7 @@ sub test_group { $TEST_GROUP }
 sub log_tempfile {
     my (undef, $filename) = File::Temp::tempfile(UNLINK => 1);
     if ($> == 0) {
-        my $uid = $TEST_USER =~ /^\d+$/ ? $TEST_USER : getpwnam($TEST_USER);
-        my $gid = $TEST_GROUP =~ /^\d+$/ ? $TEST_GROUP : getgrnam($TEST_GROUP);
-        defined $uid && defined $gid
-            or die "unknown user $TEST_USER or group $TEST_GROUP\n";
+        my ($uid, $gid) = test_ids();
         chown($uid, $gid, $filename) or die "chown $filename: $!\n";
     }
     return $filename;
