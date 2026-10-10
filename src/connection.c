@@ -3605,15 +3605,6 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         return;
     }
 
-    if (getsockname(sockfd, (struct sockaddr *)&con->server.local_addr,
-                &con->server.local_addr_len) != 0) {
-        close(sockfd);
-        warn("getsockname failed: %s", strerror(errno));
-
-        abort_connection(con, loop);
-        return;
-    }
-
     if (con->header_len && con->use_proxy_header == PROXY_PROTOCOL_NONE) {
         /* If we prepended the PROXY header and this backend isn't configured
          * to receive it, consume it now */
