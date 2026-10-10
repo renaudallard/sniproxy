@@ -826,6 +826,9 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   consumes one backslash, so a backslash meant for the regex must be
   doubled; `sniproxy -t` prints each pattern as it will be compiled.
   Bare hostnames are auto-anchored, regexes are not.
+- An IPv6 address in an HTTP Host header is looked up with its
+  brackets: match it with `^\\[2001:db8::1\\]$`, since a bare
+  `2001:db8::1` never matches and `[2001:db8::1]` is a character class.
 - Check the error log: a request without a hostname or one that fails
   to parse is logged as a warning, with the client address.
 

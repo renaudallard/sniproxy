@@ -837,6 +837,12 @@ its braces escaped, with its other backslashes still doubled:
 \fB"^[a-z]{3}\e\e.example\e\e.com$"\fR or
 \fB^[a-z]\e{3\e}\e\e.example\e\e.com$\fR.
 
+An IPv6 address in an HTTP Host header keeps its brackets in the
+hostname looked up, as in "[2001:db8::1]". An entry naming the address
+without them never matches it, and one with bare brackets is a
+character class that matches almost any hostname: escape the brackets,
+as in \fB^\e\e[2001:db8::1\e\e]$\fR.
+
 The optional proxy_protocol option will prepend a HAProxy PROXY v1 (text)
 protocol header to the proxied connection, allowing supporting
 webservers to obtain the source and destination IP and port of the
