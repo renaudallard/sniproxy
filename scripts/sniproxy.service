@@ -1,5 +1,5 @@
 [Unit]
-Description=sniproxy TLS/HTTP proxy
+Description=sniproxy hostname routing proxy
 Documentation=man:sniproxy(8)
 After=network-online.target
 Wants=network-online.target

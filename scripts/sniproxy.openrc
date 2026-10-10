@@ -14,7 +14,7 @@
 # reload, which needs it to be 0640 and owned by that user's group.
 
 name="sniproxy"
-description="Proxy routing TLS and HTTP connections by hostname"
+description="Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname"
 
 : ${SNIPROXY_CONFIG:="/etc/sniproxy.conf"}
 : ${SNIPROXY_OPTS="-g"}

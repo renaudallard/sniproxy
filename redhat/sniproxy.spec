@@ -1,7 +1,7 @@
 Name: sniproxy
 Version: 0.21.1
 Release: 1%{?dist}
-Summary: Transparent TLS and HTTP layer 4 proxy with SNI support
+Summary: Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname
 
 Group: System Environment/Daemons
 License: BSD
@@ -12,10 +12,10 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: gcc, make, autoconf, automake, curl, libev-devel, pcre2-devel, gettext-devel, c-ares-devel, openssl-devel, libbsd-devel, libseccomp-devel, pkgconfig, systemd-rpm-macros
 
 %description
-Proxies incoming HTTP and TLS connections based on the hostname contained in
-the initial request of the TCP session. This enables HTTPS name-based virtual
-hosting to separate backend servers without installing the private key on the
-proxy machine.
+Proxies incoming TLS, DTLS, HTTP, XMPP and Minecraft connections based on the
+hostname contained in the initial request of the session. This enables HTTPS
+name-based virtual hosting to separate backend servers without installing the
+private key on the proxy machine.
 
 
 %prep

@@ -3,7 +3,7 @@ pkgname=sniproxy
 # pkgver is set by the CI build
 pkgver=0.0.0
 pkgrel=0
-pkgdesc="Transparent TLS and HTTP layer 4 proxy with SNI support"
+pkgdesc="Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname"
 url="https://github.com/renaudallard/sniproxy"
 arch="all"
 license="BSD-2-Clause"

@@ -6,8 +6,9 @@
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: HTTPS SNI Proxy
-# Description:       Proxies incoming HTTP and TLS connections based on the
-#                    hostname contained in the initial request.
+# Description:       Proxies incoming TLS, DTLS, HTTP, XMPP and Minecraft
+#                    connections based on the hostname contained in the
+#                    initial request.
 ### END INIT INFO
 
 # Author: Andreas Loibl <andreas@andreas-loibl.de>
