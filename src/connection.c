@@ -1347,10 +1347,12 @@ rate_limit_reset(void) {
     rate_limit_last_cleanup = 0.0;
 }
 
+/* The times come from the wall clock, which can be set back: a time
+ * later than now counts as now */
 static void
 rate_limit_cleanup(ev_tstamp now) {
-    if (rate_limit_count == 0 ||
-            now - rate_limit_last_cleanup < RATE_LIMIT_CLEANUP_INTERVAL)
+    if (rate_limit_count == 0 || (now >= rate_limit_last_cleanup &&
+            now - rate_limit_last_cleanup < RATE_LIMIT_CLEANUP_INTERVAL))
         return;
 
     for (size_t i = 0; i < RATE_LIMIT_TABLE_SIZE; i++) {
@@ -1358,11 +1360,14 @@ rate_limit_cleanup(ev_tstamp now) {
 
         while (*current != NULL) {
             struct RateLimitBucket *bucket = *current;
-            ev_tstamp last_check = bucket->limit[0].last_check;
+            ev_tstamp last_check = 0.0;
 
-            for (int k = 1; k < RATE_LIMIT_KINDS; k++)
+            for (int k = 0; k < RATE_LIMIT_KINDS; k++) {
+                if (bucket->limit[k].last_check > now)
+                    bucket->limit[k].last_check = now;
                 if (bucket->limit[k].last_check > last_check)
                     last_check = bucket->limit[k].last_check;
+            }
 
             if (now - last_check > RATE_LIMIT_IDLE_TTL) {
                 *current = bucket->next;
@@ -1573,9 +1578,12 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
         rate_limit_table[bucket_index] = bucket;
     }
 
+    /* With the wall clock set back, no time has passed rather than a
+     * negative one, which would refuse the client for as long */
     double allowance = bucket->limit[kind].allowance;
-    allowance += (now - bucket->limit[kind].last_check) *
-            per_ip_connection_rate_limit;
+    if (now > bucket->limit[kind].last_check)
+        allowance += (now - bucket->limit[kind].last_check) *
+                per_ip_connection_rate_limit;
     if (allowance > capacity)
         allowance = capacity;
 
