@@ -153,6 +153,12 @@ SNIProxy runs as four cooperating processes:
    restarts the resolver if it exits, at most once a second once it has
    died three times in quick succession.
 
+These are the names `ps` and `pgrep` show on Linux, truncated there to
+15 characters. On OpenBSD every process keeps the command name
+`sniproxy`, and `ps` shows the helpers as `sniproxy: sniproxy-logger`
+and so on, while the main process keeps its command line so that rc.d
+can find it.
+
 All IPC channels are encrypted with ChaCha20-Poly1305. The master key is
 generated and locked in memory once in the parent and inherited across
 `fork()`, and each channel's keys are derived from it with a fresh salt
@@ -834,9 +840,10 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 
 **DNS is not working**
 
-- Check that the resolver process is alive: `pgrep -l sniproxy` lists
-  every sniproxy process by name. Linux truncates names to 15
-  characters, so it shows up there as `sniproxy-resolv`.
+- Check that the resolver process is alive: on Linux `pgrep -l sniproxy`
+  lists every sniproxy process by name, truncated to 15 characters, so
+  it shows up there as `sniproxy-resolv`. On OpenBSD, where they are
+  all named `sniproxy`, `pgrep -lf sniproxy-resolver` finds it.
 - Run in the foreground with `-d` (see Debug mode below) to trace each
   lookup.
 - Verify the `resolver { nameserver ... }` config and network
