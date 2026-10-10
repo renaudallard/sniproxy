@@ -179,6 +179,9 @@ struct ResolverChildDotSocket {
 
 static int resolver_sock = -1;
 static pid_t resolver_pid = -1;
+/* Flags for the sends on the IPC socket. FreeBSD ends a SEQPACKET record
+ * only at MSG_EOR, and returns records sent without it in one read. */
+static int resolver_send_flags = 0;
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
 /* Set once the startup has limited the rights on the IPC socket, so the
  * socket of a restarted resolver gets the same limits. */
@@ -547,6 +550,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
      * Falls back to SOCK_DGRAM if SEQPACKET is not available. */
 #ifdef SOCK_SEQPACKET
     int socket_type = SOCK_SEQPACKET;
+    resolver_send_flags = MSG_EOR;
 #else
     int socket_type = SOCK_DGRAM;
     notice("SOCK_SEQPACKET not available, using SOCK_DGRAM for resolver IPC");
@@ -589,6 +593,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
         if (errno == EPROTONOSUPPORT || errno == EPROTOTYPE) {
             notice("SOCK_SEQPACKET not supported, falling back to SOCK_DGRAM for resolver IPC");
             socket_type = SOCK_DGRAM;
+            resolver_send_flags = 0;
 #ifdef SOCK_CLOEXEC
             socket_type |= SOCK_CLOEXEC;
 #endif
@@ -1018,7 +1023,7 @@ resolver_send_message(uint32_t type, uint32_t id, const void *payload, size_t pa
     ssize_t written;
 
     do {
-        written = send(resolver_sock, frame, frame_len, 0);
+        written = send(resolver_sock, frame, frame_len, resolver_send_flags);
     } while (written < 0 && errno == EINTR);
 
     if (written == (ssize_t)frame_len) {
@@ -2253,7 +2258,7 @@ resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (;;) {
-        written = send(child_sock, frame, frame_len, 0);
+        written = send(child_sock, frame, frame_len, resolver_send_flags);
         if (written >= 0)
             break;
         if (errno == EINTR)
