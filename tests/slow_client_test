@@ -58,6 +58,37 @@ sub slow_client($$) {
     exit(0);
 }
 
+# A request that stops before its blank line is closed by the 5 second
+# request header timeout, neither earlier nor much later
+sub stalled_client($) {
+    my $port = shift;
+
+    local $SIG{ALRM} = sub { die "No close after the header timeout\n" };
+    alarm 15;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+            PeerPort => $port,
+            Proto => "tcp",
+            Type => SOCK_STREAM,
+            Timeout => 5)
+        or die "couldn't connect $!";
+
+    $socket->send("GET / HTTP/1.1\r\nHost: localhost:$port\r\n");
+    my $start = Time::HiRes::time();
+
+    my $buffer;
+    $socket->recv($buffer, 16384);
+    my $elapsed = Time::HiRes::time() - $start;
+    $socket->close();
+
+    die("Unexpected data: $buffer\n") if (length($buffer));
+    die(sprintf("Closed after %.1f s, before the header timeout\n", $elapsed))
+        if ($elapsed < 4);
+    die(sprintf("Closed after %.1f s\n", $elapsed)) if ($elapsed > 9);
+
+    exit(0);
+}
+
 sub main {
     my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
     my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
@@ -76,6 +107,7 @@ sub main {
     for (my $i = 0; $i < $workers; $i++) {
         start_child('worker', \&slow_client, $proxy_port, $iterations);
     }
+    start_child('worker', \&stalled_client, $proxy_port);
 
     # Wait for all our children to finish
     wait_for_type('worker');
