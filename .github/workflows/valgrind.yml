@@ -75,6 +75,56 @@ jobs:
             fi
           done
 
+      - name: Build sniproxy
+        run: make -j"$(nproc)" -C src
+
+      # The unit tests above leave the processes and the IPC out
+      - name: Run sniproxy under valgrind
+        run: |
+          set -euo pipefail
+          mkdir -p valgrind-logs/live live/www
+          cd live
+          echo hello > www/index.html
+          printf 'user %s\nlistener 127.0.0.1:18080 {\n    protocol http\n    table t\n}\ntable t {\n    localhost 127.0.0.1:18081\n}\n' \
+            "$(id -un)" > sniproxy.conf
+          chmod 600 sniproxy.conf
+          python3 -m http.server 18081 --bind 127.0.0.1 --directory www \
+            > backend.log 2>&1 &
+          backend=$!
+          # valgrind cannot run under the seccomp filters. glibc's cleanup
+          # at exit clears environ, which would leave the copy the process
+          # title code keeps of it looking lost.
+          SNIPROXY_DISABLE_SECCOMP=1 valgrind --run-libc-freeres=no \
+            --leak-check=full --errors-for-leak-kinds=definite,indirect \
+            --error-exitcode=1 --track-origins=yes \
+            --log-file=../valgrind-logs/live/sniproxy.%p.log \
+            ../src/sniproxy -f -c sniproxy.conf > sniproxy.log 2>&1 &
+          proxy=$!
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null http://127.0.0.1:18080/ && break
+            sleep 1
+          done
+          curl -sf -H 'Host: localhost' http://127.0.0.1:18080/
+          kill -HUP "$proxy"
+          sleep 2
+          curl -sf -H 'Host: localhost' http://127.0.0.1:18080/
+          kill -USR1 "$proxy"
+          sleep 1
+          kill -TERM "$proxy"
+          status=0
+          wait "$proxy" || status=$?
+          kill "$backend" || true
+          cat sniproxy.log
+          # One log per process: the main one and its helpers
+          bad=0
+          for log in ../valgrind-logs/live/*.log; do
+            grep -q 'ERROR SUMMARY: 0 errors' "$log" || bad=1
+          done
+          if [ "$status" -ne 0 ] || [ "$bad" -ne 0 ]; then
+            cat ../valgrind-logs/live/*.log
+            exit 1
+          fi
+
       - name: Upload valgrind logs
         if: always()
         uses: actions/upload-artifact@v7
