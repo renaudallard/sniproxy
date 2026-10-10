@@ -99,7 +99,6 @@
 #define RESOLVER_CMD_QUERY      1u
 #define RESOLVER_CMD_RESULT     3u
 #define RESOLVER_CMD_SHUTDOWN   4u
-#define RESOLVER_CMD_CRASH     5u
 /* The answer to a query whose lookup of the other address family still
  * runs, and the end of that lookup */
 #define RESOLVER_CMD_EARLY_RESULT 6u
@@ -353,7 +352,6 @@ static int resolver_send_message(uint32_t type, uint32_t id,
         const void *payload, size_t payload_len);
 static void resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
-static void resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
 static void resolver_handle_early_result(uint32_t, const uint8_t *, size_t);
 static void resolver_handle_done(uint32_t);
@@ -1183,36 +1181,9 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
         case RESOLVER_CMD_DONE:
             resolver_handle_done(id);
             break;
-        case RESOLVER_CMD_CRASH:
-            resolver_handle_crash_notice(payload, payload_len);
-            break;
         default:
             break;
     }
-}
-
-static void
-resolver_handle_crash_notice(const uint8_t *payload, size_t payload_len) {
-    if (payload == NULL) {
-        err("resolver child crash reported with NULL payload");
-        return;
-    }
-
-    size_t copy_len = payload_len;
-    if (copy_len > RESOLVER_IPC_MAX_PAYLOAD)
-        copy_len = RESOLVER_IPC_MAX_PAYLOAD;
-
-    char message[RESOLVER_IPC_MAX_PAYLOAD + 1];
-    if (copy_len > 0)
-        memcpy(message, payload, copy_len);
-    message[copy_len] = '\0';
-
-    if (copy_len == 0) {
-        err("resolver child crash reported with empty payload");
-        return;
-    }
-
-    err("%s", message);
 }
 
 /* The address an answer from the child carries, or NULL for a failed
