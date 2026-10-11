@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.21.1
+Version: 0.22.0
 Release: 1%{?dist}
 Summary: Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname
 
@@ -71,6 +71,11 @@ fi
 
 
 %changelog
+* Sun Oct 11 2026 Renaud Allard <renaud@allard.it> 0.22.0-1
+- Fixes from three reviews of 0.21.1: lookups no longer hang when an
+  answer is lost, safer log file hand-over at a root start, stricter
+  -T and HTTP request checks. See NEWS.
+
 * Sat Oct 10 2026 Renaud Allard <renaud@allard.it> 0.21.1-1
 - Resolver lookups and answers are no longer lost on FreeBSD 15. See
   NEWS.

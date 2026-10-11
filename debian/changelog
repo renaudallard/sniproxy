@@ -1,3 +1,11 @@
+sniproxy (0.22.0) unstable; urgency=medium
+
+  * Fixes from three reviews of 0.21.1: lookups no longer hang when an
+    answer is lost, safer log file hand-over at a root start, stricter
+    -T and HTTP request checks. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Sun, 11 Oct 2026 08:07:49 +0200
+
 sniproxy (0.21.1) unstable; urgency=medium
 
   * Resolver lookups and answers are no longer lost on FreeBSD 15. See

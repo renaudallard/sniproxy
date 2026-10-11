@@ -1,3 +1,39 @@
+2026-10-11  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.22.0
+	- config: a configuration without a listener, reuseport or an acl on
+	  a unix socket listener, a unix fallback on a dtls listener and a
+	  FIFO reached through a symlink are refused; a literal entry's
+	  trailing dot is left out; -t refuses, when not run as root, a user
+	  or group other than its own, and keeps its refusals on stderr.
+	- logger: on a root start only log files created by it, or owned by
+	  the run user, are handed over; an unknown user or group leaves no
+	  root-owned file; startup refusals reach the error log; SIGXFSZ is
+	  ignored; a failed logger restart is retried; dropped messages are
+	  counted; the health check waits for its ping's answer; a replaced
+	  file is reported as ESTALE on reopen.
+	- resolv: a lookup is given up 60 seconds after it was sent; at most
+	  64 frames are read per wakeup; DoT setup failures set errno.
+	- tls: a ClientHello whose extensions are not all read before
+	  supported_versions is refused; versions above TLS 1.3 do not count
+	  against -T.
+	- http: an absolute-form target is routed on its host and must match
+	  the Host header; a client's PROXY header is refused, as on xmpp; a
+	  request departing from the HTTP/2 preface is parsed again; an
+	  empty :authority port is refused.
+	- connection, listener: wall clock steps back no longer affect the
+	  rate limiter, buffer shrinking or throttled warnings; accepting
+	  pauses when a connection cannot be allocated; DTLS sessions to a
+	  unix socket are refused; helpers killed by a signal are logged.
+	- backend: the regex step limit grows with the pattern's length.
+	- sniproxy: the OpenBSD main process no longer pledges chown.
+	- scripts, packaging: the FreeBSD rc script passes -g; OpenRC logs
+	  stderr to syslog and keeps an empty SNIPROXY_OPTS; descriptions
+	  name every protocol; the example config no longer loops.
+	- docs and tests: IPv6 Host entries, OpenBSD process names, the
+	  systemd dump location, BSD log directories, -T; new tests and CI
+	  runs under Valgrind and the sanitizers.
+
 2026-10-10  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.21.1

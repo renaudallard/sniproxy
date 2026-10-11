@@ -1,3 +1,95 @@
+sniproxy 0.22.0 (2026-10-11)
+===============================
+
+Fixes from three reviews of 0.21.1.
+
+Upgrade note: a configuration without a listener no longer loads, nor
+does reuseport or an acl on a unix socket listener, a dtls listener
+whose fallback is a unix socket, or a named pipe reached through a
+symlink as the configuration. A DTLS session whose table entry is a
+unix socket is refused. On a start as root an existing log file must
+belong to the user sniproxy runs as unless only root may write to its
+directory: chown the files a previous release left to root, and those
+of the old user when changing the user. Run as an ordinary user, -t
+refuses a user or group other than its own, as the start does. The
+FreeBSD rc script now passes -g, so give the configuration the user's
+group and mode 0640. An empty SNIPROXY_OPTS in the OpenRC service no
+longer brings -g back.
+
+Highlights:
+
+* A resolver answer the resolver process could not hand over left its
+  lookup pending for good: every later client of that hostname hung,
+  and once they held all max_concurrent_queries slots every lookup was
+  refused with a 503. A lookup is now given up 60 seconds after it was
+  sent.
+
+* On a start as root, a user who could write to the log directory
+  could have a file of root's handed over by linking it at the log
+  path for the moment of the checks. Root now knows which log files it
+  created, and refuses an existing one the run user does not own.
+
+* -T could be passed by a ClientHello with more than 64 extensions
+  hiding its supported_versions, or listing an unassigned version such
+  as 0x0305 next to TLS 1.2, which an OpenSSL backend then negotiated.
+  Both are now refused.
+
+* A client could send a PROXY protocol header of its own ahead of its
+  request on http and xmpp listeners, and a backend accepting such
+  headers from the proxy took its claimed address as the client's.
+  Such requests are now invalid.
+
+* An HTTP/1 request with an absolute-form target, such as
+  GET http://example.com/, is now routed on that host, which servers
+  use instead of the Host header, and refused when its Host header
+  names another.
+
+* A resolver process run by an attacker could stall the main loop with
+  a flood of forged frames. At most 64 are now read per wakeup.
+
+* A file size limit, from ulimit -f or LimitFSIZE, made a log file
+  that reached it kill the logger and then the main process. SIGXFSZ
+  is now ignored, and the write fails instead.
+
+* A wall clock set back, as by an NTP step, made the per-IP rate
+  limiter refuse every recent client for the length of the step, kept
+  idle buffers large, and silenced four throttled warnings. A time
+  later than now now counts as now.
+
+* Without PCRE2 JIT, as on OpenBSD, a table entry listing a few hundred
+  names ran into the regex step limit and refused names it should have
+  matched or passed on. The limit now grows with the pattern's length.
+
+* A connection that could not be allocated made the listener spin and
+  log the failure hundreds of thousands of times. Accepting now pauses
+  as when descriptors run out.
+
+* After a pause of the whole process, the logger health check could
+  kill a healthy logger, and a failed logger restart was never tried
+  again. Both are fixed, and messages dropped while the logger could
+  not keep up are now counted and reported.
+
+* A helper killed by its seccomp filter or a pledge violation is now
+  logged, startup refusals reach the configured error log, and an
+  unknown user or group no longer leaves root-owned log files that the
+  next start refuses. -t keeps its refusals on standard error.
+
+* A literal table entry with a trailing dot now matches, an empty port
+  in an HTTP/2 :authority is refused as in HTTP/1, and an HTTP request
+  that starts like the HTTP/2 preface and then departs from it is no
+  longer held until the header timeout.
+
+* OpenRC sends what the daemon writes to standard error to syslog, and
+  the OpenBSD main process no longer pledges chown.
+
+* The documentation covers matching an IPv6 Host, the process names
+  OpenBSD shows, where the connection dump goes under systemd, the log
+  directory permissions to use on the BSDs, and which ClientHellos -T
+  refuses. The tests cover the header timeout, the configuration
+  permission check and more of the PROXY header, and the CI runs
+  sniproxy itself under Valgrind and the root tests under the
+  sanitizers.
+
 sniproxy 0.21.1 (2026-10-10)
 ===============================
 
