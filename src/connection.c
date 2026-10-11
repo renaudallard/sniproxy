@@ -730,11 +730,6 @@ fallback:
     }
 }
 
-void
-init_secure_temp_dir(void) {
-    (void)get_secure_temp_dir();
-}
-
 /* dumps a list of all connections for debugging */
 void
 print_connections(void) {
