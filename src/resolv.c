@@ -140,8 +140,9 @@ struct ResolverPending {
     struct ResolverPending *next_host;
     struct ResolverPending *next_unsent;
     int unsent;             /* waiting for room on the IPC socket */
-    ev_tstamp abandoned;    /* when the last client cancelled, or 0 */
-    ev_tstamp sent;         /* when last sent to the child, or 0 */
+    /* Times on resolver_clock(), or 0 */
+    ev_tstamp abandoned;    /* when the last client cancelled */
+    ev_tstamp sent;         /* when last sent to the child */
 };
 
 enum dot_min_tls_version {
@@ -367,6 +368,7 @@ static void resolver_cleanup_pending_queries(void);
 static void resolver_free_pending_list(struct ResolverPending *list, int notify_clients);
 static int resolver_pending_wanted(const struct ResolverPending *pending);
 static void resolver_watch_abandoned(void);
+static ev_tstamp resolver_clock(void);
 static int resolver_restart(int);
 static void resolver_cancel_scheduled_restart(void);
 static void resolver_resubmit_pending_queries(void);
@@ -926,20 +928,28 @@ resolv_cancel(struct ResolvQuery *handle) {
     handle->client_cb = NULL;
     int wanted = resolver_pending_wanted(handle->pending);
     if (!wanted && resolver_loop_ref != NULL)
-        handle->pending->abandoned = ev_now(resolver_loop_ref);
+        handle->pending->abandoned = resolver_clock();
     pthread_mutex_unlock(&resolver_queries_lock);
 
     if (!wanted)
         resolver_watch_abandoned();
 }
 
+/* The time on a clock that a change of the wall clock leaves alone */
+static ev_tstamp
+resolver_clock(void) {
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (ev_tstamp)ts.tv_sec + (ev_tstamp)ts.tv_nsec * 1e-9;
+}
+
 /* Give up the queries abandoned, or left unanswered, long enough ago, and
- * stop checking once none is left. The times come from the wall clock,
- * which can be set back: a time later than now counts as now. */
+ * stop checking once none is left */
 static void
 resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
         int revents __attribute__((unused))) {
-    ev_tstamp now = ev_now(loop);
+    ev_tstamp now = resolver_clock();
     struct ResolverPending *expired = NULL;
     struct ResolverPending *unanswered = NULL;
     int remaining = 0;
@@ -950,11 +960,6 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
 
         while (iter != NULL) {
             struct ResolverPending *next = iter->next_host;
-
-            if (iter->abandoned > now)
-                iter->abandoned = now;
-            if (iter->sent > now)
-                iter->sent = now;
 
             /* An unsent one is dropped when its turn to be sent comes */
             if (iter->unsent) {
@@ -984,8 +989,6 @@ resolver_abandoned_cb(struct ev_loop *loop, struct ev_timer *w,
     for (struct ResolverPending **iter = &resolver_answered; *iter != NULL;) {
         struct ResolverPending *pending = *iter;
 
-        if (pending->abandoned > now)
-            pending->abandoned = now;
         if (now - pending->abandoned >= RESOLVER_ABANDONED_TIMEOUT) {
             *iter = pending->next_host;
             pending->next_host = expired;
@@ -1305,7 +1308,7 @@ resolver_handle_early_result(uint32_t id, const uint8_t *payload,
     pthread_mutex_lock(&resolver_queries_lock);
     pending->clients = clients;
     if (resolver_loop_ref != NULL)
-        pending->abandoned = ev_now(resolver_loop_ref);
+        pending->abandoned = resolver_clock();
     pending->next_host = resolver_answered;
     resolver_answered = pending;
     pthread_mutex_unlock(&resolver_queries_lock);
@@ -1354,7 +1357,7 @@ resolver_emit_query(struct ResolverPending *pending) {
     /* A lost answer would otherwise keep the query, and the DNS limits
      * of the clients that join it, for good */
     if (rc == 0 && resolver_loop_ref != NULL) {
-        pending->sent = ev_now(resolver_loop_ref);
+        pending->sent = resolver_clock();
         resolver_watch_abandoned();
     }
     return rc;
