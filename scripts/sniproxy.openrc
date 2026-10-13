@@ -23,8 +23,10 @@ command="/usr/sbin/sniproxy"
 command_args="-f -c $SNIPROXY_CONFIG $SNIPROXY_OPTS"
 command_background=true
 # A start refused before the error log is open, as for an unknown user,
-# is reported on standard error, which a background command would lose
-error_logger="logger -t $RC_SVCNAME -p daemon.err"
+# is reported on standard error, which a background command would lose.
+# Every start also writes notices there while it reads the configuration,
+# so the priority is the one most of them have.
+error_logger="logger -t $RC_SVCNAME -p daemon.notice"
 pidfile="/run/$RC_SVCNAME.pid"
 required_files="$SNIPROXY_CONFIG"
 extra_started_commands="reload"
