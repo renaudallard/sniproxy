@@ -128,7 +128,10 @@ AS_IF([test "x$enable_hardening" != "xno"], [
   SNIPROXY_APPEND_LDFLAG([-Wl,-z,now], [ld_now])
   SNIPROXY_APPEND_LDFLAG([-Wl,-z,noexecstack], [ld_noexecstack])
   SNIPROXY_APPEND_LDFLAG([-Wl,-z,separate-code], [ld_separate_code])
-  SNIPROXY_APPEND_LDFLAG([-pie], [ld_pie])
+  # Mach-O executables are always position independent, and clang's
+  # Darwin driver ignores -pie with a warning on every link
+  AS_CASE([$host_os], [darwin*], [],
+    [SNIPROXY_APPEND_LDFLAG([-pie], [ld_pie])])
 ], [
   AC_MSG_WARN([Compiler/linker hardening disabled])
 ])
