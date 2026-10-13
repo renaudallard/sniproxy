@@ -37,6 +37,7 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -177,6 +178,27 @@ secure_memzero(void *ptr, size_t len) {
     while (len-- > 0)
         *p++ = 0;
 #endif
+}
+
+/* A peer sending refused messages in a loop, as a compromised helper could,
+ * must not fill the log: at most one refusal a second is reported, after
+ * the count of those left out since the last one. */
+static int
+ipc_crypto_report_refusal(void) {
+    static struct timespec last;
+    static unsigned long left_out;
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    if (last.tv_sec != 0 && now.tv_sec - last.tv_sec < 1) {
+        left_out++;
+        return 0;
+    }
+    if (left_out > 0)
+        warn("IPC: %lu more refused messages were not logged", left_out);
+    left_out = 0;
+    last = now;
+    return 1;
 }
 
 static void
@@ -722,8 +744,9 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         /* Message from old generation - replay attack */
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
-        warn("IPC replay attack: msg_generation=%u < recv_generation=%u",
-                msg_generation, state->recv_generation);
+        if (ipc_crypto_report_refusal())
+            warn("IPC replay attack: msg_generation=%u < recv_generation=%u",
+                    msg_generation, state->recv_generation);
         ipc_crypto_mask_failure(payload_len);
         errno = EBADMSG;
         return -1;
@@ -733,9 +756,11 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
     if (msg_generation - state->recv_generation > IPC_CRYPTO_MAX_GENERATION_GAP) {
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
-        warn("IPC generation gap too large: msg_generation=%u, recv_generation=%u, gap=%u",
-                msg_generation, state->recv_generation,
-                msg_generation - state->recv_generation);
+        if (ipc_crypto_report_refusal())
+            warn("IPC generation gap too large: msg_generation=%u, "
+                    "recv_generation=%u, gap=%u", msg_generation,
+                    state->recv_generation,
+                    msg_generation - state->recv_generation);
         ipc_crypto_mask_failure(payload_len);
         errno = EBADMSG;
         return -1;
@@ -773,10 +798,10 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         OPENSSL_cleanse(saved_recv_key, sizeof(saved_recv_key));
         OPENSSL_cleanse(output, payload_len > 0 ? payload_len : 1);
         free(output);
-        warn("IPC replay attack: msg_counter=%llu <= recv_counter=%llu (generation=%u)",
-                (unsigned long long)msg_counter,
-                (unsigned long long)state->recv_counter,
-                msg_generation);
+        if (ipc_crypto_report_refusal())
+            warn("IPC replay attack: msg_counter=%llu <= recv_counter=%llu "
+                    "(generation=%u)", (unsigned long long)msg_counter,
+                    (unsigned long long)state->recv_counter, msg_generation);
         ipc_crypto_mask_failure(payload_len);
         errno = EBADMSG;
         return -1;
