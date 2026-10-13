@@ -1,3 +1,51 @@
+sniproxy 0.22.1 (2026-10-13)
+===============================
+
+Fixes from a review of 0.22.0.
+
+Upgrade note: an HTTP request led by more than four empty lines is now
+invalid, and goes to the fallback or is answered with a 503. A DNS
+lookup whose answer never comes is given up 50 to 55 seconds after it
+was sent, instead of 60 to 70.
+
+Highlights:
+
+* A wall clock set forward by a minute or more, as by an NTP step after
+  boot or a resumed virtual machine, made every DNS lookup still running
+  fail with a 503, a regression in 0.22.0. Lookups are now timed on the
+  monotonic clock.
+
+* A lookup whose answer never came was seldom given up as 0.22.0
+  meant: the idle timeout closed the waiting client's connection first,
+  without an error, and the lookup kept its DNS limits for up to two
+  minutes. It is now given up 50 seconds after it was sent, before the
+  idle timeout, whether a client still waits for it or not.
+
+* A line of bare CRs ahead of an absolute-form HTTP request, or an empty
+  line ahead of a client's own PROXY header, got the request past the
+  checks 0.22.0 added. Leading CR and LF bytes are now skipped as
+  servers skip them, and more than eight make the request invalid.
+
+* The OpenRC service logged the notices every start writes while it
+  reads the configuration as errors, a regression in 0.22.0. They are
+  now logged as notices.
+
+* On OpenBSD, after a reload moved the error log away and back, what
+  was logged while the logger process was down, such as the report of
+  its death, was lost. The main process now reopens the file itself.
+
+* On OpenBSD, a client resetting its connection at once caused three
+  warnings and an access log line naming the listener NONE. They are
+  now debug messages, and the line names the listener.
+
+* A compromised helper process could fill the disk with warnings about
+  the messages it forges. At most one a second is now logged.
+
+* The manual page warns that the fallback receives a client's own PROXY
+  header as it was sent, so it must not accept PROXY headers unless the
+  fallback sends its own, and the README says how a lost first logger
+  is reported in daemon mode.
+
 sniproxy 0.22.0 (2026-10-11)
 ===============================
 

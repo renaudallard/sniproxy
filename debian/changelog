@@ -1,3 +1,11 @@
+sniproxy (0.22.1) unstable; urgency=medium
+
+  * Fixes from a review of 0.22.0: DNS lookups no longer fail after the
+    clock is set forward, a lost answer is given up before the client's
+    idle timeout, tighter HTTP request checks. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Tue, 13 Oct 2026 11:57:44 +0200
+
 sniproxy (0.22.0) unstable; urgency=medium
 
   * Fixes from three reviews of 0.21.1: lookups no longer hang when an

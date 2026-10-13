@@ -1,3 +1,20 @@
+2026-10-13  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.22.1
+	- resolv: lookups are timed on the monotonic clock; one never
+	  answered is given up 50 seconds after it was sent, checked every
+	  5 seconds, whether a client still waits for it or not.
+	- http: up to 8 leading CR and LF bytes are skipped before the
+	  request line is read, more make the request invalid.
+	- logger: the OpenBSD main process reopens a log file it can still
+	  reach when the logger process is lost.
+	- connection: a client reset before accept() returned is logged at
+	  debug level, and its access log line names the listener.
+	- ipc_crypto: at most one warning a second about refused messages.
+	- scripts: OpenRC logs the startup output at daemon.notice.
+	- docs: the fallback and a client's own PROXY header, the 50 to 55
+	  second lookup bound, how a lost first logger is reported.
+
 2026-10-11  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.22.0
