@@ -695,7 +695,11 @@ Without the directive, an http or xmpp request that starts with a PROXY
 header, or an xmpp stream with anything but white space before its
 header, is invalid and goes to the fallback, if any: a client could
 otherwise hand a backend that trusts PROXY headers from sniproxy a source
-address of its choosing.
+address of its choosing. The fallback gets such a request as the client
+sent it, header included, so the fallback server must not accept PROXY
+headers from sniproxy unless the \fBfallback\fR has a
+\fBproxy_protocol\fR or \fBproxy_protocol_v2\fR option, whose header
+then comes first.
 
 DTLS sessions neither read nor send PROXY headers: on a dtls listener
 \fBproxy_protocol\fR and a \fBproxy_protocol\fR option on the fallback
