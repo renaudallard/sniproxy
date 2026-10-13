@@ -1352,22 +1352,24 @@ obtain_file_sink(const char *filepath) {
     }
 
     if (!logger_process_enabled && sink->fd == NULL) {
-        if (!logger_parent_fs_locked) {
-            FILE *file = open_log_file_checked(filepath);
-            if (file == NULL) {
-                int saved_errno = errno;
-                free((char *)sink->filepath);
-                free(sink);
-                errno = saved_errno;
-                err("Failed to open new log file %s: %s", filepath,
-                        strerror(saved_errno));
-                return NULL;
-            }
+        /* Once the filesystem is locked, a path named at startup is still
+         * unveiled to this process, but one first named by a reload is
+         * not, and only standard error is left for it */
+        FILE *file = open_log_file_checked(filepath);
+        if (file != NULL) {
             sink->fd = file;
             sink->fd_owned = 1;
-        } else {
+        } else if (logger_parent_fs_locked) {
             sink->fd = stderr;
             sink->fd_owned = 0;
+        } else {
+            int saved_errno = errno;
+            free((char *)sink->filepath);
+            free(sink);
+            errno = saved_errno;
+            err("Failed to open new log file %s: %s", filepath,
+                    strerror(saved_errno));
+            return NULL;
         }
     }
 
@@ -1591,11 +1593,12 @@ disable_logger_process(void) {
     struct LogSink *sink = SLIST_FIRST(&sinks);
     while (sink != NULL) {
         if (sink->type == LOG_SINK_FILE && sink->fd == NULL && sink->filepath != NULL) {
-            if (!logger_parent_fs_locked) {
-                sink->fd = open_log_file_checked(sink->filepath);
-                if (sink->fd != NULL)
-                    sink->fd_owned = 1;
-            } else {
+            /* As in obtain_file_sink(): standard error only for a path
+             * the locked filesystem no longer shows this process */
+            sink->fd = open_log_file_checked(sink->filepath);
+            if (sink->fd != NULL) {
+                sink->fd_owned = 1;
+            } else if (logger_parent_fs_locked) {
                 sink->fd = stderr;
                 sink->fd_owned = 0;
             }
