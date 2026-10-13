@@ -144,6 +144,7 @@ static void log_connection(struct Connection *);
 static void log_bad_request(struct Connection *, const char *, size_t, int);
 static void free_connection(struct Connection *);
 static int cache_client_local_addr(struct Connection *, int);
+static int client_reset(int);
 static void print_connection(FILE *, const struct Connection *);
 static void free_resolv_cb_data(void *);
 static void connection_idle_cb(struct ev_loop *, struct ev_timer *, int);
@@ -439,8 +440,12 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
      * fails and would log a warning for every connection. */
     if (address_sa(listener->address)->sa_family != AF_UNIX) {
         int on = 1;
-        if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0)
-            warn("setsockopt TCP_NODELAY failed: %s", strerror(errno));
+        if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0) {
+            if (client_reset(errno))
+                debug("setsockopt TCP_NODELAY failed: %s", strerror(errno));
+            else
+                warn("setsockopt TCP_NODELAY failed: %s", strerror(errno));
+        }
     }
 
     if (!listener_acl_allows(listener, &con->client.addr)) {
@@ -499,8 +504,14 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
         goto cleanup;
     }
 
-    if (cache_client_local_addr(con, sockfd) != 0)
-        warn("getsockname failed on accepted socket: %s", strerror(errno));
+    if (cache_client_local_addr(con, sockfd) != 0) {
+        if (client_reset(errno))
+            debug("getsockname failed on accepted socket: %s",
+                    strerror(errno));
+        else
+            warn("getsockname failed on accepted socket: %s",
+                    strerror(errno));
+    }
 
     /* Avoiding type-punned pointer warning */
     struct ev_io *client_watcher = &con->client.watcher;
@@ -3641,8 +3652,12 @@ close_client_socket(struct Connection *con, struct ev_loop *loop) {
 
     if (con->listener->access_log &&
             con->client.local_addr.ss_family == AF_UNSPEC &&
-            cache_client_local_addr(con, con->client.watcher.fd) != 0)
-        warn("getsockname failed: %s", strerror(errno));
+            cache_client_local_addr(con, con->client.watcher.fd) != 0) {
+        if (client_reset(errno))
+            debug("getsockname failed: %s", strerror(errno));
+        else
+            warn("getsockname failed: %s", strerror(errno));
+    }
 
     ev_io_stop(loop, &con->client.watcher);
 
@@ -3813,8 +3828,11 @@ log_connection(struct Connection *con) {
     display_sockaddr(&con->client.addr, con->client.addr_len,
             client_address, sizeof(client_address));
     /* A unix socket the binder bound knows only the name relative to its
-     * directory, so show the path the listener was configured with. */
-    if (con->client.local_addr.ss_family == AF_UNIX)
+     * directory, and a client reset before it was accepted leaves no
+     * address at all, so show the address the listener was configured
+     * with. */
+    if (con->client.local_addr.ss_family == AF_UNIX ||
+            con->client.local_addr.ss_family == AF_UNSPEC)
         display_address(con->listener->address, listener_address,
                 sizeof(listener_address));
     else
@@ -3870,6 +3888,14 @@ free_connection(struct Connection *con) {
     free((void *)con->hostname); /* cast away const'ness */
     connection_memory_adjust(-(ssize_t)sizeof(struct Connection));
     free(con);
+}
+
+/* Whether a call on a client socket failed because the client reset the
+ * connection, which OpenBSD reports for one reset before accept() returned:
+ * ECONNRESET, then EINVAL once the socket is disconnected */
+static int
+client_reset(int error) {
+    return error == ECONNRESET || error == EINVAL;
 }
 
 static int
