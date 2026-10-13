@@ -732,7 +732,8 @@ afterthought.
   is restarted. In daemon mode the first logger, forked before sniproxy
   detaches, is not a child of the main process: its death is not logged,
   and the health check restarts it within 30 seconds, logging that it
-  could not be pinged. Every process
+  was lost, or that it could not be pinged when nothing was logged in
+  the meantime. Every process
   is also made non-dumpable, so that another process of the same user,
   a compromised helper included, cannot read or write its memory through
   `/proc`; as a consequence no core file is written.
