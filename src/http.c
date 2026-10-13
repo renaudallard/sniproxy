@@ -36,6 +36,8 @@
 #include "http2.h"
 
 #define SERVER_NAME_LEN 256
+/* CR and LF bytes skipped ahead of a request line: four empty lines */
+#define HTTP_MAX_LEADING_BLANK 8
 
 static size_t http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
 
@@ -101,6 +103,20 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
             if (data_len >= preface_len || h2_result != -4)
                 return h2_result;
         }
+    }
+
+    /* Servers skip the empty lines a client may send ahead of the request
+     * line (RFC 9112 2.2), some any run of CR and LF bytes: the request
+     * line is the first one after them, or the target of an absolute-form
+     * request would be read from a line that is not. A client sends one
+     * such line, if any; a run of more than a few is invalid, or every read
+     * adding to it would have the whole of it parsed again. */
+    size_t blank = 0;
+    while (data_len > 0 && (*data == '\r' || *data == '\n')) {
+        if (++blank > HTTP_MAX_LEADING_BLANK)
+            return -5;
+        data++;
+        data_len--;
     }
 
     /* A PROXY protocol header the client sent itself would reach the
@@ -224,19 +240,12 @@ http_host_name(char *buffer, size_t hostname_len) {
 /*
  * Returns the authority of an absolute-form request target, as in
  * GET http://example.com/ HTTP/1.1, and its length in *len, or NULL when
- * the request line has a target of another form.
+ * the request line, with which data starts, has a target of another form.
  */
 static const char *
 absolute_form_authority(const char *data, size_t data_len, size_t *len) {
-    const char *end;
+    const char *end = memchr(data, '\n', data_len);
 
-    /* A server may skip empty lines ahead of the request line (RFC 9112
-     * 2.2) */
-    while ((end = memchr(data, '\n', data_len)) != NULL &&
-            (end == data || (end == data + 1 && *data == '\r'))) {
-        data_len -= (size_t)(end - data) + 1;
-        data = end + 1;
-    }
     if (end == NULL)
         return NULL;
 

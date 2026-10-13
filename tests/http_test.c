@@ -107,6 +107,13 @@ struct http_request_case {
 
 static const struct http_request_case good[] = {
     {
+        "\r\n\r\r\n"
+        "GET / HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "\r\n",
+        "localhost"
+    },
+    {
         "GET / HTTP/1.1\r\n"
         "User-Agent: curl/7.21.0 (x86_64-pc-linux-gnu) libcurl/7.21.0 OpenSSL/0.9.8o zlib/1.2.3.4 libidn/1.18\r\n"
         "Host: localhost\r\n"
@@ -582,6 +589,24 @@ int main(void) {
     assert(result == -5);
     assert(hostname == NULL);
 
+    /* More empty lines ahead of the request line than a client sends are
+     * invalid, or a client sending nothing else would have them parsed
+     * again at every read */
+    static const char many_blank[] =
+        "\r\n\r\n\r\n\r\n\r\n"
+        "GET / HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "\r\n";
+    hostname = NULL;
+    result = http_protocol->parse_packet(many_blank,
+            sizeof(many_blank) - 1, &hostname);
+    assert(result == -5);
+    assert(hostname == NULL);
+    hostname = NULL;
+    result = http_protocol->parse_packet(many_blank, 10, &hostname);
+    assert(result == -5);
+    assert(hostname == NULL);
+
     /* An absolute-form target naming another host than the Host header,
      * or one with user information, no host or a bad one, is invalid */
     static const char *const bad_target[] = {
@@ -589,6 +614,14 @@ int main(void) {
             "Host: example.com\r\n"
             "\r\n",
         "\n"
+            "GET http://internal.example/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "\r\r\n"
+            "GET http://internal.example/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "\r\n\r\r\n"
             "GET http://internal.example/ HTTP/1.1\r\n"
             "Host: example.com\r\n"
             "\r\n",
