@@ -715,7 +715,11 @@ afterthought.
   logger is forked before that and unveils only its own log files just
   before it drops privileges, so a log file first named by a reload is
   only opened after a restart. A logger restarted by the health check
-  runs within the main loop's view and promises instead.
+  runs within the main loop's view and promises instead. pledge(2)
+  cannot let the resolver connect to its nameservers without letting it
+  bind and accept as well, so a compromised resolver could take the
+  clients of a listener that belongs to the same user, as one bound
+  after the privilege drop does.
 - **FreeBSD sandboxing**: the logger enters Capsicum capability mode
   with its log directories pre-opened for `openat()`. The main process
   and the resolver stay out of it, since capability mode forbids
@@ -731,7 +735,10 @@ afterthought.
   fork but not create namespaces, and netlink sockets are limited to
   NETLINK_ROUTE, except where socket(2) goes through socketcall(2), as
   on i386, so that a compromised process cannot reach kernel interfaces
-  such as nf_tables from a user namespace of its own.
+  such as nf_tables from a user namespace of its own. Only the main
+  process may bind, listen and accept: the resolver runs as the same
+  user, and could otherwise join a `reuseport` listener and take its
+  clients.
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. A helper
   killed by its filter, or on OpenBSD by a pledge violation, is logged
   by the main process as "process N was killed by signal S" before it

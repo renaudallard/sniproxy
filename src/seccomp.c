@@ -119,12 +119,20 @@ static const char *const fs_misc_syscalls[] = {
 
 static const char *const network_syscalls[] = {
     "socketpair",
-    "bind", "listen", "accept", "accept4", "connect",
+    "connect",
     "getsockopt", "setsockopt",
     "getsockname", "getpeername",
     "shutdown",
     "sendto", "send", "recvfrom", "recv", "sendmsg", "recvmsg",
     "sendmmsg", "recvmmsg", "recvmmsg_time64",
+    NULL,
+};
+
+/* What the main process adds: its listeners. The resolver child never
+ * binds, listens or accepts, and could otherwise join a reuseport
+ * listener, which belongs to the same user, and take its clients. */
+static const char *const listen_syscalls[] = {
+    "bind", "listen", "accept", "accept4",
     NULL,
 };
 
@@ -435,6 +443,7 @@ install_filter(enum seccomp_process_type type) {
             if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
                     SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscalls(ctx, listen_syscalls) < 0 ||
                 allow_syscalls(ctx, self_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||

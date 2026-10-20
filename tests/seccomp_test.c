@@ -31,12 +31,14 @@
 
 #include <errno.h>
 #include <linux/netlink.h>
+#include <netinet/in.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
 #include <sys/socket.h>
@@ -163,6 +165,33 @@ static void
 ioctl_tiocsti(void) {
     char c = 0;
     (void)ioctl(STDIN_FILENO, TIOCSTI, &c);
+}
+
+/* The resolver child connects its sockets but never binds, listens or
+ * accepts */
+static void
+resolver_bind(void) {
+    struct sockaddr_in sin;
+
+    if (seccomp_install_filter(SECCOMP_PROCESS_RESOLVER) < 0)
+        _exit(1);
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        _exit(1);
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    (void)bind(fd, (struct sockaddr *)&sin, sizeof(sin));
+}
+
+static void
+resolver_listen(void) {
+    if (seccomp_install_filter(SECCOMP_PROCESS_RESOLVER) < 0)
+        _exit(1);
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        _exit(1);
+    (void)listen(fd, 1);
 }
 
 /* Under the main filter: no process in new namespaces, no netlink but
@@ -362,6 +391,10 @@ main(void) {
         return 1;
 
     if (test_forked_child_can_install_filter() != 0)
+        return 1;
+
+    if (expect_killed(resolver_bind) != 0 ||
+            expect_killed(resolver_listen) != 0)
         return 1;
 
     return 0;
