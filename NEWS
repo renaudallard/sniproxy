@@ -1,3 +1,53 @@
+sniproxy 0.23.0 (2026-10-20)
+===============================
+
+Fixes from a security review of 0.22.1.
+
+Upgrade note: started as root, sniproxy now refuses a pid file or a unix
+socket listener whose path leads through a directory, above the one
+holding it, that a user or group other than root may write to, or
+through a symbolic link root does not own; a file directly in /run or
+/var/run, or in a directory of the run user there, is unaffected. An
+HTTP request line led by white space, or with a tab after its method, is
+now invalid. Outside Linux a privileged port a reload adds cannot share
+an address and port with a listener bound at startup until a restart.
+
+Highlights:
+
+* A compromised resolver process could crash the main process, and
+  possibly run code in it, by answering lookups the main process had
+  not yet sent it: such answers are now ignored.
+
+* Outside Linux the binder stays root, and on OpenBSD and FreeBSD a
+  compromised main process could have it take over the port of another
+  service on a more specific address. It now creates its sockets as the
+  user sniproxy runs as, so the kernel refuses that.
+
+* On Linux a compromised resolver could join a reuseport listener and
+  accept part of its clients: only the main process may now bind,
+  listen and accept. No helper may change file times any more.
+
+* Forged DTLS sessions could take all of max_connections and lock out
+  every TCP client; they may now take at most half of it.
+
+* A client's own PROXY header in its binary form went past the check
+  0.22.0 added on http listeners, and reached the backend with a source
+  address of the client's choosing. A request line must now start with
+  a method and a space.
+
+* The per-IP rate limiter could be grown to some 400 MB by a client
+  with a large IPv6 prefix, and then refused new clients. It now holds
+  about 524288 sources at most and forgets the one seen least recently.
+
+* A root start refuses a pid file or unix socket path that another
+  user could make lead to a directory of root's, and SIGUSR1 dumps are
+  always written to the directory that was checked.
+
+* The binder's error replies are escaped before they are logged, the
+  README warns that players can forge BungeeCord forwarding through
+  sniproxy and says what the processes are called on macOS, and
+  configure no longer passes -pie to the macOS linker.
+
 sniproxy 0.22.1 (2026-10-13)
 ===============================
 

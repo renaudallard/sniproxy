@@ -1,3 +1,26 @@
+2026-10-20  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.23.0
+	- resolv: an answer to a lookup still waiting to be sent to the
+	  resolver process is ignored.
+	- binder: outside Linux, IP sockets are created as the run user and
+	  bound as root; a binder started as root is pledged id on OpenBSD.
+	- seccomp: bind, listen and accept are allowed to the main process
+	  only; the utime calls are refused in every filter.
+	- sniproxy, listener: a root start and -t refuse a pidfile or unix
+	  listener path through a directory others may write or a symlink
+	  root does not own.
+	- connection: DTLS backend sockets take at most half of
+	  max_connections; SIGUSR1 dumps are created relative to the checked
+	  directory, which is checked again when its path changed; a full
+	  rate limiter forgets the least recently seen source of a chain and
+	  holds about 524288 sources at most.
+	- binder: its error replies are logged with non-printable bytes
+	  escaped.
+	- http: a request line must start with a method token and a space.
+	- configure: no -pie on Darwin.
+	- docs: BungeeCord forwarding warning, macOS process names.
+
 2026-10-13  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.22.1
