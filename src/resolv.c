@@ -1511,6 +1511,11 @@ resolver_take_query(uint32_t id) {
     while (*iter != NULL) {
         if ((*iter)->id == id) {
             struct ResolverPending *found = *iter;
+            /* A query still waiting for room on the socket was never
+             * seen by the child, so no answer to it can be genuine, and
+             * taking it would free it while the unsent queue holds it */
+            if (found->unsent)
+                break;
             *iter = found->next_id;
 
             size_t host_bucket = resolver_host_bucket_index(found->host_hash);
