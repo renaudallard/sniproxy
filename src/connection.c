@@ -183,15 +183,18 @@ static int socket_disconnected(int);
 static void splice_server_failed(struct Connection *, struct ev_loop *, int);
 #endif
 
-/* A bucket lives for RATE_LIMIT_IDLE_TTL after its last connection and a
- * chain longer than RATE_LIMIT_MAX_CHAIN_LENGTH refuses the connection, so
- * the table has to keep chains short for as many distinct clients as a
- * busy instance sees in that window: 1024 buckets started refusing
- * legitimate clients at a few tens of thousands of sources. */
+/* A bucket lives for RATE_LIMIT_IDLE_TTL after its last connection. A
+ * chain is kept in the order its sources were last seen, and holds at
+ * most RATE_LIMIT_MAX_CHAIN_LENGTH buckets, and the table at most
+ * RATE_LIMIT_MAX_BUCKETS, some 100 MB: a new source then takes the bucket
+ * of the source its chain saw least recently, which only gets a fresh
+ * allowance when it comes back. A client from a large IPv6 prefix can
+ * bring that many sources in that window. */
 #define RATE_LIMIT_TABLE_SIZE 65536
 #define RATE_LIMIT_IDLE_TTL 300.0
 #define RATE_LIMIT_CLEANUP_INTERVAL 60.0
 #define RATE_LIMIT_MAX_CHAIN_LENGTH 32
+#define RATE_LIMIT_MAX_BUCKETS 524288
 /* Buckets for sources first seen in a UDP datagram, whose address may be
  * forged: they are limited in number and may only fill half of a chain,
  * so that forged datagrams cannot grow the table without bound or leave
@@ -1503,29 +1506,16 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
     double capacity = rate_limit_bucket_capacity();
     size_t chain_length = 0;
 
+    struct RateLimitBucket *before_prev = NULL;
     while (bucket != NULL) {
-        chain_length++;
-
-        /* Protect against hash collision DoS: limit chain depth.
-         * If chain is too long, reject the connection to prevent bypass of rate limiting. */
-        if (chain_length > RATE_LIMIT_MAX_CHAIN_LENGTH) {
-            static ev_tstamp last_warning = 0.0;
-            /* Throttle warnings to once per minute, or the wall clock
-             * set back would silence them for as long */
-            if (now < last_warning || now - last_warning > 60.0) {
-                warn("Rate limit hash collision detected: chain length %zu exceeds maximum %d (bucket %zu) - rejecting connection",
-                     chain_length, RATE_LIMIT_MAX_CHAIN_LENGTH, bucket_index);
-                last_warning = now;
-            }
-            return -1;  /* Reject connection to prevent rate limit bypass */
-        }
-
         if (bucket->addr_hash == hash && bucket->is_v4 == is_v4) {
             if (is_v4 && bucket->addr_v4 == addr_v4)
                 break;
             if (!is_v4 && sockaddr_equal_ip(&bucket->addr, addr))
                 break;
         }
+        chain_length++;
+        before_prev = prev;
         prev = bucket;
         bucket = bucket->next;
     }
@@ -1537,10 +1527,26 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
                     chain_length >= RATE_LIMIT_MAX_UDP_CHAIN_LENGTH))
             return -1;
 
-        bucket = rate_limit_bucket_acquire();
-        if (bucket == NULL) {
-            err("rate limit bucket allocation failed: %s; rejecting connection", strerror(errno));
-            return -1;  /* Fail-closed: reject connection when we can't track rate limits */
+        /* Full: the last bucket of the chain was seen least recently.
+         * An empty chain still gets one, which takes the table at most
+         * RATE_LIMIT_TABLE_SIZE buckets beyond RATE_LIMIT_MAX_BUCKETS. */
+        if (prev != NULL && (chain_length >= RATE_LIMIT_MAX_CHAIN_LENGTH ||
+                    rate_limit_count >= RATE_LIMIT_MAX_BUCKETS)) {
+            bucket = prev;
+            if (before_prev != NULL)
+                before_prev->next = NULL;
+            else
+                rate_limit_table[bucket_index] = NULL;
+            if (bucket->udp_created)
+                rate_limit_udp_count--;
+            rate_limit_count--;
+            memset(bucket, 0, sizeof(*bucket));
+        } else {
+            bucket = rate_limit_bucket_acquire();
+            if (bucket == NULL) {
+                err("rate limit bucket allocation failed: %s; rejecting connection", strerror(errno));
+                return -1;  /* Fail-closed: reject connection when we can't track rate limits */
+            }
         }
 
         bucket->addr = *addr;

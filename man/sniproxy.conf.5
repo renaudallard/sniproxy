@@ -126,7 +126,11 @@ sources first seen in a datagram are tracked at a time, and they may
 take at most half of the room in the rate limiter's table: a flood of
 forged datagrams can make new DTLS sessions be refused until its entries
 expire, about five minutes after their last datagram, but leaves room for TCP
-clients.
+clients. The table tracks some 524288 sources at most, about 100 MB, which a
+client from a large IPv6 prefix can bring in five minutes: a new source
+then takes the place of the one seen least recently in its part of the
+table, which only gets a fresh allowance when it comes back, rather than
+being refused.
 
 .SS PER_IP_MAX_CONNECTIONS
 
