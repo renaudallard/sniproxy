@@ -28,6 +28,7 @@
 #include <config.h>
 #endif
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -480,9 +481,15 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
             return received_fd;
         }
 
-        if (reply_len > 0)
-            err("binder returned: %.*s", (int)reply_len, (char *)reply);
-        else
+        if (reply_len > 0) {
+            /* A compromised binder must not write lines of its own into
+             * the error log */
+            char *text = (char *)reply;
+            for (size_t i = 0; i < reply_len; i++)
+                if (!isprint((unsigned char)text[i]))
+                    text[i] = '?';
+            err("binder returned: %.*s", (int)reply_len, text);
+        } else
             err("binder returned unknown error");
         free(reply);
         return -1;
