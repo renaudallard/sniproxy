@@ -113,7 +113,6 @@ static const char *const fs_misc_syscalls[] = {
     "pipe", "pipe2",
     "close_range", "closefrom",
     "chdir", "fchdir",
-    "utime", "utimes", "futimesat", "utimensat", "utimensat_time64",
     NULL,
 };
 

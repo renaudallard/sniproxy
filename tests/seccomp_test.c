@@ -30,6 +30,7 @@
 #if defined(__linux__) && defined(HAVE_SECCOMP)
 
 #include <errno.h>
+#include <fcntl.h>
 #include <linux/netlink.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -192,6 +193,14 @@ resolver_listen(void) {
     if (fd < 0)
         _exit(1);
     (void)listen(fd, 1);
+}
+
+/* No process changes the times of a file */
+static void
+main_utimensat(void) {
+    if (seccomp_install_filter(SECCOMP_PROCESS_MAIN) < 0)
+        _exit(1);
+    (void)syscall(SYS_utimensat, AT_FDCWD, ".", NULL, 0);
 }
 
 /* Under the main filter: no process in new namespaces, no netlink but
@@ -394,7 +403,8 @@ main(void) {
         return 1;
 
     if (expect_killed(resolver_bind) != 0 ||
-            expect_killed(resolver_listen) != 0)
+            expect_killed(resolver_listen) != 0 ||
+            expect_killed(main_utimensat) != 0)
         return 1;
 
     return 0;
