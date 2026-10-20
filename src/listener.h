@@ -97,6 +97,7 @@ void listeners_reload(struct Listener_head *, struct Listener_head *, const stru
 void free_listeners(struct Listener_head *, struct ev_loop *);
 void listeners_set_tcp_fastopen(int enabled);
 void listeners_set_socket_owner(uid_t);
+int listeners_unix_paths_trusted(const struct Listener_head *);
 
 int valid_listener(const struct Listener *);
 struct LookupResult listener_lookup_server_address(const struct Listener *,

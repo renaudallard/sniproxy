@@ -71,7 +71,13 @@ exit by the unprivileged process, so its directory must be writable by
 the user sniproxy runs as for that to work. In a directory only root can
 write, such as \fI/var/run\fR, the file stays behind after a stop and the
 next start replaces it, unless its process ID has been taken by another
-running process in the meantime, which makes that start fail.
+running process in the meantime, which makes that start fail. Started as
+root, sniproxy refuses a pid file whose path leads through a directory,
+other than the one holding the file, that a user other than root may
+write to, its group included, or that is reached through a symbolic
+link root does not own,
+as that user could make the path lead to another directory; the same
+goes for unix socket listeners.
 
 .SS MAX_CONNECTIONS
 

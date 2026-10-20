@@ -186,6 +186,18 @@ pidfile_remove_stale(const char *path) {
     return 0;
 }
 
+/* Whether no user but root can make the pidfile path lead to another
+ * directory */
+static int
+pidfile_path_trusted(const char *path) {
+    const char *name;
+    int fd = dir_open_as_root(path, &name, 1);
+
+    if (fd >= 0)
+        close(fd);
+    return fd >= 0 || errno != EPERM;
+}
+
 static void
 pidfile_cleanup(void) {
     if (pidfile_path_at_exit == NULL)
@@ -614,6 +626,15 @@ main(int argc, char **argv) {
         logger_chown_files(run_uid, run_gid);
     }
     set_default_logger(config->error_log);
+
+    /* Root creates the pidfile and unix socket listeners, and removes
+     * stale ones, by path */
+    if (geteuid() == 0 && ((background_flag && config->pidfile != NULL &&
+                    !pidfile_path_trusted(config->pidfile)) ||
+                !listeners_unix_paths_trusted(&config->listeners))) {
+        free_config(config, loop);
+        return EXIT_FAILURE;
+    }
 
     if (config_get_allow_group_read())
         warn("SECURITY WARNING: running with -g flag. "

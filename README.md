@@ -690,7 +690,11 @@ afterthought.
   a root start an existing log file in a directory that others than root
   may write to must already belong to the user sniproxy runs as, so that
   a link to a file of root's, put there and removed again around the
-  single-link check, is not handed over.
+  single-link check, is not handed over. A root start also refuses a
+  pidfile or a Unix socket listener whose path leads through a
+  directory, above the one holding it, that others than root may write
+  to, through its group too, or through a symlink root does not own: root creates and removes
+  these by path, which such a user could make lead to any directory.
 - **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`. On Linux the main process keeps
   CAP_NET_RAW, and only when a listener uses `source client`; the

@@ -1412,6 +1412,29 @@ listeners_set_socket_owner(uid_t uid) {
     listener_socket_uid = uid;
 }
 
+/* A start as root binds unix socket listeners, and removes a stale socket
+ * in their place, by path: refuse one whose path a user other than root
+ * could make lead to another directory */
+int
+listeners_unix_paths_trusted(const struct Listener_head *listeners) {
+    const struct Listener *listener;
+
+    SLIST_FOREACH(listener, listeners, entries) {
+        char path[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
+        const char *name;
+
+        if (!unix_listener_path(listener, path, sizeof(path)))
+            continue;
+        int fd = dir_open_as_root(path, &name, 1);
+        if (fd >= 0)
+            close(fd);
+        else if (errno == EPERM)
+            return 0;
+    }
+
+    return 1;
+}
+
 void
 free_listeners(struct Listener_head *listeners, struct ev_loop *loop) {
     struct Listener *iter;

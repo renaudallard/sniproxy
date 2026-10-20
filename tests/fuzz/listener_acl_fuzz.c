@@ -111,6 +111,14 @@ void
 logger_ref_put(struct Logger *logger __attribute__((unused))) {}
 
 int
+dir_open_as_root(const char *path __attribute__((unused)),
+        const char **file_basename __attribute__((unused)),
+        int trusted_parents __attribute__((unused))) {
+    errno = ENOENT;
+    return -1;
+}
+
+int
 bind_socket(const struct sockaddr *addr __attribute__((unused)),
         size_t len __attribute__((unused)),
         int sock_type __attribute__((unused))) {

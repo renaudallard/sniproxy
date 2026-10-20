@@ -404,21 +404,25 @@ new_file_logger(const char *filepath) {
     return logger;
 }
 
-/* Symbolic links followed while opening the directory of a log file */
-#define LOG_DIR_MAX_LINKS 16
+/* Symbolic links followed while opening the directory of a file */
+#define DIR_MAX_LINKS 16
 
 /*
- * Open the directory of an absolute log path for root, who hands the file
- * over to the unprivileged user: a symbolic link on the way is only
- * followed when root owns it, as a user who can write to one of the
- * directories could otherwise replace the next one with a link to a
- * directory of root's and be handed a file created there. Each directory
+ * Open the directory of an absolute path for root, who hands a file in it
+ * over to the unprivileged user or creates one there: a symbolic link on
+ * the way is only followed when root owns it, as a user who can write to
+ * one of the directories could otherwise replace the next one with a link
+ * to a directory of root's and have a file created there. Each directory
  * is opened from the one before with O_NOFOLLOW, so none can be swapped
- * between a check and the open. Returns a descriptor of the directory and
- * points *file_basename at the last component of path.
+ * between a check and the open. With trusted_parents, every directory
+ * above the last one must also belong to root and be writable by root
+ * only, so that the path still leads there when used by name later.
+ * Returns a descriptor of the directory and points *file_basename at the
+ * last component of path.
  */
-static int
-log_dir_open_as_root(const char *path, const char **file_basename) {
+int
+dir_open_as_root(const char *path, const char **file_basename,
+        int trusted_parents) {
     char rest[PATH_MAX], next[PATH_MAX];
     const char *slash = strrchr(path, '/');
     unsigned int links = 0;
@@ -457,6 +461,16 @@ log_dir_open_as_root(const char *path, const char **file_basename) {
         if (end != NULL)
             *end = '\0';
 
+        struct stat st;
+        if (trusted_parents && (fstat(fd, &st) < 0 || st.st_uid != 0 ||
+                    (st.st_mode & (S_IWGRP | S_IWOTH)) != 0)) {
+            warn("Refusing %s: a directory on its path may be changed by "
+                    "a user other than root", path);
+            close(fd);
+            errno = EPERM;
+            return -1;
+        }
+
         int next_fd = openat(fd, p, dir_flags | O_NOFOLLOW);
         if (next_fd >= 0) {
             close(fd);
@@ -468,7 +482,6 @@ log_dir_open_as_root(const char *path, const char **file_basename) {
         }
 
         int saved_errno = errno;
-        struct stat st;
         if (fstatat(fd, p, &st, AT_SYMLINK_NOFOLLOW) < 0 ||
                 !S_ISLNK(st.st_mode)) {
             close(fd);
@@ -476,13 +489,13 @@ log_dir_open_as_root(const char *path, const char **file_basename) {
             return -1;
         }
         if (st.st_uid != 0) {
-            warn("Refusing log file %s: %s is a symbolic link not owned by root",
+            warn("Refusing %s: %s is a symbolic link not owned by root",
                     path, p);
             close(fd);
             errno = EPERM;
             return -1;
         }
-        if (++links > LOG_DIR_MAX_LINKS) {
+        if (++links > DIR_MAX_LINKS) {
             close(fd);
             errno = ELOOP;
             return -1;
@@ -579,7 +592,7 @@ log_file_open(int dirfd, const char *path, struct stat *st, int *trusted) {
         fd = openat(dirfd, path, open_flags, create_mode);
     } else if (geteuid() == 0) {
         const char *file_basename;
-        int root_dirfd = log_dir_open_as_root(path, &file_basename);
+        int root_dirfd = dir_open_as_root(path, &file_basename, 0);
 
         if (root_dirfd < 0)
             return -1;
@@ -1418,7 +1431,7 @@ log_file_remove_unused(struct LogSink *sink) {
             st_fd.st_size != 0)
         return;
 
-    int dirfd = log_dir_open_as_root(sink->filepath, &file_basename);
+    int dirfd = dir_open_as_root(sink->filepath, &file_basename, 0);
     if (dirfd < 0)
         return;
     if (fstatat(dirfd, file_basename, &st_path, AT_SYMLINK_NOFOLLOW) == 0 &&
