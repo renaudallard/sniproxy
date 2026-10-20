@@ -2288,8 +2288,14 @@ descriptor_budget_allows(size_t tcp, size_t udp) {
     return udp / 2 + udp % 2 <= max_global_connections - tcp;
 }
 
+/* A dtls backend socket may take at most half of the descriptors: a
+ * client's source address can be forged, and forged sessions must leave
+ * room for TCP connections, at least half of max_global_connections */
 int
 connections_udp_socket_acquire(void) {
+    if (max_global_connections != 0 &&
+            udp_socket_count >= max_global_connections)
+        return 0;
     if (!descriptor_budget_allows(connection_active_count,
                 udp_socket_count + 1))
         return 0;

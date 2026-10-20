@@ -92,7 +92,9 @@ accepted across all listeners. Once this threshold is reached new
 connections are closed immediately until existing ones complete. DTLS
 sessions have a fixed limit of 16384, and each one that has opened its
 backend socket also takes half a connection from this limit, as it
-holds one descriptor where a TCP connection holds two. The
+holds one descriptor where a TCP connection holds two. As a DTLS
+client's address can be forged, those sessions may take at most half of
+the limit, so that TCP connections always keep the other half. The
 default value of 0 lets sniproxy derive a ceiling from the file
 descriptor limit given with
 .B -n
