@@ -37,6 +37,7 @@
 #include <sys/wait.h>
 #include "logger.h"
 #ifdef __linux__
+#include <sys/fsuid.h>
 #include <sys/prctl.h>
 #endif
 
@@ -180,6 +181,52 @@ listen_socket_reuseaddr(int sock_type) {
     return 1;
 #endif
 }
+
+/*
+ * Create an IP socket for the user sniproxy runs as when running as root.
+ * The kernels let sockets share an address or a port, as SO_REUSEADDR
+ * and SO_REUSEPORT allow, only between sockets the same user created,
+ * and on the BSDs they do not check a socket root created: one of root's
+ * could take the port of another service on a more specific address.
+ * Only the socket belongs to the user, the bind is still done as root,
+ * which privileged ports need. uid is (uid_t)-1 when there is none.
+ */
+static inline int
+socket_as_user(int family, int type, uid_t uid) {
+    int fd, saved_errno, restored;
+
+    if (uid == (uid_t)-1 || geteuid() != 0 ||
+            (family != AF_INET && family != AF_INET6))
+        return socket(family, type, 0);
+
+#ifdef __linux__
+    uid_t prev = (uid_t)setfsuid(uid);
+
+    if ((uid_t)setfsuid((uid_t)-1) != uid) {
+        errno = EPERM;
+        return -1;
+    }
+    fd = socket(family, type, 0);
+    saved_errno = errno;
+    setfsuid(prev);
+    restored = (uid_t)setfsuid((uid_t)-1) == prev;
+#else
+    if (seteuid(uid) < 0)
+        return -1;
+    fd = socket(family, type, 0);
+    saved_errno = errno;
+    restored = seteuid(0) == 0;
+#endif
+    if (!restored) {
+        if (fd >= 0)
+            close(fd);
+        errno = EPERM;
+        return -1;
+    }
+    errno = saved_errno;
+    return fd;
+}
+
 /* The name helper_crash_handler() gives the process, as "resolver child" */
 static inline const char **
 helper_crash_name(void)

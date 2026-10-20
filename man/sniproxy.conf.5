@@ -556,6 +556,11 @@ binder runs as the configured user and only keeps the capability to
 write in other users' directories when a unix-socket listener under
 \fI/run\fR or \fI/var/run\fR is configured at startup; otherwise one
 added by a reload in a directory that user cannot write needs a restart.
+Elsewhere the binder stays root, but creates its sockets as the
+configured user, so that the kernel refuses them an address another
+user's socket holds: a privileged port a reload adds cannot be shared
+with a listener bound at startup, as a specific address and a wildcard
+one on the same port are, until a restart.
 The socket file is created with mode 0666 regardless of the umask, so any
 local user may connect to it; restrict access through the permissions of
 the directory that holds it.

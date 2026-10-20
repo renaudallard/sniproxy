@@ -146,6 +146,11 @@ SNIProxy runs as four cooperating processes:
    in a directory that user cannot write needs one already configured
    there, or a restart. With
    `CAP_DAC_OVERRIDE` a compromised binder could still read any file.
+   Elsewhere it stays root, but creates each IP socket as the configured
+   user and only binds it as root, so the kernel refuses it an address
+   another user's socket holds, as it would refuse that user: a
+   compromised main loop cannot have it take over the port of another
+   service.
 3. **`sniproxy-logger`**: writes the log files. The main loop sends it
    log lines over an encrypted, authenticated Unix socket.
 4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.

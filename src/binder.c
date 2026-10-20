@@ -543,7 +543,11 @@ binder_main(int sockfd) {
     make_undumpable();
 
 #ifdef __OpenBSD__
-    if (pledge("stdio unix inet sendfd", NULL) == -1) {
+    /* id: as root it creates sockets for the user sniproxy runs as. A
+     * binder restarted later is not root, and forked from a main process
+     * that gave up id, which a promise cannot be added back to. */
+    if (pledge(geteuid() == 0 ? "stdio unix inet sendfd id" :
+                "stdio unix inet sendfd", NULL) == -1) {
         err("binder: pledge failed: %s", strerror(errno));
         binder_child_exit(EXIT_FAILURE);
     }
@@ -706,7 +710,8 @@ binder_main(int sockfd) {
 #ifdef SOCK_CLOEXEC
         socket_type |= SOCK_CLOEXEC;
 #endif
-        int fd = socket(req->address[0].sa_family, socket_type, 0);
+        int fd = socket_as_user(req->address[0].sa_family, socket_type,
+                binder_run_uid);
         if (fd < 0) {
             char errbuf[128];
             snprintf(errbuf, sizeof(errbuf), "socket(): %s", strerror(errno));
