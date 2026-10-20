@@ -709,8 +709,9 @@ protocol, such as a v1 line other than UNKNOWN without the five fields
 of TCP4 or TCP6, or a v2 header with an unassigned address family, ends
 the connection with the protocol's abort message.
 Without the directive, an http or xmpp request that starts with a PROXY
-header, or an xmpp stream with anything but white space before its
-header, is invalid and goes to the fallback, if any: a client could
+header, in either form, an http request line that does not start with a
+method and a space, or an xmpp stream with anything but white space
+before its header, is invalid and goes to the fallback, if any: a client could
 otherwise hand a backend that trusts PROXY headers from sniproxy a source
 address of its choosing. The fallback gets such a request as the client
 sent it, header included, so the fallback server must not accept PROXY

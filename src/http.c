@@ -50,6 +50,7 @@ http_set_max_headers(size_t max_headers) {
 
 static int parse_http_header(const char *, size_t, char **);
 static int http_host_name(char *, size_t);
+static int http_token_char(char);
 static const char *absolute_form_authority(const char *, size_t, size_t *);
 static int http_request_may_complete(const char *, size_t, size_t);
 static int get_header(const char *, size_t, const char *, size_t, char **);
@@ -127,6 +128,18 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
             data_len : sizeof(proxy_v1) - 1;
     if (proxy_cmp > 0 && memcmp(data, proxy_v1, proxy_cmp) == 0)
         return proxy_cmp < sizeof(proxy_v1) - 1 ? -1 : -5;
+
+    /* The request line starts with a method, a token followed by a space
+     * (RFC 9112 3). The binary form of the PROXY header, or white space,
+     * which some servers skip, would otherwise reach the backend, and
+     * keep the target of an absolute-form request from being read */
+    size_t method_len = 0;
+    while (method_len < data_len && http_token_char(data[method_len]))
+        method_len++;
+    if (method_len == data_len)
+        return -1;
+    if (method_len == 0 || data[method_len] != ' ')
+        return -5;
 
     static const char host_header[] = "Host:";
     char *host = NULL;
@@ -235,6 +248,13 @@ http_host_name(char *buffer, size_t hostname_len) {
         return -5;
 
     return (int)hostname_len;
+}
+
+/* A character of a token, as RFC 9110 5.6.2 defines it */
+static int
+http_token_char(char c) {
+    return isalnum((unsigned char)c) ||
+            (c != '\0' && strchr("!#$%&'*+-.^_`|~", c) != NULL);
 }
 
 /*

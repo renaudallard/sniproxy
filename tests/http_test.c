@@ -589,6 +589,46 @@ int main(void) {
     assert(result == -5);
     assert(hostname == NULL);
 
+    /* Nor is the binary form of the PROXY header, which starts with
+     * empty lines, or a request line that does not start with a method */
+    static const char client_proxy_v2[] =
+        "\r\n\r\n\0\r\nQUIT\n\x21\x11\x00\x0c"
+        "\xcb\x00\x71\x42\xc0\x00\x02\x01\x11\x5c\x00\x50"
+        "GET / HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "\r\n";
+    hostname = NULL;
+    result = http_protocol->parse_packet(client_proxy_v2,
+            sizeof(client_proxy_v2) - 1, &hostname);
+    assert(result == -5);
+    assert(hostname == NULL);
+    static const char *const no_method[] = {
+        " GET http://internal.example/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "\tGET / HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "GET\t/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "G(ET / HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+    };
+    for (i = 0; i < sizeof(no_method) / sizeof(no_method[0]); i++) {
+        hostname = NULL;
+        result = http_protocol->parse_packet(no_method[i],
+                strlen(no_method[i]), &hostname);
+        assert(result == -5);
+        assert(hostname == NULL);
+    }
+    /* A method not yet followed by its space may still be one */
+    hostname = NULL;
+    result = http_protocol->parse_packet("\r\nGET", 5, &hostname);
+    assert(result == -1);
+    assert(hostname == NULL);
+
     /* More empty lines ahead of the request line than a client sends are
      * invalid, or a client sending nothing else would have them parsed
      * again at every read */
