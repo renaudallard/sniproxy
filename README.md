@@ -638,6 +638,12 @@ sniproxy does not read, goes to the fallback, while the older ones, a
 lone FE or FE 01, cannot be told from the start of a handshake and are
 closed after the 5 second request timeout.
 
+As the trailer reaches the backend unchanged, any player can send one
+with the address and UUID of its choosing: a backend with BungeeCord
+forwarding enabled (`bungeecord: true` in spigot.yml) trusts it, so it
+must only be reachable through a BungeeCord or Velocity proxy, never
+through a sniproxy listener open to players.
+
 ## Security and hardening
 
 SNIProxy is built with defense-in-depth as a design goal, not an
