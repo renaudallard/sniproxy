@@ -581,8 +581,19 @@ get_secure_temp_dir(void) {
     static char temp_dir[PATH_MAX];
     static int initialized = 0;
 
-    if (initialized)
-        return temp_dir;
+    /* Dumps are made in the directory opened, which a cleaner of /tmp
+     * may remove, and another user then put something else at its path:
+     * a directory the path no longer leads to is set up again */
+    if (initialized) {
+        struct stat st_path, st_fd;
+
+        if (lstat(temp_dir, &st_path) == 0 && fstat(tempdir_fd, &st_fd) == 0 &&
+                st_path.st_dev == st_fd.st_dev && st_path.st_ino == st_fd.st_ino)
+            return temp_dir;
+        close(tempdir_fd);
+        tempdir_fd = -1;
+        initialized = 0;
+    }
 
     /* Try XDG_RUNTIME_DIR first (user-specific, auto-cleaned) */
     const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
@@ -762,12 +773,6 @@ print_connections(void) {
 #ifdef O_CLOEXEC
     open_flags |= O_CLOEXEC;
 #endif
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-    /* basename used by unlinkat() on the cap-mode cleanup paths.  Empty
-     * string means we never opened via openat (so use plain unlink). */
-    char cap_basename[64];
-    cap_basename[0] = '\0';
-#endif
 
     /* O_CREAT | O_EXCL refuses to follow a symlink at the chosen name */
     mode_t old_umask = umask(077);
@@ -780,16 +785,7 @@ print_connections(void) {
             warn("Temp filename path too long");
             return;
         }
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-        /* In capability mode, only openat() relative to the directory */
-        if (tempdir_fd >= 0) {
-            fd = openat(tempdir_fd, dump_name, open_flags, dump_mode);
-            if (fd >= 0)
-                memcpy(cap_basename, dump_name, sizeof(cap_basename));
-            continue;
-        }
-#endif
-        fd = open(filename, open_flags, dump_mode);
+        fd = openat(tempdir_fd, dump_name, open_flags, dump_mode);
     } while (fd < 0 && errno == EEXIST && ++attempts < 16);
     umask(old_umask);
     if (fd < 0) {
@@ -797,25 +793,11 @@ print_connections(void) {
         return;
     }
 
-    /* Cleanup helper: in cap mode, unlinkat(tempdir_fd, cap_basename) is
-     * the only path-removal call permitted; outside cap mode plain
-     * unlink(filename) works. */
-#if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
-#define CLEANUP_DUMP_FILE() do {                                           \
-    if (tempdir_fd >= 0 && cap_basename[0] != '\0')                        \
-        (void)unlinkat(tempdir_fd, cap_basename, 0);                       \
-    else                                                                   \
-        (void)unlink(filename);                                            \
-} while (0)
-#else
-#define CLEANUP_DUMP_FILE() (void)unlink(filename)
-#endif
-
 #ifndef O_CLOEXEC
     if (set_cloexec(fd) < 0) {
         warn("set_cloexec failed for %s: %s", filename, strerror(errno));
         close(fd);
-        CLEANUP_DUMP_FILE();
+        (void)unlinkat(tempdir_fd, dump_name, 0);
         return;
     }
 #endif
@@ -824,7 +806,7 @@ print_connections(void) {
     if (temp == NULL) {
         warn("fdopen failed: %s", strerror(errno));
         close(fd);
-        CLEANUP_DUMP_FILE();
+        (void)unlinkat(tempdir_fd, dump_name, 0);
         return;
     }
 
@@ -842,13 +824,11 @@ print_connections(void) {
 
     if (fclose(temp) < 0) {
         warn("fclose failed: %s", strerror(errno));
-        CLEANUP_DUMP_FILE();
+        (void)unlinkat(tempdir_fd, dump_name, 0);
         return;
     }
 
     notice("Dumped connections to %s", filename);
-
-#undef CLEANUP_DUMP_FILE
 }
 
 /*

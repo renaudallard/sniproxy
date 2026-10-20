@@ -391,7 +391,9 @@ using it. SIGUSR1 dumps the live connection table to a temporary
 `connections-XXXXXXXX` file under
 `$XDG_RUNTIME_DIR/sniproxy`, `/var/run/sniproxy`, or
 `/tmp/sniproxy-<uid>` (tried in that order, without the first on
-OpenBSD, where unveil leaves it hidden); after a root start it has
+OpenBSD, where unveil leaves it hidden), which must belong to the
+user sniproxy runs as and be closed to others, and is checked again
+when it was replaced since the last dump; after a root start it has
 mode 0200, as the log files do, so read it as root. Under the packaged
 systemd unit, `/run/sniproxy` belongs to root and `/tmp` is private to
 the service, so the logged `/tmp/sniproxy-<uid>` path is found on the

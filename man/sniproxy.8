@@ -158,7 +158,10 @@ created in
 or
 .I /tmp/sniproxy-<uid>
 (tried in that order; OpenBSD skips the first, which unveil leaves
-hidden)\&. When sniproxy was started as root, the file has
+hidden), which must belong to the user sniproxy runs as and be closed
+to others; one replaced since the last dump, as a cleaner of
+.I /tmp
+may do, is checked again\&. When sniproxy was started as root, the file has
 mode 0200, like the log files, so that a helper process running as the
 same user cannot read it: read it as root\&.
 Under the packaged systemd unit,
