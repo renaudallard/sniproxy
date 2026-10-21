@@ -30,6 +30,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <strings.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -51,6 +53,30 @@ static inline uint32_t
 hash_mix64_to_32(uint64_t v) {
     v = hash_mix64(v);
     return (uint32_t)(v ^ (v >> 32));
+}
+
+/* An IPv4 or IPv6 multicast group, the IPv4-mapped form included. Such
+ * a group is never a backend: a TCP connect to one fails, but a DTLS
+ * session would send its client's datagrams to every member, so a
+ * hostname resolving to one is refused with or without a backend ACL.
+ * Nor does the binder bind one: the kernel lets any socket share a
+ * group's port, root's included. */
+static inline int
+sockaddr_is_multicast(const struct sockaddr_storage *addr) {
+    if (addr->ss_family == AF_INET) {
+        const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
+        return IN_MULTICAST(ntohl(sin->sin_addr.s_addr));
+    }
+
+    if (addr->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)addr;
+
+        return IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr) ||
+                (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr) &&
+                 (sin6->sin6_addr.s6_addr[12] & 0xf0) == 0xe0);
+    }
+
+    return 0;
 }
 
 /* 1 for yes, true or on, 0 for no, false or off, in any case, and -1 for

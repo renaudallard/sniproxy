@@ -64,6 +64,7 @@
 #include "fd_util.h"
 #include "ipc_crypto.h"
 #include "seccomp_filter.h"
+#include "util.h"
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
 #include <sys/capsicum.h>
 #endif
@@ -915,9 +916,18 @@ binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len,
 
     switch (addr->sa_family) {
         case AF_INET:
-            return addr_len >= sizeof(struct sockaddr_in);
-        case AF_INET6:
-            return addr_len >= sizeof(struct sockaddr_in6);
+        case AF_INET6: {
+            if (addr_len < (addr->sa_family == AF_INET ?
+                        sizeof(struct sockaddr_in) :
+                        sizeof(struct sockaddr_in6)))
+                return 0;
+            /* Root may bind a multicast group on the port of another
+             * user's socket, which the kernel refuses to anyone else */
+            struct sockaddr_storage ss;
+            memset(&ss, 0, sizeof(ss));
+            memcpy(&ss, addr, addr_len);
+            return !bind_check || !sockaddr_is_multicast(&ss);
+        }
         case AF_UNIX: {
             if (addr_len < offsetof(struct sockaddr_un, sun_path) + 2)
                 return 0;

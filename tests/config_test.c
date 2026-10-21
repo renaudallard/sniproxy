@@ -36,6 +36,7 @@
 #include "config.h"
 #include "connection.h"
 #include "listener.h"
+#include "util.h"
 
 static char *generated_log_path;
 
