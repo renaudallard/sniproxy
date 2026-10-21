@@ -567,8 +567,10 @@ binder_main(int sockfd) {
         binder_child_exit(EXIT_FAILURE);
     }
 
-    /* Install seccomp filter after initialization */
+    /* Install seccomp filter after initialization. It lets the binder
+     * read nothing, so the time zone its log lines need is loaded first. */
     if (seccomp_available()) {
+        tzset();
         if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0) {
             err("binder: failed to install seccomp filter: %s", strerror(errno));
             binder_child_exit(EXIT_FAILURE);

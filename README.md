@@ -756,9 +756,15 @@ afterthought.
   such as nf_tables from a user namespace of its own. IP sockets are
   limited to TCP and UDP, so that SCTP, L2TP and the like are neither
   loaded nor reached. Only the main
-  process may bind, listen and accept: the resolver runs as the same
-  user, and could otherwise join a `reuseport` listener and take its
-  clients.
+  process may listen and accept, and only it and the binder may bind:
+  the helpers run as the same user, and could otherwise join a
+  `reuseport` listener and take its clients. The binder may only
+  receive on its IPC socket, descriptor 0, and read nothing, so that a
+  socket it binds to a `reuseport` dtls listener's address does not
+  simply give it that listener's datagrams; a compromised binder could
+  still move such a socket to descriptor 0, at the cost of its link to
+  the main process, as a filter cannot tell which socket a descriptor
+  holds.
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. A helper
   killed by its filter, or on OpenBSD by a pledge violation, is logged
   by the main process as "process N was killed by signal S" before it

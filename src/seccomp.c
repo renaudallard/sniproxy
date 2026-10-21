@@ -52,8 +52,7 @@
  * does not have, and a 32-bit libc calls the other forms, so a list with
  * only the 64-bit names kills every process on those systems. */
 static const char *const common_syscalls[] = {
-    "read", "write", "readv", "writev", "pwrite64", "pread64",
-    "pwritev", "preadv",
+    "write", "writev", "pwrite64", "pwritev",
     "close", "lseek", "_llseek", "fstat", "fstat64",
     "brk", "madvise", "mmap", "mmap2", "mprotect", "mremap", "munmap",
     "clock_gettime", "clock_gettime64", "clock_getres",
@@ -153,7 +152,8 @@ static const char *const logger_network_syscalls[] = {
 
 /* Restricted network subset for the binder child: it binds privileged
  * ports and passes the resulting sockets back over its IPC channel via
- * sendmsg/recvmsg; it never listens or accepts.  allow_sockets() lets it
+ * sendmsg, receiving its requests as allow_binder_receive() lets it; it
+ * never listens or accepts.  allow_sockets() lets it
  * create the unix, IPv4 and IPv6 sockets it binds.  connect and sendto
  * are kept because, after disinheriting the logger process, the binder
  * logs its own errors directly, which reaches vsyslog() when error_log
@@ -163,7 +163,17 @@ static const char *const logger_network_syscalls[] = {
 static const char *const binder_network_syscalls[] = {
     "connect",
     "bind", "setsockopt",
-    "sendto", "send", "sendmsg", "recvmsg",
+    "sendto", "send", "sendmsg",
+    NULL,
+};
+
+/* Every process but the binder reads with these. The binder receives
+ * over its IPC socket with recvmsg() only: on Linux it runs as the user
+ * the listeners belong to, and a compromised one could otherwise read
+ * the datagrams of a reuseport dtls listener through a socket of its
+ * own. */
+static const char *const read_syscalls[] = {
+    "read", "readv", "pread64", "preadv",
     NULL,
 };
 
@@ -381,6 +391,30 @@ allow_main_setsockopt(scmp_filter_ctx ctx) {
     return rc;
 }
 
+/* The binder: recvmsg() on its IPC socket, which the child setup makes
+ * descriptor 0, and no read at all. A read fails rather than kills, as
+ * libc reads the time zone file again if it changed since the binder
+ * loaded it before its filter. The filter cannot tell which socket a
+ * descriptor holds: a compromised binder could still put one of its own
+ * on descriptor 0, losing its link to the main process. */
+static int
+allow_binder_receive(scmp_filter_ctx ctx) {
+    int nr = seccomp_syscall_resolve_name("recvmsg");
+    int rc = 0;
+
+    if (nr != __NR_SCMP_ERROR)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A0(SCMP_CMP_EQ, 0));
+
+    for (size_t i = 0; rc == 0 && read_syscalls[i] != NULL; i++) {
+        nr = seccomp_syscall_resolve_name(read_syscalls[i]);
+        if (nr != __NR_SCMP_ERROR)
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), nr, 0);
+    }
+
+    return rc;
+}
+
 /* The calls of self_syscalls, for the calling process only: its pid, or
  * 0 where that means the caller. */
 static int
@@ -501,7 +535,9 @@ install_filter(enum seccomp_process_type type) {
     /* Common syscalls for all processes */
     if (allow_syscalls(ctx, common_syscalls) < 0 ||
         allow_syscalls(ctx, event_syscalls) < 0 ||
-        allow_ioctl(ctx) < 0) {
+        allow_ioctl(ctx) < 0 ||
+        (type != SECCOMP_PROCESS_BINDER &&
+         allow_syscalls(ctx, read_syscalls) < 0)) {
         seccomp_release(ctx);
         return -1;
     }
@@ -565,6 +601,7 @@ install_filter(enum seccomp_process_type type) {
             if (allow_self_calls(ctx) < 0 ||
                 allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, binder_network_syscalls) < 0 ||
+                allow_binder_receive(ctx) < 0 ||
                 allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
