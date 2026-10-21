@@ -145,7 +145,10 @@ UDP sessions from a single source IP address. When an IP reaches the
 limit, new connections from that address are closed immediately until
 existing ones complete. UDP sessions are counted apart from TCP
 connections, each against this limit, for the reason given under
-\fBper_ip_connection_rate\fR, and from their second datagram on.
+\fBper_ip_connection_rate\fR, and from their second datagram on. Sources
+first seen in a datagram may only take the first half of a hash chain
+of the table of counts, as in the rate limiter's, so that forged ones
+cannot leave a TCP client none.
 The default value of 0 disables the per-IP connection cap.
 
 This is distinct from \fBper_ip_connection_rate\fR, which limits the rate

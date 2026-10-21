@@ -1887,6 +1887,13 @@ conn_count_allow(const struct sockaddr_storage *addr,
     if (chain_length >= CONN_COUNT_MAX_CHAIN_LENGTH)
         return 0;
 
+    /* A DTLS client's address can be forged: its sessions only start an
+     * entry in the first half of a chain, so that forged sources cannot
+     * fill the chain of an address and refuse its TCP connections */
+    if (kind == CONN_COUNT_UDP &&
+            chain_length >= CONN_COUNT_MAX_CHAIN_LENGTH / 2)
+        return 0;
+
     return 1;
 }
 
