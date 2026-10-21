@@ -586,7 +586,11 @@ against the IPv4 CIDRs, and a CIDR written in that form
 reaches the local host, so a hostname resolving to it cannot get around
 a block of the loopback range. Multicast addresses (224.0.0.0/4,
 `ff00::/8`) are refused even without a `backend_acl`: a DTLS session to
-one would send its client's datagrams to every member of the group.
+one would send its client's datagrams to every member of the group. A
+`dtls` listener opens no session for datagrams from the backend socket
+of a session that a `'*'` entry routed, so that a client cannot have
+such an entry lead back to sniproxy and chain sessions without end; an
+explicit entry may still lead to another `dtls` listener.
 
 ### XMPP
 

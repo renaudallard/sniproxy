@@ -87,6 +87,11 @@ struct UDPSession {
     size_t pending_dgram_len;
     struct ResolvQuery *query_handle;
     struct UDPSession *next;    /* hash chain */
+    int wildcard;               /* routed by a '*' table entry */
+    struct sockaddr_storage backend_local; /* where server_fd sends from */
+    socklen_t backend_local_len; /* 0 when not in backend_table */
+    uint32_t backend_hash;
+    struct UDPSession *next_backend; /* backend_table chain */
     TAILQ_ENTRY(UDPSession) validating_entries; /* while UDP_VALIDATING */
     uint32_t addr_hash;
     enum udp_session_state state;
@@ -105,6 +110,13 @@ struct udp_resolv_cb_data {
 
 static struct UDPSession *session_table[UDP_SESSION_BUCKETS];
 static size_t session_count;
+/* The sessions by the local address of their backend socket. A table
+ * entry leading back to a dtls listener of sniproxy, through any address
+ * of this host, has that listener receive the client's datagrams from the
+ * backend socket and open a session for it, which opens another, and none
+ * of them closes while the client's datagrams keep coming: a datagram
+ * from a backend socket never opens a session. */
+static struct UDPSession *backend_table[UDP_SESSION_BUCKETS];
 /* Sessions still waiting for their second datagram, oldest first */
 static TAILQ_HEAD(, UDPSession) validating_sessions =
     TAILQ_HEAD_INITIALIZER(validating_sessions);
@@ -135,6 +147,7 @@ static int udp_server_recv_one(struct ev_loop *, struct UDPSession *);
 static int udp_recv_one(struct ev_loop *, struct Listener *, int);
 static void udp_session_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static uint32_t udp_hash_addr(const struct sockaddr_storage *, socklen_t);
+static int udp_backend_find(const struct sockaddr_storage *, socklen_t);
 static int udp_sockaddr_equal(const struct sockaddr_storage *, socklen_t,
         const struct sockaddr_storage *, socklen_t);
 
@@ -242,6 +255,21 @@ udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
         case UDP_RESOLVING:
             /* Drop; DTLS client will retransmit after resolution */
             break;
+        }
+        return 1;
+    }
+
+    if (udp_backend_find(&client_addr, addr_len)) {
+        static ev_tstamp last_logged;
+        /* A last time later than now means the wall clock went back */
+        if (ev_now(loop) < last_logged || ev_now(loop) - last_logged >= 1.0) {
+            char client[INET6_ADDRSTRLEN + 8];
+            warn("UDP: refusing a session from %s, the address of a "
+                    "backend socket of sniproxy: a '*' entry leads back to a dtls "
+                    "listener, or a NAT on this host gave a client that address",
+                    display_sockaddr(&client_addr, addr_len,
+                            client, sizeof(client)));
+            last_logged = ev_now(loop);
         }
         return 1;
     }
@@ -553,6 +581,16 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
         pp = &(*pp)->next;
     }
     session_count--;
+    if (session->backend_local_len > 0) {
+        pp = &backend_table[session->backend_hash & (UDP_SESSION_BUCKETS - 1)];
+        while (*pp != NULL) {
+            if (*pp == session) {
+                *pp = session->next_backend;
+                break;
+            }
+            pp = &(*pp)->next_backend;
+        }
+    }
     if (session->state == UDP_VALIDATING)
         TAILQ_REMOVE(&validating_sessions, session, validating_entries);
     if (session->per_ip_counted)
@@ -636,6 +674,7 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
         udp_session_destroy(session, loop);
         return;
     }
+    session->wildcard = lookup.wildcard;
 
     /* Save the datagram for forwarding after resolution.
      * Cap the saved size to UDP_MAX_PENDING_DGRAM to limit memory when
@@ -803,6 +842,43 @@ udp_free_resolv_cb_data(void *data) {
     free(cb_data);
 }
 
+/* Enter session in backend_table under the address fd sends from */
+static void
+udp_backend_add(struct UDPSession *session, int fd) {
+    struct sockaddr_storage local;
+    socklen_t local_len = sizeof(local);
+
+    if (getsockname(fd, (struct sockaddr *)&local, &local_len) < 0)
+        return;
+    session->backend_local_len = sockaddr_unmap_ipv4(&local, local_len,
+            &session->backend_local);
+    session->backend_hash = udp_hash_addr(&session->backend_local,
+            session->backend_local_len);
+
+    struct UDPSession **head =
+            &backend_table[session->backend_hash & (UDP_SESSION_BUCKETS - 1)];
+    session->next_backend = *head;
+    *head = session;
+}
+
+/* Whether addr is where the backend socket of a session sends from */
+static int
+udp_backend_find(const struct sockaddr_storage *addr, socklen_t addr_len) {
+    struct sockaddr_storage unmapped;
+    socklen_t len = sockaddr_unmap_ipv4(addr, addr_len, &unmapped);
+    uint32_t hash = udp_hash_addr(&unmapped, len);
+
+    for (const struct UDPSession *s =
+            backend_table[hash & (UDP_SESSION_BUCKETS - 1)];
+            s != NULL; s = s->next_backend)
+        if (s->backend_hash == hash &&
+                udp_sockaddr_equal(&s->backend_local, s->backend_local_len,
+                    &unmapped, len))
+            return 1;
+
+    return 0;
+}
+
 static void
 udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
     if (sockaddr_is_multicast(&session->server_addr)) {
@@ -941,6 +1017,11 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
         udp_session_destroy(session, loop);
         return;
     }
+
+    /* A client chooses where a '*' entry leads, so these sessions alone
+     * could make a loop through a dtls listener of this sniproxy */
+    if (session->wildcard && !session->listener->transparent_proxy)
+        udp_backend_add(session, fd);
 
     session->server_fd = fd;
     session->state = UDP_CONNECTED;

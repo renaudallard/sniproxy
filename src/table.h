@@ -64,6 +64,8 @@ struct LookupResult {
     enum proxy_protocol_mode use_proxy_header;
     /* No address, and the fallback must not be used either */
     int refused;
+    /* address is the requested hostname, from a '*' entry */
+    int wildcard;
 };
 
 struct Table *new_table(void);

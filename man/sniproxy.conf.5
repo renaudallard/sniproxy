@@ -267,7 +267,10 @@ policy is left out, or \fBdeny_except\fR (deny all backends except the
 listed ranges). When the block is omitted all addresses are permitted.
 
 This prevents abuse of sniproxy as an open proxy: the example above only
-lets it reach the private ranges. To keep it out of internal address
+lets it reach the private ranges, which include the proxy host itself
+when its address is in one of them, so that a wildcard backend still
+reaches the services it listens on, sniproxy's own listeners included.
+To keep it out of internal address
 space with \fBallow_except\fR instead, list loopback (127.0.0.0/8,
 ::1/128), link-local (169.254.0.0/16, fe80::/10), IPv6 unique local
 (fc00::/7) and shared (100.64.0.0/10, used inside carrier and overlay
@@ -830,8 +833,16 @@ client can still name any host its hostname resolves to: localhost and
 other loopback names included, which with no port on the '*' entry
 leads sniproxy back to its own listener when that listens on a loopback
 or wildcard address, once per connection, until the per-IP connection
-rate stops it. Limit '*' entries with a
-\fBbackend_acl\fR. Table names must be unique; defining the same
+rate stops it. Over DTLS each session of such a loop would keep the
+next one alive, so a dtls listener opens no session for datagrams that
+come from the address and port of the backend socket of a session that
+a '*' entry routed, other than one of a \fBsource client\fR listener;
+an explicit entry may still lead to another dtls listener of sniproxy.
+A loop through another host or another proxy is not caught, and a
+client that a NAT on this host gives such an address and port is
+refused while that socket lives. Limit '*' entries with a
+\fBbackend_acl\fR that leaves out the loopback addresses and those of
+the host itself. Table names must be unique; defining the same
 table name (or the unnamed default table) twice is a configuration
 error, as are a table without entries and a listener naming a table
 that is not defined.
