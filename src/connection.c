@@ -1882,8 +1882,9 @@ conn_count_allow(const struct sockaddr_storage *addr,
 
     /* A full hash chain means conn_count_increment can no longer add a
      * bucket for this address, so an untracked address would escape the
-     * per-IP cap. Fail closed to prevent the bypass, matching the rate
-     * limiter's behaviour on a saturated chain. */
+     * per-IP cap. Fail closed to prevent the bypass: unlike the rate
+     * limiter's, these buckets count live connections and cannot be
+     * forgotten. */
     if (chain_length >= CONN_COUNT_MAX_CHAIN_LENGTH)
         return 0;
 

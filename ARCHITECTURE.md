@@ -541,14 +541,18 @@ Once CONNECTED, the connection enters steady-state proxying:
   - Per-IP connection rate limiting with token bucket algorithm
   - **Performance optimization (0.9.0)**: IPv4 fast path with cached 32-bit address
     comparison, and a bucket that is hit moves to the front of its hash chain.
-    Buckets are only evicted by age: at most once a minute a sweep drops
-    those idle for more than 300 seconds
+    At most once a minute a sweep drops buckets idle for more than 300
+    seconds; a full chain, or a table holding some 524288 buckets, gives
+    the bucket at the end of the chain, the one seen least recently, to a
+    new source
   - **Collision defense (0.9.6)**: the 65536 buckets are hashed with an
     arc4random() seed (a multiply-xorshift mix for IPv4, a SplitMix64-derived
     mixer over the masked prefix for IPv6). Entries with equal hashes are
-    told apart by their address, and a connection is refused only when a
-    lookup walks past 32 entries of one chain, so collision spraying cannot
-    bypass the limiter
+    told apart by their address, and no chain grows beyond 32 entries, so
+    collision spraying costs at most 32 comparisons a lookup. Sources first
+    seen in a datagram may only start an entry in the first half of a
+    chain. Backend affinity hashes with a seed of its own, so the backend
+    a client reaches tells it nothing about this one
   - Accept backoff when file descriptors run out, from the first EMFILE or
     ENFILE, growing from 2 to 60 seconds
   - Idle connection timeouts

@@ -86,8 +86,9 @@ fuzzing, and active maintenance.
   for its second datagram, if any, makes room for the new one, which
   only helps against floods below about 16000 first datagrams a second.
 - **Per-IP rate limiting**: token buckets in a hash table keyed with an
-  arc4random seed cap new TCP connections and UDP sessions; short-chain
-  cutoffs defeat hash spraying.
+  arc4random seed cap new TCP connections and UDP sessions; a full chain
+  forgets its least recently seen source, and sources first seen in a
+  datagram may only fill half of one.
 - **Backend ACLs**: `deny_except` or `allow_except` CIDR policies stop
   abuse as an open proxy to reach internal hosts.
 - **Listener ACLs**: the same CIDR policies, applied to inbound clients
@@ -662,9 +663,11 @@ afterthought.
   version cannot be read is refused rather than sent to the fallback.
 - **Cryptographically random seeds**: the per-IP hashes (rate limiter,
   connection counts, DNS client tracking, backend affinity) and the UDP
-  session table are keyed with an arc4random seed, and the rate limiter and connection count
-  tables refuse clients whose hash chain grows too long, to defeat
-  spraying. Request IDs between the main loop and the resolver come from
+  session table are keyed with an arc4random seed, backend affinity
+  with one of its own; a full chain of the rate limiter forgets its
+  least recently seen source, one of the connection counts refuses new
+  clients, and sources first seen in a datagram may fill only half of a
+  chain in either, so that forged ones cannot crowd out TCP clients. Request IDs between the main loop and the resolver come from
   arc4random as well.
 - **Bounded parsers**: TLS rejects SSL 2.0/3.0 ClientHellos and NUL
   bytes in server names; HTTP caps headers (default 100); TLS extension
