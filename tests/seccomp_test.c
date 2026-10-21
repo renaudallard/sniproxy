@@ -31,6 +31,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <linux/netlink.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -237,6 +238,36 @@ test_process_and_socket_limits(void) {
     if (nl < 0)
         return 1;
     close(nl);
+
+    /* Socket options are set as before, but for a firewall mark or a
+     * priority, which CAP_NET_RAW would allow */
+    int probe = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    int on = 1;
+    if (probe < 0 ||
+            setsockopt(probe, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0)
+        return 1;
+    errno = 0;
+    if (setsockopt(probe, SOL_SOCKET, SO_MARK, &on, sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+    errno = 0;
+    if (setsockopt(probe, SOL_SOCKET, SO_PRIORITY, &on, sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+#if ULONG_MAX > 0xffffffffUL
+    /* The kernel reads only the low 32 bits of the level and option */
+    errno = 0;
+    if (syscall(SYS_setsockopt, probe, (long)SOL_SOCKET | (1L << 32),
+                (long)SO_PRIORITY, &on, (long)sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+    errno = 0;
+    if (syscall(SYS_setsockopt, probe, (long)SOL_SOCKET,
+                (long)SO_PRIORITY | (1L << 32), &on, (long)sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+#endif
+    close(probe);
 
     static const int protocols[][2] = {
         { SOCK_STREAM, 0 }, { SOCK_STREAM, IPPROTO_TCP },

@@ -33,6 +33,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/net.h>
 #include <linux/netlink.h>
 #include <netinet/in.h>
 #include <sched.h>
@@ -120,7 +121,7 @@ static const char *const fs_misc_syscalls[] = {
 static const char *const network_syscalls[] = {
     "socketpair",
     "connect",
-    "getsockopt", "setsockopt",
+    "getsockopt",
     "getsockname", "getpeername",
     "shutdown",
     "sendto", "send", "recvfrom", "recv", "sendmsg", "recvmsg",
@@ -322,6 +323,64 @@ allow_clone(scmp_filter_ctx ctx) {
     return seccomp_rule_add(ctx, SCMP_ACT_ERRNO(ENOSYS), nr, 0);
 }
 
+/* setsockopt() for the main process, at the levels and with the socket
+ * options it sets. With "source client" it keeps CAP_NET_RAW, which also
+ * lets a socket be given any firewall mark or a priority above 6: at the
+ * socket level only the options sniproxy sets are allowed, and SO_MARK
+ * and SO_PRIORITY fail. Only the low 32 bits of the level and option are
+ * compared, as the kernel reads no more of these int arguments, and only
+ * for equality, so that no value the rules do not name gets past them;
+ * the rules do not overlap, as libseccomp lets a rule without conditions
+ * win over one with conditions whatever their actions. */
+static int
+allow_main_setsockopt(scmp_filter_ctx ctx) {
+    static const int levels[] = { IPPROTO_IP, IPPROTO_IPV6, IPPROTO_TCP };
+    static const int options[] = {
+        SO_REUSEADDR, SO_REUSEPORT, SO_KEEPALIVE, SO_LINGER, SO_RCVTIMEO,
+        /* A 32-bit libc tries the form with a 64-bit time, and falls back
+         * to the other when the kernel, older than 5.1, does not know it.
+         * musl names neither: these are the kernel's numbers. */
+#if defined(SO_RCVTIMEO_OLD) && defined(SO_RCVTIMEO_NEW)
+        SO_RCVTIMEO_OLD, SO_RCVTIMEO_NEW,
+#elif defined(__mips__)
+        0x1006, 66,
+#elif defined(__powerpc__)
+        18, 66,
+#else
+        20, 66,
+#endif
+    };
+    static const int refused[] = { SO_MARK, SO_PRIORITY };
+    int nr = seccomp_syscall_resolve_name("setsockopt");
+    int rc = 0;
+
+    /* Where libc sets options through socketcall(2), as on i386 and s390x,
+     * the arguments are behind a pointer the filter cannot follow: the
+     * call stays allowed there */
+    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socketcall), 1,
+            SCMP_A0(SCMP_CMP_EQ, SYS_SETSOCKOPT));
+
+    if (nr == __NR_SCMP_ERROR)
+        return rc;
+
+    for (size_t i = 0; rc == 0 && i < sizeof(levels) / sizeof(levels[0]); i++)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, 0xffffffff, levels[i]));
+    for (size_t i = 0; (rc == 0 || rc == -EEXIST) &&
+            i < sizeof(options) / sizeof(options[0]); i++)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 2,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, 0xffffffff, SOL_SOCKET),
+                SCMP_A2(SCMP_CMP_MASKED_EQ, 0xffffffff, options[i]));
+    if (rc == -EEXIST)
+        rc = 0;
+    for (size_t i = 0; rc == 0 && i < sizeof(refused) / sizeof(refused[0]); i++)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), nr, 2,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, 0xffffffff, SOL_SOCKET),
+                SCMP_A2(SCMP_CMP_MASKED_EQ, 0xffffffff, refused[i]));
+
+    return rc;
+}
+
 /* The calls of self_syscalls, for the calling process only: its pid, or
  * 0 where that means the caller. */
 static int
@@ -462,6 +521,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, process_syscalls) < 0 ||
                 allow_clone(ctx) < 0 ||
+                allow_main_setsockopt(ctx) < 0 ||
                 allow_syscalls(ctx, jit_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
@@ -487,6 +547,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
                     SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
+                allow_syscall(ctx, "setsockopt") < 0 ||
                 allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
