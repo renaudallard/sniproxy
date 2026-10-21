@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/netlink.h>
+#include <netinet/in.h>
 #include <sched.h>
 #include <seccomp.h>
 #include <stddef.h>
@@ -394,14 +395,24 @@ allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
                 SCMP_A0(SCMP_CMP_EQ, AF_NETLINK),
                 SCMP_A2(SCMP_CMP_EQ, NETLINK_ROUTE));
     /* The low four bits of the type argument hold the socket type, the
-     * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. */
+     * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. The protocol is
+     * the default one, or TCP or UDP named, so that no other protocol,
+     * SCTP or L2TP, has its module loaded and its code reached. */
     for (size_t f = 0; rc == 0 && (kinds & SOCKETS_INET) &&
             f < sizeof(families) / sizeof(families[0]); f++)
         for (size_t t = 0; rc == 0 &&
-                t < sizeof(types) / sizeof(types[0]); t++)
-            rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 2,
+                t < sizeof(types) / sizeof(types[0]); t++) {
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 3,
                     SCMP_A0(SCMP_CMP_EQ, families[f]),
-                    SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, types[t]));
+                    SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, types[t]),
+                    SCMP_A2(SCMP_CMP_EQ, 0));
+            if (rc == 0)
+                rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 3,
+                        SCMP_A0(SCMP_CMP_EQ, families[f]),
+                        SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, types[t]),
+                        SCMP_A2(SCMP_CMP_EQ, types[t] == SOCK_STREAM ?
+                            IPPROTO_TCP : IPPROTO_UDP));
+        }
 
     return rc;
 }

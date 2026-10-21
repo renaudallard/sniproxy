@@ -747,7 +747,9 @@ afterthought.
   fork but not create namespaces, and netlink sockets are limited to
   NETLINK_ROUTE, except where socket(2) goes through socketcall(2), as
   on i386, so that a compromised process cannot reach kernel interfaces
-  such as nf_tables from a user namespace of its own. Only the main
+  such as nf_tables from a user namespace of its own. IP sockets are
+  limited to TCP and UDP, so that SCTP, L2TP and the like are neither
+  loaded nor reached. Only the main
   process may bind, listen and accept: the resolver runs as the same
   user, and could otherwise join a `reuseport` listener and take its
   clients.

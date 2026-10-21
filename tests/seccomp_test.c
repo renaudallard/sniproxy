@@ -154,6 +154,11 @@ netlink_netfilter(void) {
     (void)socket(AF_NETLINK, SOCK_RAW, NETLINK_NETFILTER);
 }
 
+static void
+inet_sctp(void) {
+    (void)socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
+}
+
 #ifdef TIOCLINUX
 static void
 ioctl_tiolinux(void) {
@@ -213,6 +218,8 @@ test_process_and_socket_limits(void) {
         return 1;
     if (expect_killed(netlink_netfilter) != 0)
         return 1;
+    if (expect_killed(inet_sctp) != 0)
+        return 1;
 #ifdef TIOCLINUX
     if (expect_killed(ioctl_tiolinux) != 0)
         return 1;
@@ -230,6 +237,18 @@ test_process_and_socket_limits(void) {
     if (nl < 0)
         return 1;
     close(nl);
+
+    static const int protocols[][2] = {
+        { SOCK_STREAM, 0 }, { SOCK_STREAM, IPPROTO_TCP },
+        { SOCK_DGRAM, 0 }, { SOCK_DGRAM, IPPROTO_UDP },
+    };
+    for (size_t i = 0; i < sizeof(protocols) / sizeof(protocols[0]); i++) {
+        int s = socket(AF_INET, protocols[i][0] | SOCK_CLOEXEC,
+                protocols[i][1]);
+        if (s < 0)
+            return 1;
+        close(s);
+    }
 
     int fds[2];
     if (pipe(fds) < 0)
