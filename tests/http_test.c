@@ -200,7 +200,8 @@ static const struct http_request_case good[] = {
         "\r\n",
         "[2001:db8::1]"
     },
-    /* Neither the path nor CONNECT's authority-form is an absolute target */
+    /* A URL in the path is not an absolute target, nor a path that of
+     * CONNECT */
     {
         "GET /go?to=http://other.example/ HTTP/1.1\r\n"
         "Host: example.com\r\n"
@@ -208,7 +209,7 @@ static const struct http_request_case good[] = {
         "example.com"
     },
     {
-        "CONNECT other.example:443 HTTP/1.1\r\n"
+        "CONNECT /rpc HTTP/1.1\r\n"
         "Host: example.com\r\n"
         "\r\n",
         "example.com"
@@ -676,6 +677,12 @@ int main(void) {
             "\r\n",
         "GET http://exa*mple.com/ HTTP/1.0\r\n"
             "\r\n",
+        "CONNECT internal.example/ HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "\r\n",
+        "CONNECT internal.example:443 HTTP/1.1\r\n"
+            "Host: example.com:443\r\n"
+            "\r\n",
     };
     for (i = 0; i < sizeof(bad_target) / sizeof(bad_target[0]); i++) {
         hostname = NULL;
@@ -683,6 +690,24 @@ int main(void) {
                 strlen(bad_target[i]), &hostname);
         assert(result <= -5);
         assert(hostname == NULL);
+    }
+
+    /* CONNECT is routed on the host it names, as an absolute-form
+     * request is, with or without a Host header naming the same one */
+    static const char *const connect_target[] = {
+        "CONNECT example.com:443 HTTP/1.1\r\n"
+            "Host: example.com:443\r\n"
+            "\r\n",
+        "CONNECT Example.COM:443 HTTP/1.1\r\n"
+            "\r\n",
+    };
+    for (i = 0; i < sizeof(connect_target) / sizeof(connect_target[0]); i++) {
+        hostname = NULL;
+        result = http_protocol->parse_packet(connect_target[i],
+                strlen(connect_target[i]), &hostname);
+        assert(result == 11);
+        assert(hostname != NULL && strcmp(hostname, "example.com") == 0);
+        free(hostname);
     }
 
     return 0;

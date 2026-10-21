@@ -155,8 +155,9 @@ parse_http_header(const char* data, size_t data_len, char **hostname) {
     }
 
     /* A server uses the host of an absolute-form request target and
-     * ignores the Host header (RFC 9112 3.2.2), so the request is routed
-     * on that host, and refused when the Host header names another */
+     * ignores the Host header (RFC 9112 3.2.2), and some do so with the
+     * target of a CONNECT request, so the request is routed on that host,
+     * and refused when the Host header names another */
     size_t authority_len;
     const char *authority = absolute_form_authority(data, data_len,
             &authority_len);
@@ -259,8 +260,9 @@ http_token_char(char c) {
 
 /*
  * Returns the authority of an absolute-form request target, as in
- * GET http://example.com/ HTTP/1.1, and its length in *len, or NULL when
- * the request line, with which data starts, has a target of another form.
+ * GET http://example.com/ HTTP/1.1, or of the authority-form target of a
+ * CONNECT request, and its length in *len, or NULL when the request line,
+ * with which data starts, has a target of another form.
  */
 static const char *
 absolute_form_authority(const char *data, size_t data_len, size_t *len) {
@@ -273,8 +275,21 @@ absolute_form_authority(const char *data, size_t data_len, size_t *len) {
     const char *p = data;
     while (p < end && *p != ' ' && *p != '\t')
         p++;
+    int is_connect = p - data == 7 && memcmp(data, "CONNECT", 7) == 0;
     while (p < end && (*p == ' ' || *p == '\t'))
         p++;
+
+    /* Servers such as Go's take the host CONNECT names as the request's
+     * host, as they take that of an absolute-form target; a path is not
+     * one, and they take the Host header with it */
+    if (is_connect && p < end && *p != '/') {
+        const char *authority = p;
+        while (p < end && *p != '/' && *p != '?' && *p != '#' &&
+                *p != ' ' && *p != '\t' && *p != '\r')
+            p++;
+        *len = (size_t)(p - authority);
+        return authority;
+    }
 
     /* A scheme, as RFC 3986 3.1 defines it, followed by :// */
     if (p == end || !isalpha((unsigned char)*p))

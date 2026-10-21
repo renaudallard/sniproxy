@@ -119,7 +119,7 @@ fuzzing, and active maintenance.
 | --- | --- | --- |
 | TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
 | DTLS | SNI extension in UDP ClientHello | Session held until a second datagram arrives from the same source; a ClientHello fragmented over several datagrams goes to the fallback; unix socket backends and fallbacks are refused |
-| HTTP/1.x | `Host:` request header, or the host of an absolute-form target, which `Host:` must then name | Header count capped by `http_max_headers` (default 100) |
+| HTTP/1.x | `Host:` request header, or the host of an absolute-form or CONNECT target, which `Host:` must then name | Header count capped by `http_max_headers` (default 100) |
 | HTTP/2 | HPACK `:authority` pseudo-header of the first request | Bounded HPACK table (per-conn 64 KiB / global 4 MiB); later requests are not searched |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
 | Minecraft (Java Edition) | Server address in handshake packet | FML and BungeeCord NUL-delimited trailers ignored when routing, forwarded unchanged |
