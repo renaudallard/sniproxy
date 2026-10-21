@@ -239,6 +239,10 @@ static size_t rate_limit_free_count;
 static ev_tstamp rate_limit_last_cleanup;
 static double per_ip_connection_rate_limit;
 static uint32_t rate_limit_hash_seed;
+/* backend_affinity hashes the client with a seed of its own: the record a
+ * client is sent to lets it work out its hash, which must tell it nothing
+ * about the seed of the per-IP tables */
+static uint32_t affinity_hash_seed;
 /* Prefix length used to group native IPv6 clients for the per-IP limits.
  * Default /64 (the usual single-subscriber allocation); overridden at
  * startup and reload from per_ip_ipv6_prefix (DEFAULT_PER_IP_IPV6_PREFIX). */
@@ -312,6 +316,8 @@ static inline double rate_limit_bucket_capacity(void);
 static void rate_limit_reset(void);
 static void rate_limit_cleanup(ev_tstamp);
 static uint32_t hash_sockaddr_ip(const struct sockaddr_storage *, uint32_t *, int *);
+static uint32_t hash_sockaddr_ip_seeded(const struct sockaddr_storage *,
+        uint32_t, uint32_t *, int *);
 static int conn_count_allow(const struct sockaddr_storage *,
         enum conn_count_kind);
 static void conn_count_increment(const struct sockaddr_storage *,
@@ -343,13 +349,17 @@ init_connections(void) {
     TAILQ_INIT(&shrink_candidates);
     buffer_pressure_last_run = 0.0;
 
-    /* Initialize hash seed for all IP-based hash tables (rate limiting,
-     * per-IP connection counting, DNS client tracking, backend affinity) */
+    /* Initialize hash seeds for all IP-based hash tables (rate limiting,
+     * per-IP connection counting, DNS client tracking) and for backend
+     * affinity */
     if (rate_limit_hash_seed == 0) {
         rate_limit_hash_seed = arc4random();
         if (rate_limit_hash_seed == 0)
             rate_limit_hash_seed = 0xdeadbeef;
     }
+    while (affinity_hash_seed == 0 ||
+            affinity_hash_seed == rate_limit_hash_seed)
+        affinity_hash_seed = arc4random();
 
     rate_limit_reset();
     buffer_set_memory_observer(buffer_memory_observer);
@@ -1376,11 +1386,11 @@ rate_limit_cleanup(ev_tstamp now) {
 }
 
 static uint32_t
-hash_ipv4(uint32_t value, uint32_t *out_v4) {
+hash_ipv4(uint32_t value, uint32_t seed, uint32_t *out_v4) {
     if (out_v4 != NULL)
         *out_v4 = value;
     /* Mix with random seed to prevent hash prediction attacks */
-    value ^= rate_limit_hash_seed;
+    value ^= seed;
     value ^= value >> 16;
     value *= 0x85ebca6b;
     value ^= value >> 13;
@@ -1412,6 +1422,13 @@ mask_ipv6_prefix(const struct in6_addr *src, uint8_t out[16]) {
 static uint32_t
 hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
         int *out_is_v4) {
+    return hash_sockaddr_ip_seeded(addr, rate_limit_hash_seed, out_v4,
+            out_is_v4);
+}
+
+static uint32_t
+hash_sockaddr_ip_seeded(const struct sockaddr_storage *addr, uint32_t seed,
+        uint32_t *out_v4, int *out_is_v4) {
     if (out_v4 != NULL)
         *out_v4 = 0;
     if (out_is_v4 != NULL)
@@ -1422,7 +1439,7 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
             const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
             if (out_is_v4 != NULL)
                 *out_is_v4 = 1;
-            return hash_ipv4(ntohl(in->sin_addr.s_addr), out_v4);
+            return hash_ipv4(ntohl(in->sin_addr.s_addr), seed, out_v4);
         }
         case AF_INET6: {
             const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
@@ -1435,15 +1452,14 @@ hash_sockaddr_ip(const struct sockaddr_storage *addr, uint32_t *out_v4,
                 memcpy(&v4, &in6->sin6_addr.s6_addr[12], sizeof(v4));
                 if (out_is_v4 != NULL)
                     *out_is_v4 = 1;
-                return hash_ipv4(ntohl(v4), out_v4);
+                return hash_ipv4(ntohl(v4), seed, out_v4);
             }
 
             uint8_t masked[16];
             mask_ipv6_prefix(&in6->sin6_addr, masked);
             uint32_t words[4];
             memcpy(words, masked, sizeof(words));
-            uint64_t acc = ((uint64_t)rate_limit_hash_seed << 32) |
-                    (uint64_t)rate_limit_hash_seed;
+            uint64_t acc = ((uint64_t)seed << 32) | (uint64_t)seed;
             acc ^= (uint64_t)in6->sin6_scope_id;
 
             for (int i = 0; i < 4; i++)
@@ -3338,8 +3354,8 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
         uint32_t affinity_seed = 0;
         if (con->listener->table != NULL &&
                 con->listener->table->backend_affinity) {
-            affinity_seed = hash_sockaddr_ip(&con->client.addr,
-                    NULL, NULL);
+            affinity_seed = hash_sockaddr_ip_seeded(&con->client.addr,
+                    affinity_hash_seed, NULL, NULL);
             /* 0 means no affinity. Setting the low bit instead would make
              * every seed odd, and the pick among an even number of
              * records would never land on an even index. */
