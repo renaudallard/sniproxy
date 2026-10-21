@@ -54,7 +54,6 @@
 #ifdef HAVE_BSD_UNISTD_H
 #include <bsd/unistd.h>
 #endif
-#include <libgen.h>
 #include <sys/un.h>
 #ifdef __OpenBSD__
 #include <limits.h>
@@ -103,7 +102,6 @@ struct openbsd_unveil_data {
     int allow_create;
 };
 
-static void openbsd_unveil_parent(const char *path, const char *permissions);
 static void openbsd_unveil_path(const char *path, const char *permissions,
         int allow_create);
 static void openbsd_logger_unveil_cb(const char *path, void *userdata);
@@ -208,45 +206,6 @@ pidfile_cleanup(void) {
 
 
 #ifdef __OpenBSD__
-static void
-openbsd_unveil_parent(const char *path, const char *permissions) {
-    char *copy;
-    char *parent;
-    char perms_buf[16];
-    size_t len;
-
-    if (path == NULL || permissions == NULL)
-        return;
-
-    copy = strdup(path);
-    if (copy == NULL) {
-        fatal("unveil %s: strdup failed: %s", path, strerror(errno));
-    }
-
-    parent = dirname(copy);
-    if (parent != NULL && parent[0] != '\0') {
-        len = strlen(permissions);
-        if (len >= sizeof(perms_buf)) {
-            fatal("unveil %s: permission string too long", parent);
-        }
-        memcpy(perms_buf, permissions, len);
-        perms_buf[len] = '\0';
-        if (strchr(perms_buf, 'x') == NULL) {
-            if (len + 1 >= sizeof(perms_buf)) {
-                fatal("unveil %s: permission string too long", parent);
-            }
-            perms_buf[len++] = 'x';
-            perms_buf[len] = '\0';
-        }
-
-        if (unveil(parent, perms_buf) == -1) {
-            fatal("unveil %s failed: %s", parent, strerror(errno));
-        }
-    }
-
-    free(copy);
-}
-
 static void
 openbsd_unveil_path(const char *path, const char *permissions, int allow_create) {
     if (path == NULL || permissions == NULL)
@@ -354,12 +313,8 @@ openbsd_unveil_address(const struct Address *address, const char *permissions,
     memcpy(path_buf, sun->sun_path, path_len);
     path_buf[path_len] = '\0';
 
+    /* connect() needs the socket path only, not its directory */
     openbsd_unveil_path(path_buf, permissions, allow_create);
-
-    if (!allow_create) {
-        const char *parent_permissions = strchr(permissions, 'r') != NULL ? "rx" : "x";
-        openbsd_unveil_parent(path_buf, parent_permissions);
-    }
 }
 
 #endif
