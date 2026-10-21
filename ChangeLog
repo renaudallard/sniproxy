@@ -1,3 +1,20 @@
+2026-10-21  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.23.1
+	- connection: backend affinity hashes with a seed of its own; a DTLS
+	  session only starts a per-IP count entry in the first half of a
+	  chain.
+	- seccomp: IP sockets must be TCP or UDP; the main process may not
+	  set SO_MARK or SO_PRIORITY; the binder only receives on its IPC
+	  socket and may not read.
+	- binder: multicast addresses are refused.
+	- http: a CONNECT request is routed on the host its target names.
+	- sniproxy: on OpenBSD only the socket of a unix backend or fallback
+	  is unveiled, not its directory.
+	- udp_connection: a dtls listener opens no session for datagrams from
+	  the backend socket of a session a '*' entry routed.
+	- docs: the rate limiter as 0.23.0 made it.
+
 2026-10-20  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.23.0

@@ -1,3 +1,50 @@
+sniproxy 0.23.1 (2026-10-21)
+===============================
+
+Fixes from a security review of 0.23.0.
+
+Upgrade note: a CONNECT request is now routed on the host its target
+names, and refused when its Host header names another; one whose target
+is a path is still routed on its Host header. A dtls listener opens no
+session for datagrams from the backend socket of a session that a '*'
+entry routed. On Linux the sandboxed processes may only open TCP and UDP
+sockets, and the main process may not set a firewall mark or a socket
+priority.
+
+Highlights:
+
+* A '*' entry on a dtls listener could lead back to sniproxy itself, and
+  each session of such a loop kept the next one alive: one client could
+  build a chain growing by some 30 sessions a second until it filled the
+  DTLS share of max_connections. Such sessions are now refused.
+
+* A CONNECT request was routed on its Host header whatever its target,
+  while servers such as Go's serve the host the target names, so a
+  client could reach a host the table does not route. It is now routed
+  on its target.
+
+* backend_affinity hashed with the seed of the per-IP tables, which a
+  client could work out from the records it reached, and forged DTLS
+  sessions could fill a hash chain of the connection counts and lock a
+  victim out of every TCP listener. Affinity now has a seed of its own,
+  and DTLS sessions may only fill half of a chain.
+
+* On Linux a compromised process could open SCTP, L2TP, MPTCP or ping
+  sockets, and the main process, which keeps CAP_NET_RAW for source
+  client, could set any firewall mark. Only TCP and UDP sockets are
+  allowed now, and SO_MARK and SO_PRIORITY are refused. A compromised
+  binder could bind to the address of a reuseport dtls listener and read
+  its datagrams; it may now only receive on its IPC socket.
+
+* On OpenBSD a compromised main process could have the root binder bind
+  a multicast group on the port of another daemon and get a copy of its
+  datagrams; the binder now refuses multicast addresses. The directory
+  of a unix backend or fallback socket is no longer unveiled, only the
+  socket.
+
+* The README and ARCHITECTURE.md describe the rate limiter as 0.23.0
+  made it.
+
 sniproxy 0.23.0 (2026-10-20)
 ===============================
 
