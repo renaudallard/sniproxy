@@ -156,6 +156,8 @@ static const char *bad[] = {
     /* Invalid hostname characters */
     "<stream:stream to=\"example.com/path\" xmlns=\"jabber:client\">",
     "<stream:stream to=\"example.com@user\" xmlns=\"jabber:client\">",
+    /* Trailing white space, which the backend would see in the name */
+    "<stream:stream to=\"example.com \" xmlns=\"jabber:client\">",
     /* Not a stream tag */
     "<message to=\"example.com\">",
     /* Unquoted attribute value */

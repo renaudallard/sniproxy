@@ -694,7 +694,10 @@ afterthought.
   count is capped at 64 on every code path; HTTP/2 HPACK is bounded per
   connection (64 KiB) and globally (4 MiB), and a request header block
   that is larger, or whose fields decode to more, is routed on the
-  fields that fit in the first 64 KiB.
+  fields that fit in the first 64 KiB. A server name, `:authority`,
+  XMPP `to` or Minecraft address ending in white space is refused rather
+  than trimmed, so that sniproxy routes on the name the backend gets; an
+  HTTP/1 `Host` header may still end in spaces and tabs, as HTTP allows.
 - **Regex DoS mitigation**: PCRE2 match limits scale with the lengths
   of the hostname and of the pattern, so a crafted SNI cannot trigger
   catastrophic backtracking while large alternations still match. A

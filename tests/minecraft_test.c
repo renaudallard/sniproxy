@@ -274,6 +274,13 @@ static const unsigned char bad_ctrl[] = {
     0x63, 0xdd, 0x02,
 };
 
+/* Trailing white space, which the backend would see in the name */
+static const unsigned char bad_trailing_space[] = {
+    0x13, 0x00, 0xfb, 0x05, 0x0c,
+    'e','x','a','m','p','l','e','.','c','o','m','\t',
+    0x63, 0xdd, 0x02,
+};
+
 /* VarInt overflow: 6 continuation bytes */
 static const unsigned char bad_varint[] = {
     0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01,
@@ -298,6 +305,7 @@ static const struct bad_case bad[] = {
     { bad_pktid,        sizeof(bad_pktid) },
     { bad_zero_addr,    sizeof(bad_zero_addr) },
     { bad_nul_addr,     sizeof(bad_nul_addr) },
+    { bad_trailing_space, sizeof(bad_trailing_space) },
     { bad_slash,        sizeof(bad_slash) },
     { bad_dash,         sizeof(bad_dash) },
     { bad_ctrl,         sizeof(bad_ctrl) },

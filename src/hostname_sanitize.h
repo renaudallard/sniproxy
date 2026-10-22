@@ -45,18 +45,6 @@ sanitize_hostname(char *hostname, size_t *hostname_len, size_t max_len) {
 
     len = *hostname_len;
 
-    {
-        char *trim = hostname + len;
-        while (trim > hostname) {
-            unsigned char tail = (unsigned char)*(trim - 1);
-            if (!(tail == ' ' || (tail >= '\t' && tail <= '\r')))
-                break;
-            *(trim - 1) = '\0';
-            trim--;
-        }
-        len = (size_t)(trim - hostname);
-    }
-
     if (len == 0 || len > max_len)
         return 0;
 
