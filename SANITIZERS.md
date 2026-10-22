@@ -233,6 +233,18 @@ ASAN/MSAN/TSAN are mutually exclusive; configure aborts with `Cannot enable mult
 ### Tests fail with sanitizers but pass normally
 This is expected: sanitizers reveal bugs that don't always cause immediate failures. Investigate and fix the issues.
 
+### sniproxy built with ASAN hangs at exit
+When libseccomp is installed the seccomp sandbox is built, and LeakSanitizer's exit check starts a tracer that calls ptrace(2), which the filter kills with SIGSYS. The process then spins at full CPU and ignores SIGTERM. Turn leak checking off, or the sandbox:
+
+```bash
+export ASAN_OPTIONS=detect_leaks=0
+# or
+export SNIPROXY_DISABLE_SECCOMP=1
+```
+
+### Valgrind reports uninitialised values in the main process
+A "Conditional jump or move depends on uninitialised value(s)" at an address without a symbol comes from the code PCRE2's JIT compiler generates for the table patterns, not from sniproxy: it goes away when JIT compilation is made to fail. valgrind cannot run under the seccomp filters either, so set `SNIPROXY_DISABLE_SECCOMP=1`, as the Valgrind workflow does.
+
 ## References
 
 - [AddressSanitizer Documentation](https://clang.llvm.org/docs/AddressSanitizer.html)
