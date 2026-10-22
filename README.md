@@ -860,7 +860,12 @@ as `relaxed`, with a warning when the configuration is read.
 
 For production, run a local validating resolver (Unbound, dnsmasq) and
 point sniproxy at it. That is what provides DNSSEC protection, and it
-also reduces spoofing exposure and upstream query volume.
+also reduces spoofing exposure and upstream query volume. Over plain
+UDP to a remote nameserver, forged replies could not only poison
+lookups but also make them fail: recent c-ares versions drop their
+socket, and count a try against every query on it, when a malformed
+datagram comes from the nameserver's address and port, whatever its
+query ID.
 
 ## Performance
 
