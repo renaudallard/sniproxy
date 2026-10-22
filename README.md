@@ -591,7 +591,18 @@ one would send its client's datagrams to every member of the group. A
 `dtls` listener opens no session for datagrams from the backend socket
 of a session that a `'*'` entry routed, so that a client cannot have
 such an entry lead back to sniproxy and chain sessions without end; an
-explicit entry may still lead to another `dtls` listener.
+explicit entry may still lead to another `dtls` listener. On a `source
+client` listener the backend socket takes the client's address and
+port, and a backend that leads back to the session's own listener,
+whatever the route, would send the same datagrams round one session for
+ever: a session of a `source client` listener drops a datagram that
+comes back to it, as it arrives at the address and port the session
+sends to, where a client cannot send since a listener only takes
+datagrams for addresses of this host. For the same reason a gateway that
+takes DTLS traffic addressed to other hosts, with a local route, cannot
+use a `source client` dtls listener: such datagrams would be dropped. A
+loop through a NAT on this host is not caught, and only the per-IP
+session rate bounds it.
 
 ### XMPP
 

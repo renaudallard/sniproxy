@@ -842,6 +842,16 @@ next one alive, so a dtls listener opens no session for datagrams that
 come from the address and port of the backend socket of a session that
 a '*' entry routed, other than one of a \fBsource client\fR listener;
 an explicit entry may still lead to another dtls listener of sniproxy.
+The backend socket of a \fBsource client\fR session takes the client's
+address and port, so a backend that leads back to the session's own
+listener, whatever the route, would send its datagrams round the same session for ever:
+such a session drops a datagram that comes back to it, as it arrives at
+the address and port the session sends to, where a client cannot send
+since a listener only takes datagrams for addresses of this host. For
+the same reason a gateway that takes DTLS traffic addressed to other
+hosts, with a local route, cannot use a source client dtls listener:
+such datagrams would be dropped. A loop through a NAT on this host is
+not caught, and only the per-IP session rate bounds it.
 A loop through another host or another proxy is not caught, and a
 client that a NAT on this host gives such an address and port is
 refused while that socket lives. Limit '*' entries with a

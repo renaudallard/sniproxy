@@ -95,6 +95,8 @@ struct UDPSession {
     TAILQ_ENTRY(UDPSession) validating_entries; /* while UDP_VALIDATING */
     uint32_t addr_hash;
     enum udp_session_state state;
+    int transparent;            /* its backend socket takes the client's
+                                 * address and port, for source client */
 };
 
 struct udp_resolv_cb_data {
@@ -131,6 +133,7 @@ static void udp_session_destroy(struct UDPSession *, struct ev_loop *);
 static int udp_session_charge_per_ip(struct UDPSession *);
 static socklen_t udp_datagram_dst(struct msghdr *, struct sockaddr_storage *);
 static int udp_send_from(int, const void *, size_t, const struct UDPSession *);
+static int udp_session_came_back(const struct UDPSession *, struct msghdr *);
 
 /* Room for the destination address of a datagram */
 union udp_control {
@@ -235,6 +238,24 @@ udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
 
         switch (session->state) {
         case UDP_CONNECTED:
+            if (udp_session_came_back(session, &msg)) {
+                static ev_tstamp last_logged;
+                /* A last time later than now means the wall clock went back */
+                if (ev_now(loop) < last_logged ||
+                        ev_now(loop) - last_logged >= 1.0) {
+                    char client[INET6_ADDRSTRLEN + 8];
+                    warn("UDP: dropping a datagram that came back to the "
+                            "session of %s for %.*s, as if its backend "
+                            "led to this host",
+                            display_sockaddr(&session->client_addr,
+                                    session->client_addr_len,
+                                    client, sizeof(client)),
+                            (int)session->hostname_len,
+                            session->hostname ? session->hostname : "");
+                    last_logged = ev_now(loop);
+                }
+                break;
+            }
             /* Forward datagram to server */
             if (send(session->server_fd, buf, (size_t)n, 0) < 0) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK)
@@ -420,6 +441,53 @@ udp_datagram_dst(struct msghdr *msg, struct sockaddr_storage *dst) {
     }
 
     return 0;
+}
+
+/*
+ * Whether a datagram for a source client session is one of its own coming
+ * back. Its backend socket takes the client's address and port, so a
+ * backend that leads back to the session's own listener, whatever the
+ * route, hands each datagram to the same session again, which would send
+ * it on for ever. Such a datagram arrives at the address and port the
+ * session sends to, where a client cannot otherwise send, as a listener
+ * only takes datagrams for addresses of this host. One a NAT on this host
+ * sent elsewhere is not seen.
+ */
+static int
+udp_session_came_back(const struct UDPSession *session, struct msghdr *msg) {
+    const struct sockaddr *bound = address_sa(session->listener->address);
+    struct sockaddr_storage dst, to, backend;
+    socklen_t dst_len;
+
+    if (!session->transparent || bound == NULL)
+        return 0;
+
+    /* A listener on a wildcard address learns where each datagram went,
+     * one on a single address takes only those sent to it */
+    dst_len = udp_datagram_dst(msg, &dst);
+    if (dst_len == 0) {
+        dst_len = address_sa_len(session->listener->address);
+        if (dst_len > sizeof(dst))
+            return 0;
+        memcpy(&dst, bound, dst_len);
+    }
+    if (dst.ss_family == AF_INET && bound->sa_family == AF_INET)
+        ((struct sockaddr_in *)&dst)->sin_port =
+                ((const struct sockaddr_in *)bound)->sin_port;
+    else if (dst.ss_family == AF_INET6 && bound->sa_family == AF_INET6)
+        ((struct sockaddr_in6 *)&dst)->sin6_port =
+                ((const struct sockaddr_in6 *)bound)->sin6_port;
+    else
+        return 0;
+
+    socklen_t to_len = sockaddr_unmap_ipv4(&dst, dst_len, &to);
+    socklen_t backend_len = sockaddr_unmap_ipv4(&session->server_addr,
+            session->server_addr_len, &backend);
+    /* Where a datagram went carries no scope, while the backend socket's
+     * peer has that of its link */
+    if (backend.ss_family == AF_INET6)
+        ((struct sockaddr_in6 *)&backend)->sin6_scope_id = 0;
+    return udp_sockaddr_equal(&to, to_len, &backend, backend_len);
 }
 
 /*
@@ -1001,6 +1069,7 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
             udp_session_destroy(session, loop);
             return;
         }
+        session->transparent = 1;
 #endif
     } else if (session->listener->source_address != NULL) {
         if (bind(fd, address_sa(session->listener->source_address),
@@ -1019,6 +1088,24 @@ udp_connect_server(struct UDPSession *session, struct ev_loop *loop) {
         close(fd);
         udp_session_destroy(session, loop);
         return;
+    }
+
+    /* The kernel sends to an unspecified address as to another one: where
+     * the datagrams of a source client session really go is what
+     * udp_session_came_back() compares with */
+    if (session->transparent) {
+        struct sockaddr_storage peer;
+        socklen_t peer_len = sizeof(peer);
+
+        if (getpeername(fd, (struct sockaddr *)&peer, &peer_len) < 0 ||
+                peer_len > sizeof(session->server_addr)) {
+            err("UDP: getpeername(): %s", strerror(errno));
+            close(fd);
+            udp_session_destroy(session, loop);
+            return;
+        }
+        memcpy(&session->server_addr, &peer, peer_len);
+        session->server_addr_len = peer_len;
     }
 
     /* A client chooses where a '*' entry leads, so these sessions alone
