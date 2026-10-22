@@ -1065,8 +1065,11 @@ drop_perms(const char *username, const char *groupname) {
      * from that user */
     logger_restrict_files();
 
+    /* setuid() cleared the others, unless the securebits say otherwise */
     if (keep_net_raw && caps_limit_to_net_raw() < 0)
         fatal("limiting capabilities to CAP_NET_RAW: %s", strerror(errno));
+    if (!keep_net_raw && caps_drop_all() < 0)
+        fatal("dropping capabilities: %s", strerror(errno));
 
     /* Now that main process is unprivileged, tell logger child to drop too */
     if (logger_drop_privileges(uid, gid) < 0)

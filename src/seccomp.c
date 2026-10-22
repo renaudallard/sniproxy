@@ -232,6 +232,7 @@ static const char *const self_syscalls[] = {
 
 static const char *const privilege_syscalls[] = {
     "setgid", "setgid32", "setuid", "setuid32", "setgroups", "setgroups32",
+    "capset",
     NULL,
 };
 

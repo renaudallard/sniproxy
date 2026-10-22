@@ -2459,6 +2459,13 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                             "sniproxy logger: failed to drop privileges\n");
                     logger_child_exit(EXIT_FAILURE);
                 }
+                /* setuid() clears the capabilities, unless the securebits
+                 * say otherwise */
+                if (caps_drop_all() < 0) {
+                    fprintf(stderr, "sniproxy logger: capset: %s\n",
+                            strerror(errno));
+                    logger_child_exit(EXIT_FAILURE);
+                }
                 make_undumpable();
             }
 #ifdef __OpenBSD__
