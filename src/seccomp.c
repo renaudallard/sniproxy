@@ -389,7 +389,9 @@ allow_setsockopt(scmp_filter_ctx ctx, const int *options, size_t option_count,
 
 /* The main process, with the socket options it sets. With "source
  * client" it keeps CAP_NET_RAW, which also lets a socket be given any
- * firewall mark or a priority above 6: SO_MARK and SO_PRIORITY fail. */
+ * firewall mark or a priority above 6: SO_MARK and SO_PRIORITY fail. The
+ * same values in the control messages of sendmsg() are out of the
+ * filter's reach. */
 static int
 allow_main_setsockopt(scmp_filter_ctx ctx) {
     static const int options[] = {

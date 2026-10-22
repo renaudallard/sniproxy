@@ -741,10 +741,14 @@ afterthought.
   UID is still 0 after `setuid()`. On Linux the main process keeps
   CAP_NET_RAW, and only when a listener uses `source client`; the
   seccomp filter keeps it from using it for raw or packet sockets, or
-  to give a socket a firewall mark or a priority above 6, except on
-  i386, s390x and other systems where socket() and setsockopt() go
-  through socketcall(2). It can still make a socket transparent, which
-  is what `source client` needs it for. The binder keeps CAP_NET_BIND_SERVICE, and
+  to give a socket a firewall mark or a priority above 6 with
+  setsockopt(), except on i386, s390x and other systems where socket()
+  and setsockopt() go through socketcall(2). It can still make a socket
+  transparent, which is what `source client` needs it for, and a
+  compromised main process could still give its sockets IPv6 hop-by-hop
+  and destination options, and the datagrams it sends a firewall mark or
+  any priority in the control messages of sendmsg(), which a filter
+  cannot read. The binder keeps CAP_NET_BIND_SERVICE, and
   CAP_DAC_OVERRIDE with a Unix socket listener under `/run` or
   `/var/run`; the logger and resolver keep none.
 - **OpenBSD sandboxing**: every process runs under pledge(2), and the
