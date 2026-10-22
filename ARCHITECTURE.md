@@ -551,7 +551,8 @@ Once CONNECTED, the connection enters steady-state proxying:
     told apart by their address, and no chain grows beyond 32 entries, so
     collision spraying costs at most 32 comparisons a lookup. Sources first
     seen in a datagram may only start an entry in the first half of a
-    chain. Backend affinity hashes with a seed of its own, so the backend
+    chain, and at most 65536 such entries exist; a new DTLS session from
+    a source left without one is not rate limited. Backend affinity hashes with a seed of its own, so the backend
     a client reaches tells it nothing about this one
   - Accept backoff when file descriptors run out, from the first EMFILE or
     ENFILE, growing from 2 to 60 seconds

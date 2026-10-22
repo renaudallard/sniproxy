@@ -1560,8 +1560,10 @@ rate_limit_allow_connection(const struct sockaddr_storage *addr, ev_tstamp now,
         } else {
             bucket = rate_limit_bucket_acquire();
             if (bucket == NULL) {
-                err("rate limit bucket allocation failed: %s; rejecting connection", strerror(errno));
-                return -1;  /* Fail-closed: reject connection when we can't track rate limits */
+                /* Untracked: a TCP connection is refused, a DTLS
+                 * session let through */
+                err("rate limit bucket allocation failed: %s", strerror(errno));
+                return -1;
             }
         }
 
@@ -2219,10 +2221,15 @@ connections_set_tcp_fastopen(int enabled) {
     tcp_fastopen_enabled = enabled;
 }
 
+/* A source that cannot be tracked, as forged datagrams took the room UDP
+ * may have in the table, opens its session untracked: refusing it would
+ * let some 220 forged datagrams a second keep every new DTLS client out.
+ * The connection counts, the session table and the descriptor budget
+ * still bound what one source can open. */
 int
 connections_udp_session_rate_limit_allow(const struct sockaddr_storage *addr,
         ev_tstamp now) {
-    return rate_limit_allow_connection(addr, now, RATE_LIMIT_UDP_SESSION) > 0;
+    return rate_limit_allow_connection(addr, now, RATE_LIMIT_UDP_SESSION) != 0;
 }
 
 int
