@@ -145,8 +145,17 @@ SNIProxy runs as four cooperating processes:
    `CAP_DAC_OVERRIDE` as well when a Unix socket listener at startup
    is under `/run` or `/var/run`, so a Unix socket listener a reload adds
    in a directory that user cannot write needs one already configured
-   there, or a restart. With
-   `CAP_DAC_OVERRIDE` a compromised binder could still read any file.
+   there, or a restart. Its seccomp filter lets it open directories
+   only, list none, connect nowhere, create no Unix datagram socket,
+   move no descriptor and send to no address of its choosing, so that
+   with `CAP_DAC_OVERRIDE` a compromised binder cannot read root's files
+   or reach root's Unix sockets, such as a container engine's, nor send
+   from a privileged port, except on i386, s390x and other systems where
+   socket(), sendto() and sendmsg() go through socketcall(2); it could
+   still create a socket node in any directory, and learn which paths
+   exist. It
+   connects to syslog before its filter, and its few log lines are lost
+   after the syslog daemon restarts, until sniproxy does.
    Elsewhere it stays root, but creates each IP socket as the configured
    user and only binds it as root, so the kernel refuses it an address
    another user's socket holds, as it would refuse that user: a
@@ -779,12 +788,11 @@ afterthought.
   resolver may not set SO_REUSEPORT or SO_REUSEADDR, with which a socket
   that sends before it is bound can be given the port of such a
   listener, except where setsockopt() goes through socketcall(2). The binder may only
-  receive on its IPC socket, descriptor 0, and read nothing, so that a
-  socket it binds to a `reuseport` dtls listener's address does not
-  simply give it that listener's datagrams; a compromised binder could
-  still move such a socket to descriptor 0, at the cost of its link to
-  the main process, as a filter cannot tell which socket a descriptor
-  holds.
+  receive and send with sendmsg() on its IPC socket, descriptor 0, which
+  it may neither close nor replace, and read nothing, so that a socket
+  it binds to a `reuseport` dtls listener's address does not simply
+  give it that listener's datagrams, except where recvmsg() goes through
+  socketcall(2).
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. A helper
   killed by its filter, or on OpenBSD by a pledge violation, is logged
   by the main process as "process N was killed by signal S" before it

@@ -586,7 +586,12 @@ buffer assembly, reducing the number of buffer operations required
 - The binder keeps root for listeners a reload adds, except on Linux,
   where it runs as the configured user with CAP_NET_BIND_SERVICE (and
   CAP_DAC_OVERRIDE when a unix socket listener under /run or /var/run is
-  configured at startup, which still lets it read any file)
+  configured at startup; its seccomp filter lets it open directories
+  only, connect nowhere, create no unix datagram socket, move no
+  descriptor and send to no address of its choosing, so that capability
+  does not let it read files or reach the unix sockets of root, but
+  where socket(), sendto() and sendmsg() go through socketcall(2), as on
+  i386)
 - On Linux, IP listeners are created as the configured user even when
   bound as root, so that they can share a port through SO_REUSEPORT with
   those the binder or another instance creates

@@ -46,6 +46,7 @@
 #include <sys/ptrace.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include "../src/seccomp_filter.h"
@@ -324,6 +325,152 @@ test_resolver_socket_options(void) {
     return 0;
 }
 
+/* Under the binder filter: directories open, files, unix datagram sockets,
+ * connect and closing descriptor 0 fail, and only the sends it makes
+ * itself go through */
+static int
+test_binder_files(void) {
+    int dir = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dir < 0)
+        return 1;
+    close(dir);
+
+    errno = 0;
+    if (open("/etc/passwd", O_RDONLY | O_CLOEXEC) != -1 || errno != EPERM)
+        return 1;
+
+    errno = 0;
+    if (socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0) != -1 || errno != EPERM)
+        return 1;
+
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    struct sockaddr_un sun;
+    if (fd < 0)
+        return 1;
+    memset(&sun, 0, sizeof(sun));
+    sun.sun_family = AF_UNIX;
+    snprintf(sun.sun_path, sizeof(sun.sun_path), "/nonexistent/socket");
+    errno = 0;
+    if (connect(fd, (struct sockaddr *)&sun, sizeof(sun)) != -1 ||
+            errno != EPERM)
+        return 1;
+    close(fd);
+
+    /* It keeps the descriptor flags, send() and sendto() without an
+     * address, and sendmsg() on descriptor 0 */
+    int udp = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (udp < 0 || fcntl(udp, F_GETFD) < 0)
+        return 1;
+    errno = 0;
+    if (send(udp, "x", 1, 0) != -1 || errno != EDESTADDRREQ)
+        return 1;
+    errno = 0;
+    if (sendto(udp, "x", 1, 0, NULL, 0) != -1 || errno != EDESTADDRREQ)
+        return 1;
+    close(udp);
+    /* Descriptor 0, its IPC socket, stays */
+    errno = 0;
+    if (close(0) != -1 || errno != EPERM)
+        return 1;
+
+    return 0;
+}
+
+/* The binder sends and receives with sendmsg() and recvmsg() on
+ * descriptor 0, here an unconnected socket put there before its filter */
+static int
+test_binder_sendmsg(void) {
+    pid_t pid = fork();
+
+    if (pid < 0)
+        return 1;
+    if (pid == 0) {
+        struct msghdr msg;
+        int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+
+        if (fd < 0 || (fd != 0 && dup2(fd, 0) < 0) ||
+                seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+            _exit(1);
+        memset(&msg, 0, sizeof(msg));
+        errno = 0;
+        if (sendmsg(0, &msg, 0) != -1 || errno != EDESTADDRREQ)
+            _exit(1);
+        /* and receives there */
+        errno = 0;
+        _exit(recvmsg(0, &msg, MSG_DONTWAIT) == -1 && errno == EAGAIN ? 0 : 1);
+    }
+
+    int status;
+    if (waitpid(pid, &status, 0) < 0)
+        return 1;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : 1;
+}
+
+/* The binder moves no descriptor and names no destination */
+static void
+binder_dup(void) {
+    if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    if (dup(1) >= 0)
+        _exit(0);
+}
+
+static void
+binder_dupfd(void) {
+    if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    (void)fcntl(1, F_DUPFD_CLOEXEC, 10);
+}
+
+static void
+binder_sendto_address(void) {
+    struct sockaddr_in sin;
+    int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+
+    if (fd < 0 || seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    sin.sin_port = htons(9);
+    (void)sendto(fd, "x", 1, 0, (struct sockaddr *)&sin, sizeof(sin));
+}
+
+static void
+binder_recvmsg_other(void) {
+    struct msghdr msg;
+    int fd = fcntl(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0),
+            F_DUPFD_CLOEXEC, 3);
+
+    if (fd < 0 || seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    memset(&msg, 0, sizeof(msg));
+    (void)recvmsg(fd, &msg, MSG_DONTWAIT);
+}
+
+static void
+binder_sendmsg_other(void) {
+    struct msghdr msg;
+    /* Above descriptor 0, which may be closed in this test */
+    int fd = fcntl(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0),
+            F_DUPFD_CLOEXEC, 3);
+
+    if (fd < 0 || seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    memset(&msg, 0, sizeof(msg));
+    (void)sendmsg(fd, &msg, 0);
+}
+
+/* The binder lists no directory */
+static void
+binder_getdents(void) {
+    char buf[256];
+
+    if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    (void)syscall(SYS_getdents64, 0, buf, sizeof(buf));
+}
+
 struct thread_sync_state {
     pthread_mutex_t lock;
     pthread_cond_t cond;
@@ -481,6 +628,12 @@ main(void) {
                 test_resolver_socket_options) != 0)
         return 1;
 
+    if (run_child_with_seccomp(SECCOMP_PROCESS_BINDER, test_binder_files) != 0)
+        return 1;
+
+    if (test_binder_sendmsg() != 0)
+        return 1;
+
     if (test_tsync_applies_to_threads() != 0)
         return 1;
 
@@ -489,7 +642,13 @@ main(void) {
 
     if (expect_killed(resolver_bind) != 0 ||
             expect_killed(resolver_listen) != 0 ||
-            expect_killed(main_utimensat) != 0)
+            expect_killed(main_utimensat) != 0 ||
+            expect_killed(binder_getdents) != 0 ||
+            expect_killed(binder_dup) != 0 ||
+            expect_killed(binder_dupfd) != 0 ||
+            expect_killed(binder_sendto_address) != 0 ||
+            expect_killed(binder_sendmsg_other) != 0 ||
+            expect_killed(binder_recvmsg_other) != 0)
         return 1;
 
     return 0;

@@ -2687,7 +2687,11 @@ logger_parent_capsicum_limit_rights(void) {
  * sink left in place would write into whatever descriptor later reuses
  * that number. Detach them, and when the default logger was such a file
  * switch it to syslog so the child's own diagnostics stay visible; a
- * syslog or stderr default logger keeps working as it is.
+ * stderr default logger keeps working as it is. The parent's syslog
+ * connection went with its descriptors, unknown to libc, which would
+ * send on whatever later takes that number: a child logging to syslog
+ * connects again now, as the binder may not connect once its filter is
+ * in.
  */
 void
 logger_post_fork_child_disinherit(void) {
@@ -2706,18 +2710,21 @@ logger_post_fork_child_disinherit(void) {
         }
     }
 
-    if (default_logger == NULL || default_logger->sink == NULL ||
-            default_logger->sink->type != LOG_SINK_FILE)
+    if (default_logger == NULL || default_logger->sink == NULL)
         return;
 
-    struct Logger *fallback = new_syslog_logger("daemon");
-    if (fallback == NULL)
-        return;
+    if (default_logger->sink->type == LOG_SINK_FILE) {
+        struct Logger *fallback = new_syslog_logger("daemon");
+        if (fallback == NULL)
+            return;
+        set_logger_priority(fallback, default_logger->priority);
+        set_default_logger(fallback);
+    }
 
-    /* Connect now, while the sandbox still allows it. */
-    openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
-    set_logger_priority(fallback, default_logger->priority);
-    set_default_logger(fallback);
+    if (default_logger->sink->type == LOG_SINK_SYSLOG) {
+        closelog();
+        openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
+    }
 }
 
 /*

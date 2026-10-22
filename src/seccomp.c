@@ -53,7 +53,7 @@
  * only the 64-bit names kills every process on those systems. */
 static const char *const common_syscalls[] = {
     "write", "writev", "pwrite64", "pwritev",
-    "close", "lseek", "_llseek", "fstat", "fstat64",
+    "lseek", "_llseek", "fstat", "fstat64",
     "brk", "madvise", "mmap", "mmap2", "mprotect", "mremap", "munmap",
     "clock_gettime", "clock_gettime64", "clock_getres",
     "clock_getres_time64", "clock_nanosleep", "clock_nanosleep_time64",
@@ -75,7 +75,8 @@ static const char *const common_syscalls[] = {
 };
 
 /* Opening files, in any mode: the main process and the logger write
- * files. The resolver and binder only read them, see allow_open_read(). */
+ * files. The resolver only reads them, see allow_open_read(), and the
+ * binder opens directories only, see allow_binder_files(). */
 static const char *const open_syscalls[] = {
     "open", "openat", "openat2",
     NULL,
@@ -107,13 +108,25 @@ static const char *const main_fs_write_syscalls[] = {
 };
 
 static const char *const fs_misc_syscalls[] = {
+    "fsync", "fdatasync",
+    "pipe", "pipe2",
+    "chdir", "fchdir",
+    NULL,
+};
+
+/* Moving and closing descriptors, which every process but the binder
+ * may do freely, see allow_binder_descriptors() */
+static const char *const descriptor_syscalls[] = {
     "dup", "dup2", "dup3",
     "fcntl", "fcntl64",
-    "fsync", "fdatasync",
+    "close", "close_range", "closefrom",
+    NULL,
+};
+
+/* Listing a directory, which every process but the binder may do: with
+ * CAP_DAC_OVERRIDE it would see into those of root */
+static const char *const dir_read_syscalls[] = {
     "getdents", "getdents64",
-    "pipe", "pipe2",
-    "close_range", "closefrom",
-    "chdir", "fchdir",
     NULL,
 };
 
@@ -154,16 +167,17 @@ static const char *const logger_network_syscalls[] = {
  * ports and passes the resulting sockets back over its IPC channel via
  * sendmsg, receiving its requests as allow_binder_receive() lets it; it
  * never listens or accepts.  allow_sockets() lets it
- * create the unix, IPv4 and IPv6 sockets it binds.  connect and sendto
- * are kept because, after disinheriting the logger process, the binder
- * logs its own errors directly, which reaches vsyslog() when error_log
- * uses syslog.  Excludes listen, accept, accept4, recvfrom, sendmmsg,
- * recvmmsg, getsockname, getpeername, and socketpair (created in the
- * parent before fork). */
+ * create the unix stream, IPv4 and IPv6 sockets it binds.  send is kept
+ * because, after disinheriting the logger process, the binder logs its
+ * own errors directly, which reaches vsyslog() when error_log uses
+ * syslog; the connection was made before its filter, see
+ * allow_binder_files(), and sendmsg and sendto are limited, see
+ * allow_binder_descriptors().  Excludes connect, listen, accept,
+ * accept4, recvfrom, sendmmsg, recvmmsg, getsockname, getpeername, and
+ * socketpair (created in the parent before fork). */
 static const char *const binder_network_syscalls[] = {
-    "connect",
     "bind", "setsockopt",
-    "sendto", "send", "sendmsg",
+    "send",
     NULL,
 };
 
@@ -413,11 +427,11 @@ allow_resolver_setsockopt(scmp_filter_ctx ctx) {
 }
 
 /* The binder: recvmsg() on its IPC socket, which the child setup makes
- * descriptor 0, and no read at all. A read fails rather than kills, as
- * libc reads the time zone file again if it changed since the binder
- * loaded it before its filter. The filter cannot tell which socket a
- * descriptor holds: a compromised binder could still put one of its own
- * on descriptor 0, losing its link to the main process. */
+ * descriptor 0 and allow_binder_descriptors() keeps there, and no read at
+ * all. A read fails rather than kills, as libc reads the time zone file
+ * again if it changed since the binder loaded it before its filter. Where
+ * recvmsg() goes through socketcall(2) the descriptor is out of the
+ * filter's reach. */
 static int
 allow_binder_receive(scmp_filter_ctx ctx) {
     int nr = seccomp_syscall_resolve_name("recvmsg");
@@ -477,9 +491,93 @@ allow_open_read(scmp_filter_ctx ctx) {
     return rc;
 }
 
+/* The binder sends on its IPC socket, descriptor 0, with sendmsg(), and
+ * to syslog with send() or a sendto() without an address, and it moves no
+ * descriptor and never closes descriptor 0, so that no other socket takes
+ * its place: with CAP_DAC_OVERRIDE its syslog socket could otherwise be
+ * sent through to any unix datagram socket, and one of its own sent from
+ * a privileged port anywhere. The fcntl() commands it uses are those of
+ * the descriptor and status flags. Only the low 32 bits of a descriptor
+ * count, so close() is allowed when one of them is set, and fails when
+ * none is. Through socketcall(2) the arguments are behind a pointer, so
+ * sendto() and sendmsg() stay allowed there, before libseccomp would
+ * compare that pointer. */
+static int
+allow_binder_descriptors(scmp_filter_ctx ctx) {
+    static const char *const fcntls[] = { "fcntl", "fcntl64" };
+    static const int commands[] = { F_GETFD, F_SETFD, F_GETFL, F_SETFL };
+    int rc;
+
+    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socketcall), 1,
+            SCMP_A0(SCMP_CMP_EQ, SYS_SENDTO));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socketcall), 1,
+                SCMP_A0(SCMP_CMP_EQ, SYS_SENDMSG));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendmsg), 1,
+                SCMP_A0(SCMP_CMP_EQ, 0));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendto), 1,
+                SCMP_A4(SCMP_CMP_EQ, 0));
+
+    for (unsigned int bit = 0; rc == 0 && bit < 32; bit++) {
+        uint64_t mask = (uint64_t)1 << bit;
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close), 1,
+                SCMP_A0(SCMP_CMP_MASKED_EQ, mask, mask));
+    }
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(close), 1,
+                SCMP_A0(SCMP_CMP_MASKED_EQ, 0xffffffff, 0));
+
+    for (size_t i = 0; rc == 0 && i < sizeof(fcntls) / sizeof(fcntls[0]); i++) {
+        int nr = seccomp_syscall_resolve_name(fcntls[i]);
+        if (nr == __NR_SCMP_ERROR)
+            continue;
+        for (size_t c = 0; rc == 0 &&
+                c < sizeof(commands) / sizeof(commands[0]); c++)
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                    SCMP_A1(SCMP_CMP_EQ, commands[c]));
+    }
+
+    return rc;
+}
+
+/* The binder: with CAP_DAC_OVERRIDE it may open any directory, for the
+ * unix sockets it creates there, but no file, which it could map and
+ * read, and it may connect nowhere, which would reach the unix sockets
+ * of root, such as a container engine's. Both fail rather than kill: libc
+ * opens the time zone file again if it changed, and connects again to
+ * the syslog socket when its connection broke. */
+static int
+allow_binder_files(scmp_filter_ctx ctx) {
+    const uint64_t mask = O_ACCMODE | O_CREAT | O_TRUNC | O_DIRECTORY;
+    const uint64_t file_mask = O_DIRECTORY;
+    int nr = seccomp_syscall_resolve_name("open");
+    int rc = 0;
+
+    if (nr != __NR_SCMP_ERROR) {
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, mask, O_RDONLY | O_DIRECTORY));
+        if (rc == 0)
+            rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), nr, 1,
+                    SCMP_A1(SCMP_CMP_MASKED_EQ, file_mask, 0));
+    }
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat), 1,
+                SCMP_A2(SCMP_CMP_MASKED_EQ, mask, O_RDONLY | O_DIRECTORY));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(openat), 1,
+                SCMP_A2(SCMP_CMP_MASKED_EQ, file_mask, 0));
+    if (rc == 0)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(connect), 0);
+
+    return rc;
+}
+
 #define SOCKETS_UNIX    0x1
 #define SOCKETS_NETLINK 0x2
 #define SOCKETS_INET    0x4
+#define SOCKETS_UNIX_STREAM 0x8
 
 /* The sockets a process may create, among unix sockets, netlink sockets,
  * and stream and datagram sockets over IPv4 and IPv6. With "source
@@ -501,6 +599,23 @@ allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
     if (kinds & SOCKETS_UNIX)
         rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
                 SCMP_A0(SCMP_CMP_EQ, AF_UNIX));
+    /* The binder binds unix stream sockets only. A datagram one could
+     * send to any datagram socket CAP_DAC_OVERRIDE lets it reach, and
+     * fails rather than kills, as libc tries one first to connect again
+     * to the syslog socket. Through socketcall(2) the type is behind a
+     * pointer, so the call stays allowed there, before libseccomp would
+     * compare that pointer. */
+    if (rc == 0 && (kinds & SOCKETS_UNIX_STREAM))
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socketcall), 1,
+                SCMP_A0(SCMP_CMP_EQ, SYS_SOCKET));
+    if (rc == 0 && (kinds & SOCKETS_UNIX_STREAM))
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 2,
+                SCMP_A0(SCMP_CMP_EQ, AF_UNIX),
+                SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, SOCK_STREAM));
+    if (rc == 0 && (kinds & SOCKETS_UNIX_STREAM))
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), nr, 2,
+                SCMP_A0(SCMP_CMP_EQ, AF_UNIX),
+                SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, SOCK_DGRAM));
     /* libc reads the interface addresses over NETLINK_ROUTE, for
      * getaddrinfo() with AI_ADDRCONFIG and for getifaddrs(). The other
      * protocols, such as NETLINK_NETFILTER, are not needed. */
@@ -576,6 +691,8 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, main_fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
+                allow_syscalls(ctx, descriptor_syscalls) < 0 ||
+                allow_syscalls(ctx, dir_read_syscalls) < 0 ||
                 allow_syscalls(ctx, process_syscalls) < 0 ||
                 allow_clone(ctx) < 0 ||
                 allow_main_setsockopt(ctx) < 0 ||
@@ -593,6 +710,8 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
+                allow_syscalls(ctx, descriptor_syscalls) < 0 ||
+                allow_syscalls(ctx, dir_read_syscalls) < 0 ||
                 allow_syscalls(ctx, privilege_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
@@ -607,7 +726,9 @@ install_filter(enum seccomp_process_type type) {
                 allow_resolver_setsockopt(ctx) < 0 ||
                 allow_open_read(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
-                allow_syscalls(ctx, fs_misc_syscalls) < 0) {
+                allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
+                allow_syscalls(ctx, descriptor_syscalls) < 0 ||
+                allow_syscalls(ctx, dir_read_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;
             }
@@ -617,13 +738,14 @@ install_filter(enum seccomp_process_type type) {
             /* fs_read is needed by the binder's own error logging: after it
              * disinherits the logger process it formats messages locally,
              * and both the timestamp path (localtime/strftime) and vsyslog
-             * read /etc/localtime (openat + per-call newfstatat). Without it
+             * stat /etc/localtime on every call (newfstatat). Without it
              * the first err() would be killed by SCMP_ACT_KILL_PROCESS. */
             if (allow_self_calls(ctx) < 0 ||
-                allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_INET) < 0 ||
+                allow_sockets(ctx, SOCKETS_UNIX_STREAM | SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, binder_network_syscalls) < 0 ||
                 allow_binder_receive(ctx) < 0 ||
-                allow_open_read(ctx) < 0 ||
+                allow_binder_files(ctx) < 0 ||
+                allow_binder_descriptors(ctx) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
