@@ -992,6 +992,18 @@ For third-party services where you control neither the cert nor the
 backend (CDNs, hosted SaaS), there is no in-proxy workaround; use a
 TLS-terminating reverse proxy for those names.
 
+**A table limits which backends a client reaches, not which hosts**
+
+sniproxy routes a connection on the hostname of its first request and
+then passes the rest on untouched. Later requests on the same
+connection, whether HTTP/1 keep-alive or pipelined requests, other
+HTTP/2 streams or an h2c upgrade, reach the same backend whatever host
+they name, and over TLS sniproxy cannot see them at all. A client can
+therefore reach every virtual host of a backend the table sends it to,
+including hosts the table does not route: a backend that serves such
+hosts must refuse them itself, for instance with HTTP 421 (Misdirected
+Request) for a host other than the one its connection was routed for.
+
 ### Debug mode
 
 ```sh

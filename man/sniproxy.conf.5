@@ -943,6 +943,18 @@ Disable HTTP/2 on the backend by removing \fBh2\fR from ALPN negotiation.
 Configure backends to return HTTP 421 (Misdirected Request) for hostnames
 they do not serve (RFC\ 9110).
 
+.SS ROUTING IS PER CONNECTION
+
+sniproxy routes a connection on the hostname of its first request and
+then passes the rest on untouched.
+Later requests on the same connection, whether HTTP/1 keep-alive or
+pipelined requests, other HTTP/2 streams or an h2c upgrade, reach the
+same backend whatever host they name, and over TLS sniproxy cannot see
+them at all.
+A table therefore limits which backends a client reaches, not which
+virtual hosts of a backend: a backend that also serves hosts the table
+does not route must refuse them itself.
+
 .SH "SEE ALSO"
 .PP
 \fBsniproxy\fR(8)
