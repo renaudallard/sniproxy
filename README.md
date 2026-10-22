@@ -775,7 +775,10 @@ afterthought.
   loaded nor reached. Only the main
   process may listen and accept, and only it and the binder may bind:
   the helpers run as the same user, and could otherwise join a
-  `reuseport` listener and take its clients. The binder may only
+  `reuseport` listener and take its clients. For the same reason the
+  resolver may not set SO_REUSEPORT or SO_REUSEADDR, with which a socket
+  that sends before it is bound can be given the port of such a
+  listener, except where setsockopt() goes through socketcall(2). The binder may only
   receive on its IPC socket, descriptor 0, and read nothing, so that a
   socket it binds to a `reuseport` dtls listener's address does not
   simply give it that listener's datagrams; a compromised binder could

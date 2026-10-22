@@ -3351,6 +3351,12 @@ resolver_child_init_dot_ssl_ctx(void) {
      * Without this, a compromised ticket key could decrypt past sessions. */
     SSL_CTX_set_options(child_dot_ssl_ctx, SSL_OP_NO_TICKET);
 
+#ifdef SSL_OP_ENABLE_KTLS
+    /* Kernel TLS, which the system's OpenSSL configuration may turn on,
+     * sets options at a socket level the seccomp filter refuses */
+    SSL_CTX_clear_options(child_dot_ssl_ctx, SSL_OP_ENABLE_KTLS);
+#endif
+
     return 0;
 }
 

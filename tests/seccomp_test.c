@@ -34,6 +34,7 @@
 #include <limits.h>
 #include <linux/netlink.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -295,6 +296,34 @@ test_process_and_socket_limits(void) {
     return 0;
 }
 
+/* Under the resolver filter: the socket options c-ares sets, but not
+ * those that would let a socket share the port of a reuseport listener */
+static int
+test_resolver_socket_options(void) {
+    int on = 1;
+    int udp = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    int tcp = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+
+    if (udp < 0 || tcp < 0)
+        return 1;
+    if (setsockopt(udp, SOL_SOCKET, SO_RCVBUF, &on, sizeof(on)) != 0 ||
+            setsockopt(udp, SOL_SOCKET, SO_SNDBUF, &on, sizeof(on)) != 0 ||
+            setsockopt(tcp, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) != 0)
+        return 1;
+    errno = 0;
+    if (setsockopt(udp, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+    errno = 0;
+    if (setsockopt(udp, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+    close(udp);
+    close(tcp);
+
+    return 0;
+}
+
 struct thread_sync_state {
     pthread_mutex_t lock;
     pthread_cond_t cond;
@@ -407,13 +436,13 @@ test_forked_child_can_install_filter(void) {
 }
 
 static int
-run_child_with_seccomp(int (*fn)(void)) {
+run_child_with_seccomp(enum seccomp_process_type type, int (*fn)(void)) {
     pid_t pid = fork();
     if (pid < 0) {
         perror("fork");
         return 1;
     } else if (pid == 0) {
-        if (seccomp_install_filter(SECCOMP_PROCESS_MAIN) < 0)
+        if (seccomp_install_filter(type) < 0)
             _exit(1);
         _exit(fn());
     }
@@ -437,13 +466,19 @@ main(void) {
     if (!seccomp_available())
         return 77;
 
-    if (run_child_with_seccomp(test_allowed_operations) != 0)
+    if (run_child_with_seccomp(SECCOMP_PROCESS_MAIN,
+                test_allowed_operations) != 0)
         return 1;
 
-    if (run_child_with_seccomp(test_blocked_ptrace) != 0)
+    if (run_child_with_seccomp(SECCOMP_PROCESS_MAIN, test_blocked_ptrace) != 0)
         return 1;
 
-    if (run_child_with_seccomp(test_process_and_socket_limits) != 0)
+    if (run_child_with_seccomp(SECCOMP_PROCESS_MAIN,
+                test_process_and_socket_limits) != 0)
+        return 1;
+
+    if (run_child_with_seccomp(SECCOMP_PROCESS_RESOLVER,
+                test_resolver_socket_options) != 0)
         return 1;
 
     if (test_tsync_applies_to_threads() != 0)
