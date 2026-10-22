@@ -689,7 +689,10 @@ afterthought.
   attacker who sends two spoofed packets does get through; from there it
   is the backend's own DTLS cookie exchange that limits amplification.
   A session ends after 30 seconds without a datagram from its client,
-  whatever its backend sends.
+  whatever its backend sends, and an ICMP error about its backend, which
+  anyone can forge, does not end it: a session keeps the backend address
+  it started with as long as its client sends, even once that backend no
+  longer answers.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages.

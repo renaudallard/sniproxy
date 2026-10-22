@@ -143,7 +143,7 @@ static void udp_connect_server(struct UDPSession *, struct ev_loop *);
 static void udp_resolv_cb(struct Address *, void *);
 static void udp_free_resolv_cb_data(void *);
 static void udp_server_cb(struct ev_loop *, struct ev_io *, int);
-static int udp_server_recv_one(struct ev_loop *, struct UDPSession *);
+static int udp_server_recv_one(struct UDPSession *);
 static int udp_recv_one(struct ev_loop *, struct Listener *, int);
 static void udp_session_idle_cb(struct ev_loop *, struct ev_timer *, int);
 static uint32_t udp_hash_addr(const struct sockaddr_storage *, socklen_t);
@@ -324,26 +324,29 @@ static void
 udp_server_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
     struct UDPSession *session = (struct UDPSession *)w->data;
 
+    (void)loop;
     if (!(revents & EV_READ))
         return;
 
     for (int i = 0; i < UDP_READ_BATCH; i++)
-        if (!udp_server_recv_one(loop, session))
+        if (!udp_server_recv_one(session))
             break;
 }
 
 /* Pass one datagram from the backend on to the client. Returns 0 when
- * there was none to read or the session is gone. */
+ * no datagram was read. */
 static int
-udp_server_recv_one(struct ev_loop *loop, struct UDPSession *session) {
+udp_server_recv_one(struct UDPSession *session) {
     char buf[UDP_MAX_DGRAM];
 
+    /* An error here is one an ICMP message left on the socket, which
+     * anyone who knows the backend's address can forge for every port
+     * sniproxy may use: it is read and cleared, and only the idle timer
+     * ends the session. */
     ssize_t n = recv(session->server_fd, buf, sizeof(buf), 0);
     if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return 0;
-        debug("UDP recv from server failed: %s", strerror(errno));
-        udp_session_destroy(session, loop);
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+            debug("UDP recv from server failed: %s", strerror(errno));
         return 0;
     }
 
