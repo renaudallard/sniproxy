@@ -1009,6 +1009,17 @@ drop_perms(const char *username, const char *groupname) {
     if (getuid() != 0 || geteuid() != 0) {
         if (running_as_user(uid, gid, username) < 0)
             exit(EXIT_FAILURE);
+        /* Started without root, it may still hold the capabilities of
+         * its file, such as CAP_NET_BIND_SERVICE: they go as root does,
+         * the initial listeners being bound and the binder holding its
+         * own, but for CAP_NET_RAW for source client when it has it.
+         * Only one given up here makes a reload adding source client
+         * need a restart. */
+        int had_net_raw = caps_limit_to_net_raw() == 0;
+        int keep_net_raw = had_net_raw && config_uses_transparent_proxy(config);
+        if (!keep_net_raw && caps_drop_all() < 0)
+            fatal("dropping capabilities: %s", strerror(errno));
+        transparent_proxy_capable = keep_net_raw || !had_net_raw;
         /* Still notify logger child so it can tighten sandboxing */
         if (logger_drop_privileges(uid, gid) < 0)
             fatal("logger_drop_privileges(): %s", strerror(errno));

@@ -841,7 +841,10 @@ caps_limit_to_net_raw(void) {
 
     if (caps_set(keep, sizeof(keep) / sizeof(keep[0])) < 0)
         return -1;
-    return prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0);
+    /* No setuid() follows, so that keeping capabilities across one no
+     * longer matters, and may have been locked on */
+    (void)prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0);
+    return 0;
 }
 
 int

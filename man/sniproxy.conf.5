@@ -752,7 +752,8 @@ address literal of the other family cannot carry the client's address:
 TCP connections to it leave from the proxy's own address, while dtls
 sessions are refused. This mode is
 only available on Linux and needs CAP_NET_RAW: when sniproxy is started
-as root and a listener uses it, the main process keeps that single
+as root, or with that capability given to its file or inherited as an
+ambient one, and a listener uses it, the main process keeps that single
 capability after dropping to the configured user, and the helper
 processes started later give it up. Its seccomp filter only lets it
 create unix and NETLINK_ROUTE sockets, and stream and datagram sockets over

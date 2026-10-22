@@ -139,7 +139,8 @@ to the resolver's nameserver, search, mode and dnssec_validation, and
 to tcp_fastopen, reuseport and ipv6_v6only for listeners that already
 exist, only take effect on restart; the reload logs a warning for each
 one it ignores\&. The resolver's query limits do change on reload\&.
-When sniproxy was started as root with no listener using
+When sniproxy was started, as root or with CAP_NET_RAW given to its
+file or inherited as an ambient capability, with no listener using
 .BR "source client" ,
 one added by a reload also needs a restart, and the reload warns about
 it\&. So does a listener on a privileged port that a reload adds after

@@ -739,7 +739,9 @@ afterthought.
   these by path, which such a user could make lead to any directory.
 - **Privilege drop verification**: startup aborts if real or effective
   UID is still 0 after `setuid()`. On Linux the main process keeps
-  CAP_NET_RAW, and only when a listener uses `source client`; the
+  CAP_NET_RAW, and only when a listener uses `source client`, whether it
+  was started as root or with capabilities given to its file or
+  inherited as ambient ones; the
   seccomp filter keeps it from using it for raw or packet sockets, or
   to give a socket a firewall mark or a priority above 6 with
   setsockopt(), except on i386, s390x and other systems where socket()
