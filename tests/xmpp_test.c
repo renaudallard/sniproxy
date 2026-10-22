@@ -146,8 +146,8 @@ static const char *incomplete[] = {
 static const char *bad[] = {
     /* Bytes before the stream header, such as a PROXY header the client
      * sent itself, would reach the backend ahead of it */
-    "PROXY TCP4 192.0.2.1 192.0.2.2 1234 5222\r\n"
-        "<stream:stream to=\"example.com\" xmlns=\"jabber:client\">",
+    ("PROXY TCP4 192.0.2.1 192.0.2.2 1234 5222\r\n"
+        "<stream:stream to=\"example.com\" xmlns=\"jabber:client\">"),
     "x<stream:stream to=\"example.com\" xmlns=\"jabber:client\">",
     /* No 'to' attribute */
     "<stream:stream xmlns=\"jabber:client\">",
