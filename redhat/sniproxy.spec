@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.23.1
+Version: 0.24.0
 Release: 1%{?dist}
 Summary: Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname
 
@@ -71,6 +71,12 @@ fi
 
 
 %changelog
+* Fri Oct 23 2026 Renaud Allard <renaud@allard.it> 0.24.0-1
+- Fixes from a security review of 0.23.1: a DTLS loop on source client
+  listeners, forged ICMP errors and rate limiter floods against DTLS,
+  tighter binder and resolver sandboxes, capabilities kept by a start
+  without root. See NEWS.
+
 * Wed Oct 21 2026 Renaud Allard <renaud@allard.it> 0.23.1-1
 - Fixes from a security review of 0.23.0: a DTLS loop through '*'
   entries, CONNECT routing, the seed of the per-IP tables, tighter

@@ -1,3 +1,25 @@
+2026-10-23  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.24.0
+	- udp_connection: a source client dtls session drops the datagrams
+	  that come back to it; an ICMP error on a backend socket no longer
+	  ends its session.
+	- connection: a DTLS session the rate limiter has no room for opens
+	  without being rate limited.
+	- seccomp: the binder opens directories only, creates unix stream
+	  sockets only, sends on its IPC socket only and may not move or
+	  close descriptor 0; the resolver sets only the socket options
+	  c-ares uses; the logger may call capset().
+	- resolv: kernel TLS is turned off for DNS over TLS.
+	- logger: a forked child reconnects to syslog; capabilities are
+	  dropped after setuid().
+	- sniproxy: the main process drops its capabilities but CAP_NET_RAW
+	  at a start without root and after setuid().
+	- hostname_sanitize: a hostname ending in white space is refused.
+	- tests: clang string concatenation warning in xmpp_test.
+	- docs: routing per connection, CAP_NET_RAW, forged DNS replies,
+	  sanitizer false alarms.
+
 2026-10-21  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.23.1

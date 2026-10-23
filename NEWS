@@ -1,3 +1,59 @@
+sniproxy 0.24.0 (2026-10-23)
+===============================
+
+Fixes from a security review of 0.23.1.
+
+Upgrade note: a server name, HTTP/2 :authority, XMPP to attribute or
+Minecraft address ending in white space is now refused rather than
+trimmed. A source client dtls listener drops the datagrams that come
+back to one of its sessions, so a gateway that takes DTLS traffic
+addressed to other hosts through a local route can no longer use one.
+Started without root, with capabilities given to its file, the main
+process now gives them up at startup and keeps only CAP_NET_RAW for
+source client, so a binder restarted after a crash can no longer bind
+a privileged port. On Linux the binder connects to syslog before its
+seccomp filter, and its log lines are lost after the syslog daemon
+restarts, until sniproxy does.
+
+Highlights:
+
+* A source client dtls listener whose backend led back to sniproxy
+  handed each datagram to the very session that sent it, as the backend
+  socket is bound to the client's address and port: two datagrams from
+  a client kept a core busy for good. Such datagrams are now dropped.
+
+* A forged ICMP port unreachable about a backend destroyed the DTLS
+  session it reached, and forging one for every source port broke all
+  DTLS sessions to that backend. The error is now only cleared.
+
+* Once forged datagrams had filled the DTLS share of the rate limiter,
+  every new DTLS client was refused for five minutes, which some 220
+  datagrams a second kept up. Such a session now opens without being
+  rate limited, and TCP keeps its protection.
+
+* On Linux a compromised binder holding CAP_DAC_OVERRIDE could open and
+  map root's files and connect or send to root's unix sockets, such as
+  a container engine's. It may now open directories only, create unix
+  stream sockets only and send on its IPC socket only.
+
+* On Linux a compromised resolver could set SO_REUSEPORT on a new
+  socket and be given the port of a reuseport dtls listener, taking
+  half of its datagrams. It may now set only the options c-ares uses.
+
+* Started without root with file capabilities, or under the
+  no-setuid-fixup securebit, the main process and the logger kept every
+  capability they had. They now drop all of them but CAP_NET_RAW, which
+  the main process keeps for source client.
+
+* A hostname ending in white space was trimmed for routing while the
+  backend got it untrimmed, so a proxy behind sniproxy could route it
+  elsewhere. Such names are now refused.
+
+* The README and the man pages say that a table routes connections,
+  not requests, what CAP_NET_RAW still allows the main process, and that
+  forged DNS replies can make lookups fail. SANITIZERS.md describes two
+  false alarms.
+
 sniproxy 0.23.1 (2026-10-21)
 ===============================
 
