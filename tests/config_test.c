@@ -484,6 +484,69 @@ test_config_permissions(void) {
     return 0;
 }
 
+/* idle_timeout takes whole seconds from 0, which disables it, to a day,
+ * and defaults to CONNECTION_DEFAULT_IDLE_TIMEOUT. */
+static int
+test_idle_timeout(void) {
+    static const struct {
+        const char *value;
+        double expected;    /* -1 when the value must be refused */
+    } cases[] = {
+        { NULL, CONNECTION_DEFAULT_IDLE_TIMEOUT },
+        { "0", 0.0 },
+        { "3600", 3600.0 },
+        { "86400", 86400.0 },
+        { "86401", -1.0 },
+        { "-1", -1.0 },
+        { "1.5", -1.0 },
+        { "abc", -1.0 },
+        { "99999999999999999999999", -1.0 },
+        { "", -1.0 },
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        char text[256];
+        snprintf(text, sizeof(text),
+                "%s%s%s"
+                "listen 127.0.0.1 8080 {\n"
+                "    proto http\n"
+                "}\n"
+                "table {\n"
+                "    localhost 127.0.0.1 8081\n"
+                "}\n",
+                cases[i].value != NULL ? "idle_timeout " : "",
+                cases[i].value != NULL ? cases[i].value : "",
+                cases[i].value != NULL ? "\n" : "");
+
+        struct Config *config = load_test_config(text);
+        if (cases[i].expected < 0.0) {
+            if (config != NULL) {
+                fprintf(stderr, "idle_timeout '%s' was accepted\n",
+                        cases[i].value);
+                free_config(config, EV_DEFAULT);
+                return 1;
+            }
+            continue;
+        }
+
+        if (config == NULL) {
+            fprintf(stderr, "idle_timeout '%s' was refused\n",
+                    cases[i].value != NULL ? cases[i].value : "(default)");
+            return 1;
+        }
+        double got = config->idle_timeout;
+        free_config(config, EV_DEFAULT);
+        if (got != cases[i].expected) {
+            fprintf(stderr, "idle_timeout '%s' gave %.0f, expected %.0f\n",
+                    cases[i].value != NULL ? cases[i].value : "(default)",
+                    got, cases[i].expected);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *config_file = NULL;
     char *generated = NULL;
@@ -540,6 +603,9 @@ int main(int argc, char **argv) {
         return 1;
 
     if (test_backend_acl() != 0)
+        return 1;
+
+    if (test_idle_timeout() != 0)
         return 1;
 
     if (test_config_permissions() != 0)

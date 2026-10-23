@@ -750,6 +750,7 @@ main(int argc, char **argv) {
     listeners_set_tcp_fastopen(config->tcp_fastopen);
     listeners_set_socket_owner(run_uid);
     http_set_max_headers(config->http_max_headers);
+    connections_set_idle_timeout(config->idle_timeout);
 
     init_listeners(&config->listeners, &config->tables, loop);
 

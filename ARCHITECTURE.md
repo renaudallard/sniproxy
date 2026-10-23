@@ -220,6 +220,8 @@ as the kernel does not.
   not take it
 - `query_handle`: DNS resolution handle (if needed)
 - `idle_timer`: Connection timeout watcher
+- `idle_timeout`: The `idle_timeout` in force when the connection was
+  accepted, so a reload leaves existing connections alone
 - `established_timestamp`: For connection duration logging
 - `use_proxy_header`: Whether to send PROXY header to backend
 - **Memory tracking (0.9.0)**: Connections participate in global memory accounting,
@@ -556,7 +558,8 @@ Once CONNECTED, the connection enters steady-state proxying:
     a client reaches tells it nothing about this one
   - Accept backoff when file descriptors run out, from the first EMFILE or
     ENFILE, growing from 2 to 60 seconds
-  - Idle connection timeouts
+  - Idle connection timeouts (`idle_timeout`, 60 seconds by default) and
+    a 5 second limit for the client to send its request
 - **Configuration hardening (0.9.7)**: sniproxy refuses to load
   configuration files that grant any permission to group or other users,
   except group read when started with `-g`, ensuring accidental chmod

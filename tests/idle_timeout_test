@@ -1,0 +1,194 @@
+#!/usr/bin/env perl
+
+# A connection silent in both directions is closed after idle_timeout
+# seconds, and 0 keeps it open. A reload only changes the timeout of
+# connections accepted after it.
+
+use strict;
+use warnings;
+use File::Basename;
+use lib dirname (__FILE__);
+use TestUtils;
+use File::Temp;
+use IO::Socket::INET;
+use IO::Select;
+use Time::HiRes qw(time);
+
+sub proxy {
+    my $config = shift;
+
+    exec(@_, '../src/sniproxy', '-f', ($> == 0 ? '-g' : ()), '-c', $config);
+}
+
+sub write_config($$$$) {
+    my ($filename, $proxy_port, $backend_port, $idle_timeout) = @_;
+
+    open(my $fh, '>', $filename) or die "open $filename: $!";
+    print $fh <<END;
+# Idle timeout test configuration
+
+user @{[test_user()]}
+group @{[test_group()]}
+per_ip_connection_rate 0
+idle_timeout $idle_timeout
+
+listen 127.0.0.1 $proxy_port {
+    proto http
+}
+
+table {
+    localhost 127.0.0.1 $backend_port
+}
+END
+    close($fh);
+}
+
+sub make_idle_config($$$) {
+    my ($proxy_port, $backend_port, $idle_timeout) = @_;
+
+    my ($fh, $filename) = File::Temp::tempfile();
+    close($fh);
+    # sniproxy reads the file again on SIGHUP after dropping to the test
+    # user. Started as root it only accepts a file owned by root, so that
+    # user reads it through its group, which -g allows.
+    if ($> == 0) {
+        my $gid = test_group() =~ /^\d+$/ ? test_group() : getgrnam(test_group());
+        defined $gid or die "unknown group @{[test_group()]}\n";
+        chown(0, $gid, $filename);
+        chmod(0640, $filename);
+    } else {
+        chmod(0600, $filename);
+    }
+    write_config($filename, $proxy_port, $backend_port, $idle_timeout);
+
+    return $filename;
+}
+
+# Answer each request, then keep the connection open without sending
+# anything until the proxy closes it
+sub backend($) {
+    my $port = shift;
+
+    my $server = IO::Socket::INET->new(LocalAddr => '127.0.0.1',
+                                       LocalPort => $port,
+                                       Proto => 'tcp',
+                                       Listen => 16,
+                                       ReuseAddr => 1)
+        or die "backend listen: $!";
+    $SIG{CHLD} = 'IGNORE';
+
+    while (1) {
+        my $client = $server->accept() or next;
+        my $pid = fork();
+        die "fork: $!" unless defined $pid;
+        if ($pid == 0) {
+            my $buffer;
+            $client->sysread($buffer, 4096);
+            $client->syswrite("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nok\n");
+            1 while $client->sysread($buffer, 4096);
+            exit 0;
+        }
+        $client->close();
+    }
+}
+
+# Send a request and read the answer, returning the socket left open
+sub idle_connection($) {
+    my $port = shift;
+
+    my $socket = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
+                                       PeerPort => $port,
+                                       Proto => 'tcp')
+        or die "couldn't connect: $!";
+    $socket->syswrite("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+    my $answer = '';
+    my $select = IO::Select->new($socket);
+    while ($answer !~ /ok\n\z/ && $select->can_read(10)) {
+        my $chunk;
+        last unless $socket->sysread($chunk, 4096);
+        $answer .= $chunk;
+    }
+    die "no answer through the proxy: '$answer'\n"
+        unless $answer =~ /\AHTTP\/1\.1 200 .*ok\n\z/s;
+
+    return $socket;
+}
+
+# Seconds until the proxy closes the socket, or undef if it is still
+# open after $wait seconds
+sub seconds_to_close($$) {
+    my ($socket, $wait) = @_;
+
+    my $start = time();
+    my $select = IO::Select->new($socket);
+    if ($select->can_read($wait)) {
+        my $chunk;
+        my $n = $socket->sysread($chunk, 4096);
+        die "unexpected data from the proxy\n" if $n;
+        return time() - $start;
+    }
+
+    return undef;
+}
+
+# Dies saying what failed
+sub check_timeouts($$$$) {
+    my ($config, $proxy_port, $backend_port, $proxy_pid) = @_;
+
+    my $first = idle_connection($proxy_port);
+    my $closed = seconds_to_close($first, 10);
+    die "idle connection not closed after 10 seconds with idle_timeout 2\n"
+        unless defined $closed;
+    die sprintf("idle connection closed after %.1f seconds with idle_timeout 2\n",
+            $closed) if $closed < 1.5;
+    $first->close();
+
+    # Accepted before the reload, so it keeps the 2 second timeout
+    my $before = idle_connection($proxy_port);
+    write_config($config, $proxy_port, $backend_port, 0);
+    kill 1, $proxy_pid;
+    sleep 1;
+    my $after = idle_connection($proxy_port);
+
+    $closed = seconds_to_close($before, 10);
+    die "connection accepted before the reload was not closed\n"
+        unless defined $closed;
+    $before->close();
+
+    # Past the 5 second request timeout too
+    $closed = seconds_to_close($after, 7);
+    die sprintf("connection closed after %.1f seconds with idle_timeout 0\n",
+            $closed) if defined $closed;
+    $after->close();
+}
+
+sub main {
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $backend_port = find_free_port();
+
+    my $config = make_idle_config($proxy_port, $backend_port, 2);
+    my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+    my $backend_pid = start_child('server', \&backend, $backend_port);
+
+    wait_for_port(port => $backend_port);
+    wait_for_port(port => $proxy_port);
+
+    eval { check_timeouts($config, $proxy_port, $backend_port, $proxy_pid) };
+    my $error = $@;
+
+    kill 15, $proxy_pid;
+    kill 15, $backend_pid;
+    sleep 1;
+
+    unlink($config);
+
+    reap_children();
+
+    if ($error ne '') {
+        print $error;
+        exit 1;
+    }
+}
+
+main();

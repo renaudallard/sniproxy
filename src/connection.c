@@ -1235,7 +1235,7 @@ reactivate_watcher(struct ev_loop *loop, struct ev_io *w, int may_grow,
 
 static void
 reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
-    if (connection_idle_timeout <= 0.0)
+    if (con->idle_timeout <= 0.0)
         return;
 
     if (ev_is_active(&con->idle_timer)) {
@@ -1245,15 +1245,15 @@ reset_idle_timer(struct Connection *con, struct ev_loop *loop) {
          * watcher's own deadline field is private and lives in the
          * monotonic clock domain, not in ev_now() time. */
         ev_tstamp remaining = ev_timer_remaining(loop, &con->idle_timer);
-        if (remaining > connection_idle_timeout * 0.5) {
-            con->idle_extend = connection_idle_timeout - remaining;
+        if (remaining > con->idle_timeout * 0.5) {
+            con->idle_extend = con->idle_timeout - remaining;
             return;
         }
         ev_timer_stop(loop, &con->idle_timer);
     }
 
     con->idle_extend = 0.0;
-    ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
+    ev_timer_set(&con->idle_timer, con->idle_timeout, 0.0);
     ev_timer_start(loop, &con->idle_timer);
 }
 
@@ -1769,6 +1769,12 @@ connections_set_per_ip_connection_rate(double rate) {
 
     per_ip_connection_rate_limit = rate;
     rate_limit_reset();
+}
+
+/* Connections accepted from now on use this value; 0 disables the timer */
+void
+connections_set_idle_timeout(double seconds) {
+    connection_idle_timeout = seconds > 0.0 ? seconds : 0.0;
 }
 
 /* Drop every per-IP connection count. */
@@ -2349,7 +2355,7 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
      * direction was active since the previous check. */
     if (con->spliced && splice_progressed(con)) {
         con->idle_extend = 0.0;
-        ev_timer_set(&con->idle_timer, connection_idle_timeout, 0.0);
+        ev_timer_set(&con->idle_timer, con->idle_timeout, 0.0);
         ev_timer_start(loop, &con->idle_timer);
         return;
     }
@@ -2366,13 +2372,13 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
 
     warn("Closing idle connection from %s after %.0f seconds without activity",
             display_sockaddr(&con->client.addr, con->client.addr_len, client, sizeof(client)),
-            connection_idle_timeout);
+            con->idle_timeout);
 
 #ifdef USE_SO_SPLICE
     if (con->spliced) {
         /* Nothing moved during the last idle period, so the connection
          * went quiet about one period ago. */
-        splice_account(con, ev_now(loop) - connection_idle_timeout);
+        splice_account(con, ev_now(loop) - con->idle_timeout);
         setsockopt(con->client.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
         setsockopt(con->server.watcher.fd, SOL_SOCKET, SO_SPLICE, NULL, 0);
     }
@@ -3786,6 +3792,7 @@ new_connection(struct ev_loop *loop) {
     con->use_proxy_header = PROXY_PROTOCOL_NONE;
     ev_timer_init(&con->idle_timer, connection_idle_cb, 0.0, 0.0);
     con->idle_timer.data = con;
+    con->idle_timeout = connection_idle_timeout;
     ev_timer_init(&con->header_timer, connection_header_timeout_cb, 0.0, 0.0);
     con->header_timer.data = con;
 
@@ -3993,9 +4000,9 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
 
     /* No kernel idle timeout: it is kept per direction, so a client that
      * stays silent while it receives a long response would be cut off
-     * after connection_idle_timeout with data still flowing the other
-     * way. Idle detection stays with the connection's own timer, which
-     * polls the splice byte counters instead. */
+     * after the idle timeout with data still flowing the other way.
+     * Idle detection stays with the connection's own timer, which polls
+     * the splice byte counters instead. */
     struct splice sp;
     memset(&sp, 0, sizeof(sp));
 

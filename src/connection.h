@@ -76,6 +76,9 @@ struct Connection {
      * activity that did not re-arm it; in the monotonic clock of the
      * timer, not wall clock time. */
     ev_tstamp idle_extend;
+    /* Snapshot at accept time, so that a reload changing idle_timeout
+     * leaves the timers of existing connections alone */
+    ev_tstamp idle_timeout;
     struct ev_timer header_timer;
     struct Listener *listener;
     const struct Protocol *protocol; /* Snapshot at accept time */
@@ -121,6 +124,7 @@ void print_connections(void);
 #define DEFAULT_DNS_QUERIES_PER_CLIENT 16
 
 void connections_set_per_ip_connection_rate(double rate);
+void connections_set_idle_timeout(double seconds);
 void connections_set_per_ip_max_connections(size_t limit);
 void connections_set_per_ip_ipv6_prefix(unsigned int prefix);
 void connections_set_dns_query_limit(size_t limit);

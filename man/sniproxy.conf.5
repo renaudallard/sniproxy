@@ -247,6 +247,27 @@ directive does not change. On an HTTP/2 connection only the first
 request is searched for the host; if it carries neither :authority nor
 host, the connection is handled as a request without a hostname.
 
+.SS IDLE_TIMEOUT
+
+.PP
+.nf
+idle_timeout 3600
+.fi
+.PP
+
+Close a TCP connection after this many seconds without data moving in
+either direction. The default is 60. Values are whole seconds from 0 to
+86400, and 0 disables the timeout, so that a connection stays open until
+the client or the backend closes it. Raise it for protocols that keep a
+connection quiet for long periods, such as WebSockets without pings or
+IMAP IDLE. With 0, every idle connection keeps two descriptors until its
+peers close it; \fBmax_connections\fR, and \fBper_ip_max_connections\fR
+when set, still bound how many there can be. Whatever the setting, a
+client must send its request within 5 seconds of connecting. A reload
+applies the new value to connections accepted after it. DTLS sessions
+are not affected; they end after 30 seconds without a datagram from
+their client.
+
 .SS BACKEND_ACL
 
 .PP

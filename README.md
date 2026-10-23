@@ -100,6 +100,9 @@ fuzzing, and active maintenance.
   tables in place without dropping live connections; connections that
   are already routed keep their backend. Hostname backends are resolved
   for every new connection, so DNS changes need no reload.
+- **Timeouts**: a client has 5 seconds to send its request, and a
+  connection with no data moving either way is closed after
+  `idle_timeout` seconds (60 by default, 0 disables it).
 - **Zero-copy on OpenBSD**: SO_SPLICE moves data in the kernel after the
   handshake is parsed, user buffers shrink to 4 KiB and the idle timer
   checks the kernel byte counters, so one silent direction does not end
@@ -454,6 +457,11 @@ connection_buffer_limit 4M
 # Cap accepted HTTP/1 headers per request (default 100). HTTP/2
 # requests have a fixed limit of 100.
 http_max_headers 200
+
+# Close a TCP connection after this many seconds with no data moving
+# either way (default 60, 0 disables it). A client always has 5 seconds
+# to send its request.
+idle_timeout 3600
 
 # Only connect to backends in these ranges, so a wildcard backend cannot
 # be used to reach arbitrary hosts. allow_except does the opposite:

@@ -47,6 +47,7 @@
 #define DEFAULT_TIMEOUT_COLLECT_INTERVAL 0.005
 #define MAX_IO_COLLECT_INTERVAL 0.1
 #define MAX_TIMEOUT_COLLECT_INTERVAL 0.5
+#define MAX_IDLE_TIMEOUT 86400
 #include "config.h"
 #include "http.h"
 #include "resolv.h"
@@ -98,6 +99,7 @@ static int accept_connection_buffer_limit(struct Config *, const char *);
 static int accept_client_buffer_limit(struct Config *, const char *);
 static int accept_server_buffer_limit(struct Config *, const char *);
 static int accept_http_max_headers(struct Config *, const char *);
+static int accept_idle_timeout(struct Config *, const char *);
 static int accept_tcp_fastopen(struct Config *, const char *);
 static int parse_size_value(const char *value, size_t min, size_t max, size_t *out);
 static int end_listener_stanza(struct Config *, struct Listener *);
@@ -216,6 +218,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_connection_buffer_limit, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_client_buffer_limit, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_server_buffer_limit, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_http_max_headers, struct Config)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_idle_timeout, struct Config)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_tcp_fastopen, struct Config)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_resolver_stanza, struct Config, struct ResolverConfig)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_error_logger_stanza, struct Config, struct LoggerBuilder)
@@ -422,6 +425,10 @@ static struct Keyword global_grammar[] = {
         .parse_arg=kw_parse_accept_http_max_headers,
     },
     {
+        .keyword="idle_timeout",
+        .parse_arg=kw_parse_accept_idle_timeout,
+    },
+    {
         .keyword="tcp_fastopen",
         .parse_arg=kw_parse_accept_tcp_fastopen,
     },
@@ -528,6 +535,7 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     config->client_buffer_limit = DEFAULT_CLIENT_BUFFER_LIMIT;
     config->server_buffer_limit = DEFAULT_SERVER_BUFFER_LIMIT;
     config->http_max_headers = HTTP_DEFAULT_MAX_HEADERS;
+    config->idle_timeout = CONNECTION_DEFAULT_IDLE_TIMEOUT;
     config->max_connections = DEFAULT_MAX_CONNECTIONS;
 
     SLIST_INIT(&config->listeners);
@@ -911,6 +919,8 @@ reload_config(struct Config *config, struct ev_loop *loop) {
             config->server_buffer_limit);
     config->http_max_headers = new_config->http_max_headers;
     http_set_max_headers(config->http_max_headers);
+    config->idle_timeout = new_config->idle_timeout;
+    connections_set_idle_timeout(config->idle_timeout);
 
     config->backend_acl_mode = new_config->backend_acl_mode;
     connections_set_backend_acl(config->backend_acl_mode,
@@ -967,6 +977,9 @@ print_config(FILE *file, struct Config *config) {
 
     if (config->http_max_headers != HTTP_DEFAULT_MAX_HEADERS)
         fprintf(file, "http_max_headers %zu\n\n", config->http_max_headers);
+
+    if (config->idle_timeout != CONNECTION_DEFAULT_IDLE_TIMEOUT)
+        fprintf(file, "idle_timeout %.0f\n\n", config->idle_timeout);
 
     if (config->tcp_fastopen)
         fprintf(file, "tcp_fastopen on\n\n");
@@ -1613,6 +1626,34 @@ accept_per_ip_max_connections(struct Config *config, const char *value) {
     }
 
     config->per_ip_max_connections = (size_t)limit;
+    return 1;
+}
+
+static int
+accept_idle_timeout(struct Config *config, const char *value) {
+    if (value == NULL)
+        return 0;
+
+    if (strchr(value, '-') != NULL) {
+        err("Invalid idle_timeout '%s'", value);
+        return 0;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long seconds = strtoul(value, &end, 10);
+    if (errno != 0 || end == value || (end != NULL && *end != '\0')) {
+        err("Unable to parse idle_timeout '%s'", value);
+        return 0;
+    }
+
+    if (seconds > MAX_IDLE_TIMEOUT) {
+        err("idle_timeout must be between 0 and %d: %s",
+                MAX_IDLE_TIMEOUT, value);
+        return 0;
+    }
+
+    config->idle_timeout = (double)seconds;
     return 1;
 }
 
