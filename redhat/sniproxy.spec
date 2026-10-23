@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.24.0
+Version: 0.24.1
 Release: 1%{?dist}
 Summary: Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname
 
@@ -71,6 +71,10 @@ fi
 
 
 %changelog
+* Fri Oct 23 2026 Renaud Allard <renaud@allard.it> 0.24.1-1
+- New idle_timeout directive: the 60 second idle timeout of TCP
+  connections can be changed or turned off. See NEWS.
+
 * Fri Oct 23 2026 Renaud Allard <renaud@allard.it> 0.24.0-1
 - Fixes from a security review of 0.23.1: a DTLS loop on source client
   listeners, forged ICMP errors and rate limiter floods against DTLS,

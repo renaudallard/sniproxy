@@ -1,3 +1,18 @@
+sniproxy 0.24.1 (2026-10-23)
+===============================
+
+The idle timeout of TCP connections can now be configured.
+
+Highlights:
+
+* A TCP connection with no data moving in either direction was always
+  closed after 60 seconds, which cut WebSockets without pings, IMAP IDLE
+  and other connections that stay quiet for long periods, and the limit
+  was not documented. The new idle_timeout directive sets it in whole
+  seconds from 0 to 86400. The default stays 60, and 0 disables it. A
+  reload applies the new value to connections accepted after it. A
+  client still has 5 seconds to send its request.
+
 sniproxy 0.24.0 (2026-10-23)
 ===============================
 

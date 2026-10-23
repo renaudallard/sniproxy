@@ -1,5 +1,15 @@
 2026-10-23  Renaud Allard  <renaud@allard.it>
 
+	* Release 0.24.1
+	- config: new idle_timeout directive, whole seconds from 0 to
+	  86400, default 60, 0 disables it.
+	- connection: each connection keeps the idle timeout in force when
+	  it was accepted, so a reload only applies to new connections.
+	- debian: the control file lists the current maintainer.
+	- docs: idle_timeout and the 5 second request timeout.
+
+2026-10-23  Renaud Allard  <renaud@allard.it>
+
 	* Release 0.24.0
 	- udp_connection: a source client dtls session drops the datagrams
 	  that come back to it; an ICMP error on a backend socket no longer
