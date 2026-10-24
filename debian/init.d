@@ -21,7 +21,6 @@ DAEMON=/usr/sbin/sniproxy  # Introduce the server's location here
 DAEMON_ARGS="-g"           # -g: the 0640 config stays readable on reload
 PIDFILE="/var/run/sniproxy.pid"
 SCRIPTNAME=/etc/init.d/$NAME
-ENABLED=1
 
 # Exit if the package is not installed
 [ -x $DAEMON ] || exit 0
@@ -88,7 +87,6 @@ do_stop()
 
 case "$1" in
   start)
-    test "$ENABLED" != "0" || exit 0
     [ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC " "$NAME"
     do_start
     case "$?" in
@@ -108,7 +106,6 @@ case "$1" in
        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
        ;;
   restart|force-reload)
-    test "$ENABLED" != "0" || exit 0
 	log_daemon_msg "Restarting $DESC" "$NAME"
 	do_stop
 	case "$?" in

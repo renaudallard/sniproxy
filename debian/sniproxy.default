@@ -1,9 +1,9 @@
 # Defaults for sniproxy initscript
 
-# This file has two functions:
-# 1) to disable the init script, see ENABLED below,
-# 2) to select an alternative config file
-#    by setting DAEMON_ARGS to -c <file>
+# Select an alternative config file by setting DAEMON_ARGS to -c <file>.
+# The init script is installed disabled, enable it with
+# update-rc.d sniproxy enable. Under systemd enable the unit instead:
+# systemctl enable --now sniproxy
 
 # Additional options that are passed to the Daemon. Keep -g: the config is
 # 0640 root:daemon so that the daemon user can read it again on reload.
@@ -12,9 +12,4 @@
 # The systemd unit reads SNIPROXY_CONFIG and SNIPROXY_OPTS instead
 # (defaults /etc/sniproxy.conf and -g).
 #SNIPROXY_OPTS="-g"
-
-# Whether the init script runs the sniproxy daemon, on hosts without
-# systemd; set to 0 to disable, 1 to enable. Under systemd enable the unit
-# instead: systemctl enable --now sniproxy
-ENABLED=0
 

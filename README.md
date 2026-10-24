@@ -276,7 +276,10 @@ read-only apart from `/var/log/sniproxy` and `/run/sniproxy`, so a unix
 socket listener has to be in `/run/sniproxy` there. Enable the unit with
 `systemctl enable --now sniproxy`, or the OpenRC service with
 `rc-update add sniproxy` and `rc-service sniproxy start`; its options go
-in `/etc/conf.d/sniproxy` (`SNIPROXY_CONFIG`, `SNIPROXY_OPTS`).
+in `/etc/conf.d/sniproxy` (`SNIPROXY_CONFIG`, `SNIPROXY_OPTS`). On a
+Debian host without systemd, the `.deb` init script is installed
+disabled as well: enable it with `update-rc.d sniproxy enable` and
+start it with `service sniproxy start`.
 
 ### Prerequisites
 

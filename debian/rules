@@ -8,6 +8,9 @@ override_dh_auto_configure:
 
 override_dh_auto_test:
 
+override_dh_installinit:
+	dh_installinit --no-enable
+
 override_dh_installsystemd:
 	dh_installsystemd --no-enable
 
