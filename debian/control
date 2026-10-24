@@ -2,7 +2,7 @@ Source: sniproxy
 Section: web
 Priority: optional
 Maintainer: Renaud Allard <renaud@allard.it>
-Build-Depends: debhelper-compat (= 12), debhelper (>= 12.8), pkgconf, libev-dev (>= 4.0), libpcre2-dev, libc-ares-dev, libssl-dev, libbsd-dev, libseccomp-dev
+Build-Depends: debhelper-compat (= 13), pkgconf, libev-dev (>= 4.0), libpcre2-dev, libc-ares-dev, libssl-dev, libbsd-dev, libseccomp-dev
 Standards-Version: 4.7.4
 Rules-Requires-Root: binary-targets
 Vcs-Git: https://github.com/renaudallard/sniproxy.git
