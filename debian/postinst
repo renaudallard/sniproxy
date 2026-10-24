@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+# Disable the init script links of a host that kept it from running
+# with ENABLED=0, as noted by the preinst.
+if [ "$1" = configure ] && [ -e /var/lib/sniproxy/disable-initscript ]; then
+	update-rc.d sniproxy disable >/dev/null 2>&1 || true
+	rm -f /var/lib/sniproxy/disable-initscript
+	rmdir /var/lib/sniproxy 2>/dev/null || true
+fi
+
+#DEBHELPER#
+
+exit 0

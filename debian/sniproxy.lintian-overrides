@@ -1,0 +1,3 @@
+# the postinst disables the links once on upgrade from ENABLED=0,
+# besides the defaults-disabled call debhelper adds
+duplicate-updaterc.d-calls-in-postinst sniproxy [postinst:*]

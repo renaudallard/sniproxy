@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+# Drop the note the preinst may have left for the postinst.
+case "$1" in
+abort-install|abort-upgrade|purge)
+	rm -f /var/lib/sniproxy/disable-initscript
+	rmdir /var/lib/sniproxy 2>/dev/null || true
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

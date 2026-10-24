@@ -3,9 +3,10 @@ set -e
 
 # Up to 0.24.1 the rc links started the init script and ENABLED=0 in
 # /etc/default/sniproxy kept it from running. The links now decide, so
-# turn that setting into disabled links before it goes away. Leave the
-# links alone under systemd when the unit is enabled, since update-rc.d
-# would disable the unit as well.
+# the postinst turns that setting into disabled links. It has to be read
+# here, before the new default file replaces it. Leave the links alone
+# under systemd when the unit is enabled, since update-rc.d would
+# disable the unit as well.
 case "$1" in
 install|upgrade)
 	if [ -z "$DPKG_ROOT" ] && [ -n "$2" ] &&
@@ -15,7 +16,8 @@ install|upgrade)
 	    { [ ! -d /run/systemd/system ] ||
 	    ! systemctl --quiet is-enabled sniproxy.service 2>/dev/null; }
 	then
-		update-rc.d sniproxy disable >/dev/null 2>&1 || true
+		mkdir -p /var/lib/sniproxy
+		: > /var/lib/sniproxy/disable-initscript
 	fi
 	;;
 esac
