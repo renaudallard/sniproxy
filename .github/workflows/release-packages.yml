@@ -316,7 +316,7 @@ jobs:
             git ca-certificates \
             build-essential devscripts debhelper \
             cdbs dh-autoreconf autotools-dev \
-            autoconf automake libtool pkg-config \
+            autoconf automake libtool pkgconf \
             gettext libev-dev libpcre2-dev \
             libc-ares-dev libssl-dev libbsd-dev libseccomp-dev fakeroot dpkg-dev
 
@@ -368,7 +368,7 @@ jobs:
             git ca-certificates \
             build-essential devscripts debhelper \
             cdbs dh-autoreconf autotools-dev \
-            autoconf automake libtool pkg-config \
+            autoconf automake libtool pkgconf \
             gettext libev-dev libpcre2-dev \
             libc-ares-dev libssl-dev libbsd-dev libseccomp-dev fakeroot dpkg-dev
 
@@ -420,7 +420,7 @@ jobs:
             git ca-certificates \
             build-essential devscripts debhelper \
             cdbs dh-autoreconf autotools-dev \
-            autoconf automake libtool pkg-config \
+            autoconf automake libtool pkgconf \
             gettext libev-dev libpcre2-dev \
             libc-ares-dev libssl-dev libbsd-dev libseccomp-dev fakeroot dpkg-dev
 
@@ -472,7 +472,7 @@ jobs:
             git ca-certificates \
             build-essential devscripts debhelper \
             cdbs dh-autoreconf autotools-dev \
-            autoconf automake libtool pkg-config \
+            autoconf automake libtool pkgconf \
             gettext libev-dev libpcre2-dev \
             libc-ares-dev libssl-dev libbsd-dev libseccomp-dev fakeroot dpkg-dev
 
