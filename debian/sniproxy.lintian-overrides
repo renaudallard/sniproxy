@@ -1,3 +1,8 @@
+# sniproxy refuses a configuration others can read; root:daemon 0640
+# lets the daemon user read it again on reload (-g)
+non-standard-file-perm 0640 != 0644 [etc/sniproxy.conf]
+# written by the daemon user, readable by adm only
+non-standard-dir-perm 0750 != 0755 [var/log/sniproxy/]
 # the postinst disables the links once on upgrade from ENABLED=0,
 # besides the defaults-disabled call debhelper adds
 duplicate-updaterc.d-calls-in-postinst sniproxy [postinst:*]
