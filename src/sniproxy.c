@@ -387,7 +387,7 @@ main(int argc, char **argv) {
 
     logger_prepare_process_title(argc, argv);
 
-    while ((opt = getopt(argc, argv, "fc:gn:tT:Vd")) != -1) {
+    while ((opt = getopt(argc, argv, "fc:gin:tT:Vd")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -417,6 +417,9 @@ main(int argc, char **argv) {
                 break;
             case 'g':
                 config_set_allow_group_read(1);
+                break;
+            case 'i':
+                config_set_allow_immutable(1);
                 break;
             case 't':
                 test_config = 1;
@@ -1121,8 +1124,9 @@ perror_exit(const char *msg) {
 
 static void
 usage(void) {
-    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
+    fprintf(stderr, "Usage: sniproxy [-c <config>] [-f] [-g] [-i] [-t] [-n <max file descriptor limit>] [-V] [-T <min TLS version>] [-d]\n");
     fprintf(stderr, "       -g allow group-read (0640) config permissions for SIGHUP reload\n");
+    fprintf(stderr, "       -i allow a read-only config readable by all (immutable stores such as Nix)\n");
     fprintf(stderr, "       -t test configuration and exit\n");
     fprintf(stderr, "       -T <1.0|1.1|1.2|1.3> set minimum TLS client hello version (default 1.2)\n");
     fprintf(stderr, "       -d enable resolver debug logging\n");

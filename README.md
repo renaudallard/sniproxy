@@ -243,10 +243,11 @@ foreground with `sniproxy -f -c /etc/sniproxy.conf`.
 ## Usage
 
 ```
-Usage: sniproxy [-c <config>] [-f] [-g] [-t] [-n <max fd>] [-V] [-T <min TLS>] [-d]
+Usage: sniproxy [-c <config>] [-f] [-g] [-i] [-t] [-n <max fd>] [-V] [-T <min TLS>] [-d]
     -c  configuration file (default: /etc/sniproxy.conf)
     -f  run in foreground
     -g  allow group-readable (0640) config for SIGHUP reload
+    -i  allow a read-only config readable by all (immutable stores such as Nix)
     -t  test configuration and exit
     -n  override file descriptor limit
     -V  print version and exit
@@ -733,7 +734,8 @@ afterthought.
 - **Strict config and pidfile checks**: config files must be owned by
   root, or by the user sniproxy is started as when that is not root,
   and must not be accessible to group or others (`-g` allows group read
-  only); the
+  only, `-i` any read of a file no one may write, as on the Nix store);
+  the
   `pidfile` and log file paths must be absolute; resolver search domains
   are treated as literal suffixes, not re-parsed by the system resolver.
   Pidfiles refuse to be written over stale sockets, FIFOs or symlinks,
@@ -958,7 +960,8 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 - The configured `user`/`group` must exist.
 - The config file must be owned by root, or by the user sniproxy is
   started as when that is not root, and grant no permission to group
-  or others; `-g` allows group read.
+  or others; `-g` allows group read, and `-i` allows a file that no one
+  may write, such as a 0444 file in the Nix store, to be read by anyone.
 - Log files are created at startup, before privileges are dropped, and
   handed over to that user, which may append to them but not read them:
   they lose their owner's read permission, and files created later have

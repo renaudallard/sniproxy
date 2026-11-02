@@ -85,6 +85,7 @@ enum GlobalACLPolicy {
 
 static enum GlobalACLPolicy global_acl_policy = GLOBAL_ACL_POLICY_UNSET;
 static int allow_group_read = 0;
+static int allow_immutable = 0;
 
 static int accept_username(struct Config *, const char *);
 static int accept_groupname(struct Config *, const char *);
@@ -573,10 +574,11 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
 
     /* Check permissions on opened file to prevent TOCTOU.
      * With -g flag, group-read (0640) is allowed for SIGHUP reload support.
-     * Without -g, only owner access (0600) is permitted. The owner must be
-     * root or the user sniproxy runs as: whoever may edit the file picks,
-     * among others, the log files that a start as root hands over to the
-     * configured user. */
+     * Without -g, only owner access (0600) is permitted. With -i, a file
+     * no one may write, as on an immutable store such as the Nix store,
+     * may be read by anyone. The owner must be root or the user sniproxy
+     * runs as: whoever may edit the file picks, among others, the log
+     * files that a start as root hands over to the configured user. */
     struct stat config_st;
     if (fstat(fileno(file), &config_st) != 0) {
         err("%s: unable to stat configuration file %s: %s",
@@ -609,15 +611,24 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     }
 
     mode_t perm_mask = allow_group_read ? 0037 : 0077;
+    int read_only = (config_st.st_mode & 0222) == 0;
     const char *perm_msg = NULL;
     if (config_st.st_uid != 0 && config_st.st_uid != geteuid())
         perm_msg = geteuid() == 0
             ? "must be owned by root when sniproxy runs as root"
             : "must be owned by root or by the user running sniproxy";
-    else if (config_st.st_mode & perm_mask)
-        perm_msg = allow_group_read
-            ? "must not be group-writable or world accessible (max 0640)"
-            : "must not be group/world accessible (max 0600, use -g for 0640)";
+    else if ((config_st.st_mode & perm_mask) != 0 &&
+            !(allow_immutable && read_only)) {
+        if (read_only && (config_st.st_mode & 0007) != 0)
+            perm_msg = "must not be group/world accessible "
+                "(use -i on an immutable store)";
+        else if (allow_group_read)
+            perm_msg = "must not be group-writable or world accessible "
+                "(max 0640)";
+        else
+            perm_msg = "must not be group/world accessible "
+                "(max 0600, use -g for 0640)";
+    }
     if (perm_msg != NULL) {
         if (fatal_on_perm_error) {
             /* Use original filename parameter to avoid use-after-free.
@@ -2472,4 +2483,9 @@ config_set_allow_group_read(int enabled) {
 int
 config_get_allow_group_read(void) {
     return allow_group_read;
+}
+
+void
+config_set_allow_immutable(int enabled) {
+    allow_immutable = enabled;
 }

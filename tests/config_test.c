@@ -427,14 +427,17 @@ test_backend_acl(void) {
 
 /* Whether the config in path loads with mode, as a reload would load it */
 static int
-loads_with_mode(const char *path, mode_t mode, int group_read) {
+loads_with_mode(const char *path, mode_t mode, int group_read,
+        int immutable) {
     struct Config *config;
 
     if (chmod(path, mode) != 0)
         return -1;
     config_set_allow_group_read(group_read);
+    config_set_allow_immutable(immutable);
     config = init_config(path, EV_DEFAULT, 0);
     config_set_allow_group_read(0);
+    config_set_allow_immutable(0);
     if (config == NULL)
         return 0;
     free_config(config, EV_DEFAULT);
@@ -442,7 +445,8 @@ loads_with_mode(const char *path, mode_t mode, int group_read) {
 }
 
 /* The config may be read by its owner only, or with -g by its group too,
- * and written by its owner only */
+ * and written by its owner only. With -i, one no one may write may be
+ * read by anyone. */
 static int
 test_config_permissions(void) {
     char template[256];
@@ -468,13 +472,24 @@ test_config_permissions(void) {
             "}\n", fp);
     fclose(fp);
 
-    int ok = loads_with_mode(template, 0600, 0) == 1 &&
-            loads_with_mode(template, 0640, 0) == 0 &&
-            loads_with_mode(template, 0604, 0) == 0 &&
-            loads_with_mode(template, 0602, 0) == 0 &&
-            loads_with_mode(template, 0640, 1) == 1 &&
-            loads_with_mode(template, 0604, 1) == 0 &&
-            loads_with_mode(template, 0620, 1) == 0;
+    int ok = loads_with_mode(template, 0600, 0, 0) == 1 &&
+            loads_with_mode(template, 0640, 0, 0) == 0 &&
+            loads_with_mode(template, 0604, 0, 0) == 0 &&
+            loads_with_mode(template, 0602, 0, 0) == 0 &&
+            loads_with_mode(template, 0444, 0, 0) == 0 &&
+            loads_with_mode(template, 0640, 1, 0) == 1 &&
+            loads_with_mode(template, 0604, 1, 0) == 0 &&
+            loads_with_mode(template, 0620, 1, 0) == 0 &&
+            loads_with_mode(template, 0444, 1, 0) == 0 &&
+            loads_with_mode(template, 0600, 0, 1) == 1 &&
+            loads_with_mode(template, 0444, 0, 1) == 1 &&
+            loads_with_mode(template, 0555, 0, 1) == 1 &&
+            loads_with_mode(template, 0440, 0, 1) == 1 &&
+            loads_with_mode(template, 0640, 0, 1) == 0 &&
+            loads_with_mode(template, 0644, 0, 1) == 0 &&
+            loads_with_mode(template, 0464, 0, 1) == 0 &&
+            loads_with_mode(template, 0446, 0, 1) == 0 &&
+            loads_with_mode(template, 0644, 1, 1) == 0;
     unlink(template);
     if (!ok) {
         fprintf(stderr, "config permission check failed\n");
