@@ -1,3 +1,29 @@
+sniproxy 0.24.2 (2026-11-02)
+===============================
+
+A configuration file on an immutable store, such as the Nix store, can
+now be used, and the Debian package is brought up to date.
+
+Highlights:
+
+* A configuration file in the Nix store is owned by root with mode
+  0444, which was refused even with -g. The new -i flag accepts a
+  configuration file that no one may write, whatever its read
+  permissions. A file with any write bit is checked as before, and
+  the owner check is unchanged.
+
+* The Debian init script was installed enabled and kept from running
+  by ENABLED=0 in /etc/default/sniproxy. It is now installed disabled,
+  like the systemd unit, and ENABLED is gone: enable it with
+  update-rc.d sniproxy enable. An upgrade from a host where ENABLED=0
+  kept it from running disables its rc links, so the service stays
+  off, unless systemd runs it with the unit enabled.
+
+* The Debian package declares Standards-Version 4.7.4 and debhelper
+  compat 13, build depends on pkgconf instead of pkg-config, drops
+  build dependencies it does not use and has an up to date copyright
+  file.
+
 sniproxy 0.24.1 (2026-10-23)
 ===============================
 

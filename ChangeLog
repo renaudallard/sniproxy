@@ -1,3 +1,20 @@
+2026-11-02  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.24.2
+	- config: new -i flag accepting a configuration file that no one
+	  may write, whatever its read permissions, as in the Nix store.
+	  A file with any write bit is checked as before.
+	- debian: the init script is installed disabled instead of being
+	  kept from running by ENABLED=0 in /etc/default/sniproxy; an
+	  upgrade disables the rc links where ENABLED=0 kept it from
+	  running.
+	- debian: Standards-Version 4.7.4, debhelper compat 13, pkgconf
+	  instead of pkg-config, unneeded build dependencies dropped, an
+	  up to date copyright file, lintian overrides for the config and
+	  log directory permissions.
+	- docs: -i in sniproxy(8) and the README, the disabled init script
+	  in the README.
+
 2026-10-23  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.24.1

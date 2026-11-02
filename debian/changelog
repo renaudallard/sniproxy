@@ -1,3 +1,16 @@
+sniproxy (0.24.2) unstable; urgency=medium
+
+  * New -i flag: a configuration file that no one may write, as in the
+    Nix store, may be readable by anyone.
+  * The init script is installed disabled instead of being kept from
+    running by ENABLED=0 in /etc/default/sniproxy. An upgrade disables
+    the rc links where ENABLED=0 kept it from running.
+  * Standards-Version 4.7.4, debhelper compat 13, build depend on
+    pkgconf, drop unneeded build dependencies, update the copyright
+    file. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Mon, 02 Nov 2026 12:35:59 +0100
+
 sniproxy (0.24.1) unstable; urgency=medium
 
   * New idle_timeout directive: the 60 second idle timeout of TCP
