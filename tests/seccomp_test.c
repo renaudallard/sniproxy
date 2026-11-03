@@ -37,6 +37,7 @@
 #include <netinet/tcp.h>
 #include <pthread.h>
 #include <sched.h>
+#include <seccomp.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -52,6 +53,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "../src/seccomp_filter.h"
+
+/* Where socket calls can also go through socketcall(2), as on i386,
+ * s390x and ppc64le, libseccomp gives them numbers of its own and the
+ * filters cannot see the arguments of a call made that way, so the
+ * checks of those arguments are skipped there */
+static int socket_multiplexed;
 
 static int
 test_allowed_operations(void) {
@@ -224,6 +231,37 @@ netlink_refused(void) {
     return 0;
 }
 
+/* The socket options of the main filter that CAP_NET_RAW would allow,
+ * a firewall mark and a priority, fail */
+static int
+main_options_refused(int fd) {
+    int on = 1;
+
+    errno = 0;
+    if (setsockopt(fd, SOL_SOCKET, SO_MARK, &on, sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+    errno = 0;
+    if (setsockopt(fd, SOL_SOCKET, SO_PRIORITY, &on, sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+#if ULONG_MAX > 0xffffffffUL
+    /* The kernel reads only the low 32 bits of the level and option */
+    errno = 0;
+    if (syscall(SYS_setsockopt, fd, (long)SOL_SOCKET | (1L << 32),
+                (long)SO_PRIORITY, &on, (long)sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+    errno = 0;
+    if (syscall(SYS_setsockopt, fd, (long)SOL_SOCKET,
+                (long)SO_PRIORITY | (1L << 32), &on, (long)sizeof(on)) != -1 ||
+            errno != EPERM)
+        return 1;
+#endif
+
+    return 0;
+}
+
 /* Under the main filter: no process in new namespaces, no netlink
  * socket, no TIOCSTI or TIOCLINUX; clone3() fails with ENOSYS,
  * so that libc falls back to clone(), and other requests near the
@@ -232,7 +270,7 @@ static int
 test_process_and_socket_limits(void) {
     if (expect_killed(clone_new_user) != 0)
         return 1;
-    if (expect_killed(inet_sctp) != 0)
+    if (!socket_multiplexed && expect_killed(inet_sctp) != 0)
         return 1;
 #ifdef TIOCLINUX
     if (expect_killed(ioctl_tiolinux) != 0)
@@ -247,7 +285,7 @@ test_process_and_socket_limits(void) {
         return 1;
 #endif
 
-    if (netlink_refused() != 0)
+    if (!socket_multiplexed && netlink_refused() != 0)
         return 1;
 
     /* Socket options are set as before, but for a firewall mark or a
@@ -257,27 +295,8 @@ test_process_and_socket_limits(void) {
     if (probe < 0 ||
             setsockopt(probe, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0)
         return 1;
-    errno = 0;
-    if (setsockopt(probe, SOL_SOCKET, SO_MARK, &on, sizeof(on)) != -1 ||
-            errno != EPERM)
+    if (!socket_multiplexed && main_options_refused(probe) != 0)
         return 1;
-    errno = 0;
-    if (setsockopt(probe, SOL_SOCKET, SO_PRIORITY, &on, sizeof(on)) != -1 ||
-            errno != EPERM)
-        return 1;
-#if ULONG_MAX > 0xffffffffUL
-    /* The kernel reads only the low 32 bits of the level and option */
-    errno = 0;
-    if (syscall(SYS_setsockopt, probe, (long)SOL_SOCKET | (1L << 32),
-                (long)SO_PRIORITY, &on, (long)sizeof(on)) != -1 ||
-            errno != EPERM)
-        return 1;
-    errno = 0;
-    if (syscall(SYS_setsockopt, probe, (long)SOL_SOCKET,
-                (long)SO_PRIORITY | (1L << 32), &on, (long)sizeof(on)) != -1 ||
-            errno != EPERM)
-        return 1;
-#endif
     close(probe);
 
     static const int protocols[][2] = {
@@ -314,20 +333,22 @@ test_resolver_socket_options(void) {
     int udp = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     int tcp = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
-    if (udp < 0 || tcp < 0 || netlink_refused() != 0)
+    if (udp < 0 || tcp < 0 || (!socket_multiplexed && netlink_refused() != 0))
         return 1;
     if (setsockopt(udp, SOL_SOCKET, SO_RCVBUF, &on, sizeof(on)) != 0 ||
             setsockopt(udp, SOL_SOCKET, SO_SNDBUF, &on, sizeof(on)) != 0 ||
             setsockopt(tcp, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) != 0)
         return 1;
-    errno = 0;
-    if (setsockopt(udp, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on)) != -1 ||
-            errno != EPERM)
-        return 1;
-    errno = 0;
-    if (setsockopt(udp, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != -1 ||
-            errno != EPERM)
-        return 1;
+    if (!socket_multiplexed) {
+        errno = 0;
+        if (setsockopt(udp, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on)) != -1 ||
+                errno != EPERM)
+            return 1;
+        errno = 0;
+        if (setsockopt(udp, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != -1 ||
+                errno != EPERM)
+            return 1;
+    }
     close(udp);
     close(tcp);
 
@@ -348,9 +369,12 @@ test_binder_files(void) {
     if (open("/etc/passwd", O_RDONLY | O_CLOEXEC) != -1 || errno != EPERM)
         return 1;
 
-    errno = 0;
-    if (socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0) != -1 || errno != EPERM)
-        return 1;
+    if (!socket_multiplexed) {
+        errno = 0;
+        if (socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0) != -1 ||
+                errno != EPERM)
+            return 1;
+    }
 
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un sun;
@@ -647,6 +671,11 @@ main(void) {
     if (!seccomp_available())
         return 77;
 
+    socket_multiplexed = seccomp_syscall_resolve_name("socket") < 0;
+    if (socket_multiplexed)
+        printf("seccomp_test: socket calls can go through socketcall(2) "
+                "here, so the checks of their arguments are skipped\n");
+
     if (run_child_with_seccomp(SECCOMP_PROCESS_MAIN,
                 test_allowed_operations) != 0)
         return 1;
@@ -681,10 +710,12 @@ main(void) {
             expect_killed(binder_access) != 0 ||
             expect_killed(binder_statfs) != 0 ||
             expect_killed(binder_dup) != 0 ||
-            expect_killed(binder_dupfd) != 0 ||
-            expect_killed(binder_sendto_address) != 0 ||
+            expect_killed(binder_dupfd) != 0)
+        return 1;
+
+    if (!socket_multiplexed && (expect_killed(binder_sendto_address) != 0 ||
             expect_killed(binder_sendmsg_other) != 0 ||
-            expect_killed(binder_recvmsg_other) != 0)
+            expect_killed(binder_recvmsg_other) != 0))
         return 1;
 
     return 0;
