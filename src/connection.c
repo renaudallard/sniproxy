@@ -281,6 +281,17 @@ static size_t conn_count_free_count;
 #define CONN_COUNT_MAX_FREE 2048
 static size_t per_ip_max_connections_limit;
 
+/* The connections a '*' entry routed, by the address and port their
+ * backend socket sends from. Such an entry leads where the client says,
+ * which may be a listener of this sniproxy: the connection that listener
+ * then accepts comes from the backend socket's own address and port, and
+ * is refused. Each hop would otherwise open the next, charged to this
+ * host's address rather than the client's, until the connection ceiling;
+ * the dtls sessions have a table of the same kind. */
+#define BACKEND_SOCKET_BUCKETS 1024
+static struct Connection *backend_socket_table[BACKEND_SOCKET_BUCKETS];
+static uint64_t backend_socket_key;
+
 /* Lookups of UDP sessions are counted apart from those of TCP connections,
  * as a datagram's source address may be forged */
 struct DnsClientUsageEntry {
@@ -330,6 +341,9 @@ static int sockaddr_equal_ip(const struct sockaddr_storage *,
 static int rate_limit_allow_connection(const struct sockaddr_storage *,
         ev_tstamp, enum rate_limit_kind);
 static const char *format_sockaddr_ip(const struct sockaddr_storage *, char *, size_t);
+static void backend_socket_add(struct Connection *, int);
+static void backend_socket_remove(struct Connection *);
+static int backend_socket_find(const struct sockaddr_storage *, socklen_t, int);
 
 
 static int push_proxy_header(struct Connection *, const char *, size_t);
@@ -360,6 +374,7 @@ init_connections(void) {
     while (affinity_hash_seed == 0 ||
             affinity_hash_seed == rate_limit_hash_seed)
         affinity_hash_seed = arc4random();
+    arc4random_buf(&backend_socket_key, sizeof(backend_socket_key));
 
     rate_limit_reset();
     buffer_set_memory_observer(buffer_memory_observer);
@@ -474,6 +489,36 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
     }
 
     ev_tstamp now = loop_now(loop);
+
+    if (backend_socket_find(&con->client.addr, con->client.addr_len, sockfd)) {
+        static ev_tstamp last_logged;
+
+        /* A last time later than now means the wall clock went back */
+        if (now < last_logged || now - last_logged >= 1.0) {
+            char addrbuf[INET6_ADDRSTRLEN + 8];
+            char listener_buf[ADDRESS_BUFFER_SIZE];
+
+            warn("refusing a connection from %s on %s, the address of a "
+                    "backend socket of sniproxy: a '*' entry leads back to "
+                    "a listener, or a NAT on this host gave a client that "
+                    "address",
+                    display_sockaddr(&con->client.addr, con->client.addr_len,
+                            addrbuf, sizeof(addrbuf)),
+                    display_address(listener->address, listener_buf,
+                            sizeof(listener_buf)));
+            last_logged = now;
+        }
+        /* Reset it, whether its request has arrived yet or not, so that
+         * the connection it comes from sees a backend that failed, and
+         * its client gets the protocol's error rather than an empty
+         * answer */
+        struct linger reset = { .l_onoff = 1, .l_linger = 0 };
+        if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &reset,
+                    sizeof(reset)) < 0)
+            warn("setsockopt SO_LINGER failed: %s", strerror(errno));
+        rc = 1;
+        goto cleanup;
+    }
 
     int allowed = rate_limit_allow_connection(&con->client.addr, now,
             RATE_LIMIT_CONNECTION);
@@ -2165,6 +2210,88 @@ sockaddr_is_unspecified(const struct sockaddr_storage *addr) {
     return 0;
 }
 
+/* Enter con in backend_socket_table under the address fd sends from */
+static void
+backend_socket_add(struct Connection *con, int fd) {
+    struct sockaddr_storage local;
+    socklen_t local_len = sizeof(local);
+
+    if (getsockname(fd, (struct sockaddr *)&local, &local_len) < 0 ||
+            (local.ss_family != AF_INET && local.ss_family != AF_INET6))
+        return;
+    con->backend_local_len = sockaddr_unmap_ipv4(&local, local_len,
+            &con->backend_local);
+    con->backend_local_hash = sockaddr_hash_addr_port(&con->backend_local,
+            backend_socket_key);
+
+    struct Connection **head = &backend_socket_table[
+            con->backend_local_hash & (BACKEND_SOCKET_BUCKETS - 1)];
+    con->next_backend = *head;
+    *head = con;
+}
+
+static void
+backend_socket_remove(struct Connection *con) {
+    if (con->backend_local_len == 0)
+        return;
+
+    struct Connection **pp = &backend_socket_table[
+            con->backend_local_hash & (BACKEND_SOCKET_BUCKETS - 1)];
+    while (*pp != NULL) {
+        if (*pp == con) {
+            *pp = con->next_backend;
+            break;
+        }
+        pp = &(*pp)->next_backend;
+    }
+    con->next_backend = NULL;
+    con->backend_local_len = 0;
+}
+
+/*
+ * Whether the connection accepted on fd from peer comes from the backend
+ * socket of a connection that a '*' entry routed. Its peer is then the
+ * address and port that socket sends from, and what it was accepted on
+ * is the address that socket connected to: no other connection has both
+ * while the socket lives. The peer alone would not do: the kernel gives
+ * a connection the local port of another connected socket when the
+ * destinations differ, so a client on this host, or the client of a
+ * source client connection, whose socket took its address and port, may
+ * share it towards another listener.
+ */
+static int
+backend_socket_find(const struct sockaddr_storage *peer, socklen_t peer_len,
+        int fd) {
+    struct sockaddr_storage unmapped, local, dst, target;
+
+    (void)sockaddr_unmap_ipv4(peer, peer_len, &unmapped);
+    uint32_t hash = sockaddr_hash_addr_port(&unmapped, backend_socket_key);
+
+    for (const struct Connection *con =
+            backend_socket_table[hash & (BACKEND_SOCKET_BUCKETS - 1)];
+            con != NULL; con = con->next_backend) {
+        socklen_t local_len = sizeof(local);
+
+        if (con->backend_local_hash != hash ||
+                !sockaddr_addr_port_equal(&con->backend_local, &unmapped))
+            continue;
+
+        if (getsockname(fd, (struct sockaddr *)&local, &local_len) < 0)
+            return 1;
+        (void)sockaddr_unmap_ipv4(&local, local_len, &dst);
+        (void)sockaddr_unmap_ipv4(&con->server.addr, con->server.addr_len,
+                &target);
+        /* The resolver gives a link-local address no scope */
+        if (dst.ss_family == AF_INET6)
+            ((struct sockaddr_in6 *)&dst)->sin6_scope_id =
+                    ((struct sockaddr_in6 *)&target)->sin6_scope_id;
+        if (sockaddr_addr_port_equal(&dst, &target))
+            return 1;
+    }
+
+    return 0;
+}
+
 int
 backend_acl_allows(const struct sockaddr_storage *addr) {
     if (backend_acl_mode == LISTENER_ACL_MODE_DISABLED)
@@ -3245,7 +3372,10 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
     if (result.address == NULL) {
         abort_connection(con, loop);
         return 0;
-    } else if (address_is_hostname(result.address)) {
+    }
+    con->wildcard = result.wildcard;
+
+    if (address_is_hostname(result.address)) {
         struct resolv_cb_data *cb_data = calloc(1, sizeof(struct resolv_cb_data));
         if (cb_data == NULL) {
             err("%s: calloc", __func__);
@@ -3479,6 +3609,25 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         return;
     }
 
+    /* The kernel connects to the unspecified address as to one of this
+     * host's, which a client could lead a '*' entry back to without the
+     * loop guard of accept_connection() seeing the address it compares */
+    if (con->wildcard && sockaddr_is_unspecified(&con->server.addr)) {
+        char server[INET6_ADDRSTRLEN + 8];
+        char client[INET6_ADDRSTRLEN + 8];
+        warn("Refusing the unspecified address %s for %.*s from %s",
+                display_sockaddr(&con->server.addr,
+                    con->server.addr_len,
+                    server, sizeof(server)),
+                (int)con->hostname_len,
+                con->hostname ? con->hostname : "",
+                display_sockaddr(&con->client.addr,
+                    con->client.addr_len,
+                    client, sizeof(client)));
+        abort_connection(con, loop);
+        return;
+    }
+
     if (!backend_acl_allows(&con->server.addr)) {
         char server[INET6_ADDRSTRLEN + 8];
         char client[INET6_ADDRSTRLEN + 8];
@@ -3633,6 +3782,11 @@ initiate_server_connect(struct Connection *con, struct ev_loop *loop) {
         return;
     }
 
+    /* A client chooses where a '*' entry leads, so these connections
+     * alone could make a loop through a listener of this sniproxy */
+    if (con->wildcard)
+        backend_socket_add(con, sockfd);
+
     if (con->header_len && con->use_proxy_header == PROXY_PROTOCOL_NONE) {
         /* If we prepended the PROXY header and this backend isn't configured
          * to receive it, consume it now */
@@ -3734,6 +3888,7 @@ close_server_socket(struct Connection *con, struct ev_loop *loop) {
     }
 
     ev_io_stop(loop, &con->server.watcher);
+    backend_socket_remove(con);
 
     if (close(con->server.watcher.fd) < 0)
         warn("close failed: %s", strerror(errno));
@@ -3889,6 +4044,7 @@ free_connection(struct Connection *con) {
         return;
 
     shrink_candidate_remove(con);
+    backend_socket_remove(con);
 
     listener_ref_put(con->listener);
     free_buffer(con->client.buffer);

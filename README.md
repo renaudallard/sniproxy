@@ -611,10 +611,12 @@ reaches the local host, so a hostname resolving to it cannot get around
 a block of the loopback range. Multicast addresses (224.0.0.0/4,
 `ff00::/8`) are refused even without a `backend_acl`: a DTLS session to
 one would send its client's datagrams to every member of the group. A
-`dtls` listener opens no session for datagrams from the backend socket
-of a session that a `'*'` entry routed, so that a client cannot have
-such an entry lead back to sniproxy and chain sessions without end; an
-explicit entry may still lead to another `dtls` listener. On a `source
+listener refuses a connection, and a `dtls` listener opens no session
+for datagrams, that come from the backend socket of a connection or
+session that a `'*'` entry routed, so that a client cannot have such an
+entry lead back to sniproxy and chain connections without end, charged
+to this host's address rather than its own; an explicit entry may still
+lead to another listener. On a `source
 client` listener the backend socket takes the client's address and
 port, and a backend that leads back to the session's own listener,
 whatever the route, would send the same datagrams round one session for

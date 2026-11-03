@@ -101,6 +101,15 @@ struct Connection {
     struct ResolvQuery *query_handle;
     ev_tstamp established_timestamp;
     enum proxy_protocol_mode use_proxy_header;
+    /* Routed by a '*' entry, which a client may lead to a listener of
+     * this sniproxy: while the backend socket lives, the address and
+     * port it sends from are kept in a table, and a connection accepted
+     * from them towards its backend is refused, see backend_socket_find() */
+    int wildcard;
+    struct sockaddr_storage backend_local;
+    socklen_t backend_local_len;    /* 0 when not in the table */
+    uint32_t backend_local_hash;
+    struct Connection *next_backend;
 #ifdef USE_SO_SPLICE
     int spliced;
     /* Bytes the kernel had moved out of each socket at the last idle

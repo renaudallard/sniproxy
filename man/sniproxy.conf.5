@@ -858,12 +858,19 @@ request goes to the fallback, or is closed without one. A
 client can still name any host its hostname resolves to: localhost and
 other loopback names included, which with no port on the '*' entry
 leads sniproxy back to its own listener when that listens on a loopback
-or wildcard address, once per connection, until the per-IP connection
-rate stops it. Over DTLS each session of such a loop would keep the
-next one alive, so a dtls listener opens no session for datagrams that
-come from the address and port of the backend socket of a session that
-a '*' entry routed, other than one of a \fBsource client\fR listener;
-an explicit entry may still lead to another dtls listener of sniproxy.
+or wildcard address. Such a connection comes from the address and port
+of sniproxy's own backend socket, towards the address that socket
+connected to, which no other connection can while it lives, and the
+listener refuses it, so the client gets the protocol's error; each hop
+would otherwise open the next, charged to this host's address rather
+than the client's, until the connection ceiling. Nor does a '*' entry
+lead to the unspecified address, 0.0.0.0 or ::, which the kernel
+connects to as to one of this host's. Over DTLS each session
+of such a loop would keep the next one alive, so a dtls listener opens
+no session for datagrams that come from the address and port of the
+backend socket of a session that a '*' entry routed, other than one of
+a \fBsource client\fR listener. An explicit entry may still lead to
+another listener of sniproxy.
 The backend socket of a \fBsource client\fR session takes the client's
 address and port, so a backend that leads back to the session's own
 listener, whatever the route, would send its datagrams round the same session for ever:

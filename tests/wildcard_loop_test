@@ -1,0 +1,115 @@
+#!/usr/bin/env perl
+
+# A '*' entry without a port leads a request for a name of this host,
+# localhost here, back to the listener itself. That connection comes from
+# the address and port of sniproxy's own backend socket and is refused,
+# so the client gets the 503 of a backend that failed, and no chain of
+# connections builds up to the connection ceiling: the per-IP limits
+# would only see this host's address, so they are off here.
+
+use strict;
+use warnings;
+use File::Basename;
+use lib dirname (__FILE__);
+use TestUtils;
+use File::Temp;
+
+sub proxy {
+    my $config = shift;
+
+    exec(@_, '../src/sniproxy', '-f', '-c', $config);
+}
+
+sub make_loop_config($$) {
+    my ($proxy_port, $logfile) = @_;
+
+    my ($fh, $filename) = File::Temp::tempfile();
+
+    print $fh <<END;
+# Wildcard loop test configuration
+
+user @{[test_user()]}
+group @{[test_group()]}
+per_ip_connection_rate 0
+max_connections 64
+
+error_log {
+    filename $logfile
+    priority notice
+}
+
+resolver {
+    mode ipv4_only
+}
+
+listen 127.0.0.1 $proxy_port {
+    proto http
+}
+
+table {
+    .* *
+}
+END
+
+    close ($fh);
+
+    return $filename;
+}
+
+sub request($$) {
+    my ($hostname, $port) = @_;
+
+    my $status = system('curl',
+            '-s', '-S', '--fail',
+            '-H', "Host: $hostname",
+            '-o', '/dev/null',
+            "http://localhost:$port/");
+    die "failed to execute curl: $!\n" if $status == -1;
+    if ($status & 127) {
+        printf STDERR "curl died with signal %d\n", $status & 127;
+        exit 255;
+    }
+    return $status >> 8;
+}
+
+sub main {
+    my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
+    my $logfile = log_tempfile();
+
+    my $config = make_loop_config($proxy_port, $logfile);
+    my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
+
+    wait_for_port(port => $proxy_port);
+
+    # curl exits 22 on the 503 the refused backend gets the client
+    foreach my $i (1 .. 3) {
+        my $status = request('localhost', $proxy_port);
+        die "request $i: curl exited $status, expected 22 for a 503\n"
+            unless $status == 22;
+    }
+    sleep 1;
+
+    kill 15, $proxy_pid;
+    sleep 1;
+
+    my ($refused, $ceiling) = (0, 0);
+    if (open(my $fh, '<', $logfile)) {
+        while (my $line = <$fh>) {
+            $refused++ if $line =~ /refusing a connection from .* a '\*' entry leads back to a listener/;
+            $ceiling++ if $line =~ /Maximum global connections/;
+        }
+        close($fh);
+    } else {
+        die "open $logfile: $!\n";
+    }
+
+    unlink($config);
+    unlink($logfile);
+    reap_children();
+
+    die "the connection back to the listener was not refused\n"
+        unless $refused >= 1;
+    die "the loop ran up to the connection ceiling\n" if $ceiling;
+}
+
+main();

@@ -19,6 +19,7 @@ TESTS = address_test \
 TESTS += functional_test \
          hostname_test \
          wildcard_test \
+         wildcard_loop_test \
          bad_request_test \
          bind_source_test \
          connection_reset_test \
@@ -52,6 +53,7 @@ EXTRA_DIST = check_output.sh \
              functional_test \
              hostname_test \
              wildcard_test \
+             wildcard_loop_test \
              bad_request_test \
              bind_source_test \
              connection_reset_test \
