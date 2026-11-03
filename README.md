@@ -155,8 +155,10 @@ SNIProxy runs as four cooperating processes:
    or reach root's Unix sockets, such as a container engine's, nor send
    from a privileged port, except on i386, s390x and other systems where
    socket(), sendto() and sendmsg() go through socketcall(2); it could
-   still create a socket node in any directory, and learn which paths
-   exist. It
+   still create a socket node in any directory, and read what any path
+   leads to, the size, owner and mode of a file or the target of a
+   symbolic link, as its own log lines and realpath() need stat and
+   readlink. It
    connects to syslog before its filter, and its few log lines are lost
    after the syslog daemon restarts, until sniproxy does.
    Elsewhere it stays root, but creates each IP socket as the configured

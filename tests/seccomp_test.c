@@ -45,6 +45,8 @@
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -373,6 +375,14 @@ test_binder_files(void) {
     if (close(0) != -1 || errno != EPERM)
         return 1;
 
+    /* It reads what a path leads to, which its log lines and realpath()
+     * need */
+    struct stat st;
+    char target[256];
+    if (stat(".", &st) != 0 ||
+            readlink("/proc/self/exe", target, sizeof(target)) < 0)
+        return 1;
+
     return 0;
 }
 
@@ -459,6 +469,23 @@ binder_sendmsg_other(void) {
         _exit(1);
     memset(&msg, 0, sizeof(msg));
     (void)sendmsg(fd, &msg, 0);
+}
+
+/* The binder asks nothing else about a path */
+static void
+binder_access(void) {
+    if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    (void)access("/", F_OK);
+}
+
+static void
+binder_statfs(void) {
+    struct statfs sfs;
+
+    if (seccomp_install_filter(SECCOMP_PROCESS_BINDER) < 0)
+        _exit(1);
+    (void)statfs("/", &sfs);
 }
 
 /* The binder lists no directory */
@@ -644,6 +671,8 @@ main(void) {
             expect_killed(resolver_listen) != 0 ||
             expect_killed(main_utimensat) != 0 ||
             expect_killed(binder_getdents) != 0 ||
+            expect_killed(binder_access) != 0 ||
+            expect_killed(binder_statfs) != 0 ||
             expect_killed(binder_dup) != 0 ||
             expect_killed(binder_dupfd) != 0 ||
             expect_killed(binder_sendto_address) != 0 ||

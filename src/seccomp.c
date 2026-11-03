@@ -82,10 +82,20 @@ static const char *const open_syscalls[] = {
     NULL,
 };
 
-static const char *const fs_read_syscalls[] = {
+/* Reading what a path leads to: the stat calls, which libc makes on the
+ * time zone file when it logs, and readlink, which realpath() uses */
+static const char *const path_read_syscalls[] = {
     "stat", "stat64", "lstat", "lstat64", "newfstatat", "fstatat64",
-    "fstatfs", "fstatfs64", "statfs", "statfs64", "statx",
+    "statx",
     "readlink", "readlinkat",
+    NULL,
+};
+
+/* What every process but the binder may also ask about a path: with
+ * CAP_DAC_OVERRIDE the binder would get an answer for the paths of root
+ * too, and it needs neither */
+static const char *const fs_read_syscalls[] = {
+    "fstatfs", "fstatfs64", "statfs", "statfs64",
     "faccessat", "access",
     NULL,
 };
@@ -690,6 +700,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, listen_syscalls) < 0 ||
                 allow_syscalls(ctx, self_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
+                allow_syscalls(ctx, path_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, main_fs_write_syscalls) < 0 ||
@@ -710,6 +721,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_sockets(ctx, SOCKETS_UNIX) < 0 ||
                 allow_syscalls(ctx, logger_network_syscalls) < 0 ||
                 allow_syscalls(ctx, open_syscalls) < 0 ||
+                allow_syscalls(ctx, path_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
@@ -728,6 +740,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_resolver_setsockopt(ctx) < 0 ||
                 allow_open_read(ctx) < 0 ||
+                allow_syscalls(ctx, path_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, descriptor_syscalls) < 0 ||
@@ -738,18 +751,20 @@ install_filter(enum seccomp_process_type type) {
             break;
 
         case SECCOMP_PROCESS_BINDER:
-            /* fs_read is needed by the binder's own error logging: after it
-             * disinherits the logger process it formats messages locally,
-             * and both the timestamp path (localtime/strftime) and vsyslog
-             * stat /etc/localtime on every call (newfstatat). Without it
-             * the first err() would be killed by SCMP_ACT_KILL_PROCESS. */
+            /* path_read is needed by the binder itself: after it
+             * disinherits the logger process it formats its log lines
+             * locally, and libc may stat the time zone file for each
+             * (newfstatat), and realpath(), with which binder_bind_unix()
+             * checks where a directory lies, reads symbolic links. Without
+             * them the first err() or unix bind would be killed by
+             * SCMP_ACT_KILL_PROCESS. */
             if (allow_self_calls(ctx) < 0 ||
                 allow_sockets(ctx, SOCKETS_UNIX_STREAM | SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, binder_network_syscalls) < 0 ||
                 allow_binder_receive(ctx) < 0 ||
                 allow_binder_files(ctx) < 0 ||
                 allow_binder_descriptors(ctx) < 0 ||
-                allow_syscalls(ctx, fs_read_syscalls) < 0 ||
+                allow_syscalls(ctx, path_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0) {
                 seccomp_release(ctx);
                 return -1;

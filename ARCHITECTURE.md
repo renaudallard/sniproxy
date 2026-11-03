@@ -593,9 +593,9 @@ buffer assembly, reducing the number of buffer operations required
   configured at startup; its seccomp filter lets it open directories
   only, connect nowhere, create no unix datagram socket, move no
   descriptor and send to no address of its choosing, so that capability
-  does not let it read files or reach the unix sockets of root, but
-  where socket(), sendto() and sendmsg() go through socketcall(2), as on
-  i386)
+  does not let it read files or reach the unix sockets of root, only
+  stat them and read symbolic links, but where socket(), sendto() and
+  sendmsg() go through socketcall(2), as on i386)
 - On Linux, IP listeners are created as the configured user even when
   bound as root, so that they can share a port through SO_REUSEPORT with
   those the binder or another instance creates
