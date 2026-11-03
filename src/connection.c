@@ -1385,16 +1385,16 @@ rate_limit_cleanup(ev_tstamp now) {
     rate_limit_last_cleanup = now;
 }
 
+/* Mixed with the seed so that which addresses share a chain cannot be
+ * known without it. Every bit of the address reaches the low bits that
+ * index the table: the shift and multiply mix used before left bits 29
+ * to 31 out of them, so eight addresses that differ only there and in
+ * bits 13 to 15 shared a chain whatever the seed. */
 static uint32_t
 hash_ipv4(uint32_t value, uint32_t seed, uint32_t *out_v4) {
     if (out_v4 != NULL)
         *out_v4 = value;
-    /* Mix with random seed to prevent hash prediction attacks */
-    value ^= seed;
-    value ^= value >> 16;
-    value *= 0x85ebca6b;
-    value ^= value >> 13;
-    return value;
+    return hash_mix64_to_32((((uint64_t)seed << 32) | seed) ^ value);
 }
 
 /* Copy an IPv6 address with the host bits below the configured per-IP
