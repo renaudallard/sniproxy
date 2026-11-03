@@ -442,7 +442,7 @@ allow_resolver_setsockopt(scmp_filter_ctx ctx) {
  * descriptor 0 and allow_binder_descriptors() keeps there, and no read at
  * all. A read fails rather than kills, as libc reads the time zone file
  * again if it changed since the binder loaded it before its filter. Where
- * recvmsg() goes through socketcall(2) the descriptor is out of the
+ * recvmsg() can go through socketcall(2) the descriptor is out of the
  * filter's reach. */
 static int
 allow_binder_receive(scmp_filter_ctx ctx) {
@@ -595,9 +595,10 @@ allow_binder_files(scmp_filter_ctx ctx) {
  * datagram sockets over IPv4 and IPv6; a netlink socket may fail rather
  * than kill. With "source client" the main process keeps CAP_NET_RAW,
  * and raw or packet sockets would let it read the host's traffic; the
- * binder keeps the right to bind privileged ports. Where socket() goes
- * through socketcall(2), as on i386, its arguments are out of the
- * filter's reach, so any socket stays allowed there. */
+ * binder keeps the right to bind privileged ports. Where socket() can go
+ * through socketcall(2), as on i386, s390x and ppc64le, libseccomp gives
+ * it a number of its own and its arguments are out of the filter's
+ * reach, so any socket stays allowed there. */
 static int
 allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
     static const int families[] = { AF_INET, AF_INET6 };

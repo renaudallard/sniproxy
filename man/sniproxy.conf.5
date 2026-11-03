@@ -780,7 +780,8 @@ processes started later give it up. Its seccomp filter only lets it
 create unix sockets, and stream and datagram sockets over
 IPv4 and IPv6, so the capability cannot be
 used to read the host's traffic through raw or packet sockets, except
-where socket(2) goes through socketcall(2), as on i386. Adding it to a listener with a
+where socket(2) can go through socketcall(2), as on i386, s390x and
+ppc64le. Adding it to a listener with a
 reload does not work until sniproxy is restarted. The routing and
 firewall rules that deliver the backend's replies back to sniproxy are
 up to the administrator. For safety \fBsource client\fR

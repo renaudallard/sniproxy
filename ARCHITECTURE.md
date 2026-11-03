@@ -595,7 +595,7 @@ buffer assembly, reducing the number of buffer operations required
   descriptor and send to no address of its choosing, so that capability
   does not let it read files or reach the unix sockets of root, only
   stat them and read symbolic links, but where socket(), sendto() and
-  sendmsg() go through socketcall(2), as on i386)
+  sendmsg() can go through socketcall(2), as on i386, s390x and ppc64le)
 - On Linux, IP listeners are created as the configured user even when
   bound as root, so that they can share a port through SO_REUSEPORT with
   those the binder or another instance creates

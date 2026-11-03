@@ -153,8 +153,9 @@ SNIProxy runs as four cooperating processes:
    move no descriptor and send to no address of its choosing, so that
    with `CAP_DAC_OVERRIDE` a compromised binder cannot read root's files
    or reach root's Unix sockets, such as a container engine's, nor send
-   from a privileged port, except on i386, s390x and other systems where
-   socket(), sendto() and sendmsg() go through socketcall(2); it could
+   from a privileged port, except on i386, s390x, ppc64le and other
+   systems where socket(), sendto() and sendmsg() can go through
+   socketcall(2); it could
    still create a socket node in any directory, and read what any path
    leads to, the size, owner and mode of a file or the target of a
    symbolic link, as its own log lines and realpath() need stat and
@@ -765,8 +766,9 @@ afterthought.
   inherited as ambient ones; the
   seccomp filter keeps it from using it for raw or packet sockets, or
   to give a socket a firewall mark or a priority above 6 with
-  setsockopt(), except on i386, s390x and other systems where socket()
-  and setsockopt() go through socketcall(2). It can still make a socket
+  setsockopt(), except on i386, s390x, ppc64le and other systems where
+  socket() and setsockopt() can go through socketcall(2). It can still
+  make a socket
   transparent, which is what `source client` needs it for, and a
   compromised main process could still give its sockets IPv6 hop-by-hop
   and destination options, and the datagrams it sends a firewall mark or
@@ -806,23 +808,23 @@ afterthought.
   armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
   and refuse the TIOCSTI and TIOCLINUX ioctls, so that a process
   started with `-f` cannot push input into the operator's terminal. The main process may
-  fork but not create namespaces, and opens no netlink socket, except
-  where socket(2) goes through socketcall(2), as
-  on i386, so that a compromised process cannot reach kernel interfaces
-  such as nf_tables from a user namespace of its own. IP sockets are
-  limited to TCP and UDP, so that SCTP, L2TP and the like are neither
-  loaded nor reached. Only the main
+  fork but not create namespaces, and opens no netlink socket, so that
+  a compromised process cannot reach kernel interfaces such as
+  nf_tables from a user namespace of its own. IP sockets are limited to
+  TCP and UDP, so that SCTP, L2TP and the like are neither loaded nor
+  reached. Where socket(2) can go through socketcall(2), as on i386,
+  s390x and ppc64le, any socket stays allowed. Only the main
   process may listen and accept, and only it and the binder may bind:
   the helpers run as the same user, and could otherwise join a
   `reuseport` listener and take its clients. For the same reason the
   resolver may not set SO_REUSEPORT or SO_REUSEADDR, with which a socket
   that sends before it is bound can be given the port of such a
-  listener, except where setsockopt() goes through socketcall(2). The binder may only
+  listener, except where setsockopt() can go through socketcall(2). The binder may only
   receive and send with sendmsg() on its IPC socket, descriptor 0, which
   it may neither close nor replace, and read nothing, so that a socket
   it binds to a `reuseport` dtls listener's address does not simply
-  give it that listener's datagrams, except where recvmsg() goes through
-  socketcall(2).
+  give it that listener's datagrams, except where recvmsg() can go
+  through socketcall(2).
   `SNIPROXY_DISABLE_SECCOMP=1` turns it off for debugging. A helper
   killed by its filter, or on OpenBSD by a pledge violation, is logged
   by the main process as "process N was killed by signal S" before it
