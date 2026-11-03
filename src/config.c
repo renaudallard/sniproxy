@@ -620,8 +620,11 @@ init_config(const char *filename, struct ev_loop *loop, int fatal_on_perm_error)
     else if ((config_st.st_mode & perm_mask) != 0 &&
             !(allow_immutable && read_only)) {
         if (read_only && (config_st.st_mode & 0007) != 0)
-            perm_msg = "must not be group/world accessible "
-                "(use -i on an immutable store)";
+            perm_msg = allow_group_read
+                ? "must not be world accessible "
+                    "(use -i on an immutable store)"
+                : "must not be group/world accessible "
+                    "(use -i on an immutable store)";
         else if (allow_group_read)
             perm_msg = "must not be group-writable or world accessible "
                 "(max 0640)";
