@@ -800,8 +800,8 @@ afterthought.
   armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
   and refuse the TIOCSTI and TIOCLINUX ioctls, so that a process
   started with `-f` cannot push input into the operator's terminal. The main process may
-  fork but not create namespaces, and netlink sockets are limited to
-  NETLINK_ROUTE, except where socket(2) goes through socketcall(2), as
+  fork but not create namespaces, and opens no netlink socket, except
+  where socket(2) goes through socketcall(2), as
   on i386, so that a compromised process cannot reach kernel interfaces
   such as nf_tables from a user namespace of its own. IP sockets are
   limited to TCP and UDP, so that SCTP, L2TP and the like are neither

@@ -34,7 +34,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/net.h>
-#include <linux/netlink.h>
 #include <netinet/in.h>
 #include <sched.h>
 #include <seccomp.h>
@@ -588,17 +587,17 @@ allow_binder_files(scmp_filter_ctx ctx) {
 }
 
 #define SOCKETS_UNIX    0x1
-#define SOCKETS_NETLINK 0x2
+#define SOCKETS_NO_NETLINK 0x2
 #define SOCKETS_INET    0x4
 #define SOCKETS_UNIX_STREAM 0x8
 
-/* The sockets a process may create, among unix sockets, netlink sockets,
- * and stream and datagram sockets over IPv4 and IPv6. With "source
- * client" the main process keeps CAP_NET_RAW, and raw or packet sockets
- * would let it read the host's traffic; the binder keeps the right to
- * bind privileged ports. Where
- * socket() goes through socketcall(2), as on i386, its arguments are out
- * of the filter's reach, so any socket stays allowed there. */
+/* The sockets a process may create, among unix sockets and stream and
+ * datagram sockets over IPv4 and IPv6; a netlink socket may fail rather
+ * than kill. With "source client" the main process keeps CAP_NET_RAW,
+ * and raw or packet sockets would let it read the host's traffic; the
+ * binder keeps the right to bind privileged ports. Where socket() goes
+ * through socketcall(2), as on i386, its arguments are out of the
+ * filter's reach, so any socket stays allowed there. */
 static int
 allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
     static const int families[] = { AF_INET, AF_INET6 };
@@ -629,13 +628,15 @@ allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
         rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), nr, 2,
                 SCMP_A0(SCMP_CMP_EQ, AF_UNIX),
                 SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, SOCK_DGRAM));
-    /* libc reads the interface addresses over NETLINK_ROUTE, for
-     * getaddrinfo() with AI_ADDRCONFIG and for getifaddrs(). The other
-     * protocols, such as NETLINK_NETFILTER, are not needed. */
-    if (rc == 0 && (kinds & SOCKETS_NETLINK))
-        rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 2,
-                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK),
-                SCMP_A2(SCMP_CMP_EQ, NETLINK_ROUTE));
+    /* No netlink socket: nothing here opens one, and the routes and
+     * neighbours of the host are no business of a compromised process.
+     * It fails rather than kills where libc would open one, for
+     * getaddrinfo() with AI_ADDRCONFIG or getifaddrs(), should a library
+     * ever call them: both take the failure for a host without the
+     * address family. */
+    if (rc == 0 && (kinds & SOCKETS_NO_NETLINK))
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EAFNOSUPPORT), nr, 1,
+                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK));
     /* The low four bits of the type argument hold the socket type, the
      * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. The protocol is
      * the default one, or TCP or UDP named, so that no other protocol,
@@ -694,7 +695,7 @@ install_filter(enum seccomp_process_type type) {
     /* Process-specific rules */
     switch (type) {
         case SECCOMP_PROCESS_MAIN:
-            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
+            if (allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NO_NETLINK |
                     SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_syscalls(ctx, listen_syscalls) < 0 ||
@@ -735,7 +736,7 @@ install_filter(enum seccomp_process_type type) {
 
         case SECCOMP_PROCESS_RESOLVER:
             if (allow_self_calls(ctx) < 0 ||
-                allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NETLINK |
+                allow_sockets(ctx, SOCKETS_UNIX | SOCKETS_NO_NETLINK |
                     SOCKETS_INET) < 0 ||
                 allow_syscalls(ctx, network_syscalls) < 0 ||
                 allow_resolver_setsockopt(ctx) < 0 ||

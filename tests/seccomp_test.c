@@ -155,11 +155,6 @@ clone_new_user(void) {
 }
 
 static void
-netlink_netfilter(void) {
-    (void)socket(AF_NETLINK, SOCK_RAW, NETLINK_NETFILTER);
-}
-
-static void
 inet_sctp(void) {
     (void)socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
 }
@@ -213,15 +208,29 @@ main_utimensat(void) {
     (void)syscall(SYS_utimensat, AT_FDCWD, ".", NULL, 0);
 }
 
-/* Under the main filter: no process in new namespaces, no netlink but
- * NETLINK_ROUTE, no TIOCSTI or TIOCLINUX; clone3() fails with ENOSYS,
+/* A netlink socket fails as on a host without the family, whatever
+ * its protocol, rather than killing the process */
+static int
+netlink_refused(void) {
+    static const int protocols[] = { NETLINK_ROUTE, NETLINK_NETFILTER };
+
+    for (size_t i = 0; i < sizeof(protocols) / sizeof(protocols[0]); i++) {
+        errno = 0;
+        if (socket(AF_NETLINK, SOCK_RAW, protocols[i]) != -1 ||
+                errno != EAFNOSUPPORT)
+            return 1;
+    }
+
+    return 0;
+}
+
+/* Under the main filter: no process in new namespaces, no netlink
+ * socket, no TIOCSTI or TIOCLINUX; clone3() fails with ENOSYS,
  * so that libc falls back to clone(), and other requests near the
  * refused ones still reach the kernel. */
 static int
 test_process_and_socket_limits(void) {
     if (expect_killed(clone_new_user) != 0)
-        return 1;
-    if (expect_killed(netlink_netfilter) != 0)
         return 1;
     if (expect_killed(inet_sctp) != 0)
         return 1;
@@ -238,10 +247,8 @@ test_process_and_socket_limits(void) {
         return 1;
 #endif
 
-    int nl = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-    if (nl < 0)
+    if (netlink_refused() != 0)
         return 1;
-    close(nl);
 
     /* Socket options are set as before, but for a firewall mark or a
      * priority, which CAP_NET_RAW would allow */
@@ -307,7 +314,7 @@ test_resolver_socket_options(void) {
     int udp = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     int tcp = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
-    if (udp < 0 || tcp < 0)
+    if (udp < 0 || tcp < 0 || netlink_refused() != 0)
         return 1;
     if (setsockopt(udp, SOL_SOCKET, SO_RCVBUF, &on, sizeof(on)) != 0 ||
             setsockopt(udp, SOL_SOCKET, SO_SNDBUF, &on, sizeof(on)) != 0 ||
