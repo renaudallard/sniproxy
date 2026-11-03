@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/net.h>
+#include <linux/netlink.h>
 #include <netinet/in.h>
 #include <sched.h>
 #include <seccomp.h>
@@ -592,8 +593,8 @@ allow_binder_files(scmp_filter_ctx ctx) {
 #define SOCKETS_UNIX_STREAM 0x8
 
 /* The sockets a process may create, among unix sockets and stream and
- * datagram sockets over IPv4 and IPv6; a netlink socket may fail rather
- * than kill. With "source client" the main process keeps CAP_NET_RAW,
+ * datagram sockets over IPv4 and IPv6; a NETLINK_ROUTE socket may fail
+ * rather than kill. With "source client" the main process keeps CAP_NET_RAW,
  * and raw or packet sockets would let it read the host's traffic; the
  * binder keeps the right to bind privileged ports. Where socket() can go
  * through socketcall(2), as on i386, s390x and ppc64le, libseccomp gives
@@ -631,13 +632,15 @@ allow_sockets(scmp_filter_ctx ctx, unsigned int kinds) {
                 SCMP_A1(SCMP_CMP_MASKED_EQ, 0xf, SOCK_DGRAM));
     /* No netlink socket: nothing here opens one, and the routes and
      * neighbours of the host are no business of a compromised process.
-     * It fails rather than kills where libc would open one, for
-     * getaddrinfo() with AI_ADDRCONFIG or getifaddrs(), should a library
-     * ever call them: both take the failure for a host without the
-     * address family. */
+     * NETLINK_ROUTE, which libc opens for getaddrinfo() with
+     * AI_ADDRCONFIG or several answers to sort, getifaddrs() and
+     * if_nameindex(), should a library ever call them, fails as on a
+     * kernel without netlink, which they handle, rather than kills. Any
+     * other protocol, such as that of nf_tables, kills the process. */
     if (rc == 0 && (kinds & SOCKETS_NO_NETLINK))
-        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EAFNOSUPPORT), nr, 1,
-                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK));
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EAFNOSUPPORT), nr, 2,
+                SCMP_A0(SCMP_CMP_EQ, AF_NETLINK),
+                SCMP_A2(SCMP_CMP_EQ, NETLINK_ROUTE));
     /* The low four bits of the type argument hold the socket type, the
      * others the SOCK_NONBLOCK and SOCK_CLOEXEC flags. The protocol is
      * the default one, or TCP or UDP named, so that no other protocol,

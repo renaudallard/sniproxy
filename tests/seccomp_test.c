@@ -166,6 +166,12 @@ inet_sctp(void) {
     (void)socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
 }
 
+/* A netlink protocol other than NETLINK_ROUTE, here that of nf_tables */
+static void
+netlink_netfilter(void) {
+    (void)socket(AF_NETLINK, SOCK_RAW, NETLINK_NETFILTER);
+}
+
 #ifdef TIOCLINUX
 static void
 ioctl_tiolinux(void) {
@@ -207,6 +213,13 @@ resolver_listen(void) {
     (void)listen(fd, 1);
 }
 
+static void
+resolver_netlink_netfilter(void) {
+    if (seccomp_install_filter(SECCOMP_PROCESS_RESOLVER) < 0)
+        _exit(1);
+    netlink_netfilter();
+}
+
 /* No process changes the times of a file */
 static void
 main_utimensat(void) {
@@ -215,20 +228,13 @@ main_utimensat(void) {
     (void)syscall(SYS_utimensat, AT_FDCWD, ".", NULL, 0);
 }
 
-/* A netlink socket fails as on a host without the family, whatever
- * its protocol, rather than killing the process */
+/* A NETLINK_ROUTE socket, which libc may open, fails as on a kernel
+ * without netlink rather than killing the process */
 static int
-netlink_refused(void) {
-    static const int protocols[] = { NETLINK_ROUTE, NETLINK_NETFILTER };
-
-    for (size_t i = 0; i < sizeof(protocols) / sizeof(protocols[0]); i++) {
-        errno = 0;
-        if (socket(AF_NETLINK, SOCK_RAW, protocols[i]) != -1 ||
-                errno != EAFNOSUPPORT)
-            return 1;
-    }
-
-    return 0;
+netlink_route_refused(void) {
+    errno = 0;
+    return socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE) != -1 ||
+        errno != EAFNOSUPPORT;
 }
 
 /* The socket options of the main filter that CAP_NET_RAW would allow,
@@ -285,7 +291,8 @@ test_process_and_socket_limits(void) {
         return 1;
 #endif
 
-    if (!socket_multiplexed && netlink_refused() != 0)
+    if (!socket_multiplexed && (netlink_route_refused() != 0 ||
+            expect_killed(netlink_netfilter) != 0))
         return 1;
 
     /* Socket options are set as before, but for a firewall mark or a
@@ -333,7 +340,8 @@ test_resolver_socket_options(void) {
     int udp = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     int tcp = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
-    if (udp < 0 || tcp < 0 || (!socket_multiplexed && netlink_refused() != 0))
+    if (udp < 0 || tcp < 0 ||
+            (!socket_multiplexed && netlink_route_refused() != 0))
         return 1;
     if (setsockopt(udp, SOL_SOCKET, SO_RCVBUF, &on, sizeof(on)) != 0 ||
             setsockopt(udp, SOL_SOCKET, SO_SNDBUF, &on, sizeof(on)) != 0 ||
@@ -715,7 +723,9 @@ main(void) {
             expect_killed(binder_dupfd) != 0)
         return 1;
 
-    if (!socket_multiplexed && (expect_killed(binder_sendto_address) != 0 ||
+    if (!socket_multiplexed &&
+            (expect_killed(resolver_netlink_netfilter) != 0 ||
+            expect_killed(binder_sendto_address) != 0 ||
             expect_killed(binder_sendmsg_other) != 0 ||
             expect_killed(binder_recvmsg_other) != 0))
         return 1;

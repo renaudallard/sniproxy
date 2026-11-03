@@ -810,7 +810,9 @@ afterthought.
   started with `-f` cannot push input into the operator's terminal. The main process may
   fork but not create namespaces, and opens no netlink socket, so that
   a compromised process cannot reach kernel interfaces such as
-  nf_tables from a user namespace of its own. IP sockets are limited to
+  nf_tables from a user namespace of its own. In it and in the resolver
+  a NETLINK_ROUTE socket, which libc may ask for on its own, fails, and
+  any other netlink socket kills the process. IP sockets are limited to
   TCP and UDP, so that SCTP, L2TP and the like are neither loaded nor
   reached. Where socket(2) can go through socketcall(2), as on i386,
   s390x and ppc64le, any socket stays allowed. Only the main
