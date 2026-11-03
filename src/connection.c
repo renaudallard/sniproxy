@@ -498,10 +498,9 @@ accept_connection(struct Listener *listener, struct ev_loop *loop) {
             char addrbuf[INET6_ADDRSTRLEN + 8];
             char listener_buf[ADDRESS_BUFFER_SIZE];
 
-            warn("refusing a connection from %s on %s, the address of a "
-                    "backend socket of sniproxy: a '*' entry leads back to "
-                    "a listener, or a NAT on this host gave a client that "
-                    "address",
+            warn("refusing a connection from %s on %s, which a backend "
+                    "socket of sniproxy opened: a '*' entry leads back to "
+                    "a listener",
                     display_sockaddr(&con->client.addr, con->client.addr_len,
                             addrbuf, sizeof(addrbuf)),
                     display_address(listener->address, listener_buf,
