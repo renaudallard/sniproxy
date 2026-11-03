@@ -29,6 +29,7 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <sys/socket.h>
 
 /*
@@ -57,6 +58,9 @@ const char *display_address(const struct Address *, char *, size_t);
 const char *display_sockaddr(const void *, socklen_t, char *, size_t);
 socklen_t sockaddr_unmap_ipv4(const struct sockaddr_storage *, socklen_t,
         struct sockaddr_storage *);
+uint32_t sockaddr_hash_addr_port(const struct sockaddr_storage *, uint64_t);
+int sockaddr_addr_port_equal(const struct sockaddr_storage *,
+        const struct sockaddr_storage *);
 int is_numeric(const char *);
 
 #endif

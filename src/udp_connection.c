@@ -125,7 +125,7 @@ static TAILQ_HEAD(, UDPSession) validating_sessions =
 static uint64_t udp_hash_key;
 
 static struct UDPSession *udp_session_lookup(const struct sockaddr_storage *addr,
-        socklen_t addr_len, uint32_t hash, const struct Listener *listener);
+        uint32_t hash, const struct Listener *listener);
 static struct UDPSession *udp_session_create(struct Listener *listener,
         const struct sockaddr_storage *addr, socklen_t addr_len,
         uint32_t hash, struct ev_loop *loop);
@@ -149,10 +149,7 @@ static void udp_server_cb(struct ev_loop *, struct ev_io *, int);
 static int udp_server_recv_one(struct UDPSession *);
 static int udp_recv_one(struct ev_loop *, struct Listener *, int);
 static void udp_session_idle_cb(struct ev_loop *, struct ev_timer *, int);
-static uint32_t udp_hash_addr(const struct sockaddr_storage *, socklen_t);
 static int udp_backend_find(const struct sockaddr_storage *, socklen_t);
-static int udp_sockaddr_equal(const struct sockaddr_storage *, socklen_t,
-        const struct sockaddr_storage *, socklen_t);
 
 
 void
@@ -225,9 +222,9 @@ udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
         return 1;
     socklen_t addr_len = msg.msg_namelen;
 
-    uint32_t hash = udp_hash_addr(&client_addr, addr_len);
-    struct UDPSession *session = udp_session_lookup(&client_addr, addr_len,
-            hash, listener);
+    uint32_t hash = sockaddr_hash_addr_port(&client_addr, udp_hash_key);
+    struct UDPSession *session = udp_session_lookup(&client_addr, hash,
+            listener);
 
     if (session != NULL) {
         /* In VALIDATING state, switch the timer's repeat to the normal
@@ -480,14 +477,14 @@ udp_session_came_back(const struct UDPSession *session, struct msghdr *msg) {
     else
         return 0;
 
-    socklen_t to_len = sockaddr_unmap_ipv4(&dst, dst_len, &to);
-    socklen_t backend_len = sockaddr_unmap_ipv4(&session->server_addr,
+    (void)sockaddr_unmap_ipv4(&dst, dst_len, &to);
+    (void)sockaddr_unmap_ipv4(&session->server_addr,
             session->server_addr_len, &backend);
     /* Where a datagram went carries no scope, while the backend socket's
      * peer has that of its link */
     if (backend.ss_family == AF_INET6)
         ((struct sockaddr_in6 *)&backend)->sin6_scope_id = 0;
-    return udp_sockaddr_equal(&to, to_len, &backend, backend_len);
+    return sockaddr_addr_port_equal(&to, &backend);
 }
 
 /*
@@ -565,8 +562,8 @@ udp_send_from(int fd, const void *buf, size_t len,
 }
 
 static struct UDPSession *
-udp_session_lookup(const struct sockaddr_storage *addr, socklen_t addr_len,
-        uint32_t hash, const struct Listener *listener) {
+udp_session_lookup(const struct sockaddr_storage *addr, uint32_t hash,
+        const struct Listener *listener) {
     uint32_t bucket = hash & (UDP_SESSION_BUCKETS - 1);
     struct UDPSession *s = session_table[bucket];
 
@@ -576,8 +573,7 @@ udp_session_lookup(const struct sockaddr_storage *addr, socklen_t addr_len,
          * DTLS listener must not reuse another listener's session, backend or
          * routing policy. */
         if (s->addr_hash == hash && s->listener == listener &&
-                udp_sockaddr_equal(&s->client_addr, s->client_addr_len,
-                        addr, addr_len))
+                sockaddr_addr_port_equal(&s->client_addr, addr))
             return s;
         s = s->next;
     }
@@ -923,8 +919,8 @@ udp_backend_add(struct UDPSession *session, int fd) {
         return;
     session->backend_local_len = sockaddr_unmap_ipv4(&local, local_len,
             &session->backend_local);
-    session->backend_hash = udp_hash_addr(&session->backend_local,
-            session->backend_local_len);
+    session->backend_hash = sockaddr_hash_addr_port(&session->backend_local,
+            udp_hash_key);
 
     struct UDPSession **head =
             &backend_table[session->backend_hash & (UDP_SESSION_BUCKETS - 1)];
@@ -936,15 +932,15 @@ udp_backend_add(struct UDPSession *session, int fd) {
 static int
 udp_backend_find(const struct sockaddr_storage *addr, socklen_t addr_len) {
     struct sockaddr_storage unmapped;
-    socklen_t len = sockaddr_unmap_ipv4(addr, addr_len, &unmapped);
-    uint32_t hash = udp_hash_addr(&unmapped, len);
+
+    (void)sockaddr_unmap_ipv4(addr, addr_len, &unmapped);
+    uint32_t hash = sockaddr_hash_addr_port(&unmapped, udp_hash_key);
 
     for (const struct UDPSession *s =
             backend_table[hash & (UDP_SESSION_BUCKETS - 1)];
             s != NULL; s = s->next_backend)
         if (s->backend_hash == hash &&
-                udp_sockaddr_equal(&s->backend_local, s->backend_local_len,
-                    &unmapped, len))
+                sockaddr_addr_port_equal(&s->backend_local, &unmapped))
             return 1;
 
     return 0;
@@ -1183,68 +1179,5 @@ udp_print_sessions(FILE *file) {
 
             s = s->next;
         }
-    }
-}
-
-/*
- * Hash a sockaddr including IP and port for session lookup.
- * Unlike the TCP rate-limiter which hashes only the IP, UDP sessions
- * are keyed by (IP, port) to distinguish between different clients
- * behind the same NAT.
- */
-static uint32_t
-udp_hash_addr(const struct sockaddr_storage *addr, socklen_t addr_len) {
-    (void)addr_len;
-
-    switch (addr->ss_family) {
-    case AF_INET: {
-        const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
-        uint64_t v = ((uint64_t)ntohl(in->sin_addr.s_addr) << 16) |
-                ntohs(in->sin_port);
-
-        return hash_mix64_to_32(udp_hash_key ^ v);
-    }
-    case AF_INET6: {
-        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
-        uint64_t words[2];
-
-        memcpy(words, &in6->sin6_addr, sizeof(words));
-        uint64_t h = hash_mix64(udp_hash_key ^ words[0]);
-        h = hash_mix64(h ^ words[1]);
-        return hash_mix64_to_32(h ^ ((uint64_t)in6->sin6_scope_id << 16 |
-                    ntohs(in6->sin6_port)));
-    }
-    default:
-        return 0;
-    }
-}
-
-static int
-udp_sockaddr_equal(const struct sockaddr_storage *a, socklen_t alen,
-        const struct sockaddr_storage *b, socklen_t blen) {
-    (void)alen;
-    (void)blen;
-
-    if (a->ss_family != b->ss_family)
-        return 0;
-
-    switch (a->ss_family) {
-    case AF_INET: {
-        const struct sockaddr_in *a4 = (const struct sockaddr_in *)a;
-        const struct sockaddr_in *b4 = (const struct sockaddr_in *)b;
-        return a4->sin_port == b4->sin_port &&
-            a4->sin_addr.s_addr == b4->sin_addr.s_addr;
-    }
-    case AF_INET6: {
-        const struct sockaddr_in6 *a6 = (const struct sockaddr_in6 *)a;
-        const struct sockaddr_in6 *b6 = (const struct sockaddr_in6 *)b;
-        /* The same link-local address may be in use on two links */
-        return a6->sin6_port == b6->sin6_port &&
-            a6->sin6_scope_id == b6->sin6_scope_id &&
-            memcmp(&a6->sin6_addr, &b6->sin6_addr,
-                    sizeof(a6->sin6_addr)) == 0;
-    }
-    default:
-        return 0;
     }
 }

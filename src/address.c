@@ -690,3 +690,62 @@ valid_hostname(const char *hostname) {
 
     return 1;
 }
+
+/*
+ * Hash a socket address with its port, mixed with key, for the tables of
+ * sessions and sockets: a session is kept apart from another client
+ * behind the same NAT by its port. An IPv4-mapped address is hashed as
+ * it is, so callers unmap it first where both forms are to meet.
+ */
+uint32_t
+sockaddr_hash_addr_port(const struct sockaddr_storage *addr, uint64_t key) {
+    switch (addr->ss_family) {
+    case AF_INET: {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+        uint64_t v = ((uint64_t)ntohl(in->sin_addr.s_addr) << 16) |
+                ntohs(in->sin_port);
+
+        return hash_mix64_to_32(key ^ v);
+    }
+    case AF_INET6: {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+        uint64_t words[2];
+
+        memcpy(words, &in6->sin6_addr, sizeof(words));
+        uint64_t h = hash_mix64(key ^ words[0]);
+        h = hash_mix64(h ^ words[1]);
+        return hash_mix64_to_32(h ^ ((uint64_t)in6->sin6_scope_id << 16 |
+                    ntohs(in6->sin6_port)));
+    }
+    default:
+        return 0;
+    }
+}
+
+/* Whether two socket addresses name the same address and port */
+int
+sockaddr_addr_port_equal(const struct sockaddr_storage *a,
+        const struct sockaddr_storage *b) {
+    if (a->ss_family != b->ss_family)
+        return 0;
+
+    switch (a->ss_family) {
+    case AF_INET: {
+        const struct sockaddr_in *a4 = (const struct sockaddr_in *)a;
+        const struct sockaddr_in *b4 = (const struct sockaddr_in *)b;
+        return a4->sin_port == b4->sin_port &&
+            a4->sin_addr.s_addr == b4->sin_addr.s_addr;
+    }
+    case AF_INET6: {
+        const struct sockaddr_in6 *a6 = (const struct sockaddr_in6 *)a;
+        const struct sockaddr_in6 *b6 = (const struct sockaddr_in6 *)b;
+        /* The same link-local address may be in use on two links */
+        return a6->sin6_port == b6->sin6_port &&
+            a6->sin6_scope_id == b6->sin6_scope_id &&
+            memcmp(&a6->sin6_addr, &b6->sin6_addr,
+                    sizeof(a6->sin6_addr)) == 0;
+    }
+    default:
+        return 0;
+    }
+}
