@@ -407,11 +407,13 @@ test_binder_files(void) {
         return 1;
 
     /* It reads what a path leads to, which its log lines and realpath()
-     * need */
+     * need: readlink() reaches the kernel, which finds no symbolic link
+     * there */
     struct stat st;
     char target[256];
+    errno = 0;
     if (stat(".", &st) != 0 ||
-            readlink("/proc/self/exe", target, sizeof(target)) < 0)
+            readlink(".", target, sizeof(target)) != -1 || errno != EINVAL)
         return 1;
 
     return 0;
