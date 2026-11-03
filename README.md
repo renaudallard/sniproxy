@@ -616,7 +616,11 @@ for datagrams, that come from the backend socket of a connection or
 session that a `'*'` entry routed, so that a client cannot have such an
 entry lead back to sniproxy and chain connections without end, charged
 to this host's address rather than its own; an explicit entry may still
-lead to another listener. On a `source
+lead to another listener. A connection is only refused when it also goes
+to the address that backend socket connected to, as another socket of
+this host may use the same port towards another address, so a TCP loop
+through a NAT on this host, which changes that address, is not caught,
+and only the per-IP limits and `max_connections` bound it. On a `source
 client` listener the backend socket takes the client's address and
 port, and a backend that leads back to the session's own listener,
 whatever the route, would send the same datagrams round one session for

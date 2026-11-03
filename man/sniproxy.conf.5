@@ -863,9 +863,12 @@ of sniproxy's own backend socket, towards the address that socket
 connected to, which no other connection can while it lives, and the
 listener refuses it, so the client gets the protocol's error; each hop
 would otherwise open the next, charged to this host's address rather
-than the client's, until the connection ceiling. Nor does a '*' entry
-lead to the unspecified address, 0.0.0.0 or ::, which the kernel
-connects to as to one of this host's. Over DTLS each session
+than the client's, until the connection ceiling. A loop through a NAT
+on this host, which changes the address a connection goes to, is not
+caught, and only \fBper_ip_connection_rate\fR,
+\fBper_ip_max_connections\fR and the connection ceiling bound it. Nor
+does a '*' entry lead to the unspecified address, 0.0.0.0 or ::, which
+the kernel connects to as to one of this host's. Over DTLS each session
 of such a loop would keep the next one alive, so a dtls listener opens
 no session for datagrams that come from the address and port of the
 backend socket of a session that a '*' entry routed, other than one of
@@ -881,9 +884,10 @@ the same reason a gateway that takes DTLS traffic addressed to other
 hosts, with a local route, cannot use a source client dtls listener:
 such datagrams would be dropped. A loop through a NAT on this host is
 not caught, and only the per-IP session rate bounds it.
-A loop through another host or another proxy is not caught, and a
-client that a NAT on this host gives such an address and port is
-refused while that socket lives. Limit '*' entries with a
+A loop through another host or another proxy is not caught, and over
+DTLS a client that a NAT on this host gives the address and port of
+such a backend socket is refused while that socket lives.
+Limit '*' entries with a
 \fBbackend_acl\fR that leaves out the loopback addresses and those of
 the host itself. Table names must be unique; defining the same
 table name (or the unnamed default table) twice is a configuration
