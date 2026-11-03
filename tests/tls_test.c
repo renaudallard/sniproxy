@@ -582,6 +582,82 @@ const unsigned char good_data_7[] = {
             0x00, 0x01, // Length
                 0x00 // renegotiated_connection length
 };
+/* A server_name extension without a host_name entry, followed by a
+ * renegotiation_info with a renegotiated_connection: the renegotiation
+ * is refused, not left for the fallback */
+const unsigned char bad_data_6[] = {
+    // TLS record
+    0x16, // Content Type: Handshake
+    0x03, 0x03, // Version: TLS 1.2
+    0x00, 0x44, // Length
+        // Handshake
+        0x01, // Handshake Type: Client Hello
+        0x00, 0x00, 0x40, // Length
+        0x03, 0x03, // Version: TLS 1.2
+        // Random
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        0x00, // Session ID Length
+        0x00, 0x02, // Cipher Suites Length
+            0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+        0x01, // Compression Methods
+            0x00, // NULL
+        0x00, 0x15, // Extensions Length
+            // Extension
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0a, // Length
+            0x00, 0x08, // Server Name Indication Length
+                0x01, // Server Name Type: not host_name
+                0x00, 0x05, // Length
+                0x72, 0x65, 0x6e, 0x65, 0x67, // "reneg"
+            // Extension
+            0xff, 0x01, // Extension Type: Renegotiation Info
+            0x00, 0x03, // Length
+                0x02, // renegotiated_connection length
+                0x01, 0x02 // verify_data
+};
+
+/* Two server_name extensions, the first without a host_name entry: a
+ * duplicate extension is refused whatever the first one held */
+const unsigned char bad_data_7[] = {
+    // TLS record
+    0x16, // Content Type: Handshake
+    0x03, 0x03, // Version: TLS 1.2
+    0x00, 0x4f, // Length
+        // Handshake
+        0x01, // Handshake Type: Client Hello
+        0x00, 0x00, 0x4b, // Length
+        0x03, 0x03, // Version: TLS 1.2
+        // Random
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        0x00, // Session ID Length
+        0x00, 0x02, // Cipher Suites Length
+            0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+        0x01, // Compression Methods
+            0x00, // NULL
+        0x00, 0x20, // Extensions Length
+            // Extension
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0a, // Length
+            0x00, 0x08, // Server Name Indication Length
+                0x01, // Server Name Type: not host_name
+                0x00, 0x05, // Length
+                0x72, 0x65, 0x6e, 0x65, 0x67, // "reneg"
+            // Extension
+            0x00, 0x00, // Extension Type: Server Name
+            0x00, 0x0e, // Length
+            0x00, 0x0c, // Server Name Indication Length
+                0x00, // Server Name Type: host_name
+                0x00, 0x09, // Length
+                // "localhost"
+                0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74
+};
+
 static struct test_packet good[] = {
     { (char *)good_data_1, sizeof(good_data_1) },
     { (char *)good_data_2, sizeof(good_data_2) },
@@ -598,7 +674,9 @@ static struct test_packet bad[] = {
     { (char *)bad_data_1, sizeof(bad_data_1) },
     { (char *)bad_data_2, sizeof(bad_data_2) },
     { (char *)bad_data_3, sizeof(bad_data_3) },
-    { (char *)bad_data_5, sizeof(bad_data_5) }
+    { (char *)bad_data_5, sizeof(bad_data_5) },
+    { (char *)bad_data_6, sizeof(bad_data_6) },
+    { (char *)bad_data_7, sizeof(bad_data_7) }
 };
 
 /* legacy_version 3.3 with supported_versions [0x0a0a GREASE, TLS 1.2] and
@@ -997,6 +1075,12 @@ int main(void) {
          * malformed packet parsed to garbage. */
         assert(result < 0);
         assert(hostname == NULL);
+        /* The renegotiation after a server_name without host_name is seen,
+         * and a second server_name extension refused */
+        if (bad[i].packet == (char *)bad_data_6)
+            assert(result == TLS_ERR_CLIENT_RENEGOTIATION);
+        if (bad[i].packet == (char *)bad_data_7)
+            assert(result == -5);
 
         free(hostname);
     }

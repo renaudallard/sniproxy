@@ -123,6 +123,7 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
     size_t pos = 0;
     size_t ext_count = 0;
     int sni_result = -2;
+    int sni_seen = 0;
 
     while (pos < data_len) {
         size_t remaining = data_len - pos;
@@ -166,19 +167,22 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
         if (data[pos] == 0x00 && data[pos + 1] == 0x00) {
             /* Only accept the first SNI extension; a duplicate is
              * malformed and we must not leak the prior hostname. */
-            if (sni_result > 0) {
-                if (hostname != NULL && *hostname != NULL) {
+            if (sni_seen) {
+                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
                     free(*hostname);
                     *hostname = NULL;
                 }
                 return -5;
             }
+            sni_seen = 1;
             sni_result = sni_parse_server_name_extension(data + pos + 4,
                     len, hostname);
-            if (sni_result < 0)
+            if (sni_result < 0 && sni_result != -2)
                 return sni_result;
-            /* Continue scanning so renegotiation_info / supported_versions
-             * after the SNI extension are still inspected. */
+            /* Continue scanning, with or without a host_name, so that a
+             * renegotiation_info after the SNI extension is still
+             * inspected: a hello without a host_name goes to the
+             * fallback, which a renegotiation hello must not reach. */
         }
 
         if (data[pos] == 0xff && data[pos + 1] == 0x01) {
