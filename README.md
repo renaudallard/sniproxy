@@ -831,9 +831,11 @@ afterthought.
   `SNIPROXY_DISABLE_CAPSICUM=1` turns Capsicum off for debugging.
 - **Linux sandboxing**: seccomp BPF filters per process type, when
   built with libseccomp (configure uses it if it finds it, and the build
-  has no seccomp otherwise). The filters cover 32-bit systems (i386,
-  armhf) as well, whose libc calls variants such as mmap2 and fcntl64,
-  and refuse the TIOCSTI and TIOCLINUX ioctls, so that a process
+  has no seccomp otherwise, with a warning; `--enable-seccomp` makes a
+  missing libseccomp an error, and `--disable-seccomp` leaves it out).
+  The filters cover 32-bit systems (i386, armhf) as well, whose libc
+  calls variants such as mmap2 and fcntl64, and refuse the TIOCSTI and
+  TIOCLINUX ioctls, so that a process
   started with `-f` cannot push input into the operator's terminal. The main process may
   fork but not create namespaces, and opens no netlink socket, so that
   a compromised process cannot reach kernel interfaces such as
