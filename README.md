@@ -756,9 +756,9 @@ afterthought.
   anyone can forge, does not end it: a session keeps the backend address
   it started with as long as its client sends, even once that backend no
   longer answers. A new session whose datagram is a DTLS record other
-  than a handshake, as a client sends after such a pause, is dropped
-  rather than sent to the fallback, where the client's next ClientHello
-  would follow it.
+  than an epoch 0 handshake, as a client sends after such a pause, is
+  dropped rather than sent to the fallback, where the client's next
+  ClientHello would follow it.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages. One
