@@ -123,23 +123,11 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
                     secure_free(buf, pos);
                     return -1;
                 }
+                /* Never true: no code is shorter than 5 bits, so len
+                 * bytes decode to at most 1.6 times as many */
                 if (pos + 1 >= capacity) {
-                    if (capacity > SIZE_MAX / 2) {
-                        secure_free(buf, pos);
-                        return -1;
-                    }
-                    size_t new_cap = capacity * 2;
-                    /* Not realloc(): the old block, which holds what
-                     * was decoded so far, is zeroed before it is freed */
-                    char *tmp = malloc(new_cap);
-                    if (tmp == NULL) {
-                        secure_free(buf, pos);
-                        return -1;
-                    }
-                    memcpy(tmp, buf, pos);
                     secure_free(buf, pos);
-                    buf = tmp;
-                    capacity = new_cap;
+                    return -1;
                 }
                 buf[pos++] = (char)huffman_tree[node].value;
                 node = 0;
