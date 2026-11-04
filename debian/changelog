@@ -1,3 +1,14 @@
+sniproxy (0.25.0) unstable; urgency=medium
+
+  * Fixes from two security reviews of 0.24.2.
+  * New resolver directive cache_ttl; the c-ares query cache is now off
+    unless it is set.
+  * A '*' entry that leads back to a listener of this host is refused.
+  * A dtls listener drops a DTLS record other than an epoch 0 handshake
+    that has no session. See NEWS and ChangeLog.
+
+ -- Renaud Allard <renaud@allard.it>  Wed, 04 Nov 2026 16:00:00 +0100
+
 sniproxy (0.24.2) unstable; urgency=medium
 
   * New -i flag: a configuration file that no one may write, as in the

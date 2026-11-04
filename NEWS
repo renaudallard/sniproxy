@@ -1,3 +1,90 @@
+sniproxy 0.25.0 (2026-11-04)
+===============================
+
+Fixes from two security reviews of 0.24.2.
+
+Upgrade note: the c-ares query cache is now off unless the new resolver
+directive cache_ttl turns it on. With c-ares 1.31 or later every answer
+used to be cached for up to an hour, so each lookup now reaches the name
+server: set cache_ttl, or use a local caching resolver, to get that back.
+A '*' table entry that leads a TCP listener back to a listener of this
+host is now refused with the protocol's backend error, as is a '*' entry
+that resolves to the unspecified address. A dtls listener drops a DTLS
+record other than an epoch 0 handshake that has no session, so a client
+whose session timed out must handshake again. On Linux a NETLINK_ROUTE
+socket of the main or resolver process now fails with EAFNOSUPPORT.
+
+Highlights:
+
+* A '*' entry connects where the client says, and a name that resolves
+  to this host, with no port on the entry, made the listener connect to
+  itself with the same request, again and again. Every hop came from
+  this host's own address, so the per-IP limits never saw the chain:
+  with the rate limit off, one request filled the connection ceiling
+  within seconds. The address and port each backend socket of a '*'
+  entry sends from are now kept, and a connection accepted from one of
+  them towards the address it connected to is refused.
+
+* From c-ares 1.31 on, a channel caches every answer for up to an hour,
+  with no limit on the number of entries. Through a '*' entry each name
+  a client sent stayed in the resolver process, negative answers too,
+  for about 2.4 KB a name. The new resolver directive cache_ttl sets how
+  many seconds, from 0 to 86400, c-ares may keep an answer, and its
+  default, 0, turns the cache off. It needs c-ares 1.23 or later.
+
+* A renegotiation ClientHello was refused only when the parser got as
+  far as its renegotiation_info extension. An invalid or oversized name,
+  a second server_name extension, one without a host name, or more
+  extensions than are read sent it to the fallback instead. The
+  extensions are now searched for a renegotiation before anything else,
+  for TLS and DTLS alike.
+
+* A DTLS session ends after 30 seconds without a datagram from its
+  client. A client that went on with its association then opened a new
+  session whose records went to the fallback, and that session kept the
+  client's next ClientHello there too. A record with a DTLS content type
+  and version that is not an epoch 0 handshake now opens no session and
+  is dropped, so such a client can no longer use up the per-IP session
+  rate that other clients behind its address share. Other data, such as
+  STUN, OpenVPN or NTP, still goes to the fallback, and so does a DTLS
+  1.3 record with the unified header, which cannot be told from them.
+
+* The end of a DTLS session was only logged when it had a host name, so
+  a session sent to the fallback was never logged as closed. The end of
+  every session that reached its backend is now logged.
+
+* A binder, logger or resolver restarted while sniproxy runs is forked
+  from the main process and got a copy of the data open connections had
+  buffered, such as requests waiting on a lookup. A restarted helper now
+  zeroes that data first. Buffers are no longer grown with realloc(),
+  and decoded HTTP/2 headers, HPACK table entries and the temporary
+  copies made by the buffers and the Huffman decoder are zeroed before
+  they are freed.
+
+* On Linux a compromised binder with CAP_DAC_OVERRIDE could probe root's
+  files with access() and the statfs calls, which its filter now
+  refuses. The main and resolver processes may no longer open netlink
+  sockets, which nothing in sniproxy uses: NETLINK_ROUTE, which libc
+  may open on its own, fails with EAFNOSUPPORT, and any other kills the
+  process. faccessat2 is allowed where faccessat is: realpath() uses it
+  from glibc 2.33 on, and a reload killed the main process when the
+  config file was a FIFO whose path held a "." or ".." component.
+
+* On OpenBSD a backend that reset the connection while the splice was
+  being set up left the client without a 503, and the log blamed the
+  client. The failure is now handled as the backend's.
+
+* The index of the per-IP rate limiter and connection count tables did
+  not depend on every address bit, so some groups of eight addresses
+  always shared a chain, whatever the seed. Every bit is now mixed in.
+
+* With -g, a read-only config file that is also world readable, such as
+  mode 0444, was refused with a message about group access. The message
+  now names world access only.
+
+* The README, sniproxy(8) and sniproxy.conf(5) were checked against the
+  code and brought up to date.
+
 sniproxy 0.24.2 (2026-11-02)
 ===============================
 

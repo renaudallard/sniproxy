@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.24.2
+Version: 0.25.0
 Release: 1%{?dist}
 Summary: Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname
 
@@ -71,6 +71,11 @@ fi
 
 
 %changelog
+* Wed Nov 04 2026 Renaud Allard <renaud@allard.it> 0.25.0-1
+- Fixes from two security reviews of 0.24.2. New resolver directive
+  cache_ttl; the c-ares query cache is now off unless it is set. See
+  NEWS.
+
 * Mon Nov 02 2026 Renaud Allard <renaud@allard.it> 0.24.2-1
 - New -i flag: a configuration file that no one may write, as in the
   Nix store, may be readable by anyone. See NEWS.

@@ -1,3 +1,37 @@
+2026-11-04  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.25.0
+	- connection: a connection a '*' entry leads back to a listener of
+	  this host is refused, as is the unspecified address as a '*'
+	  target of a TCP listener.
+	- resolv: new cache_ttl directive, 0 to 86400 seconds, default 0,
+	  which turns the c-ares query cache off.
+	- tls, dtls: a renegotiation hello is refused whatever else is
+	  wrong with it.
+	- dtls, udp_connection: a DTLS record other than an epoch 0
+	  handshake opens no session and is dropped; the end of every
+	  established session is logged.
+	- connection, buffer: a helper forked at run time zeroes the data
+	  held in connection buffers; buffers are no longer resized with
+	  realloc(); the buffer pool, which never held a block, is gone.
+	- http2: decoded headers, HPACK entries and the header block are
+	  zeroed before they are freed.
+	- seccomp: the binder may not call access, faccessat or statfs;
+	  the main and resolver processes get EAFNOSUPPORT for
+	  NETLINK_ROUTE sockets and are killed for other netlink sockets;
+	  faccessat2 is allowed where faccessat is.
+	- connection: on OpenBSD a backend reset during the splice setup
+	  gives the client its 503.
+	- connection: the per-IP hash index mixes every address bit.
+	- config: the -g refusal of a world readable config names world
+	  access only.
+	- util: one secure_memzero() and secure_free() shared by all files.
+	- tests: new wildcard_loop_test; seccomp_test on Linux i386, the
+	  binder readlink() check without /proc, new tls, dtls and buffer
+	  cases.
+	- docs: cache_ttl, DTLS session drops, the TCP loop refusal, and
+	  README, sniproxy(8) and sniproxy.conf(5) checked against the code.
+
 2026-11-02  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.24.2
