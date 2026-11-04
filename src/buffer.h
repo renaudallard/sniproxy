@@ -43,7 +43,6 @@ struct Buffer {
     ev_tstamp last_send;
     uint64_t tx_bytes;      /* wider than size_t on 32-bit systems */
     uint64_t rx_bytes;
-    int pool_managed;
 };
 
 struct Buffer *new_buffer(size_t, struct ev_loop *);

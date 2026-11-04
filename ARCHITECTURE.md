@@ -275,8 +275,6 @@ Dynamic ring buffers for efficient data transfer with minimal copying.
 - **Bounded shrink queues (0.9.6)**: Shrink candidate lists stay capped at 4096
   entries and force-shrink the oldest 10% once full, preventing internal
   bookkeeping from consuming unbounded RAM.
-- **Corruption detection (0.9.6)**: Buffer pool freelist nodes embed magic
-  numbers so corrupt pointers are detected before dereferencing cached links.
 
 ### Protocol
 
@@ -646,8 +644,8 @@ buffer assembly, reducing the number of buffer operations required
 - **Event-driven**: libev for efficient I/O multiplexing
 - **Minimal copying**: Ring buffers and vectored I/O; SO_SPLICE zero-copy on OpenBSD
 - **SO_REUSEPORT**: Multiple processes can accept on same port
-- **Buffer pooling**: Freed 8, 16 and 32 KiB buffer blocks are kept for
-  reuse; connection structures themselves are allocated and freed each time
+- **No buffer pooling**: buffer blocks and connection structures are
+  allocated and freed each time, and a block is zeroed before it is freed
 - **Compiled regexes**: One-time compilation, cached for all lookups
 
 ### Performance Optimizations in 0.9.0

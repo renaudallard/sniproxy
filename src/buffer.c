@@ -47,131 +47,13 @@
  * range, MAX_CONNECTION_BUFFER_LIMIT in config.h (1 GiB). */
 static const size_t BUFFER_MAX_SIZE = 1024 * 1024 * 1024;
 
-struct BufferPoolClass {
-    size_t size;
-    size_t max_cached;
-    size_t cached;
-    void *head;
-};
-
-static struct BufferPoolClass buffer_pool_classes[] = {
-    { 8192, 256, 0, NULL },
-    { 16384, 128, 0, NULL },
-    { 32768, 64, 0, NULL },
-};
-
-static void *buffer_pool_acquire(size_t size, int *pooled);
-static int buffer_pool_release(size_t size, void *ptr);
-
 static size_t setup_write_iov(const struct Buffer *, struct iovec *, size_t);
 static size_t setup_read_iov(const struct Buffer *, struct iovec *, size_t);
 static inline void advance_write_position(struct Buffer *, size_t);
 static inline void advance_read_position(struct Buffer *, size_t);
 static size_t next_power_of_two(size_t);
-static void buffer_release_storage(int from_pool, size_t size, char *ptr);
 
 static void (*buffer_memory_observer)(ssize_t delta);
-
-/* Magic number for validating buffer pool free list integrity */
-#define BUFFER_POOL_MAGIC 0xBEEF5AFE
-
-/* Structure stored at the head of freed buffer pool blocks */
-struct BufferPoolNode {
-    uint32_t magic;
-    void *next;
-};
-
-static void *
-buffer_pool_acquire(size_t size, int *pooled) {
-    if (pooled != NULL)
-        *pooled = 0;
-
-    for (size_t i = 0; i < sizeof(buffer_pool_classes) / sizeof(buffer_pool_classes[0]); i++) {
-        struct BufferPoolClass *cls = &buffer_pool_classes[i];
-        if (cls->size != size || cls->head == NULL)
-            continue;
-
-        /* Validate magic number before dereferencing to prevent type confusion */
-        struct BufferPoolNode *node = (struct BufferPoolNode *)cls->head;
-        if (node->magic != BUFFER_POOL_MAGIC) {
-            err("Buffer pool corruption detected: invalid magic 0x%x (expected 0x%x)",
-                node->magic, BUFFER_POOL_MAGIC);
-            /* Drain the pool class to avoid reusing corrupted memory. */
-            cls->head = NULL;
-            cls->cached = 0;
-            /* Drop the class size so future acquisitions bypass the pool. */
-            cls->size = 0;
-            continue;
-        }
-
-        void *mem = cls->head;
-        void *next = node->next;
-        cls->head = next;
-        if (cls->cached > 0)
-            cls->cached--;
-        /* Buffer was already zeroed on release; just clear pool metadata */
-        memset(mem, 0, sizeof(struct BufferPoolNode));
-        if (pooled != NULL)
-            *pooled = 1;
-        return mem;
-    }
-
-    return NULL;
-}
-
-static int
-buffer_pool_release(size_t size, void *ptr) {
-    if (ptr == NULL)
-        return 0;
-
-    for (size_t i = 0; i < sizeof(buffer_pool_classes) / sizeof(buffer_pool_classes[0]); i++) {
-        struct BufferPoolClass *cls = &buffer_pool_classes[i];
-        if (cls->size != size)
-            continue;
-        if (cls->cached >= cls->max_cached)
-            return 0;
-
-        /* Ensure buffer is large enough to hold BufferPoolNode structure */
-        if (size < sizeof(struct BufferPoolNode)) {
-            err("Buffer size %zu too small for pool node (need %zu)",
-                size, sizeof(struct BufferPoolNode));
-            return 0;
-        }
-
-        /* Use secure zeroing to prevent information disclosure */
-        secure_memzero(ptr, size);
-        /* Store magic number and next pointer for validation */
-        struct BufferPoolNode *node = (struct BufferPoolNode *)ptr;
-        node->magic = BUFFER_POOL_MAGIC;
-        node->next = cls->head;
-        cls->head = ptr;
-        cls->cached++;
-        return 1;
-    }
-
-    return 0;
-}
-
-
-
-static void
-buffer_release_storage(int from_pool, size_t size, char *ptr) {
-    if (ptr == NULL)
-        return;
-
-    if (from_pool) {
-        if (!buffer_pool_release(size, ptr)) {
-            /* Use secure zeroing to prevent information disclosure */
-            secure_memzero(ptr, size);
-            free(ptr);
-        }
-        return;
-    }
-
-    /* Use secure zeroing to prevent information disclosure */
-    secure_memzero(ptr, size);
-    free(ptr);
-}
 
 static inline void
 buffer_notify_memory(ssize_t delta) {
@@ -207,10 +89,7 @@ new_buffer(size_t size, struct ev_loop *loop) {
     const ev_tstamp now = ev_now(loop);
     buf->last_recv = now;
     buf->last_send = now;
-    int from_pool = 0;
-    char *data = buffer_pool_acquire(size, &from_pool);
-    if (data == NULL)
-        data = malloc(size);
+    char *data = malloc(size);
     if (data == NULL) {
         buffer_notify_memory(-(ssize_t)sizeof(struct Buffer));
         free(buf);
@@ -218,7 +97,6 @@ new_buffer(size_t size, struct ev_loop *loop) {
     }
 
     buf->buffer = data;
-    buf->pool_managed = from_pool;
     buffer_notify_memory((ssize_t)size);
 
     return buf;
@@ -247,10 +125,7 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
      * is released, while realloc() would hand back to the allocator what
      * clients sent, in a block that moved or in the tail cut off a
      * shrinking one. */
-    int pooled = 0;
-    char *new_buffer = buffer_pool_acquire(new_size, &pooled);
-    if (new_buffer == NULL)
-        new_buffer = malloc(new_size);
+    char *new_buffer = malloc(new_size);
     if (new_buffer == NULL)
         return -2;
 
@@ -259,11 +134,10 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
     if (buf->len > first_len)
         memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
 
-    buffer_release_storage(buf->pool_managed, current_size, buf->buffer);
+    secure_free(buf->buffer, current_size);
     buf->buffer = new_buffer;
     buf->head = 0;
     buf->size_mask = new_size - 1;
-    buf->pool_managed = pooled;
 
     buffer_notify_memory((ssize_t)new_size - (ssize_t)current_size);
 
@@ -391,7 +265,7 @@ free_buffer(struct Buffer *buf) {
     if (buf->buffer != NULL) {
         size_t current_size = buffer_size(buf);
         buffer_notify_memory(-(ssize_t)current_size);
-        buffer_release_storage(buf->pool_managed, current_size, buf->buffer);
+        secure_free(buf->buffer, current_size);
         buf->buffer = NULL;
     }
 
