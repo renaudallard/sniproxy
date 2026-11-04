@@ -3059,7 +3059,8 @@ parse_incoming_proxy_header(struct Connection *con) {
              * blocks too short for their family, must be refused */
             if (af > 0x03 || transport > 0x02 ||
                     (af == 0x01 && addr_len < 12) ||
-                    (af == 0x02 && addr_len < 36))
+                    (af == 0x02 && addr_len < 36) ||
+                    (af == 0x03 && addr_len < 216))
                 return -2;
 
             if (af == 0x01) {

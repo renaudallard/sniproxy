@@ -770,7 +770,9 @@ the load balancer, for example with an \fBacl\fR block: any other client
 could claim any source address, which then reaches the access log and
 the PROXY headers sent to backends. A header that does not follow the
 protocol, such as a v1 line other than UNKNOWN without the five fields
-of TCP4 or TCP6 separated by single spaces, or a v2 header with an unassigned address family, ends
+of TCP4 or TCP6 separated by single spaces, or a v2 header with an
+unassigned address family or an address block too short for its family,
+ends
 the connection with the protocol's abort message.
 Without the directive, an http or xmpp request that starts with a PROXY
 header, in either form, an http request line that does not start with a

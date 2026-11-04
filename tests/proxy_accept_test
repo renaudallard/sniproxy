@@ -67,6 +67,15 @@ sub status_after($$) {
     return $buffer =~ m/\AHTTP\/1\.[01] (\d{3})/ ? $1 : 0;
 }
 
+# A v2 PROXY command for the given family and transport byte
+sub proxy_v2($$) {
+    my $family = shift;
+    my $addresses = shift;
+
+    return "\r\n\r\n\x00\r\nQUIT\n" . pack('CCn', 0x21, $family,
+            length $addresses) . $addresses;
+}
+
 sub main {
     my $proxy_port = $ENV{SNI_PROXY_PORT} || find_free_port();
     my $httpd_port = $ENV{TEST_HTTPD_PORT} || find_free_port();
@@ -87,6 +96,11 @@ sub main {
         [ "PROXY TCP4 192.0.2.1  192.0.2.2 1234 80\r\n", 0 ],
         [ "PROXY TCP4\t192.0.2.1 192.0.2.2 1234 80\r\n", 0 ],
         [ "PROXY TCP4 192.0.2.1 192.0.2.2 1234 80 \r\n", 0 ],
+        [ proxy_v2(0x11, "\xc0\x00\x02\x01\xc0\x00\x02\x02\x04\xd2\x00\x50"), 1 ],
+        [ proxy_v2(0x11, "\xc0\x00\x02\x01"), 0 ],
+        [ proxy_v2(0x31, "\x00" x 216), 1 ],
+        [ proxy_v2(0x31, "\x00" x 215), 0 ],
+        [ proxy_v2(0x31, ""), 0 ],
     );
 
     my $failed = 0;
@@ -94,7 +108,7 @@ sub main {
         my ($header, $accepted) = @$case;
         my $status = status_after($proxy_port, $header);
         if (($status == 200) != $accepted) {
-            (my $shown = $header) =~ s/([^ -~])/sprintf("\\x%02x", ord($1))/ge;
+            (my $shown = substr($header, 0, 48)) =~ s/([^ -~])/sprintf("\\x%02x", ord($1))/ge;
             print STDERR "PROXY header $shown: got status $status, expected " .
                     ($accepted ? "200" : "a refusal") . "\n";
             $failed = 1;
