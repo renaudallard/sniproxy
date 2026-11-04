@@ -254,6 +254,13 @@ int main(void) {
         assert(inet_pton(AF_INET6, "2001:db8::6", &in6->sin6_addr) == 1);
         assert(sockaddr_unmap_ipv4(&in, sizeof(*in6), &out) == sizeof(*in6));
         assert(memcmp(&in, &out, sizeof(*in6)) == 0);
+
+        /* A length too short for an IPv6 address is copied, not read */
+        assert(inet_pton(AF_INET6, "::ffff:192.0.2.6", &in6->sin6_addr) == 1);
+        memset(&out, 0, sizeof(out));
+        assert(sockaddr_unmap_ipv4(&in, sizeof(*in6) - 1, &out) ==
+                sizeof(*in6) - 1);
+        assert(memcmp(&in, &out, sizeof(*in6) - 1) == 0);
     } while (0);
 
     return 0;

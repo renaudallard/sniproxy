@@ -506,7 +506,8 @@ sockaddr_unmap_ipv4(const struct sockaddr_storage *addr, socklen_t len,
         struct sockaddr_storage *out) {
     const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
 
-    if (addr->ss_family != AF_INET6 ||
+    /* Only an address long enough for its family is looked into */
+    if (len < (socklen_t)sizeof(*in6) || addr->ss_family != AF_INET6 ||
             !IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
         if (len > sizeof(*out))
             len = sizeof(*out);
