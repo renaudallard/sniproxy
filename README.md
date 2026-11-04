@@ -435,8 +435,10 @@ pidfile /var/run/sniproxy.pid
 io_collect_interval      0
 timeout_collect_interval 0.005
 
-# Cap total simultaneous connections. 0 (the default) derives it from
-# the file descriptor limit: 80% of it, two descriptors per connection.
+# Cap simultaneous TCP connections; a DTLS session with its backend
+# socket open counts as half of one. 0 (the default) derives it from
+# the file descriptor limit: 20% of it, at least 256 descriptors, is
+# kept in reserve, and each connection takes two of the rest.
 max_connections 20000
 
 # Per-IP token-bucket rate, for TCP connections and for UDP sessions
