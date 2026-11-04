@@ -1042,8 +1042,8 @@ Workarounds (in order of cleanness):
 1. **Per-domain certificates** on the backends instead of wildcards
    (Let's Encrypt makes this trivial). This is the most effective fix.
 2. **Backends return HTTP 421 (Misdirected Request)** for hostnames they
-   do not serve. RFC 9110 says compliant browsers must retry on a fresh
-   connection.
+   do not serve. RFC 9110 allows a client that gets a 421 to retry the
+   request on another connection.
 3. **Separate IPs per backend** so the browser's IP-match check fails
    (IPv6 makes this easy).
 4. **Disable HTTP/2 on backends** by stripping `h2` from ALPN. Loses
