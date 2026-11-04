@@ -73,10 +73,12 @@ int get_resolver_debug(void) {
 void logger_post_fork_child_disinherit(void) {}
 void logger_forward_to_parent(
         int (*forward)(int, const char *, size_t) __attribute__((unused))) {}
-void log_helper_message(const char *helper __attribute__((unused)),
+int log_helper_message(const char *helper __attribute__((unused)),
         int priority __attribute__((unused)),
         const uint8_t *msg __attribute__((unused)),
-        size_t len __attribute__((unused))) {}
+        size_t len __attribute__((unused))) {
+    return 1;
+}
 
 static const int status_map[] = {
     ARES_SUCCESS,

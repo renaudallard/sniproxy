@@ -109,6 +109,12 @@
 #define RESOLVER_MAX_HOSTNAME_LEN    1023
 #define RESOLVER_IPC_MAX_PAYLOAD     4096
 #define RESOLVER_IPC_FRAMES_PER_READ      64
+/* Frames of the child that do nothing tolerated in a second: answers to
+ * no query, forged or malformed frames, messages over the log cap. A
+ * genuine child sends a few at most, answers to queries given up long
+ * ago; one sending more is taken for compromised and replaced, as a child
+ * forked anew from the main process is not. */
+#define RESOLVER_USELESS_FRAMES_PER_SECOND 1000
 #define RESOLVER_IPC_MAX_FRAME        (sizeof(struct resolver_ipc_header) + \
         RESOLVER_IPC_MAX_PAYLOAD + IPC_CRYPTO_OVERHEAD)
 #define RESOLVER_MAX_ADDR_LEN        ((size_t)sizeof(struct sockaddr_storage))
@@ -363,11 +369,12 @@ static const char *resolver_cadir_fallbacks[] = {
 static int resolver_send_message(uint32_t type, uint32_t id,
         const void *payload, size_t payload_len);
 static void resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
-static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
-static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
-static void resolver_handle_early_result(uint32_t, const uint8_t *, size_t);
-static void resolver_handle_done(uint32_t);
-static void resolver_handle_log(uint32_t, const uint8_t *, size_t);
+static int resolver_process_datagram(const uint8_t *buffer, ssize_t len);
+static int resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
+static int resolver_handle_early_result(uint32_t, const uint8_t *, size_t);
+static int resolver_handle_done(uint32_t);
+static int resolver_handle_log(uint32_t, const uint8_t *, size_t);
+static int resolver_frame_useless(struct ev_loop *);
 static int resolver_child_forward_log(int, const char *, size_t);
 static int resolver_emit_query(struct ResolverPending *pending);
 static int resolver_submit_query(struct ResolverPending *pending);
@@ -1186,20 +1193,44 @@ resolver_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
         uint8_t *plain = NULL;
         size_t plain_len = 0;
-        if (ipc_crypto_open(&resolver_ipc_crypto, buffer, (size_t)len,
+        int useful = ipc_crypto_open(&resolver_ipc_crypto, buffer,
+                    (size_t)len,
                     sizeof(struct resolver_ipc_header) + RESOLVER_IPC_MAX_PAYLOAD,
-                    &plain, &plain_len) < 0)
-            continue;
-
-        resolver_process_datagram(plain, (ssize_t)plain_len);
+                    &plain, &plain_len) == 0 &&
+                resolver_process_datagram(plain, (ssize_t)plain_len);
         free(plain);
+
+        if (!useful && resolver_frame_useless(loop)) {
+            err("resolver child sent more than %d frames in a second that "
+                    "answer nothing; replacing it",
+                    RESOLVER_USELESS_FRAMES_PER_SECOND);
+            if (resolver_restart(0) < 0)
+                err("resolver restart failed");
+            return;
+        }
     }
 }
 
-static void
+/* Counts a frame of the child that did nothing, and says whether there
+ * were too many of them in the last second */
+static int
+resolver_frame_useless(struct ev_loop *loop) {
+    static ev_tstamp second;
+    static unsigned int frames;
+    ev_tstamp now = ev_now(loop);
+
+    if (now < second || now - second >= 1.0) {
+        second = now;
+        frames = 0;
+    }
+
+    return ++frames > RESOLVER_USELESS_FRAMES_PER_SECOND;
+}
+
+static int
 resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
     if (len < (ssize_t)sizeof(struct resolver_ipc_header))
-        return;
+        return 0;
 
     struct resolver_ipc_header header;
     memcpy(&header, buffer, sizeof(header));
@@ -1209,35 +1240,33 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
     uint32_t payload_len = ntohl(header.payload_len);
 
     if (payload_len > RESOLVER_IPC_MAX_PAYLOAD)
-        return;
+        return 0;
 
     if ((ssize_t)payload_len != len - (ssize_t)sizeof(header))
-        return;
+        return 0;
 
     const uint8_t *payload = buffer + sizeof(header);
 
     switch (type) {
         case RESOLVER_CMD_RESULT:
-            resolver_handle_result(id, payload, payload_len);
-            break;
+            return resolver_handle_result(id, payload, payload_len);
         case RESOLVER_CMD_EARLY_RESULT:
-            resolver_handle_early_result(id, payload, payload_len);
-            break;
+            return resolver_handle_early_result(id, payload, payload_len);
         case RESOLVER_CMD_DONE:
-            resolver_handle_done(id);
-            break;
+            return resolver_handle_done(id);
         case RESOLVER_CMD_LOG:
-            resolver_handle_log(id, payload, payload_len);
-            break;
+            return resolver_handle_log(id, payload, payload_len);
         default:
-            break;
+            return 0;
     }
 }
 
-static void
+/* A message the cap drops counts as useless, unless -d asked for many */
+static int
 resolver_handle_log(uint32_t priority, const uint8_t *payload, size_t len) {
-    log_helper_message("resolver",
-            priority > LOG_DEBUG ? LOG_ERR : (int)priority, payload, len);
+    return log_helper_message("resolver",
+            priority > LOG_DEBUG ? LOG_ERR : (int)priority, payload, len) ||
+            get_resolver_debug();
 }
 
 /* The address an answer from the child carries, or NULL for a failed
@@ -1289,11 +1318,11 @@ resolver_parse_result(const uint8_t *payload, size_t payload_len) {
     return address;
 }
 
-static void
+static int
 resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) {
     struct ResolverPending *pending = resolver_take_query(id);
     if (pending == NULL)
-        return;
+        return 0;
 
     /* Extract the detached clients list from temporary storage.
      * resolver_take_query() stored it in next_id to safely transfer
@@ -1326,18 +1355,19 @@ resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len) 
 
     free(pending->hostname);
     free(pending);
+    return 1;
 }
 
 /* Answer the clients of a query while the child still looks up its other
  * address family. The query and its handles are kept until the child
  * reports that lookup done, when their free callbacks release the DNS
  * limits; it is not shared with new clients, who start one of their own. */
-static void
+static int
 resolver_handle_early_result(uint32_t id, const uint8_t *payload,
         size_t payload_len) {
     struct ResolverPending *pending = resolver_take_query(id);
     if (pending == NULL)
-        return;
+        return 0;
 
     struct ResolvQuery *clients = (struct ResolvQuery *)pending->next_id;
     pending->next_id = NULL;
@@ -1365,9 +1395,10 @@ resolver_handle_early_result(uint32_t id, const uint8_t *payload,
     pthread_mutex_unlock(&resolver_queries_lock);
 
     resolver_watch_abandoned();
+    return 1;
 }
 
-static void
+static int
 resolver_handle_done(uint32_t id) {
     struct ResolverPending *pending = NULL;
 
@@ -1384,6 +1415,7 @@ resolver_handle_done(uint32_t id) {
     pthread_mutex_unlock(&resolver_queries_lock);
 
     resolver_free_pending_list(pending, 0);
+    return pending != NULL;
 }
 
 static int

@@ -2801,8 +2801,8 @@ logger_post_fork_child_disinherit(void) {
 
 /* A message a helper process handed over, for the error log after the
  * helper's name. A compromised helper must not write lines of its own
- * into the log, nor log above error. */
-void
+ * into the log, nor log above error. Returns 0 when the cap dropped it. */
+int
 log_helper_message(const char *helper, int priority, const uint8_t *msg,
         size_t len) {
     static time_t second;
@@ -2817,7 +2817,7 @@ log_helper_message(const char *helper, int priority, const uint8_t *msg,
     }
     if (written >= LOG_HELPER_MAX_PER_SECOND) {
         dropped++;
-        return;
+        return 0;
     }
     written++;
 
@@ -2839,6 +2839,7 @@ log_helper_message(const char *helper, int priority, const uint8_t *msg,
         priority = LOG_ERR;
 
     log_msg(default_logger, priority, "%s: %s", helper, text);
+    return 1;
 }
 
 /* Called by a helper once it can reach the main process, with NULL when

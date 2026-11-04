@@ -179,6 +179,9 @@ SNIProxy runs as four cooperating processes:
    restarts the resolver if it exits. Once it has died three times in
    quick succession, the next attempt waits a second, and each one after
    that twice as long, up to 30 seconds, until a resolver keeps running.
+   A resolver that sends more than 1000 frames in a second that answer
+   nothing, as a compromised one flooding the main loop would, is
+   replaced the same way.
 
 On Linux these are the process names that `pgrep` and `ps -o comm`
 show, truncated to 15 characters; the command line `ps -ef` shows is
