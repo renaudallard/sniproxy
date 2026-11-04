@@ -882,13 +882,15 @@ than the client's, until the connection ceiling. A loop through a NAT
 on this host, which changes the address a connection goes to, is not
 caught, and only \fBper_ip_connection_rate\fR,
 \fBper_ip_max_connections\fR and the connection ceiling bound it. Nor
-does a '*' entry lead to the unspecified address, 0.0.0.0 or ::, which
-the kernel connects to as to one of this host's. Over DTLS each session
-of such a loop would keep the next one alive, so a dtls listener opens
-no session for datagrams that come from the address and port of the
-backend socket of a session that a '*' entry routed, other than one of
-a \fBsource client\fR listener. An explicit entry may still lead to
-another listener of sniproxy.
+does a '*' entry lead a TCP connection to the unspecified address,
+0.0.0.0 or ::, which the kernel connects to as to one of this host's:
+the connection would not arrive at the address its backend socket
+connected to. Over DTLS each session of such a loop would keep the next
+one alive, so a dtls listener opens no session for datagrams that come
+from the address and port of the backend socket of a session that a '*'
+entry routed, whatever address that socket sends to, the unspecified one
+included, other than one of a \fBsource client\fR listener. An explicit
+entry may still lead to another listener of sniproxy.
 The backend socket of a \fBsource client\fR session takes the client's
 address and port, so a backend that leads back to the session's own
 listener, whatever the route, would send its datagrams round the same session for ever:
