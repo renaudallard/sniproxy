@@ -785,23 +785,22 @@ afterthought.
   directory, above the one holding it, that others than root may write
   to, through its group too, or through a symlink root does not own: root creates and removes
   these by path, which such a user could make lead to any directory.
-- **Privilege drop verification**: startup aborts if real or effective
-  UID is still 0 after `setuid()`. On Linux the main process keeps
-  CAP_NET_RAW, and only when a listener uses `source client`, whether it
-  was started as root or with capabilities given to its file or
-  inherited as ambient ones; the
-  seccomp filter keeps it from using it for raw or packet sockets, or
-  to give a socket a firewall mark or a priority above 6 with
-  setsockopt(), except on i386, s390x, ppc64le and other systems where
-  socket() and setsockopt() can go through socketcall(2). It can still
-  make a socket
-  transparent, which is what `source client` needs it for, and a
-  compromised main process could still give its sockets IPv6 hop-by-hop
-  and destination options, and the datagrams it sends a firewall mark or
-  any priority in the control messages of sendmsg(), which a filter
-  cannot read. The binder keeps CAP_NET_BIND_SERVICE, and
-  CAP_DAC_OVERRIDE with a Unix socket listener under `/run` or
-  `/var/run`; the logger and resolver keep none.
+- **Privilege drop verification**: startup aborts if the real or
+  effective user or group ID is still 0 after `setuid()`. On Linux the
+  main process keeps CAP_NET_RAW, and only when a listener uses
+  `source client`, whether it was started as root or with capabilities
+  given to its file or inherited as ambient ones; the seccomp filter
+  keeps it from using it for raw or packet sockets, or to give a socket
+  a firewall mark or a priority above 6 with setsockopt(), except on
+  i386, s390x, ppc64le and other systems where socket() and setsockopt()
+  can go through socketcall(2). It can still make a socket transparent,
+  which is what `source client` needs it for, and a compromised main
+  process could still give its sockets IPv6 hop-by-hop and destination
+  options, and the datagrams it sends a firewall mark or any priority in
+  the control messages of sendmsg(), which a filter cannot read. The
+  binder keeps CAP_NET_BIND_SERVICE, and CAP_DAC_OVERRIDE with a Unix
+  socket listener under `/run` or `/var/run`; the logger and resolver
+  keep none.
 - **OpenBSD sandboxing**: every process runs under pledge(2), and the
   main loop and the logger narrow their promises again once startup is
   done. unveil(2) limits the main loop, and the binder and resolver it
