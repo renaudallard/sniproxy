@@ -73,7 +73,9 @@ fuzzing, and active maintenance.
   or v2 from upstream load balancers on listeners with
   `proxy_protocol on` (the version is auto-detected), which should admit
   only the load balancer, as the header is taken from any peer. TCP only:
-  DTLS listeners refuse these options.
+  a dtls listener refuses `proxy_protocol` and a PROXY fallback, and
+  ignores, with a warning, the PROXY option of the table entries it
+  uses.
 - **Privilege separation**: four cooperating processes:
   `sniproxy-mainloop`, `sniproxy-binder`, `sniproxy-logger`,
   `sniproxy-resolver`. All IPC is encrypted with ChaCha20-Poly1305.
