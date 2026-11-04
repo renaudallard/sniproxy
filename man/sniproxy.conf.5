@@ -263,7 +263,10 @@ connection quiet for long periods, such as WebSockets without pings or
 IMAP IDLE. With 0, every idle connection keeps two descriptors until its
 peers close it; \fBmax_connections\fR, and \fBper_ip_max_connections\fR
 when set, still bound how many there can be. Whatever the setting, a
-client must send its request within 5 seconds of connecting. A reload
+client must send its request within 5 seconds of connecting. A backend
+that has not accepted the connection by the time it expires gets the
+client the protocol's error, as one that refuses it does, and the
+connection closes once the client has it or after one more period. A reload
 applies the new value to connections accepted after it. DTLS sessions
 are not affected; they end after 30 seconds without a datagram from
 their client.

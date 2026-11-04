@@ -157,6 +157,7 @@ static void copy_sockaddr_to_storage(struct sockaddr_storage *, const void *, so
 static void reset_idle_timer(struct Connection *, struct ev_loop *);
 static void connection_pass_eof(struct Connection *, struct ev_loop *);
 static int server_connecting(const struct Connection *);
+static int backend_connect_pending(const struct Connection *);
 static int server_eof_pending(const struct Connection *);
 static void server_failed(struct Connection *, struct ev_loop *);
 static void push_abort_message(struct Connection *);
@@ -1164,6 +1165,19 @@ server_eof_pending(const struct Connection *con) {
  * the backend while the socket is still connecting, and a shutdown()
  * then aborts the connection instead of sending a FIN.
  */
+/* The backend's TCP connection is still being set up */
+static int
+backend_connect_pending(const struct Connection *con) {
+    struct sockaddr_storage peer;
+    socklen_t len = sizeof(peer);
+
+    if (server_connecting(con))
+        return 1;
+
+    return getpeername(con->server.watcher.fd, (struct sockaddr *)&peer,
+            &len) < 0 && errno == ENOTCONN;
+}
+
 static int
 server_connecting(const struct Connection *con) {
 #if defined(TCP_FASTOPEN_CONNECT) && defined(TCP_INFO)
@@ -2514,6 +2528,29 @@ connection_idle_cb(struct ev_loop *loop, struct ev_timer *w, int revents __attri
         con->idle_extend = 0.0;
         ev_timer_start(loop, &con->idle_timer);
         return;
+    }
+
+    /* A backend whose connection never completed, such as one dropping
+     * the packets, gets the client the protocol's abort message, as one
+     * refusing the connection does. The timer then gives the client one
+     * more period to take it. */
+    if (con->state == CONNECTED &&
+#ifdef USE_SO_SPLICE
+            !con->spliced &&
+#endif
+            backend_connect_pending(con)) {
+        warn("Backend of the connection from %s did not answer within "
+                "%.0f seconds",
+                display_sockaddr(&con->client.addr, con->client.addr_len,
+                    client, sizeof(client)),
+                con->idle_timeout);
+        server_failed(con, loop);
+        if (client_socket_open(con) && buffer_len(con->server.buffer) > 0) {
+            reactivate_watchers(con, loop);
+            ev_timer_set(&con->idle_timer, con->idle_timeout, 0.0);
+            ev_timer_start(loop, &con->idle_timer);
+            return;
+        }
     }
 
     warn("Closing idle connection from %s after %.0f seconds without activity",
