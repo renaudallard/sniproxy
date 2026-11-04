@@ -380,13 +380,20 @@ buffer_maybe_shrink_idle(struct Buffer *buf, ev_tstamp now, ev_tstamp idle_age) 
     return buffer_maybe_shrink(buf);
 }
 
-/* Zero what the buffer holds and has held, and empty it */
+/* Zero the data the buffer holds and empty it. Only those bytes are
+ * written, and nothing for an empty buffer: in a forked process, writing
+ * more would have the kernel copy pages it shares with the parent for
+ * nothing. */
 void
 buffer_wipe(struct Buffer *buf) {
-    if (buf == NULL || buf->buffer == NULL)
+    if (buf == NULL || buf->buffer == NULL || buf->len == 0)
         return;
 
-    secure_memzero(buf->buffer, buffer_size(buf));
+    size_t size = buffer_size(buf);
+    size_t first_len = MIN(buf->len, size - buf->head);
+
+    secure_memzero(buf->buffer + buf->head, first_len);
+    secure_memzero(buf->buffer, buf->len - first_len);
     buf->len = 0;
     buf->head = 0;
 }

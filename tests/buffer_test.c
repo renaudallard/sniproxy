@@ -353,6 +353,47 @@ static void test_buffer_prepend_wrap(void) {
     free_buffer(buffer);
 }
 
+/* buffer_wipe() zeroes the data held, wrapped or not, empties the
+ * buffer and writes nothing else */
+static void test_buffer_wipe(void) {
+    struct Buffer *buffer;
+    char filler[200];
+    char data[100];
+
+    buffer = new_buffer(256, test_loop);
+    assert(buffer != NULL);
+
+    /* Consumed bytes stay as they are; one is kept, so that the head
+     * does not go back to the start */
+    memset(filler, 'A', sizeof(filler));
+    assert(buffer_push(buffer, filler, sizeof(filler)) == sizeof(filler));
+    buffer_pop(buffer, NULL, sizeof(filler) - 1);
+
+    /* 57 bytes at the end of the storage, 44 at its start */
+    memset(data, 'B', sizeof(data));
+    assert(buffer_push(buffer, data, sizeof(data)) == sizeof(data));
+    assert(buffer->head + buffer->len > 256);
+
+    buffer_wipe(buffer);
+    assert(buffer_len(buffer) == 0);
+    for (size_t i = 0; i < 256; i++) {
+        if (i < 44 || i >= 199)
+            assert(buffer->buffer[i] == 0);
+        else
+            assert(buffer->buffer[i] == 'A');
+    }
+
+    /* Contiguous data */
+    assert(buffer_push(buffer, data, 10) == 10);
+    buffer_wipe(buffer);
+    assert(buffer_len(buffer) == 0);
+    for (size_t i = 0; i < 10; i++)
+        assert(buffer->buffer[i] == 0);
+    assert(buffer->buffer[44] == 'A');
+
+    free_buffer(buffer);
+}
+
 int main(void) {
     test_loop = ev_loop_new(0);
     assert(test_loop != NULL);
@@ -378,6 +419,8 @@ int main(void) {
     test_buffer_prepend_empty();
 
     test_buffer_prepend_wrap();
+
+    test_buffer_wipe();
 
     ev_loop_destroy(test_loop);
 }
