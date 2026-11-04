@@ -764,7 +764,10 @@ afterthought.
   client sends after such a pause, opens no session and is not sent to
   the fallback, where the client's next ClientHello would follow it; it
   does not count against the per-IP session rate either, so such a
-  client does not keep others behind its address from opening sessions. Other UDP traffic, such as STUN, OpenVPN
+  client does not keep others behind its address from opening sessions.
+  This holds when the fallback is the DTLS server too: a client whose
+  session ended, after a pause or a change of address, has to handshake
+  again, even with a connection ID (RFC 9146). Other UDP traffic, such as STUN, OpenVPN
   or NTP, still goes to the fallback, and so do DTLS 1.3 records after
   the handshake, whose header cannot be told apart from theirs.
 - **Privilege separation**: the privileged binder, the log writer
