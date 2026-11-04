@@ -100,6 +100,48 @@ static const unsigned char http2_hostless_then_partial[] =
     "\x82\x87\x84"
     "\x00\x00\x10\x00\x00\x00\x00\x00\x01";
 
+/* A host header must name the host :authority does */
+static const unsigned char http2_host_same_as_authority[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x19\x01\x05\x00\x00\x00\x01"
+    "\x82\x87\x84\x41\x09"
+    "localhost"
+    "\x66\x09"
+    "localhost";
+
+static const unsigned char http2_host_other_than_authority[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x15\x01\x05\x00\x00\x00\x01"
+    "\x82\x87\x84\x41\x09"
+    "localhost"
+    "\x66\x05"
+    "other";
+
+/* At most two dynamic table size updates, and only at the start of the
+ * header block */
+static const unsigned char http2_two_table_size_updates[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x10\x01\x05\x00\x00\x00\x01"
+    "\x20\x20\x82\x87\x84\x41\x09"
+    "localhost";
+
+static const unsigned char http2_three_table_size_updates[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x11\x01\x05\x00\x00\x00\x01"
+    "\x20\x20\x20\x82\x87\x84\x41\x09"
+    "localhost";
+
+static const unsigned char http2_late_table_size_update[] =
+    "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    "\x00\x00\x00\x04\x00\x00\x00\x00\x00"
+    "\x00\x00\x0f\x01\x05\x00\x00\x00\x01"
+    "\x82\x20\x87\x84\x41\x09"
+    "localhost";
+
 struct http_request_case {
     const char *request;
     const char *expected_host;
@@ -506,6 +548,36 @@ int main(void) {
             sizeof(http2_hostless_then_partial) - 1, &hostname);
     assert(result == -2);
     assert(hostname == NULL);
+
+    static const struct {
+        const unsigned char *request;
+        size_t len;
+        int accepted;
+    } h2_cases[] = {
+        { http2_host_same_as_authority,
+            sizeof(http2_host_same_as_authority) - 1, 1 },
+        { http2_host_other_than_authority,
+            sizeof(http2_host_other_than_authority) - 1, 0 },
+        { http2_two_table_size_updates,
+            sizeof(http2_two_table_size_updates) - 1, 1 },
+        { http2_three_table_size_updates,
+            sizeof(http2_three_table_size_updates) - 1, 0 },
+        { http2_late_table_size_update,
+            sizeof(http2_late_table_size_update) - 1, 0 },
+    };
+    for (size_t c = 0; c < sizeof(h2_cases) / sizeof(h2_cases[0]); c++) {
+        hostname = NULL;
+        result = http_protocol->parse_packet((const char *)h2_cases[c].request,
+                h2_cases[c].len, &hostname);
+        if (h2_cases[c].accepted) {
+            assert(result == 9);
+            assert(hostname != NULL && strcmp(hostname, "localhost") == 0);
+            free(hostname);
+        } else {
+            assert(result < 0);
+            assert(hostname == NULL);
+        }
+    }
 
     /* Data without a new line cannot complete an HTTP/1 request, while
      * HTTP/2 frames are always parsed again. */

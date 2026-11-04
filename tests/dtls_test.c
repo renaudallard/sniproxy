@@ -338,8 +338,71 @@ test_client_hello_random(void) {
     return failures;
 }
 
+/* The DTLS 1.2 hello for "localhost" with n empty extensions after its
+ * server_name one. Returns its length. */
+static size_t
+build_many_extensions_hello(unsigned char *buf, size_t n) {
+    const size_t ext_start = 71;
+    size_t pos = sizeof(dtls12_sni_localhost);
+
+    memcpy(buf, dtls12_sni_localhost, pos);
+    for (size_t i = 0; i < n; i++) {
+        buf[pos++] = 0xfa;
+        buf[pos++] = (unsigned char)i;
+        buf[pos++] = 0x00;
+        buf[pos++] = 0x00;
+    }
+
+    size_t record_len = pos - 13;
+    size_t body_len = pos - 25;
+    size_t ext_len = pos - ext_start;
+    buf[11] = (unsigned char)(record_len >> 8);
+    buf[12] = (unsigned char)record_len;
+    buf[14] = buf[22] = (unsigned char)(body_len >> 16);
+    buf[15] = buf[23] = (unsigned char)(body_len >> 8);
+    buf[16] = buf[24] = (unsigned char)body_len;
+    buf[ext_start - 2] = (unsigned char)(ext_len >> 8);
+    buf[ext_start - 1] = (unsigned char)ext_len;
+
+    return pos;
+}
+
+/* A hello may carry TLS_DEFAULT_MAX_EXTENSIONS extensions, and not one
+ * more */
+static int
+test_extension_cap(void) {
+    unsigned char hello[sizeof(dtls12_sni_localhost) +
+        4 * TLS_DEFAULT_MAX_EXTENSIONS];
+    int failures = 0;
+    char *hostname = NULL;
+
+    size_t len = build_many_extensions_hello(hello,
+            TLS_DEFAULT_MAX_EXTENSIONS - 1);
+    int result = dtls_protocol->parse_packet((const char *)hello, len,
+            &hostname);
+    if (result != 9 || hostname == NULL ||
+            strcmp(hostname, "localhost") != 0) {
+        fprintf(stderr, "FAIL: a hello with the most extensions allowed\n");
+        failures++;
+    }
+    free(hostname);
+
+    hostname = NULL;
+    len = build_many_extensions_hello(hello, TLS_DEFAULT_MAX_EXTENSIONS);
+    result = dtls_protocol->parse_packet((const char *)hello, len,
+            &hostname);
+    if (result != -5 || hostname != NULL) {
+        fprintf(stderr, "FAIL: a hello with one extension too many\n");
+        failures++;
+    }
+    free(hostname);
+
+    return failures;
+}
+
 int main(void) {
     int failures = test_client_hello_random();
+    failures += test_extension_cap();
 
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
         struct test_case *t = &tests[i];

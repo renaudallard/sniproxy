@@ -1135,6 +1135,27 @@ int main(void) {
     assert(NULL != hostname);
     free(hostname);
 
+    /* A hello may carry TLS_DEFAULT_MAX_EXTENSIONS extensions, here the
+     * server name, supported_versions and the others, and not one more.
+     * With a minimum version, one whose extensions are not all read is
+     * refused rather than sent to the fallback. */
+    hostname = NULL;
+    padded_len = build_many_extensions_client_hello(padded,
+            TLS_DEFAULT_MAX_EXTENSIONS - 2, 0x0304, 0);
+    result = tls_protocol->parse_packet((char *)padded, padded_len,
+            &hostname);
+    assert(result == 9);
+    assert(NULL != hostname);
+    free(hostname);
+
+    hostname = NULL;
+    padded_len = build_many_extensions_client_hello(padded,
+            TLS_DEFAULT_MAX_EXTENSIONS - 1, 0x0304, 0);
+    result = tls_protocol->parse_packet((char *)padded, padded_len,
+            &hostname);
+    assert(result == TLS_ERR_UNSUPPORTED_CLIENT_HELLO);
+    assert(hostname == NULL);
+
     tls_set_min_client_hello_version(3, 3);
 
     /* Below TLS 1.3 the legacy_version passes, but a server takes the
