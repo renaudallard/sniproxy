@@ -237,8 +237,6 @@ netlink_route_refused(void) {
         errno != EAFNOSUPPORT;
 }
 
-/* The socket options of the main filter that CAP_NET_RAW would allow,
- * a firewall mark and a priority, fail */
 /* realpath() resolves a path whose directory is followed by "." or
  * "..", as a config file named that way is on reload */
 static int
@@ -249,6 +247,8 @@ test_realpath_dot(void) {
             realpath("/etc/../etc/", buf) != NULL ? 0 : 1;
 }
 
+/* The socket options of the main filter that CAP_NET_RAW would allow,
+ * a firewall mark and a priority, fail */
 static int
 main_options_refused(int fd) {
     int on = 1;
