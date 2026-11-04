@@ -239,6 +239,16 @@ netlink_route_refused(void) {
 
 /* The socket options of the main filter that CAP_NET_RAW would allow,
  * a firewall mark and a priority, fail */
+/* realpath() resolves a path whose directory is followed by "." or
+ * "..", as a config file named that way is on reload */
+static int
+test_realpath_dot(void) {
+    char buf[PATH_MAX];
+
+    return realpath("/etc/.", buf) != NULL &&
+            realpath("/etc/../etc/", buf) != NULL ? 0 : 1;
+}
+
 static int
 main_options_refused(int fd) {
     int on = 1;
@@ -699,6 +709,13 @@ main(void) {
 
     if (run_child_with_seccomp(SECCOMP_PROCESS_RESOLVER,
                 test_resolver_socket_options) != 0)
+        return 1;
+
+    if (run_child_with_seccomp(SECCOMP_PROCESS_MAIN, test_realpath_dot) != 0 ||
+            run_child_with_seccomp(SECCOMP_PROCESS_LOGGER,
+                test_realpath_dot) != 0 ||
+            run_child_with_seccomp(SECCOMP_PROCESS_RESOLVER,
+                test_realpath_dot) != 0)
         return 1;
 
     if (run_child_with_seccomp(SECCOMP_PROCESS_BINDER, test_binder_files) != 0)

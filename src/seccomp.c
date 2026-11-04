@@ -93,10 +93,11 @@ static const char *const path_read_syscalls[] = {
 
 /* What every process but the binder may also ask about a path: with
  * CAP_DAC_OVERRIDE the binder would get an answer for the paths of root
- * too, and it needs neither */
+ * too, and it needs neither. glibc's realpath() checks a directory with
+ * faccessat2 when "." or ".." follows it. */
 static const char *const fs_read_syscalls[] = {
     "fstatfs", "fstatfs64", "statfs", "statfs64",
-    "faccessat", "access",
+    "faccessat", "faccessat2", "access",
     NULL,
 };
 
