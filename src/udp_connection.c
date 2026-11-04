@@ -678,14 +678,19 @@ udp_session_destroy(struct UDPSession *session, struct ev_loop *loop) {
     if (session->holds_socket_budget)
         connections_udp_socket_release();
 
-    /* Log */
-    if (session->hostname != NULL) {
+    /* Every session logged as established, those without SNI too */
+    if (session->state == UDP_CONNECTED) {
         char client[INET6_ADDRSTRLEN + 8];
-        info("UDP session closed: %s -> %.*s",
+        char server[INET6_ADDRSTRLEN + 8];
+        info("UDP session closed: %s -> %s [%.*s]",
                 display_sockaddr(&session->client_addr,
                         session->client_addr_len,
                         client, sizeof(client)),
-                (int)session->hostname_len, session->hostname);
+                display_sockaddr(&session->server_addr,
+                        session->server_addr_len,
+                        server, sizeof(server)),
+                (int)session->hostname_len,
+                session->hostname ? session->hostname : "");
     }
 
     listener_ref_put(session->listener);
