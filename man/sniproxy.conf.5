@@ -197,8 +197,9 @@ server buffer grows while the client reads slower than the backend
 sends, but only while all connections together use no more than 64 MiB;
 once it cannot grow sniproxy stops reading from the backend until the
 client catches up. The client buffer only grows to
-hold a request that is still being parsed, within the same 64 MiB, and a
-request that does not fit is treated as one that cannot be parsed. Tighter caps protect the
+hold a request that is still being parsed, and past 64 KiB only within
+the same 64 MiB, and a request that does not fit is treated as one that
+cannot be parsed. Tighter caps protect the
 proxy from slow clients pinning RAM.
 
 .SS CLIENT_BUFFER_LIMIT

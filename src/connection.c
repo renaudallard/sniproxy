@@ -1281,6 +1281,17 @@ buffer_memory_allows_growth(void) {
     return connection_memory_in_use <= CONNECTION_MEMORY_PRESSURE_LIMIT;
 }
 
+/* Above the pressure limit a client buffer still grows to this size for a
+ * request being parsed, which holds large cookies or a ClientHello with a
+ * post-quantum key share, but no further */
+#define CLIENT_BUFFER_PRESSURE_SIZE (64U * 1024)
+
+static int
+client_buffer_may_grow(const struct Buffer *buffer) {
+    return buffer_memory_allows_growth() ||
+            buffer_size(buffer) < CLIENT_BUFFER_PRESSURE_SIZE;
+}
+
 /* The server buffer grows, up to server_buffer_limit, while the client
  * reads slower than the backend sends */
 static int
@@ -3267,7 +3278,7 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
              * room for the rest when the buffer is full. No more comes
              * after the client's end of data. */
             if (!con->client_eof && (buffer_room(con->client.buffer) > 0 ||
-                    (buffer_memory_allows_growth() &&
+                    (client_buffer_may_grow(con->client.buffer) &&
                     buffer_reserve(con->client.buffer,
                         buffer_size(con->client.buffer)) == 0)))
                 return;
@@ -3332,10 +3343,10 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
             if (buffer_room(con->client.buffer) > 0)
                 return; /* give client a chance to send more data */
 
-            if (!buffer_memory_allows_growth())
+            if (!client_buffer_may_grow(con->client.buffer))
                 warn("Request from %s exceeded %zu byte buffer size, "
-                        "which cannot grow while connections use more "
-                        "than %u MiB",
+                        "which cannot grow further while connections use "
+                        "more than %u MiB",
                         display_sockaddr(&con->client.addr,
                             con->client.addr_len,
                             client, sizeof(client)),
