@@ -132,6 +132,66 @@ static void test_normal_operation(void) {
     printf("  PASSED\n");
 }
 
+/* The cipher contexts are set up once and only keyed for each message:
+ * a frame refused for its tag must not keep the next ones from opening,
+ * and messages of different lengths must come out intact */
+static void test_context_reuse(void) {
+    struct ipc_crypto_state parent_state;
+    struct ipc_crypto_state child_state;
+
+    printf("Test: Context reuse across messages...\n");
+
+    assert(ipc_crypto_system_init() == 0);
+    assert(ipc_crypto_channel_init(&parent_state, 0x54455354, IPC_CRYPTO_ROLE_PARENT) == 0);
+    assert(ipc_crypto_channel_init(&child_state, 0x54455354, IPC_CRYPTO_ROLE_CHILD) == 0);
+
+    uint8_t msg[300];
+    for (size_t i = 0; i < sizeof(msg); i++)
+        msg[i] = (uint8_t)(i * 7);
+
+    for (size_t round = 0; round < 50; round++) {
+        size_t len = 1 + (round * 37) % sizeof(msg);
+        uint8_t *frame = NULL;
+        size_t frame_len = 0;
+        uint8_t *plaintext = NULL;
+        size_t plaintext_len = 0;
+
+        assert(ipc_crypto_seal(&parent_state, msg, len, &frame, &frame_len) == 0);
+
+        if (round % 5 == 2) {
+            /* A forged copy first: refused, and the genuine one opens */
+            uint8_t *forged = malloc(frame_len);
+            assert(forged != NULL);
+            memcpy(forged, frame, frame_len);
+            forged[frame_len - 1] ^= 0x01;
+            assert(ipc_crypto_open(&child_state, forged, frame_len, 1024,
+                        &plaintext, &plaintext_len) < 0);
+            free(forged);
+            plaintext = NULL;
+        }
+
+        assert(ipc_crypto_open(&child_state, frame, frame_len, 1024,
+                    &plaintext, &plaintext_len) == 0);
+        assert(plaintext_len == len);
+        assert(memcmp(plaintext, msg, len) == 0);
+
+        /* And the other way */
+        free(frame);
+        free(plaintext);
+        assert(ipc_crypto_seal(&child_state, msg, len, &frame, &frame_len) == 0);
+        assert(ipc_crypto_open(&parent_state, frame, frame_len, 1024,
+                    &plaintext, &plaintext_len) == 0);
+        assert(plaintext_len == len && memcmp(plaintext, msg, len) == 0);
+        free(frame);
+        free(plaintext);
+    }
+
+    ipc_crypto_state_clear(&parent_state);
+    ipc_crypto_state_clear(&child_state);
+
+    printf("  PASSED\n");
+}
+
 int main(void) {
     printf("IPC Crypto Rekey Tests\n");
     printf("======================\n\n");
@@ -139,6 +199,7 @@ int main(void) {
     test_normal_operation();
     test_rekey_at_threshold();
     test_generation_overflow_protection();
+    test_context_reuse();
 
     printf("\nAll tests PASSED!\n");
     return 0;

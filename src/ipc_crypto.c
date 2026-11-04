@@ -514,6 +514,21 @@ ipc_crypto_channel_init(struct ipc_crypto_state *state, uint32_t channel_id,
         goto fail_wipe;
     }
 
+    if (EVP_EncryptInit_ex(state->seal_ctx, EVP_chacha20_poly1305(),
+                NULL, NULL, NULL) != 1 ||
+            EVP_CIPHER_CTX_ctrl(state->seal_ctx, EVP_CTRL_AEAD_SET_IVLEN,
+                IPC_CRYPTO_NONCE_LEN, NULL) != 1 ||
+            EVP_DecryptInit_ex(state->open_ctx, EVP_chacha20_poly1305(),
+                NULL, NULL, NULL) != 1 ||
+            EVP_CIPHER_CTX_ctrl(state->open_ctx, EVP_CTRL_AEAD_SET_IVLEN,
+                IPC_CRYPTO_NONCE_LEN, NULL) != 1) {
+        EVP_CIPHER_CTX_free(state->open_ctx);
+        state->open_ctx = NULL;
+        EVP_CIPHER_CTX_free(state->seal_ctx);
+        state->seal_ctx = NULL;
+        goto fail_wipe;
+    }
+
     state->send_buf = NULL;
     state->send_buf_cap = 0;
 
@@ -602,19 +617,12 @@ seal_internal(struct ipc_crypto_state *state, const uint8_t *plaintext,
     if (ctx == NULL)
         return -1;
 
-    EVP_CIPHER_CTX_reset(ctx);
-
     int ok = 0;
     int len;
     uint8_t *ciphertext = frame + sizeof(header);
     uint8_t *tag = frame + sizeof(header) + plaintext_len;
 
     do {
-        if (EVP_EncryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) != 1)
-            break;
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
-                    IPC_CRYPTO_NONCE_LEN, NULL) != 1)
-            break;
         if (EVP_EncryptInit_ex(ctx, NULL, NULL, state->send_key,
                     header.nonce) != 1)
             break;
@@ -798,14 +806,7 @@ ipc_crypto_open(struct ipc_crypto_state *state, const uint8_t *frame,
         return -1;
     }
 
-    EVP_CIPHER_CTX_reset(ctx);
-
     do {
-        if (EVP_DecryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, NULL, NULL) != 1)
-            break;
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
-                    IPC_CRYPTO_NONCE_LEN, NULL) != 1)
-            break;
         if (EVP_DecryptInit_ex(ctx, NULL, NULL, state->recv_key,
                     header.nonce) != 1)
             break;
