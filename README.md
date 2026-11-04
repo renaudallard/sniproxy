@@ -963,9 +963,11 @@ query ID.
   client buffer and a 32 KiB server buffer, which grow on demand up to
   the configured caps. Idle buffers shrink back, the client one down to
   8 KiB and the server one to its initial 32 KiB.
-- **Memory-pressure trimming**: a global soft limit drives an
-  aggressive shrink pass against idle buffers before total RAM balloons;
-  the shrink candidate queue is itself bounded (4096 entries).
+- **Memory-pressure trimming**: a global soft limit of 64 MiB drives an
+  aggressive shrink pass against idle buffers before total RAM balloons,
+  and above it no buffer grows, so a request larger than the 16 KiB a
+  client buffer starts with is refused until the pressure is gone; the
+  shrink candidate queue is itself bounded (4096 entries).
 - **TCP_NODELAY** on both sides to avoid Nagle coalescing delays.
 - **SO_SPLICE zero-copy on OpenBSD**: once the handshake is parsed the
   kernel splices client and server sockets directly; user-space buffers
@@ -1028,8 +1030,8 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
   lower `max_concurrent_queries` and `max_concurrent_queries_per_client`.
 - Lower `connection_buffer_limit` or `server_buffer_limit`: a connection
   whose client reads slower than its backend sends can buffer up to that
-  much, although server buffers stop growing once all connections
-  together use 64 MiB.
+  much, although buffers stop growing once all connections together use
+  64 MiB.
 
 **Permission errors on start**
 

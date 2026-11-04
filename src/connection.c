@@ -1272,15 +1272,20 @@ reactivate_watchers_with_state(struct Connection *con, struct ev_loop *loop,
     shrink_candidate_update(con, loop, 0.0);
 }
 
+/* No buffer grows once the connections use more memory than the pressure
+ * limit, above which idle buffers are shrunk, so that clients cannot make
+ * every connection hold its full limit: the server buffer while they stop
+ * reading, the client buffer while they send a request slowly. */
+static int
+buffer_memory_allows_growth(void) {
+    return connection_memory_in_use <= CONNECTION_MEMORY_PRESSURE_LIMIT;
+}
+
 /* The server buffer grows, up to server_buffer_limit, while the client
- * reads slower than the backend sends. It does not once the connections
- * use more memory than the pressure limit, above which idle buffers are
- * shrunk, so that clients that stop reading cannot make every connection
- * hold its full limit. */
+ * reads slower than the backend sends */
 static int
 server_buffer_may_grow(int client_open) {
-    return client_open &&
-            connection_memory_in_use <= CONNECTION_MEMORY_PRESSURE_LIMIT;
+    return client_open && buffer_memory_allows_growth();
 }
 
 static void
@@ -3262,8 +3267,9 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
              * room for the rest when the buffer is full. No more comes
              * after the client's end of data. */
             if (!con->client_eof && (buffer_room(con->client.buffer) > 0 ||
+                    (buffer_memory_allows_growth() &&
                     buffer_reserve(con->client.buffer,
-                        buffer_size(con->client.buffer)) == 0))
+                        buffer_size(con->client.buffer)) == 0)))
                 return;
             rc = -2;
         }
@@ -3326,15 +3332,24 @@ parse_client_request(struct Connection *con, struct ev_loop *loop) {
             if (buffer_room(con->client.buffer) > 0)
                 return; /* give client a chance to send more data */
 
-            if (buffer_reserve(con->client.buffer,
+            if (!buffer_memory_allows_growth())
+                warn("Request from %s exceeded %zu byte buffer size, "
+                        "which cannot grow while connections use more "
+                        "than %u MiB",
+                        display_sockaddr(&con->client.addr,
+                            con->client.addr_len,
+                            client, sizeof(client)),
+                        buffer_size(con->client.buffer),
+                        CONNECTION_MEMORY_PRESSURE_LIMIT / (1024U * 1024U));
+            else if (buffer_reserve(con->client.buffer,
                                buffer_size(con->client.buffer)) == 0)
                 return; /* buffer successfully expanded */
-
-            warn("Request from %s exceeded %zu byte buffer size",
-                    display_sockaddr(&con->client.addr,
-                        con->client.addr_len,
-                        client, sizeof(client)),
-                    buffer_size(con->client.buffer));
+            else
+                warn("Request from %s exceeded %zu byte buffer size",
+                        display_sockaddr(&con->client.addr,
+                            con->client.addr_len,
+                            client, sizeof(client)),
+                        buffer_size(con->client.buffer));
             /* The version of a ClientHello too large for the buffer has
              * not been checked against the -T minimum, so it must not go
              * to the fallback */
