@@ -157,6 +157,19 @@ add_table(struct Table_head *tables, struct Table *table) {
     SLIST_INSERT_HEAD(tables, table, entries);
 }
 
+/* Move every backend of from to the end of to. STAILQ_CONCAT would do it,
+ * but FreeBSD's STAILQ_EMPTY in it is a GNU statement expression, which
+ * -Wpedantic warns of. */
+static void
+backends_move(struct Backend_head *to, struct Backend_head *from) {
+    struct Backend *backend;
+
+    while ((backend = STAILQ_FIRST(from)) != NULL) {
+        STAILQ_REMOVE_HEAD(from, entries);
+        STAILQ_INSERT_TAIL(to, backend, entries);
+    }
+}
+
 int
 valid_table(struct Table *table) {
     if (table == NULL) {
@@ -166,7 +179,7 @@ valid_table(struct Table *table) {
 
     const char *table_name = table->name != NULL ? table->name : "(default)";
 
-    if (STAILQ_EMPTY(&table->backends)) {
+    if (STAILQ_FIRST(&table->backends) == NULL) {
         err("Table \"%s\" does not define any backends", table_name);
         return 0;
     }
@@ -334,17 +347,17 @@ reload_tables(struct Table_head *tables, struct Table_head *new_tables) {
 
         struct Table *existing = table_lookup(tables, iter->name);
         if (existing) {
-            /* Swap table contents.  A STAILQ head cannot be swapped by
+            /* Swap table contents. A STAILQ head cannot be swapped by
              * value: an empty list's tail pointer refers back into its own
              * head, so a struct copy would leave existing->backends with a
-             * tail pointer dangling into the freed iter.  Move the lists with
-             * STAILQ_CONCAT, which fixes up the tail pointers.  iter keeps the
+             * tail pointer dangling into the freed iter. Move the backends
+             * instead, which keeps the tail pointers right. iter keeps the
              * old backends and frees them when it is released below. */
             struct Backend_head temp;
             STAILQ_INIT(&temp);
-            STAILQ_CONCAT(&temp, &existing->backends);
-            STAILQ_CONCAT(&existing->backends, &iter->backends);
-            STAILQ_CONCAT(&iter->backends, &temp);
+            backends_move(&temp, &existing->backends);
+            backends_move(&existing->backends, &iter->backends);
+            backends_move(&iter->backends, &temp);
             existing->backend_affinity = iter->backend_affinity;
             table_cache_clear(existing);
         } else {
