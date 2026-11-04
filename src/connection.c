@@ -2671,15 +2671,18 @@ shrink_candidate_insert(struct Connection *con) {
         }
     }
 
-    TAILQ_FOREACH(iter, &shrink_candidates, shrink_entries) {
-        if (con->shrink_deadline < iter->shrink_deadline) {
-            TAILQ_INSERT_BEFORE(iter, con, shrink_entries);
+    /* A connection comes back with a deadline one idle period away, later
+     * than nearly all the others, so its place is looked for from the end */
+    TAILQ_FOREACH_REVERSE(iter, &shrink_candidates, BufferIdleQueue,
+            shrink_entries) {
+        if (iter->shrink_deadline <= con->shrink_deadline) {
+            TAILQ_INSERT_AFTER(&shrink_candidates, iter, con, shrink_entries);
             shrink_candidates_count++;
             return;
         }
     }
 
-    TAILQ_INSERT_TAIL(&shrink_candidates, con, shrink_entries);
+    TAILQ_INSERT_HEAD(&shrink_candidates, con, shrink_entries);
     shrink_candidates_count++;
 }
 
