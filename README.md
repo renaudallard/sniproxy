@@ -124,7 +124,7 @@ fuzzing, and active maintenance.
 | Protocol | Hostname source | Notes |
 | --- | --- | --- |
 | TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
-| DTLS | SNI extension in UDP ClientHello | Session held until a second datagram arrives from the same source; a ClientHello fragmented over several datagrams goes to the fallback, while a renegotiation hello or a DTLS record other than an epoch 0 handshake drops the session; unix socket backends and fallbacks are refused |
+| DTLS | SNI extension in UDP ClientHello | Session held until a second datagram repeating the same ClientHello arrives from the same source; a ClientHello fragmented over several datagrams goes to the fallback, while a renegotiation hello or a DTLS record other than an epoch 0 handshake drops the session; unix socket backends and fallbacks are refused |
 | HTTP/1.x | `Host:` request header, or the host of an absolute-form or CONNECT target, which `Host:` must then name | Header count capped by `http_max_headers` (default 100) |
 | HTTP/2 | HPACK `:authority` pseudo-header of the first request | Bounded HPACK table (per-conn 64 KiB / global 4 MiB); later requests are not searched |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
@@ -752,10 +752,14 @@ afterthought.
   second datagram arrives from the same source address and port within
   3 seconds, and nothing is sent to the client or a backend before that.
   Real DTLS clients retransmit by design (RFC 6347 section 4.2.4), so a
-  single spoofed packet never reaches a backend. The second datagram is
-  not compared with the first and no HelloVerifyRequest is sent, so an
-  attacker who sends two spoofed packets does get through; from there it
-  is the backend's own DTLS cookie exchange that limits amplification.
+  single spoofed packet never reaches a backend, and the second datagram
+  must repeat the ClientHello of the first, with the same random, or
+  carry none when the first did: any other, as one forged while a
+  client's first datagram is held, is dropped and does not choose where
+  the client's session goes. No HelloVerifyRequest is sent, so an
+  attacker who sends two matching spoofed packets does get through; from
+  there it is the backend's own DTLS cookie exchange that limits
+  amplification.
   A session ends after 30 seconds without a datagram from its client,
   whatever its backend sends, and an ICMP error about its backend, which
   anyone can forge, does not end it: a session keeps the backend address

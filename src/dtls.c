@@ -90,6 +90,44 @@ dtls_is_late_record(const char *data_char, size_t data_len) {
 }
 
 /*
+ * Copy the random of the ClientHello a datagram carries into random, when
+ * it holds one in an unfragmented epoch 0 handshake record, and return 1.
+ * The retransmissions of a ClientHello, and the one that answers a
+ * HelloVerifyRequest, carry the same random (RFC 6347 section 4.2.1), so
+ * it tells the datagrams of one handshake from those of any other.
+ */
+int
+dtls_client_hello_random(const char *data_char, size_t data_len,
+        uint8_t *random) {
+    const uint8_t *data = (const uint8_t *)data_char;
+    const size_t hello_len = DTLS_HANDSHAKE_HEADER_LEN +
+        DTLS_CLIENT_HELLO_VERSION_RANDOM_LEN;
+
+    if (data_len < DTLS_RECORD_HEADER_LEN + hello_len ||
+            data[0] != DTLS_HANDSHAKE_CONTENT_TYPE || data[1] != 0xFE ||
+            data[3] != 0 || data[4] != 0)
+        return 0;
+
+    size_t len = ((size_t)data[11] << 8) | data[12];
+    if (len < hello_len || DTLS_RECORD_HEADER_LEN + len > data_len)
+        return 0;
+
+    const uint8_t *handshake = data + DTLS_RECORD_HEADER_LEN;
+    size_t frag_offset = ((size_t)handshake[6] << 16) |
+        ((size_t)handshake[7] << 8) | (size_t)handshake[8];
+    size_t frag_length = ((size_t)handshake[9] << 16) |
+        ((size_t)handshake[10] << 8) | (size_t)handshake[11];
+    if (handshake[0] != DTLS_HANDSHAKE_TYPE_CLIENT_HELLO ||
+            frag_offset != 0 ||
+            frag_length < DTLS_CLIENT_HELLO_VERSION_RANDOM_LEN)
+        return 0;
+
+    memcpy(random, handshake + DTLS_HANDSHAKE_HEADER_LEN + 2,
+            DTLS_RANDOM_LEN);
+    return 1;
+}
+
+/*
  * Parse a DTLS datagram for the Server Name Indication extension in the
  * ClientHello handshake.
  *

@@ -30,6 +30,9 @@
 
 extern const struct Protocol *const dtls_protocol;
 
+#define DTLS_RANDOM_LEN 32
+
 int dtls_is_late_record(const char *, size_t);
+int dtls_client_hello_random(const char *, size_t, uint8_t *);
 
 #endif

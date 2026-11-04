@@ -646,10 +646,12 @@ second datagram arrives from the same
 address and port, and is silently dropped if none does within 3
 seconds (DTLS clients retransmit by design per RFC 6347). The first
 datagram is discarded, and the second is the one parsed for SNI and
-forwarded. A single spoofed packet therefore never reaches a backend. The second datagram is
-not compared with the first, so an attacker who sends two spoofed
-packets gets through; rely on the backend's DTLS cookie exchange for
-the rest. A session ends after 30 seconds without a datagram from its
+forwarded, once it is seen to repeat the ClientHello of the first, with
+the same random, or to carry none when the first did: any other datagram
+is dropped and leaves the session waiting. A single spoofed packet
+therefore never reaches a backend, nor chooses where a client's session
+goes, but an attacker who sends two matching spoofed packets gets
+through; rely on the backend's DTLS cookie exchange for the rest. A session ends after 30 seconds without a datagram from its
 client, whatever its backend sends, so that a backend cannot keep
 sending to a forged address, and an ICMP error about its backend, which
 anyone who knows the backend's address can forge, does not end it: a

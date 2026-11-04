@@ -96,6 +96,10 @@ struct UDPSession {
     TAILQ_ENTRY(UDPSession) validating_entries; /* while UDP_VALIDATING */
     uint32_t addr_hash;
     enum udp_session_state state;
+    /* The random of the ClientHello in the first datagram, which the
+     * second one must repeat */
+    uint8_t hello_random[DTLS_RANDOM_LEN];
+    int hello_random_set;
     int transparent;            /* its backend socket takes the client's
                                  * address and port, for source client */
 };
@@ -200,6 +204,20 @@ udp_recv_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
 
 /* Read and handle one datagram from a listener socket. Returns 0 when
  * there was none to read. */
+/* Whether a datagram carries the ClientHello the session began with, or
+ * none when the first datagram had none */
+static int
+udp_session_same_hello(const struct UDPSession *session, const char *buf,
+        size_t len) {
+    uint8_t random[DTLS_RANDOM_LEN];
+    int set = session->listener->protocol == dtls_protocol &&
+        dtls_client_hello_random(buf, len, random);
+
+    if (set != session->hello_random_set)
+        return 0;
+    return !set || memcmp(random, session->hello_random, sizeof(random)) == 0;
+}
+
 static int
 udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
     char buf[UDP_MAX_DGRAM];
@@ -228,6 +246,20 @@ udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
             listener);
 
     if (session != NULL) {
+        /* The second datagram must belong to the handshake the first one
+         * began: one a forged source sends meanwhile, with another
+         * ClientHello or none, is dropped and leaves the session as it is,
+         * so that it cannot choose where the client's session goes. */
+        if (session->state == UDP_VALIDATING &&
+                !udp_session_same_hello(session, buf, (size_t)n)) {
+            char client[INET6_ADDRSTRLEN + 8];
+            debug("UDP: dropping a datagram from %s that does not repeat "
+                    "the ClientHello its session began with",
+                    display_sockaddr(&client_addr, addr_len,
+                            client, sizeof(client)));
+            return 1;
+        }
+
         /* In VALIDATING state, switch the timer's repeat to the normal
          * idle timeout before the (single) ev_timer_again reset below. */
         if (session->state == UDP_VALIDATING)
@@ -343,6 +375,8 @@ udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
     if (session == NULL)
         return 1;
     session->local_addr_len = udp_datagram_dst(&msg, &session->local_addr);
+    session->hello_random_set = listener->protocol == dtls_protocol &&
+        dtls_client_hello_random(buf, (size_t)n, session->hello_random);
 
     /* Session starts in UDP_VALIDATING state. The datagram is not forwarded
      * yet; we wait for a second one from the same (IP, port), which DTLS

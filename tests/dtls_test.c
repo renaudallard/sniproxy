@@ -295,8 +295,51 @@ static struct test_case tests[] = {
     },
 };
 
-int main(void) {
+/* The random of a ClientHello is read from an unfragmented epoch 0
+ * handshake record and from nothing else */
+static int
+test_client_hello_random(void) {
+    uint8_t random[DTLS_RANDOM_LEN];
     int failures = 0;
+
+    if (dtls_client_hello_random((const char *)dtls12_sni_localhost,
+                sizeof(dtls12_sni_localhost), random) != 1 ||
+            memcmp(random, dtls12_sni_localhost + 27, sizeof(random)) != 0 ||
+            random[0] != 0x01 || random[31] != 0x20) {
+        fprintf(stderr, "FAIL: random of the DTLS 1.2 ClientHello\n");
+        failures++;
+    }
+    if (dtls_client_hello_random((const char *)dtls10_sni_example,
+                sizeof(dtls10_sni_example), random) != 1 ||
+            memcmp(random, dtls10_sni_example + 27, sizeof(random)) != 0) {
+        fprintf(stderr, "FAIL: random of the ClientHello with a cookie\n");
+        failures++;
+    }
+    if (dtls_client_hello_random((const char *)dtls_fragmented,
+                sizeof(dtls_fragmented), random) != 0) {
+        fprintf(stderr, "FAIL: a fragment has no random\n");
+        failures++;
+    }
+    if (dtls_client_hello_random((const char *)dtls12_sni_localhost,
+                sizeof(dtls12_sni_localhost) - 1, random) != 0) {
+        fprintf(stderr, "FAIL: a truncated record has no random\n");
+        failures++;
+    }
+
+    unsigned char epoch1[sizeof(dtls12_sni_localhost)];
+    memcpy(epoch1, dtls12_sni_localhost, sizeof(epoch1));
+    epoch1[4] = 1;
+    if (dtls_client_hello_random((const char *)epoch1, sizeof(epoch1),
+                random) != 0) {
+        fprintf(stderr, "FAIL: a later epoch has no random\n");
+        failures++;
+    }
+
+    return failures;
+}
+
+int main(void) {
+    int failures = test_client_hello_random();
 
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
         struct test_case *t = &tests[i];

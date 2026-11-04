@@ -3,7 +3,9 @@
 # A dtls listener holds a new session until a second datagram comes from
 # the same address and port, then forwards it to the backend its SNI
 # names and passes the backend's datagrams back. A single datagram, as a
-# forged source sends, never reaches the backend.
+# forged source sends, never reaches the backend, and a second one that
+# does not repeat the first ClientHello, as one forged while a client's
+# first datagram is held, is dropped rather than routed.
 
 use strict;
 use warnings;
@@ -20,6 +22,13 @@ my $hello = pack('H*',
     '40fefd0102030405060708090a0b0c0d0e0f101112131415' .
     '161718191a1b1c1d1e1f2000000004002f00ff0100001200' .
     '00000e000c0000096c6f63616c686f7374');
+
+# Another ClientHello, for "other.test" with another random
+my $other_hello = pack('H*',
+    '16fefd0000000000000000004d0100004100000000000000' .
+    '41fefda0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4' .
+    'b5b6b7b8b9babbbcbdbebf00000004002f00ff0100001300' .
+    '00000f000d00000a6f746865722e74657374');
 
 sub proxy {
     my $config = shift;
@@ -71,8 +80,11 @@ sub main {
     my $proxy_port = find_free_port();
     my $http_port = find_free_port();
     my $backend_port = find_free_port();
+    my $other_port = find_free_port();
     my ($log_fh, $log) = File::Temp::tempfile();
     close($log_fh);
+    my ($other_log_fh, $other_log) = File::Temp::tempfile();
+    close($other_log_fh);
 
     my ($fh, $config) = File::Temp::tempfile();
     print $fh <<END;
@@ -91,11 +103,13 @@ listen 127.0.0.1 $http_port {
 
 table dtls {
     localhost 127.0.0.1 $backend_port
+    other.test 127.0.0.1 $other_port
 }
 END
     close($fh);
 
     start_child('backend', \&udp_backend, $backend_port, $log);
+    start_child('other', \&udp_backend, $other_port, $other_log);
     my $proxy_pid = start_child('server', \&proxy, $config, @ARGV);
     wait_for_port(port => $http_port);
 
@@ -129,10 +143,31 @@ END
         $failed = 1;
     }
 
+    # A second datagram with another ClientHello, as a forged one with the
+    # client's source would be, is dropped: the held session still goes
+    # where the client's own retransmission says
+    my $victim = client($proxy_port);
+    $victim->send($hello);
+    $victim->send($other_hello);
+    sleep 1;
+    if (datagrams_received($other_log) != 0) {
+        print "a forged second datagram was routed to its own backend\n";
+        $failed = 1;
+    }
+    $victim->send($hello);
+    sleep 1;
+    if (datagrams_received($log) != 2 || datagrams_received($other_log) != 0) {
+        printf "after the forged datagram the backends received %d and %d "
+                . "datagrams instead of 2 and 0\n",
+                datagrams_received($log), datagrams_received($other_log);
+        $failed = 1;
+    }
+
     kill 15, $proxy_pid;
     sleep 1;
     unlink($config);
     unlink($log);
+    unlink($other_log);
     reap_children();
 
     exit $failed;
