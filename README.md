@@ -882,10 +882,13 @@ afterthought.
   killed by its filter, or on OpenBSD by a pledge violation, is logged
   by the main process as "process N was killed by signal S" before it
   is restarted. In daemon mode the first logger, forked before sniproxy
-  detaches, is not a child of the main process: its death is not logged,
-  and the health check restarts it within 30 seconds, logging that it
-  was lost, or that it could not be pinged when nothing was logged in
-  the meantime. Every process
+  detaches, is not a child of the main process: its death is not logged.
+  A logger that a log line finds gone is restarted a second later,
+  logging that it was lost, with a delay that doubles up to 30 seconds
+  while its replacements are lost too; when nothing is logged the
+  health check restarts it within 30 seconds, logging that it could not
+  be pinged. The main process writes the log files itself in the
+  meantime. Every process
   is also made non-dumpable, so that another process of the same user,
   a compromised helper included, cannot read or write its memory through
   `/proc`; as a consequence no core file is written.

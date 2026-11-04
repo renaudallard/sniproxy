@@ -264,6 +264,12 @@ static unsigned long logger_sent_at_block = 0;
 /* Messages sent to the logger */
 static unsigned long logger_sent = 0;
 static int logger_health_check_active = 0;
+/* A logger found gone is replaced at a check brought forward to this
+ * delay. It doubles, up to the check interval, while the loggers started
+ * in its place are lost too, and is back to its first value once one
+ * answers a ping. */
+#define LOGGER_LOST_CHECK_DELAY 1.0
+static ev_tstamp logger_lost_delay = LOGGER_LOST_CHECK_DELAY;
 
 struct logger_ipc_header;
 
@@ -308,6 +314,7 @@ static FILE *logger_child_open_file(const char *filepath, int dirfd,
 static int logger_register_sink(struct LogSink *sink);
 static void logger_resend_sinks(void);
 static void logger_health_check_cb(struct ev_loop *, struct ev_timer *, int);
+static void logger_check_soon(void);
 static int logger_send_ping(void);
 static int logger_check_pong(void);
 
@@ -1605,6 +1612,7 @@ disable_logger_process(void) {
 
     logger_process_enabled = 0;
     logger_process_failed = 1;
+    logger_check_soon();
 
     struct LogSink *sink = SLIST_FIRST(&sinks);
     while (sink != NULL) {
@@ -2828,6 +2836,7 @@ logger_check_pong(void) {
 
     free(msg);
     logger_ping_pending = 0;
+    logger_lost_delay = LOGGER_LOST_CHECK_DELAY;
     return 0;
 }
 
@@ -2910,6 +2919,23 @@ logger_health_check_cb(struct ev_loop *loop, struct ev_timer *w, int revents) {
     }
     logger_ping_sent_at = now;
     logger_ping_blocked = 0;
+}
+
+static void
+logger_check_soon(void) {
+    if (!logger_health_check_active || logger_health_loop == NULL ||
+            ev_timer_remaining(logger_health_loop, &logger_health_timer) <=
+            logger_lost_delay)
+        return;
+
+    ev_timer_stop(logger_health_loop, &logger_health_timer);
+    ev_timer_set(&logger_health_timer, logger_lost_delay,
+            LOGGER_HEALTH_CHECK_INTERVAL);
+    ev_timer_start(logger_health_loop, &logger_health_timer);
+
+    logger_lost_delay *= 2;
+    if (logger_lost_delay > LOGGER_HEALTH_CHECK_INTERVAL)
+        logger_lost_delay = LOGGER_HEALTH_CHECK_INTERVAL;
 }
 
 void
