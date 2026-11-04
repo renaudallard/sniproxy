@@ -1117,7 +1117,7 @@ tracing, logged at notice priority, so an error log set to warning or
 stricter drops it. The resolver process writes it to stderr or to
 syslog, and with `error_log { filename ... }`, a file it cannot write,
 hands its messages to the main process, which writes them there after
-`resolver:`.
+`resolver:`, 100 a second at most.
 
 ## How it compares
 

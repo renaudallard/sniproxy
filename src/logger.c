@@ -2794,13 +2794,40 @@ logger_post_fork_child_disinherit(void) {
     }
 }
 
+/* Messages of the helper processes written a second at most, so that a
+ * compromised helper cannot fill the disk through the main process. Those
+ * over it are counted, and the count logged with the next one written. */
+#define LOG_HELPER_MAX_PER_SECOND 100
+
 /* A message a helper process handed over, for the error log after the
  * helper's name. A compromised helper must not write lines of its own
  * into the log, nor log above error. */
 void
 log_helper_message(const char *helper, int priority, const uint8_t *msg,
         size_t len) {
+    static time_t second;
+    static unsigned int written;
+    static unsigned long dropped;
     char text[1024];
+    time_t now = time(NULL);
+
+    if (now != second) {
+        second = now;
+        written = 0;
+    }
+    if (written >= LOG_HELPER_MAX_PER_SECOND) {
+        dropped++;
+        return;
+    }
+    written++;
+
+    init_default_logger();
+    if (dropped > 0) {
+        log_msg(default_logger, LOG_WARNING, "%lu messages of the helper "
+                "processes were dropped, more than %d came in a second",
+                dropped, LOG_HELPER_MAX_PER_SECOND);
+        dropped = 0;
+    }
 
     if (len >= sizeof(text))
         len = sizeof(text) - 1;
@@ -2811,7 +2838,6 @@ log_helper_message(const char *helper, int priority, const uint8_t *msg,
     if (priority < LOG_ERR || priority > LOG_DEBUG)
         priority = LOG_ERR;
 
-    init_default_logger();
     log_msg(default_logger, priority, "%s: %s", helper, text);
 }
 

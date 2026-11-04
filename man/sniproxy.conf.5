@@ -404,7 +404,8 @@ The main process owns a log file, so the binder and resolver helper
 processes cannot write to it. They hand their own messages, for example
 DNS-over-TLS handshake failures, to the main process, which writes them
 to the file after "resolver:" or "binder:", with any character that is
-not printable replaced; those they log before their channel to the main
+not printable replaced, at most 100 a second, the others being counted
+and the count logged; those they log before their channel to the main
 process is set up, or cannot hand over, go to syslog with the daemon
 facility. With \fBsyslog\fR the helpers
 use the configured facility, and with the default stderr log they share
