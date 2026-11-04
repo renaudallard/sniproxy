@@ -1077,9 +1077,11 @@ sniproxy -f -d -c /etc/sniproxy.conf
 ```
 
 `-f` keeps the process in the foreground; `-d` turns on verbose resolver
-tracing. The resolver process writes it to stderr or to syslog: it cannot
-write to a file error log owned by the main process, so with `error_log {
-filename ... }` its messages go to syslog with the daemon facility.
+tracing, logged at notice priority, so an error log set to warning or
+stricter drops it. The resolver process writes it to stderr or to
+syslog: it cannot write to a file error log owned by the main process,
+so with `error_log { filename ... }` its messages go to syslog with the
+daemon facility.
 
 ## How it compares
 
