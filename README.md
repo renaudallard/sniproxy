@@ -608,6 +608,10 @@ table secure_hosts {
     secure.example.com  192.0.2.20:443 proxy_protocol
     other.example.com   192.0.2.21:443 proxy_protocol_v2
 
+    # A unix socket backend: listeners and fallbacks also take an
+    # absolute path prefixed with unix: (not on dtls listeners)
+    app.example.com     unix:/run/app/https.sock
+
     # Same client IP reaches the same backend when DNS returns several
     # records for the name. The hash is seeded per process, so the
     # mapping changes on restart and differs between reuseport workers.
