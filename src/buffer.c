@@ -70,21 +70,6 @@ static inline void advance_read_position(struct Buffer *, size_t);
 static size_t next_power_of_two(size_t);
 static void buffer_release_storage(int from_pool, size_t size, char *ptr);
 
-/* Secure memory zeroing that cannot be optimized away by compilers */
-static void
-secure_memzero(void *ptr, size_t len) {
-#if defined(HAVE_EXPLICIT_BZERO)
-    explicit_bzero(ptr, len);
-#elif defined(HAVE_MEMSET_S)
-    (void)memset_s(ptr, len, 0, len);
-#else
-    /* Use volatile to prevent compiler optimization */
-    volatile unsigned char *p = (volatile unsigned char *)ptr;
-    while (len-- > 0)
-        *p++ = 0;
-#endif
-}
-
 static void (*buffer_memory_observer)(ssize_t delta);
 
 /* Magic number for validating buffer pool free list integrity */

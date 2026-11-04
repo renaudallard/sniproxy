@@ -29,6 +29,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -36,6 +38,29 @@
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+/* Zero memory in a way the compiler cannot remove as a dead store */
+static inline void
+secure_memzero(void *ptr, size_t len) {
+#if defined(HAVE_EXPLICIT_BZERO)
+    explicit_bzero(ptr, len);
+#elif defined(HAVE_MEMSET_S)
+    (void)memset_s(ptr, len, 0, len);
+#else
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+#endif
+}
+
+/* Zero the first len bytes of ptr, which may be NULL, and free it */
+static inline void
+secure_free(void *ptr, size_t len) {
+    if (ptr == NULL)
+        return;
+    secure_memzero(ptr, len);
+    free(ptr);
+}
 
 /* The SplitMix64 finalizer, a bijection on 64 bit values that spreads
  * every input bit over the whole result. Hash tables key it with an

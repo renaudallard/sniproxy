@@ -45,6 +45,7 @@
 #include <openssl/crypto.h>
 #include "ipc_crypto.h"
 #include "logger.h"
+#include "util.h"
 
 /* Ancillary data for one descriptor, aligned for the struct cmsghdr that
  * CMSG_FIRSTHDR() returns a pointer to */
@@ -166,19 +167,6 @@ static pthread_mutex_t ipc_crypto_master_lock = PTHREAD_MUTEX_INITIALIZER;
 static int ipc_crypto_master_initialized = 0;
 static int ipc_crypto_master_locked = 0;
 static int ipc_crypto_cleanup_registered = 0;
-
-static void
-secure_memzero(void *ptr, size_t len) {
-#if defined(HAVE_EXPLICIT_BZERO)
-    explicit_bzero(ptr, len);
-#elif defined(HAVE_MEMSET_S)
-    (void)memset_s(ptr, len, 0, len);
-#else
-    volatile unsigned char *p = (volatile unsigned char *)ptr;
-    while (len-- > 0)
-        *p++ = 0;
-#endif
-}
 
 /* A peer sending refused messages in a loop, as a compromised helper could,
  * must not fill the log: at most one refusal a second is reported, after
