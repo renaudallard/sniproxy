@@ -826,6 +826,8 @@ afterthought.
   and the resolver stay out of it, since capability mode forbids
   connect(2) and they must reach backends and nameservers; the rights on
   their IPC descriptors are limited with cap_rights_limit(2) instead.
+  The binder, which binds by path, runs without Capsicum, and only the
+  main process's end of its IPC socket is limited.
   `SNIPROXY_DISABLE_CAPSICUM=1` turns Capsicum off for debugging.
 - **Linux sandboxing**: seccomp BPF filters per process type, when
   built with libseccomp (configure uses it if it finds it, and the build
