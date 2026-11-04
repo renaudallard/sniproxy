@@ -395,9 +395,14 @@ static int
 binder_restart_child(void) {
     binder_cleanup_child(0);
 
+    /* One still alive is discarded: killed outright and reaped by the
+     * child watcher, rather than waited for in the main loop. A binder
+     * that kept root cannot be signalled from here and exits on its own
+     * once it sees the socket closed. */
     if (binder_pid > 0) {
-        kill(binder_pid, SIGTERM);
-        binder_cleanup_child(1);
+        (void)kill(binder_pid, SIGKILL);
+        binder_pid = -1;
+        ipc_crypto_state_clear(&binder_crypto_parent);
     }
 
     if (binder_spawn_child() < 0)

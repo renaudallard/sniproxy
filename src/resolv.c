@@ -723,12 +723,13 @@ resolv_shutdown(struct ev_loop *loop) {
     ev_io_stop(loop, &resolver_write_watcher);
     ev_timer_stop(loop, &resolver_send_retry_timer);
 
+    pthread_mutex_lock(&resolver_restart_lock);
+    int restarting = resolver_restart_in_progress;
+    pthread_mutex_unlock(&resolver_restart_lock);
+
     if (resolver_sock >= 0) {
         ev_io_stop(loop, &resolver_ipc_watcher);
         /* Only send SHUTDOWN if not restarting (socket may be dead during restart) */
-        pthread_mutex_lock(&resolver_restart_lock);
-        int restarting = resolver_restart_in_progress;
-        pthread_mutex_unlock(&resolver_restart_lock);
         if (!restarting) {
             resolver_send_message(RESOLVER_CMD_SHUTDOWN, 0, NULL, 0);
         }
@@ -749,17 +750,19 @@ resolv_shutdown(struct ev_loop *loop) {
             /* A child that has not reached its IPC loop yet, for example
              * one still blocked resolving a dot:// nameserver hostname,
              * never sees the closed socket. Signal it so shutdown does
-             * not wait out the system resolver timeout. */
-            kill(resolver_pid, SIGTERM);
-            helper_wait_exit(resolver_pid);
+             * not wait out the system resolver timeout. One being
+             * replaced is killed outright and reaped by the child
+             * watcher: a child that closed its socket and ignores SIGTERM
+             * must not keep the main loop waiting for it. */
+            if (restarting) {
+                kill(resolver_pid, SIGKILL);
+            } else {
+                kill(resolver_pid, SIGTERM);
+                helper_wait_exit(resolver_pid);
+            }
         }
         resolver_pid = -1;
     }
-
-    /* Protect restart flag check with mutex to prevent race conditions */
-    pthread_mutex_lock(&resolver_restart_lock);
-    int restarting = resolver_restart_in_progress;
-    pthread_mutex_unlock(&resolver_restart_lock);
 
     if (restarting) {
         pthread_mutex_lock(&resolver_pending_lock);
