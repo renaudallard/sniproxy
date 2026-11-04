@@ -244,7 +244,9 @@ table https_hosts {
 }
 ```
 
-Validate with `sniproxy -t -c /etc/sniproxy.conf`, then start in
+The file must belong to root, or to the user that starts sniproxy, and
+grant nothing to others: `chmod 600 /etc/sniproxy.conf`, or 640 with
+`-g`. Validate with `sniproxy -t -c /etc/sniproxy.conf`, then start in
 foreground with `sniproxy -f -c /etc/sniproxy.conf`.
 
 ## Usage
