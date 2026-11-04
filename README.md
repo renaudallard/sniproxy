@@ -124,7 +124,7 @@ fuzzing, and active maintenance.
 | Protocol | Hostname source | Notes |
 | --- | --- | --- |
 | TLS 1.0&ndash;1.3 | SNI extension in ClientHello | TLS 1.2+ enforced by default; `-T 1.0/1.1/1.2/1.3` overrides |
-| DTLS | SNI extension in UDP ClientHello | Session held until a second datagram arrives from the same source; a ClientHello fragmented over several datagrams goes to the fallback; unix socket backends and fallbacks are refused |
+| DTLS | SNI extension in UDP ClientHello | Session held until a second datagram arrives from the same source; a ClientHello fragmented over several datagrams goes to the fallback, while a renegotiation hello or a DTLS record other than an epoch 0 handshake drops the session; unix socket backends and fallbacks are refused |
 | HTTP/1.x | `Host:` request header, or the host of an absolute-form or CONNECT target, which `Host:` must then name | Header count capped by `http_max_headers` (default 100) |
 | HTTP/2 | HPACK `:authority` pseudo-header of the first request | Bounded HPACK table (per-conn 64 KiB / global 4 MiB); later requests are not searched |
 | XMPP | `to` attribute on `<stream:stream>` | STARTTLS negotiation passes through untouched |
@@ -590,7 +590,11 @@ listener [::]:443 {
     # that match no table entry, sent with a PROXY v1 header. When a
     # matching backend's name fails to resolve, the connection is closed
     # instead, as it is when the -T check refuses or cannot read the
-    # ClientHello.
+    # ClientHello, for a renegotiation hello, a first TLS record other
+    # than a handshake, a ClientHello larger than the client buffer, and
+    # a hostname whose match against a pattern fails. A dtls listener
+    # drops a session whose ClientHello attempts a renegotiation, or
+    # whose datagram is a DTLS record other than an epoch 0 handshake.
     fallback 192.0.2.50:443
     fallback proxy_protocol
     # ...or v2:
