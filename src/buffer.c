@@ -240,9 +240,9 @@ buffer_maybe_shrink_idle(struct Buffer *buf, ev_tstamp now, ev_tstamp idle_age) 
 }
 
 /* Zero the data the buffer holds and empty it. Only those bytes are
- * written, and nothing for an empty buffer: in a forked process, writing
- * more would have the kernel copy pages it shares with the parent for
- * nothing. */
+ * written, since consumed bytes are zeroed as they go, and nothing for an
+ * empty buffer: in a forked process, writing more would have the kernel
+ * copy pages it shares with the parent for nothing. */
 void
 buffer_wipe(struct Buffer *buf) {
     if (buf == NULL || buf->buffer == NULL || buf->len == 0)
@@ -420,10 +420,13 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
         memcpy(buffer->buffer + first_len, temp, second_len);
     }
 
-    /* The copy holds part of what a peer sent, on the stack too */
+    /* The copy holds part of what a peer sent, on the stack too, and
+     * the move leaves one behind past the data */
     secure_memzero(temp, temp_len);
     if (temp_on_heap)
         free(temp);
+    size_t stale = len > head ? len : head;
+    secure_memzero(buffer->buffer + stale, size - stale);
 
     buffer->head = 0;
 
@@ -619,6 +622,13 @@ advance_read_position(struct Buffer *buffer, size_t offset) {
         err("buffer read position overflow");
         return;
     }
+
+    /* What went out is zeroed at once, so that nothing a peer sent stays
+     * in the storage, where a helper forked later would get a copy of it */
+    size_t first_len = MIN(offset, buffer_size(buffer) - buffer->head);
+    secure_memzero(buffer->buffer + buffer->head, first_len);
+    secure_memzero(buffer->buffer, offset - first_len);
+
     buffer->head = (buffer->head + offset) & buffer->size_mask;
     buffer->len -= offset;
     buffer->tx_bytes += offset;

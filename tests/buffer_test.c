@@ -363,8 +363,46 @@ static void test_buffer_wipe(void) {
     buffer = new_buffer(256, test_loop);
     assert(buffer != NULL);
 
-    /* Consumed bytes stay as they are; one is kept, so that the head
-     * does not go back to the start */
+    /* Consumed bytes are zeroed as they go; one is kept, so that the
+     * head does not go back to the start */
+    memset(filler, 'A', sizeof(filler));
+    assert(buffer_push(buffer, filler, sizeof(filler)) == sizeof(filler));
+    buffer_pop(buffer, NULL, sizeof(filler) - 1);
+    for (size_t i = 0; i < sizeof(filler) - 1; i++)
+        assert(buffer->buffer[i] == 0);
+    assert(buffer->buffer[sizeof(filler) - 1] == 'A');
+
+    /* 57 bytes at the end of the storage, 44 at its start */
+    memset(data, 'B', sizeof(data));
+    assert(buffer_push(buffer, data, sizeof(data)) == sizeof(data));
+    assert(buffer->head + buffer->len > 256);
+
+    buffer_wipe(buffer);
+    assert(buffer_len(buffer) == 0);
+    for (size_t i = 0; i < 256; i++)
+        assert(buffer->buffer[i] == 0);
+
+    /* Contiguous data */
+    assert(buffer_push(buffer, data, 10) == 10);
+    buffer_wipe(buffer);
+    assert(buffer_len(buffer) == 0);
+    for (size_t i = 0; i < 10; i++)
+        assert(buffer->buffer[i] == 0);
+
+    free_buffer(buffer);
+}
+
+/* Wrapped data pulled to the start of the storage leaves no copy of
+ * itself behind */
+static void test_buffer_coalesce_stale(void) {
+    struct Buffer *buffer;
+    char filler[200];
+    char data[100];
+    const void *contiguous;
+
+    buffer = new_buffer(256, test_loop);
+    assert(buffer != NULL);
+
     memset(filler, 'A', sizeof(filler));
     assert(buffer_push(buffer, filler, sizeof(filler)) == sizeof(filler));
     buffer_pop(buffer, NULL, sizeof(filler) - 1);
@@ -374,22 +412,13 @@ static void test_buffer_wipe(void) {
     assert(buffer_push(buffer, data, sizeof(data)) == sizeof(data));
     assert(buffer->head + buffer->len > 256);
 
-    buffer_wipe(buffer);
-    assert(buffer_len(buffer) == 0);
-    for (size_t i = 0; i < 256; i++) {
-        if (i < 44 || i >= 199)
-            assert(buffer->buffer[i] == 0);
-        else
-            assert(buffer->buffer[i] == 'A');
-    }
-
-    /* Contiguous data */
-    assert(buffer_push(buffer, data, 10) == 10);
-    buffer_wipe(buffer);
-    assert(buffer_len(buffer) == 0);
-    for (size_t i = 0; i < 10; i++)
+    assert(buffer_coalesce(buffer, &contiguous) == 101);
+    assert(contiguous == buffer->buffer);
+    assert(buffer->buffer[0] == 'A');
+    for (size_t i = 1; i < 101; i++)
+        assert(buffer->buffer[i] == 'B');
+    for (size_t i = 101; i < 256; i++)
         assert(buffer->buffer[i] == 0);
-    assert(buffer->buffer[44] == 'A');
 
     free_buffer(buffer);
 }
@@ -421,6 +450,7 @@ int main(void) {
     test_buffer_prepend_wrap();
 
     test_buffer_wipe();
+    test_buffer_coalesce_stale();
 
     ev_loop_destroy(test_loop);
 }

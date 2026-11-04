@@ -772,9 +772,10 @@ afterthought.
   the handshake, whose header cannot be told apart from theirs.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
-  encrypted Unix sockets with framed, length-checked messages. One
-  restarted at run time is forked from the main process, and first
-  zeroes the copy it gets of what connections have buffered.
+  encrypted Unix sockets with framed, length-checked messages. What a
+  connection buffer passed on is zeroed as it goes, and one restarted
+  at run time, forked from the main process, first zeroes the copy it
+  gets of what connections still have buffered.
 - **Strict config and pidfile checks**: config files must be owned by
   the user that reads them or by root: root for a start as root, root or
   the configured user for a reload after the privilege drop, and root or

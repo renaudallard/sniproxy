@@ -362,9 +362,10 @@ loop_now(struct ev_loop *loop) {
  * restarted at run time is forked from the main process and holds a copy
  * of its memory: it calls this right after the fork, so that a compromised
  * helper does not get the requests and answers main had yet to pass on.
- * Buffers and decoded HTTP/2 headers are zeroed when they are freed; other
- * copies main keeps, such as hostnames and a ClientHello waiting on a DTLS
- * lookup, are not wiped.
+ * What the buffers already passed on is zeroed as it goes, and buffers and
+ * decoded HTTP/2 headers are zeroed when they are freed; other copies main
+ * keeps, such as hostnames and a ClientHello waiting on a DTLS lookup, are
+ * not wiped.
  */
 void
 connections_wipe_buffers(void) {

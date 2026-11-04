@@ -645,7 +645,8 @@ buffer assembly, reducing the number of buffer operations required
 - **Minimal copying**: Ring buffers and vectored I/O; SO_SPLICE zero-copy on OpenBSD
 - **SO_REUSEPORT**: Multiple processes can accept on same port
 - **No buffer pooling**: buffer blocks and connection structures are
-  allocated and freed each time, and a block is zeroed before it is freed
+  allocated and freed each time; bytes are zeroed as they are consumed
+  and a block before it is freed
 - **Compiled regexes**: One-time compilation, cached for all lookups
 
 ### Performance Optimizations in 0.9.0

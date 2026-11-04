@@ -1,0 +1,43 @@
+Making all in src
+make[1]: Entering directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/src'
+  CC       sniproxy.o
+  CC       address.o
+  CC       backend.o
+  CC       binder.o
+  CC       buffer.o
+  CC       capsicum.o
+  CC       cfg_parser.o
+  CC       cfg_tokenizer.o
+  CC       config.o
+  CC       connection.o
+  CC       dtls.o
+  CC       http.o
+  CC       http2.o
+  CC       http2_huffman.o
+  CC       ipc_crypto.o
+  CC       listener.o
+  CC       logger.o
+  CC       minecraft.o
+  CC       resolv.o
+  CC       seccomp.o
+  CC       table.o
+  CC       tls.o
+  CC       udp_connection.o
+  CC       xmpp.o
+  CCLD     sniproxy
+make[1]: Leaving directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/src'
+Making all in man
+make[1]: Entering directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/man'
+make[1]: Nothing to be done for 'all'.
+make[1]: Leaving directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/man'
+Making all in tests
+make[1]: Entering directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/tests'
+make[1]: Nothing to be done for 'all'.
+make[1]: Leaving directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/tests'
+Making all in scripts
+make[1]: Entering directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/scripts'
+make[1]: Nothing to be done for 'all'.
+make[1]: Leaving directory '/home/r/code/sniproxy/tmp/audit29/fix/wt/scripts'
+make[1]: Entering directory '/home/r/code/sniproxy/tmp/audit29/fix/wt'
+make[1]: Nothing to be done for 'all-am'.
+make[1]: Leaving directory '/home/r/code/sniproxy/tmp/audit29/fix/wt'
