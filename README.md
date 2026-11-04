@@ -570,7 +570,8 @@ listener [::]:443 {
     source client
 
     # Add a debug line with the size and parser result of each request
-    # that fails to parse (the contents are not logged)
+    # that fails to parse (the contents are not logged). dtls listeners
+    # ignore it and log their parse failures at debug level only.
     bad_requests log
 
     # Allow listener: every CIDR not listed is blocked
