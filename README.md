@@ -720,6 +720,7 @@ afterthought.
   supported_versions extension too, when a ClientHello sends one, as
   that is where a server takes the version from. A ClientHello whose
   version cannot be read is refused rather than sent to the fallback.
+  dtls listeners do not check the version.
 - **Cryptographically random seeds**: the per-IP hashes (rate limiter,
   connection counts, DNS client tracking, backend affinity) and the UDP
   session table are keyed with an arc4random seed, backend affinity
