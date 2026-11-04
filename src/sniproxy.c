@@ -725,13 +725,21 @@ main(int argc, char **argv) {
     /* Seed binder allowlist with configured listener addresses so the binder
      * child will refuse unexpected bind requests. */
     struct Listener *binder_listener = SLIST_FIRST(&config->listeners);
+    int binder_full_warned = 0;
     while (binder_listener != NULL) {
         const struct sockaddr *sa = address_sa(binder_listener->address);
         socklen_t sa_len = address_sa_len(binder_listener->address);
-        if (sa != NULL && sa_len > 0) {
-            if (binder_register_allowed_address(sa, (size_t)sa_len) < 0) {
+        /* The listeners are bound below by this process: a full
+         * allowlist only matters to a later bind through the binder */
+        if (sa != NULL && sa_len > 0 &&
+                binder_register_allowed_address(sa, (size_t)sa_len) < 0) {
+            if (errno != ENOSPC)
                 fatal("Failed to register listener address with binder");
-            }
+            if (!binder_full_warned)
+                warn("The binder knows %d listener addresses at most: "
+                        "those past them cannot be bound through it",
+                        BINDER_MAX_ALLOWED);
+            binder_full_warned = 1;
         }
         binder_listener = SLIST_NEXT(binder_listener, entries);
     }

@@ -31,6 +31,12 @@
 #include <sys/types.h>
 
 void start_binder(uid_t, gid_t, int);
+/* An allowlist only grows, by the listener addresses each configuration
+ * loaded brings. The bound leaves room for far more than any setup has,
+ * and keeps a compromised main process from making the binder take
+ * memory without end. */
+#define BINDER_MAX_ALLOWED 4096
+
 int binder_register_allowed_address(const struct sockaddr *, size_t);
 int binder_unix_path_allowed(const char *);
 /* ipv6_v6only: -1 keeps the system default, 0 clears IPV6_V6ONLY, 1 sets it */

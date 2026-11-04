@@ -906,9 +906,15 @@ reload_config(struct Config *config, struct ev_loop *loop) {
         const struct sockaddr *sa = address_sa(new_listener->address);
         socklen_t sa_len = address_sa_len(new_listener->address);
         if (sa != NULL && sa_len > 0 &&
-                binder_register_allowed_address(sa, (size_t)sa_len) < 0)
-            err("Failed to register listener address with binder; "
-                    "binding privileged addresses may fail");
+                binder_register_allowed_address(sa, (size_t)sa_len) < 0) {
+            if (errno == ENOSPC)
+                err("The binder knows %d listener addresses at most: a "
+                        "privileged one past them cannot be bound",
+                        BINDER_MAX_ALLOWED);
+            else
+                err("Failed to register listener address with binder; "
+                        "binding privileged addresses may fail");
+        }
         new_listener = SLIST_NEXT(new_listener, entries);
     }
 

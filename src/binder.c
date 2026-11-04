@@ -147,12 +147,6 @@ static struct binder_allowed_addr *parent_allowed;
 static size_t parent_allowed_count;
 static size_t parent_allowed_capacity;
 
-/* An allowlist only grows, by the listener addresses each configuration
- * loaded brings. The bound leaves room for far more than any setup has,
- * and keeps a compromised main process from making the binder take
- * memory without end. */
-#define BINDER_MAX_ALLOWED 4096
-
 static int
 allowlist_contains(const struct binder_allowed_addr *list, size_t count,
         const struct sockaddr *addr, size_t addr_len) {
@@ -165,15 +159,17 @@ allowlist_contains(const struct binder_allowed_addr *list, size_t count,
 }
 
 /* Returns 1 when addr was added, 0 when the list already held it and -1
- * when it is full or cannot grow */
+ * when it is full, with errno ENOSPC, or cannot grow */
 static int
 allowlist_add(struct binder_allowed_addr **list, size_t *count,
         size_t *capacity, const struct sockaddr *addr, size_t addr_len) {
     if (allowlist_contains(*list, *count, addr, addr_len))
         return 0;
 
-    if (*count == BINDER_MAX_ALLOWED)
+    if (*count == BINDER_MAX_ALLOWED) {
+        errno = ENOSPC;
         return -1;
+    }
 
     if (*count == *capacity) {
         size_t new_cap = *capacity == 0 ? 8 : *capacity * 2;
