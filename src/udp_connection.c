@@ -58,6 +58,7 @@
 #include "resolv.h"
 #include "protocol.h"
 #include "tls.h"
+#include "dtls.h"
 #include "logger.h"
 #include "fd_util.h"
 #include "util.h"
@@ -296,6 +297,20 @@ udp_recv_one(struct ev_loop *loop, struct Listener *listener, int fd) {
     if (!listener_acl_allows(listener, &client_addr)) {
         char client[INET6_ADDRSTRLEN + 8];
         debug("UDP connection from %s denied by ACL",
+                display_sockaddr(&client_addr, addr_len,
+                        client, sizeof(client)));
+        return 1;
+    }
+
+    /* A record of an association whose session is gone would only have
+     * its session dropped once parsed: it opens none, so that a client
+     * that goes on sending such records does not use up the session
+     * allowance of its address, which other clients behind it share. */
+    if (listener->protocol == dtls_protocol &&
+            dtls_is_late_record(buf, (size_t)n)) {
+        char client[INET6_ADDRSTRLEN + 8];
+        debug("UDP: no session for %s, which sent a DTLS record other "
+                "than an epoch 0 handshake",
                 display_sockaddr(&client_addr, addr_len,
                         client, sizeof(client)));
         return 1;

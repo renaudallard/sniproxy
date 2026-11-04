@@ -30,4 +30,6 @@
 
 extern const struct Protocol *const dtls_protocol;
 
+int dtls_is_late_record(const char *, size_t);
+
 #endif

@@ -760,10 +760,11 @@ afterthought.
   whatever its backend sends, and an ICMP error about its backend, which
   anyone can forge, does not end it: a session keeps the backend address
   it started with as long as its client sends, even once that backend no
-  longer answers. A new session whose datagram is a DTLS record other
-  than an epoch 0 handshake, as a client sends after such a pause, is
-  dropped rather than sent to the fallback, where the client's next
-  ClientHello would follow it. Other UDP traffic, such as STUN, OpenVPN
+  longer answers. A DTLS record other than an epoch 0 handshake, as a
+  client sends after such a pause, opens no session and is not sent to
+  the fallback, where the client's next ClientHello would follow it; it
+  does not count against the per-IP session rate either, so such a
+  client does not keep others behind its address from opening sessions. Other UDP traffic, such as STUN, OpenVPN
   or NTP, still goes to the fallback, and so do DTLS 1.3 records after
   the handshake, whose header cannot be told apart from theirs.
 - **Privilege separation**: the privileged binder, the log writer

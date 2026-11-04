@@ -68,6 +68,28 @@ const struct Protocol *const dtls_protocol = &(struct Protocol){
 
 
 /*
+ * Whether a datagram is a DTLS record other than an epoch 0 handshake: one
+ * of a content type from change_cipher_spec (20) to ack (26), or a
+ * handshake of a later epoch, with the DTLS major version. Such a record
+ * belongs to an association whose session is gone, as after a pause, and
+ * the fallback cannot serve it: a session opened by it would then keep
+ * the client's next ClientHello there too. Other data may still go to the
+ * fallback: STUN, or OpenVPN and NTP, whose first bytes fall in the range
+ * RFC 7983 gives DTLS, which is why the DTLS 1.3 unified header cannot be
+ * told from them.
+ */
+int
+dtls_is_late_record(const char *data_char, size_t data_len) {
+    const uint8_t *data = (const uint8_t *)data_char;
+
+    if (data_len < DTLS_RECORD_HEADER_LEN || data[1] != 0xFE)
+        return 0;
+    if (data[0] == DTLS_HANDSHAKE_CONTENT_TYPE)
+        return data[3] != 0 || data[4] != 0;
+    return data[0] >= 20 && data[0] <= 26;
+}
+
+/*
  * Parse a DTLS datagram for the Server Name Indication extension in the
  * ClientHello handshake.
  *
@@ -92,18 +114,15 @@ parse_dtls_header(const char *data_char, size_t data_len, char **hostname) {
     if (data_len < DTLS_RECORD_HEADER_LEN)
         return -1;
 
-    /* Content type must be Handshake. Another DTLS record, of a content
-     * type from change_cipher_spec (20) to ack (26) with the DTLS major
-     * version, belongs to an association whose session is gone, as
-     * after a pause, and the fallback cannot serve it: a session opened
-     * by it would then keep the client's next ClientHello there too.
-     * Other data may still go to the fallback: STUN, or OpenVPN and NTP,
-     * whose first bytes fall in the range RFC 7983 gives DTLS, which is
-     * why the DTLS 1.3 unified header cannot be told from them. */
+    if (dtls_is_late_record(data_char, data_len)) {
+        debug("DTLS: a record other than an epoch 0 handshake "
+                "(content_type=0x%02x)", data[0]);
+        return TLS_ERR_NOT_HANDSHAKE;
+    }
+
+    /* Content type must be Handshake */
     if (data[0] != DTLS_HANDSHAKE_CONTENT_TYPE) {
         debug("DTLS: not a handshake record (content_type=0x%02x)", data[0]);
-        if (data[0] >= 20 && data[0] <= 26 && data[1] == 0xFE)
-            return TLS_ERR_NOT_HANDSHAKE;
         return -5;
     }
 
@@ -113,13 +132,6 @@ parse_dtls_header(const char *data_char, size_t data_len, char **hostname) {
     if (data[1] != 0xFE) {
         debug("DTLS: unexpected version major 0x%02x", data[1]);
         return -5;
-    }
-
-    /* Epoch must be 0 for initial handshake */
-    uint16_t epoch = ((uint16_t)data[3] << 8) | data[4];
-    if (epoch != 0) {
-        debug("DTLS: non-zero epoch %" PRIu16, epoch);
-        return TLS_ERR_NOT_HANDSHAKE;
     }
 
     /* Record payload length */
