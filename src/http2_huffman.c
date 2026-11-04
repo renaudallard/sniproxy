@@ -113,27 +113,31 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
             padding_bits++;
             int16_t next = huffman_tree[node].child[bit];
             if (next == 0) {
-                free(buf);
+                secure_free(buf, pos);
                 return -1;
             }
             node = next;
             if (huffman_tree[node].value != -1) {
                 /* RFC 7541 Section 5.2: EOS in encoded data is an error */
                 if (huffman_tree[node].value == 256) {
-                    free(buf);
+                    secure_free(buf, pos);
                     return -1;
                 }
                 if (pos + 1 >= capacity) {
                     if (capacity > SIZE_MAX / 2) {
-                        free(buf);
+                        secure_free(buf, pos);
                         return -1;
                     }
                     size_t new_cap = capacity * 2;
-                    char *tmp = realloc(buf, new_cap);
+                    /* Not realloc(): the old block, which holds what
+                     * was decoded so far, is zeroed before it is freed */
+                    char *tmp = malloc(new_cap);
                     if (tmp == NULL) {
-                        free(buf);
+                        secure_free(buf, pos);
                         return -1;
                     }
+                    memcpy(tmp, buf, pos);
+                    secure_free(buf, pos);
                     buf = tmp;
                     capacity = new_cap;
                 }
@@ -147,13 +151,13 @@ hpack_decode_huffman(const unsigned char *data, size_t len, char **out, size_t *
     /* RFC 7541 Section 5.2: padding must be at most 7 bits and must
      * consist of the most significant bits of the EOS code (all 1s) */
     if (padding_bits > 7) {
-        free(buf);
+        secure_free(buf, pos);
         return -1;
     }
     if (padding_bits > 0) {
         uint32_t mask = (1u << padding_bits) - 1u;
         if ((bit_buffer & mask) != mask) {
-            free(buf);
+            secure_free(buf, pos);
             return -1;
         }
     }

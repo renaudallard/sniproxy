@@ -32,6 +32,7 @@
 #include "http2.h"
 #include "hostname_sanitize.h"
 #include "http2_huffman.h"
+#include "util.h"
 
 #define SERVER_NAME_LEN 256
 #define HTTP2_DEFAULT_DYNAMIC_TABLE_SIZE 4096
@@ -325,8 +326,8 @@ hpack_drop_last_entry(struct hpack_decoder *decoder) {
         decoder->dynamic_size = 0;
 
     hpack_global_release(entry->total_size);
-    free(entry->name);
-    free(entry->value);
+    secure_free(entry->name, entry->name_len + 1);
+    secure_free(entry->value, entry->value_len + 1);
     decoder->dynamic_count--;
 }
 
@@ -630,7 +631,7 @@ decode_header_block(struct hpack_decoder *decoder,
             if (rc < 0)
                 return rc == HPACK_TRUNCATED ? cut_short : -4;
             if (name_len > decoded_budget) {
-                free(name);
+                secure_free(name, name_len + 1);
                 return 0;
             }
             decoded_budget -= name_len;
@@ -659,33 +660,33 @@ decode_header_block(struct hpack_decoder *decoder,
         size_t str_consumed;
         rc = hpack_decode_string(data + pos, len - pos, &str_consumed, &value, &value_len);
         if (rc < 0) {
-            free(name);
+            secure_free(name, name_len + 1);
             return rc == HPACK_TRUNCATED ? cut_short : -4;
         }
         if (value_len > decoded_budget) {
-            free(name);
-            free(value);
+            secure_free(name, name_len + 1);
+            secure_free(value, value_len + 1);
             return 0;
         }
         pos += str_consumed;
         decoded_budget -= value_len;
 
         if (append_hostname_if_needed(hosts, name, name_len, value, value_len) < 0) {
-            free(name);
-            free(value);
+            secure_free(name, name_len + 1);
+            secure_free(value, value_len + 1);
             return -4;
         }
 
         if (add_to_table) {
             if (!hpack_add_entry(decoder, name, name_len, value, value_len)) {
-                free(name);
-                free(value);
+                secure_free(name, name_len + 1);
+                secure_free(value, value_len + 1);
                 return -4;
             }
         }
 
-        free(name);
-        free(value);
+        secure_free(name, name_len + 1);
+        secure_free(value, value_len + 1);
     }
 
     return 0;
@@ -1079,9 +1080,14 @@ header_block_append(struct header_block *block, const unsigned char *data, size_
                 return 0;
             new_cap *= 2;
         }
-        unsigned char *tmp = realloc(block->data, new_cap);
+        /* Not realloc(): the old block, which holds header values such
+         * as cookies, is zeroed before it is freed */
+        unsigned char *tmp = malloc(new_cap);
         if (tmp == NULL)
             return 0;
+        if (block->len > 0)
+            memcpy(tmp, block->data, block->len);
+        secure_free(block->data, block->len);
         block->data = tmp;
         block->cap = new_cap;
     }
@@ -1096,7 +1102,7 @@ static void
 header_block_free(struct header_block *block) {
     if (block == NULL)
         return;
-    free(block->data);
+    secure_free(block->data, block->len);
     block->data = NULL;
     block->cap = 0;
     block->len = 0;
