@@ -401,11 +401,12 @@ configuration error, as is a second \fBfilename\fR, \fBsyslog\fR or
 \fBpriority\fR in a log block.
 
 The main process owns a log file, so the binder and resolver helper
-processes cannot write to it. The resolver hands its own messages, for
-example DNS-over-TLS handshake failures, to the main process, which
-writes them to the file after "resolver:", with any character that is
-not printable replaced; those it cannot hand over, and the binder's,
-go to syslog with the daemon facility. With \fBsyslog\fR the helpers
+processes cannot write to it. They hand their own messages, for example
+DNS-over-TLS handshake failures, to the main process, which writes them
+to the file after "resolver:" or "binder:", with any character that is
+not printable replaced; those they log before their channel to the main
+process is set up, or cannot hand over, go to syslog with the daemon
+facility. With \fBsyslog\fR the helpers
 use the configured facility, and with the default stderr log they share
 the standard error of the main process.
 

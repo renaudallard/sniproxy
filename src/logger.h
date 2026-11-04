@@ -40,6 +40,7 @@ struct ev_loop;
 #define LOG_DEBUG   7
 
 #include <sys/types.h>
+#include <stdint.h>
 
 struct Logger *new_syslog_logger(const char *facility);
 int logger_syslog_facility_valid(const char *facility);
@@ -54,6 +55,7 @@ void logger_prepare_process_title(int argc, char **argv);
 int logger_process_is_active(void);
 void logger_post_fork_child_disinherit(void);
 void logger_forward_to_parent(int (*)(int, const char *, size_t));
+void log_helper_message(const char *, int, const uint8_t *, size_t);
 void logger_set_fork_child_hook(void (*)(void));
 void logger_parent_capsicum_limit_rights(void);
 void logger_parent_notify_fs_locked(void);

@@ -46,6 +46,7 @@
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <sys/un.h>
+#include <poll.h>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -87,6 +88,10 @@ static int binder_validate_sockaddr(const struct sockaddr *addr, size_t addr_len
 static int binder_sockaddr_equal(const struct sockaddr *a, size_t alen,
         const struct sockaddr *b, size_t blen);
 static int binder_sync_allowlist_to_child(void);
+static int binder_recv_reply(uint8_t **, size_t *, int *);
+static int binder_send_request(const void *, size_t);
+static void binder_drain_log(void);
+static int binder_forward_log(int, const char *, size_t);
 static int binder_send_register(const struct sockaddr *addr, size_t addr_len);
 
 
@@ -102,6 +107,12 @@ struct binder_request {
 #define BINDER_CMD_REGISTER 2
 
 #define BINDER_IPC_MAX_PAYLOAD 512
+/* First byte of a frame carrying a message of the binder for the error
+ * log, followed by its priority and the text. No answer starts with it. */
+#define BINDER_LOG_MARK 0x01
+/* Messages read ahead of an answer at most, so that a compromised binder
+ * cannot keep the main process reading them */
+#define BINDER_MAX_LOG_FRAMES 16
 
 /* A request and room for its address, aligned as the request needs */
 union binder_request_buffer {
@@ -114,6 +125,7 @@ union binder_request_buffer {
 #define BINDER_REPLY_TIMEOUT 30
 
 static int binder_sock = -1; /* socket to binder */
+static int binder_child_sock = -1; /* in the binder, its socket */
 static pid_t binder_pid = -1;
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
 /* Set once the startup has limited the rights on the IPC socket, so the
@@ -222,8 +234,7 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
     if (binder_pid <= 0 || binder_sock < 0)
         return -1;
 
-    if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
-            buffer.bytes, sizeof(*req) + addr_len, -1) < 0) {
+    if (binder_send_request(buffer.bytes, sizeof(*req) + addr_len) < 0) {
         /* A partial frame desyncs the stream. Drop the channel so the next
          * bind request respawns the child rather than talking to a child
          * that is still waiting for the rest of this frame. Restarting here
@@ -239,8 +250,7 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
 
     uint8_t *reply = NULL;
     size_t reply_len = 0;
-    int rc = ipc_crypto_recv_msg(&binder_crypto_parent, binder_sock,
-            BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, NULL);
+    int rc = binder_recv_reply(&reply, &reply_len, NULL);
     if (rc <= 0) {
         free(reply);
         if (rc < 0)
@@ -254,6 +264,86 @@ binder_send_register(const struct sockaddr *addr, size_t addr_len) {
 
     free(reply);
     return status;
+}
+
+/* The binder's answer to a request. The messages it logged meanwhile come
+ * first, each in a frame of its own, and go to the error log. */
+static int
+binder_recv_reply(uint8_t **reply, size_t *reply_len, int *received_fd) {
+    for (int logged = 0; logged < BINDER_MAX_LOG_FRAMES; logged++) {
+        int rc = ipc_crypto_recv_msg(&binder_crypto_parent, binder_sock,
+                BINDER_IPC_MAX_PAYLOAD, reply, reply_len, received_fd);
+        if (rc <= 0 || *reply_len < 2 || (*reply)[0] != BINDER_LOG_MARK ||
+                (received_fd != NULL && *received_fd >= 0))
+            return rc;
+
+        log_helper_message("binder", (*reply)[1], *reply + 2,
+                *reply_len - 2);
+        free(*reply);
+        *reply = NULL;
+        *reply_len = 0;
+    }
+
+    err("binder sent too many messages without an answer; dropping it");
+    binder_cleanup_child(0);
+    errno = EPROTO;
+    return -1;
+}
+
+/* A binder that died, at startup for instance, may have logged why before
+ * it went: those messages are read from its socket when sending to it
+ * fails, and before the socket is closed. The socket is not waited on. */
+static void
+binder_drain_log(void) {
+    int saved_errno = errno;
+    struct pollfd pfd = { .fd = binder_sock, .events = POLLIN };
+
+    for (int i = 0; binder_sock >= 0 && i < BINDER_MAX_LOG_FRAMES &&
+            poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLIN); i++) {
+        uint8_t *msg = NULL;
+        size_t len = 0;
+        int fd = -1;
+
+        int rc = ipc_crypto_recv_msg(&binder_crypto_parent, binder_sock,
+                BINDER_IPC_MAX_PAYLOAD, &msg, &len, &fd);
+        if (fd >= 0)
+            close(fd);
+        if (rc > 0 && len >= 2 && msg[0] == BINDER_LOG_MARK)
+            log_helper_message("binder", msg[1], msg + 2, len - 2);
+        free(msg);
+        if (rc <= 0)
+            break;
+    }
+
+    errno = saved_errno;
+}
+
+static int
+binder_send_request(const void *request, size_t len) {
+    if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock, request, len,
+                -1) < 0) {
+        binder_drain_log();
+        return -1;
+    }
+
+    return 0;
+}
+
+/* In the binder, hands a message over to the main process */
+static int
+binder_forward_log(int priority, const char *text, size_t len) {
+    uint8_t frame[BINDER_IPC_MAX_PAYLOAD];
+
+    if (binder_child_sock < 0)
+        return -1;
+    if (len > sizeof(frame) - 2)
+        len = sizeof(frame) - 2;
+    frame[0] = BINDER_LOG_MARK;
+    frame[1] = (uint8_t)priority;
+    memcpy(frame + 2, text, len);
+
+    return ipc_crypto_send_msg(&binder_crypto_child, binder_child_sock,
+            frame, len + 2, -1) < 0 ? -1 : 0;
 }
 
 int
@@ -374,6 +464,7 @@ binder_drop_unanswered(void) {
 static void
 binder_cleanup_child(int block) {
     if (binder_sock >= 0) {
+        binder_drain_log();
         close(binder_sock);
         binder_sock = -1;
     }
@@ -467,8 +558,7 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
             }
         }
 
-        if (ipc_crypto_send_msg(&binder_crypto_parent, binder_sock,
-                buffer.bytes, request_len, -1) < 0) {
+        if (binder_send_request(buffer.bytes, request_len) < 0) {
             /* EPROTO means a partial frame reached the child, leaving the
              * stream desynced; only a fresh channel recovers from that. */
             if ((errno == EPIPE || errno == ECONNRESET || errno == EPROTO) &&
@@ -481,8 +571,7 @@ bind_socket(const struct sockaddr *addr, size_t addr_len, int sock_type,
         uint8_t *reply = NULL;
         size_t reply_len = 0;
         int received_fd = -1;
-        int rc = ipc_crypto_recv_msg(&binder_crypto_parent, binder_sock,
-                BINDER_IPC_MAX_PAYLOAD, &reply, &reply_len, &received_fd);
+        int rc = binder_recv_reply(&reply, &reply_len, &received_fd);
         if (rc <= 0) {
             free(reply);
             if (rc < 0 && binder_drop_unanswered())
@@ -595,6 +684,8 @@ binder_main(int sockfd) {
         err("binder child: failed to initialize crypto context");
         binder_child_exit(EXIT_FAILURE);
     }
+    binder_child_sock = sockfd;
+    logger_forward_to_parent(binder_forward_log);
 
     /* Install seccomp filter after initialization. It lets the binder
      * read nothing, so the time zone its log lines need is loaded first. */
@@ -616,6 +707,8 @@ binder_main(int sockfd) {
         int rc = ipc_crypto_recv_msg(&binder_crypto_child, sockfd,
                 BINDER_IPC_MAX_PAYLOAD, &plain, &plain_len, NULL);
         if (rc == 0) {
+            logger_forward_to_parent(NULL);
+            binder_child_sock = -1;
             close(sockfd);
             break;
         } else if (rc < 0) {

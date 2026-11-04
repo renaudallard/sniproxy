@@ -1234,33 +1234,10 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
     }
 }
 
-/* A compromised child must not write lines of its own into the error
- * log, nor log above error */
 static void
 resolver_handle_log(uint32_t priority, const uint8_t *payload, size_t len) {
-    char text[RESOLVER_IPC_MAX_PAYLOAD + 1];
-
-    for (size_t i = 0; i < len; i++)
-        text[i] = isprint(payload[i]) ? (char)payload[i] : '?';
-    text[len] = '\0';
-
-    switch (priority) {
-        case LOG_WARNING:
-            warn("resolver: %s", text);
-            break;
-        case LOG_NOTICE:
-            notice("resolver: %s", text);
-            break;
-        case LOG_INFO:
-            info("resolver: %s", text);
-            break;
-        case LOG_DEBUG:
-            debug("resolver: %s", text);
-            break;
-        default:
-            err("resolver: %s", text);
-            break;
-    }
+    log_helper_message("resolver",
+            priority > LOG_DEBUG ? LOG_ERR : (int)priority, payload, len);
 }
 
 /* The address an answer from the child carries, or NULL for a failed

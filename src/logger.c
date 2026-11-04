@@ -30,6 +30,7 @@
 #ifndef PACKAGE_NAME
 #define PACKAGE_NAME "sniproxy"
 #endif
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -2791,6 +2792,27 @@ logger_post_fork_child_disinherit(void) {
         closelog();
         openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
     }
+}
+
+/* A message a helper process handed over, for the error log after the
+ * helper's name. A compromised helper must not write lines of its own
+ * into the log, nor log above error. */
+void
+log_helper_message(const char *helper, int priority, const uint8_t *msg,
+        size_t len) {
+    char text[1024];
+
+    if (len >= sizeof(text))
+        len = sizeof(text) - 1;
+    for (size_t i = 0; i < len; i++)
+        text[i] = isprint(msg[i]) ? (char)msg[i] : '?';
+    text[len] = '\0';
+
+    if (priority < LOG_ERR || priority > LOG_DEBUG)
+        priority = LOG_ERR;
+
+    init_default_logger();
+    log_msg(default_logger, priority, "%s: %s", helper, text);
 }
 
 /* Called by a helper once it can reach the main process, with NULL when
