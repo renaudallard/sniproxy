@@ -520,10 +520,11 @@ resolver {
     # nameserver 8.8.8.8
     # nameserver 2001:4860:4860::8888
 
-    # DTLS sessions may use at most half of max_concurrent_queries (the
-    # one lookup when it is 1), and count apart from TCP connections
-    # against the per-client limit, as their source addresses may be
-    # forged.
+    # Lookups in flight, overall and per client (0 turns the per-client
+    # limit off); these values are the defaults. DTLS sessions may use
+    # at most half of max_concurrent_queries (the one lookup when it is
+    # 1), and count apart from TCP connections against the per-client
+    # limit, as their source addresses may be forged.
     max_concurrent_queries 512
     max_concurrent_queries_per_client 16
 
