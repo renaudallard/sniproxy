@@ -143,7 +143,8 @@ SNIProxy runs as four cooperating processes:
    after it died, or after it left a request unanswered for 30 seconds,
    runs without that privilege, as it is forked from the main loop,
    until sniproxy is restarted. It idles
-   otherwise, and only binds Unix
+   otherwise, binds only the addresses of listeners sniproxy has had,
+   4096 at most, and only binds Unix
    socket paths whose directory really lies under `/run` or `/var/run`,
    symlinks resolved. On Linux it does not keep root: it switches to the
    configured user with only the `CAP_NET_BIND_SERVICE` capability, and

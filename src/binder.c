@@ -135,6 +135,53 @@ static struct binder_allowed_addr *parent_allowed;
 static size_t parent_allowed_count;
 static size_t parent_allowed_capacity;
 
+/* An allowlist only grows, by the listener addresses each configuration
+ * loaded brings. The bound leaves room for far more than any setup has,
+ * and keeps a compromised main process from making the binder take
+ * memory without end. */
+#define BINDER_MAX_ALLOWED 4096
+
+static int
+allowlist_contains(const struct binder_allowed_addr *list, size_t count,
+        const struct sockaddr *addr, size_t addr_len) {
+    for (size_t i = 0; i < count; i++)
+        if (binder_sockaddr_equal(addr, addr_len,
+                    (const struct sockaddr *)&list[i].addr, list[i].len))
+            return 1;
+
+    return 0;
+}
+
+/* Returns 1 when addr was added, 0 when the list already held it and -1
+ * when it is full or cannot grow */
+static int
+allowlist_add(struct binder_allowed_addr **list, size_t *count,
+        size_t *capacity, const struct sockaddr *addr, size_t addr_len) {
+    if (allowlist_contains(*list, *count, addr, addr_len))
+        return 0;
+
+    if (*count == BINDER_MAX_ALLOWED)
+        return -1;
+
+    if (*count == *capacity) {
+        size_t new_cap = *capacity == 0 ? 8 : *capacity * 2;
+        struct binder_allowed_addr *tmp = realloc(*list,
+                new_cap * sizeof(*tmp));
+        if (tmp == NULL)
+            return -1;
+        *list = tmp;
+        *capacity = new_cap;
+    }
+
+    struct binder_allowed_addr *slot = &(*list)[*count];
+    memset(slot, 0, sizeof(*slot));
+    slot->len = (socklen_t)addr_len;
+    memcpy(&slot->addr, addr, addr_len);
+    (*count)++;
+
+    return 1;
+}
+
 static void __attribute__((noreturn))
 binder_child_exit(int status) {
     ipc_crypto_state_clear(&binder_crypto_child);
@@ -217,33 +264,10 @@ binder_register_allowed_address(const struct sockaddr *addr, size_t addr_len) {
     if (!binder_validate_sockaddr(addr, addr_len, 0))
         return -1;
 
-    /* Check for duplicate registration */
-    for (size_t i = 0; i < parent_allowed_count; i++) {
-        if (binder_sockaddr_equal(addr, addr_len,
-                    (struct sockaddr *)&parent_allowed[i].addr,
-                    parent_allowed[i].len)) {
-            return 0; /* Already registered, success */
-        }
-    }
-
-    if (parent_allowed_count == parent_allowed_capacity) {
-        size_t new_cap = parent_allowed_capacity == 0 ? 8 : parent_allowed_capacity * 2;
-        if (new_cap < parent_allowed_capacity ||
-                new_cap > SIZE_MAX / sizeof(*parent_allowed))
-            return -1;
-        struct binder_allowed_addr *tmp = realloc(parent_allowed,
-                new_cap * sizeof(*tmp));
-        if (tmp == NULL)
-            return -1;
-        parent_allowed = tmp;
-        parent_allowed_capacity = new_cap;
-    }
-
-    struct binder_allowed_addr *slot = &parent_allowed[parent_allowed_count];
-    memset(slot, 0, sizeof(*slot));
-    slot->len = (socklen_t)addr_len;
-    memcpy(&slot->addr, addr, addr_len);
-    parent_allowed_count++;
+    int rc = allowlist_add(&parent_allowed, &parent_allowed_count,
+            &parent_allowed_capacity, addr, addr_len);
+    if (rc <= 0)
+        return rc;
 
     return binder_send_register(addr, addr_len);
 }
@@ -641,56 +665,17 @@ binder_main(int sockfd) {
         }
 
         if (req->cmd == BINDER_CMD_REGISTER) {
-            /* Check for duplicate registration */
-            int already_registered = 0;
-            for (size_t i = 0; i < allowed_count; i++) {
-                if (binder_sockaddr_equal(req->address, req->address_len,
-                            (struct sockaddr *)&allowed_addrs[i].addr,
-                            allowed_addrs[i].len)) {
-                    already_registered = 1;
-                    break;
-                }
-            }
-            if (already_registered) {
+            if (allowlist_add(&allowed_addrs, &allowed_count,
+                        &allowed_capacity, req->address,
+                        req->address_len) < 0) {
+                const char *msg = "Unable to add to the allowlist";
+                ipc_crypto_send_msg(&binder_crypto_child, sockfd,
+                        msg, strlen(msg), -1);
+            } else {
                 uint8_t status = 0;
                 ipc_crypto_send_msg(&binder_crypto_child, sockfd,
                         &status, sizeof(status), -1);
-                free(plain);
-                continue;
             }
-
-            if (allowed_count == allowed_capacity) {
-                size_t new_cap = allowed_capacity == 0 ? 8 : allowed_capacity * 2;
-                if (new_cap < allowed_capacity ||
-                        new_cap > SIZE_MAX / sizeof(*allowed_addrs)) {
-                    const char *msg = "Allowlist capacity overflow";
-                    ipc_crypto_send_msg(&binder_crypto_child, sockfd,
-                            msg, strlen(msg), -1);
-                    free(plain);
-                    continue;
-                }
-                struct binder_allowed_addr *tmp = realloc(allowed_addrs,
-                        new_cap * sizeof(*tmp));
-                if (tmp == NULL) {
-                    const char *msg = "Unable to grow allowlist";
-                    ipc_crypto_send_msg(&binder_crypto_child, sockfd,
-                            msg, strlen(msg), -1);
-                    free(plain);
-                    continue;
-                }
-                allowed_addrs = tmp;
-                allowed_capacity = new_cap;
-            }
-
-            struct binder_allowed_addr *slot = &allowed_addrs[allowed_count];
-            memset(slot, 0, sizeof(*slot));
-            slot->len = (socklen_t)req->address_len;
-            memcpy(&slot->addr, req->address, req->address_len);
-            allowed_count++;
-
-            uint8_t status = 0;
-            ipc_crypto_send_msg(&binder_crypto_child, sockfd,
-                    &status, sizeof(status), -1);
             free(plain);
             continue;
         }
@@ -703,17 +688,8 @@ binder_main(int sockfd) {
             continue;
         }
 
-        int found = 0;
-        for (size_t i = 0; i < allowed_count; i++) {
-            if (binder_sockaddr_equal(req->address, req->address_len,
-                        (struct sockaddr *)&allowed_addrs[i].addr,
-                        allowed_addrs[i].len)) {
-                found = 1;
-                break;
-            }
-        }
-
-        if (!found) {
+        if (!allowlist_contains(allowed_addrs, allowed_count,
+                    req->address, req->address_len)) {
             const char *msg = "Requested bind address not in allowlist";
             ipc_crypto_send_msg(&binder_crypto_child, sockfd,
                     msg, strlen(msg), -1);

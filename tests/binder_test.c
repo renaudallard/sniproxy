@@ -25,6 +25,7 @@
  */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -38,6 +39,7 @@
 
 static int test_binder(int);
 static int test_binder_reuseport(int);
+static int test_binder_allowlist_bound(int);
 
 /* A loopback port nothing is bound to right now, so the test does not
  * depend on fixed ports being free. */
@@ -105,6 +107,8 @@ int main(void) {
         test_binder(privileged);
 
     test_binder_reuseport(free_port());
+
+    test_binder_allowlist_bound(free_port());
 
     stop_binder();
 
@@ -183,6 +187,41 @@ test_binder(int port) {
             0, 0);
     assert(fd2 == -1);
 
+    close(fd);
+
+    return 0;
+}
+
+/* The allowlist stops growing at some point, and what it holds can still
+ * be registered again and bound */
+static int
+test_binder_allowlist_bound(int port) {
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_port = htons(port),
+    };
+
+    int rc = binder_register_allowed_address((struct sockaddr *)&addr, sizeof(addr));
+    assert(rc == 0);
+
+    /* Distinct loopback addresses, port 1 */
+    struct sockaddr_in other = addr;
+    other.sin_port = htons(1);
+    int refused = 0;
+    for (uint32_t i = 2; i < 0x200000 && !refused; i++) {
+        other.sin_addr.s_addr = htonl(0x7f000000u | i);
+        refused = binder_register_allowed_address((struct sockaddr *)&other,
+                sizeof(other)) < 0;
+    }
+    assert(refused);
+
+    rc = binder_register_allowed_address((struct sockaddr *)&addr, sizeof(addr));
+    assert(rc == 0);
+
+    int fd = bind_socket((struct sockaddr *)&addr, sizeof(addr), SOCK_STREAM,
+            0, 0);
+    assert(fd >= 0);
     close(fd);
 
     return 0;
