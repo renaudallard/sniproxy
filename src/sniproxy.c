@@ -794,7 +794,8 @@ main(int argc, char **argv) {
 
     if (resolv_init(loop, config->resolver.nameservers,
             config->resolver.search, config->resolver.mode,
-            config->resolver.dnssec_validation_mode) < 0)
+            config->resolver.dnssec_validation_mode,
+            config->resolver.cache_ttl) < 0)
         fatal("Failed to initialize resolver");
 
     init_connections();

@@ -472,7 +472,8 @@ DNS-over-TLS upstream is never silently downgraded. Up to four of the
 addresses it finds are used, those the host can reach first, and queries
 move on to the next one when a server does not answer.
 
-Each DNS-over-TLS lookup not answered from the c-ares cache opens a new
+Each DNS-over-TLS lookup not answered from the c-ares cache, which is
+off unless \fBcache_ttl\fR turns it on, opens a new
 connection, with its TCP and TLS handshakes, and closes it once answered.
 Connections are not kept open between lookups, as some servers drop such
 a connection with a query on it still unanswered.
@@ -537,10 +538,18 @@ validating resolver.
 It is strongly recommended to use a local name server, since a single
 socket is reused for all DNS queries and thus the UDP port number is
 predictable, leaving the query only protected from spoofed replies
-by the 16 bit query ID. sniproxy adds no DNS cache of its own: from
-c-ares 1.31.0 on, c-ares caches answers for up to their TTL, at most an
-hour, while with older versions every lookup reaches the name server,
-and a local caching resolver improves performance.
+by the 16 bit query ID. Unless \fBcache_ttl\fR is set, every lookup
+reaches the name server, and a local caching resolver improves
+performance.
+
+The optional \fBcache_ttl\fR directive sets how many seconds, from 0 to
+86400, c-ares may keep an answer in its cache, never longer than the
+answer's TTL. The default, 0, turns the cache off. The cache has no limit
+on its number of entries: through a '*' table entry, each name a client
+sends stays in the memory of the resolver process for up to that many
+seconds, negative answers too, so a large value lets clients grow it.
+It needs c-ares 1.23.0 or later, and with an older one a warning is
+logged and nothing is cached. sniproxy adds no DNS cache of its own.
 
 .SS LISTENER
 

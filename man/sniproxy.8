@@ -145,7 +145,8 @@ and
 settings only apply to the TCP connections it accepts after the
 reload: one accepted before it and still sending its request is
 not checked against the new acl\&. Changes to user, group and pidfile,
-to the resolver's nameserver, search, mode and dnssec_validation, and
+to the resolver's nameserver, search, mode, dnssec_validation and
+cache_ttl, and
 to tcp_fastopen, reuseport and ipv6_v6only for listeners that already
 exist, only take effect on restart; the reload logs a warning for each
 one it ignores\&. The resolver's query limits do change on reload\&.

@@ -54,6 +54,7 @@ struct Config {
         size_t max_concurrent_queries;
         size_t max_queries_per_client;
         int dnssec_validation_mode;
+        unsigned int cache_ttl;
     } resolver;
     struct Logger *access_log;
     struct Logger *error_log;

@@ -404,9 +404,9 @@ A config file has a small set of **global** directives followed by one or
 more `listener <addr>` and `table <name>` blocks. SIGHUP triggers a
 zero-downtime reload. A few settings only change on restart, and the
 reload logs a warning when it ignores one: `user`, `group`, `pidfile`,
-the resolver's `nameserver`, `search`, `mode` and `dnssec_validation`
-(its query limits do change), and, for listeners that already exist,
-`tcp_fastopen`, `reuseport` and `ipv6_v6only`. So does a `source client`
+the resolver's `nameserver`, `search`, `mode`, `dnssec_validation` and
+`cache_ttl` (its query limits do change), and, for listeners that
+already exist, `tcp_fastopen`, `reuseport` and `ipv6_v6only`. So does a `source client`
 added by a reload when sniproxy was started as root with no listener
 using it. SIGUSR1 dumps the live connection table to a temporary
 `connections-XXXXXXXX` file under
@@ -522,6 +522,10 @@ resolver {
     # off | relaxed (default); this does not validate DNSSEC,
     # see "DNS resolution" below
     dnssec_validation relaxed
+
+    # Seconds c-ares may cache an answer, 0 (default) turns the cache
+    # off. With '*' entries every name clients send is kept that long.
+    # cache_ttl 60
 }
 ```
 
@@ -544,10 +548,11 @@ nameserver dot://9.9.9.9/dns.quad9.net
 nameserver dot://dns.quad9.net
 ```
 
-Each DoT lookup not answered from the c-ares cache opens a new
-connection, with its TCP and TLS handshakes, and closes it once
-answered. Connections are not kept open between lookups, as some
-servers drop such a connection with a query on it still unanswered.
+Each DoT lookup not answered from the c-ares cache, off unless
+`cache_ttl` is set, opens a new connection, with its TCP and TLS
+handshakes, and closes it once answered. Connections are not kept open
+between lookups, as some servers drop such a connection with a query on
+it still unanswered.
 
 ### Listener and table
 
@@ -875,6 +880,11 @@ That gives:
   system resolver
 - **IPv4/IPv6 preference modes** for mixed-stack deployments
 - **Concurrency caps**, globally and per client, to bound resolver memory
+- **No answer cache by default**: c-ares 1.31 and later cache every
+  answer for up to an hour with no limit on entries, so through a '*'
+  entry each name a client sends would stay in memory. `cache_ttl`
+  turns the cache back on for at most that many seconds (c-ares 1.23
+  or later)
 - **Burst tolerance**: when many new names arrive faster than the
   resolver process reads them, the lookups wait in order for room on
   the channel to it instead of failing with a 503

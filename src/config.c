@@ -48,6 +48,7 @@
 #define MAX_IO_COLLECT_INTERVAL 0.1
 #define MAX_TIMEOUT_COLLECT_INTERVAL 0.5
 #define MAX_IDLE_TIMEOUT 86400
+#define MAX_RESOLVER_CACHE_TTL 86400
 #include "config.h"
 #include "http.h"
 #include "resolv.h"
@@ -122,6 +123,7 @@ static int accept_resolver_mode(struct ResolverConfig *, const char *);
 static int accept_resolver_max_queries(struct ResolverConfig *, const char *);
 static int accept_resolver_max_queries_per_client(struct ResolverConfig *, const char *);
 static int accept_resolver_dnssec_validation(struct ResolverConfig *, const char *);
+static int accept_resolver_cache_ttl(struct ResolverConfig *, const char *);
 static int end_resolver_stanza(struct Config *, struct ResolverConfig *);
 static inline size_t string_vector_len(char **);
 static int append_to_string_vector(char ***, const char *) __attribute__((nonnull(1)));
@@ -183,6 +185,7 @@ DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_mode, struct ResolverConfig)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_max_queries, struct ResolverConfig)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_max_queries_per_client, struct ResolverConfig)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_dnssec_validation, struct ResolverConfig)
+DEFINE_KEYWORD_PARSE_WRAPPER(accept_resolver_cache_ttl, struct ResolverConfig)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_cidr, struct ListenerACLBuilder)
 DEFINE_KEYWORD_PARSE_WRAPPER(accept_listener_acl_value, struct ListenerACLRuleValue)
 DEFINE_KEYWORD_FINALIZE_WRAPPER(end_listener_acl_value, struct ListenerACLBuilder, struct ListenerACLRuleValue)
@@ -268,6 +271,10 @@ static const struct Keyword resolver_stanza_grammar[] = {
     {
         .keyword="dnssec_validation",
         .parse_arg=kw_parse_accept_resolver_dnssec_validation,
+    },
+    {
+        .keyword="cache_ttl",
+        .parse_arg=kw_parse_accept_resolver_cache_ttl,
     },
     {
         .keyword = NULL,
@@ -867,15 +874,16 @@ reload_config(struct Config *config, struct ev_loop *loop) {
              "listeners (requires restart)");
 
     /* Warn if resolver config changed since the resolver child is not
-     * restarted on reload. Nameserver, search domain, mode, and DNSSEC
-     * changes require a full restart to take effect. */
+     * restarted on reload. Nameserver, search domain, mode, DNSSEC and
+     * cache changes require a full restart to take effect. */
     if (!string_vectors_equal(config->resolver.nameservers,
                 new_config->resolver.nameservers) ||
             !string_vectors_equal(config->resolver.search,
                 new_config->resolver.search) ||
             config->resolver.mode != new_config->resolver.mode ||
             config->resolver.dnssec_validation_mode !=
-                new_config->resolver.dnssec_validation_mode)
+                new_config->resolver.dnssec_validation_mode ||
+            config->resolver.cache_ttl != new_config->resolver.cache_ttl)
         warn("ignoring changed resolver directive on reload "
              "(requires restart)");
 
@@ -2378,6 +2386,29 @@ accept_resolver_dnssec_validation(struct ResolverConfig *resolver, const char *v
 }
 
 static int
+accept_resolver_cache_ttl(struct ResolverConfig *resolver, const char *value) {
+    char *endptr = NULL;
+    unsigned long parsed = 0;
+    int valid = 0;
+
+    if (value != NULL && *value != '\0' && strchr(value, '-') == NULL) {
+        errno = 0;
+        parsed = strtoul(value, &endptr, 10);
+        valid = errno == 0 && endptr != value && *endptr == '\0' &&
+                parsed <= MAX_RESOLVER_CACHE_TTL;
+    }
+
+    if (!valid) {
+        err("Invalid cache_ttl '%s' (expected a number from 0 to %d)",
+                value != NULL ? value : "", MAX_RESOLVER_CACHE_TTL);
+        return -1;
+    }
+
+    resolver->cache_ttl = (unsigned int)parsed;
+    return 1;
+}
+
+static int
 accept_resolver_max_queries(struct ResolverConfig *resolver, const char *value) {
     char *endptr = NULL;
     unsigned long parsed = 0;
@@ -2474,6 +2505,7 @@ print_resolver_config(FILE *file, struct ResolverConfig *resolver) {
             resolver->max_queries_per_client);
     fprintf(file, "\tdnssec_validation %s\n",
             dnssec_validation_mode_names[resolver->dnssec_validation_mode]);
+    fprintf(file, "\tcache_ttl %u\n", resolver->cache_ttl);
 
     fprintf(file, "}\n\n");
 }

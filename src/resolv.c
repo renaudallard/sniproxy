@@ -293,6 +293,7 @@ static struct ev_loop *resolver_loop_ref = NULL;
 static char **resolver_saved_nameservers = NULL;
 static char **resolver_saved_search = NULL;
 static int resolver_saved_dnssec_mode = DEFAULT_DNSSEC_VALIDATION_MODE;
+static unsigned int resolver_saved_cache_ttl;
 static int resolver_saved_mode = RESOLV_MODE_IPV4_ONLY;
 
 static int resolver_restart_in_progress = 0;
@@ -382,9 +383,11 @@ static void resolver_fail_pending_restart_list(void);
 struct ResolverChildQuery;
 
 static void resolver_child_main(int sockfd, char **nameservers,
-        char **search_domains, int default_mode, int dnssec_mode) __attribute__((noreturn));
+        char **search_domains, int default_mode, int dnssec_mode,
+        unsigned int cache_ttl) __attribute__((noreturn));
 static void resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
-        char **search_domains, int default_mode, int dnssec_mode);
+        char **search_domains, int default_mode, int dnssec_mode,
+        unsigned int cache_ttl);
 static void resolver_child_shutdown_dns(struct ev_loop *loop);
 static void resolver_child_ipc_cb(struct ev_loop *loop, struct ev_io *w, int revents);
 static void resolver_child_submit_query(uint32_t id, int mode,
@@ -553,7 +556,8 @@ resolver_fuzz_handle_addrinfo(struct ResolverChildQuery *query,
 #endif /* FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
 
 int
-resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, int dnssec_mode) {
+resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode,
+        int dnssec_mode, unsigned int cache_ttl) {
     int sockets[2];
     /* Use SOCK_SEQPACKET for message boundaries with reliable delivery.
      * Falls back to SOCK_DGRAM if SEQPACKET is not available. */
@@ -582,6 +586,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
     resolver_saved_search = search;
     resolver_saved_mode = mode;
     resolver_saved_dnssec_mode = dnssec_mode;
+    resolver_saved_cache_ttl = cache_ttl;
 
     if (resolver_bucket_salt == 0) {
         resolver_bucket_salt = arc4random();
@@ -670,7 +675,7 @@ resolv_init(struct ev_loop *loop, char **nameservers, char **search, int mode, i
             resolver_child_exit(EXIT_FAILURE);
         }
         resolver_child_main(child_fd, nameservers, search, mode,
-                dnssec_mode);
+                dnssec_mode, cache_ttl);
     }
 
     close(sockets[1]);
@@ -1770,7 +1775,7 @@ resolver_restart(int retry) {
     } else {
         rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
                 resolver_saved_search, resolver_saved_mode,
-                resolver_saved_dnssec_mode);
+                resolver_saved_dnssec_mode, resolver_saved_cache_ttl);
     }
 
     if (rc >= 0)
@@ -1799,7 +1804,8 @@ resolver_child_exit(int status) {
 }
 
 static void
-resolver_child_main(int sockfd, char **nameservers, char **search_domains, int default_mode, int dnssec_mode) {
+resolver_child_main(int sockfd, char **nameservers, char **search_domains,
+        int default_mode, int dnssec_mode, unsigned int cache_ttl) {
     child_sock = sockfd;
     child_default_resolv_mode = default_mode;
     if (ipc_crypto_channel_set_role(&resolver_ipc_crypto,
@@ -1855,7 +1861,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
     }
 
     resolver_child_setup_dns(child_loop, nameservers, search_domains,
-            default_mode, dnssec_mode);
+            default_mode, dnssec_mode, cache_ttl);
 
 #ifdef __OpenBSD__
     /* Allow rpath so OpenSSL can read trusted CA bundles for DoT verification. */
@@ -1912,7 +1918,8 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains, int d
 
 static void
 resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
-        char **search_domains, int default_mode, int dnssec_mode) {
+        char **search_domains, int default_mode, int dnssec_mode,
+        unsigned int cache_ttl) {
     struct ares_options options;
     struct ares_options *options_ptr = NULL;
     int optmask = 0;
@@ -1930,6 +1937,18 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         options.flags |= ARES_FLAG_EDNS;
 #endif
     }
+
+    /* From c-ares 1.31 on the cache is on unless turned off here, and
+     * it keeps every answer, so each name a client has a '*' entry look
+     * up stays in memory for as long as cache_ttl allows. */
+#ifdef ARES_OPT_QUERY_CACHE
+    options.qcache_max_ttl = cache_ttl;
+    optmask |= ARES_OPT_QUERY_CACHE;
+#else
+    if (cache_ttl > 0)
+        warn("resolver: cache_ttl needs c-ares 1.23 or later, "
+                "answers are not cached");
+#endif
 
     if (search_domains != NULL && search_domains[0] != NULL) {
         int ndomains = 0;
