@@ -764,10 +764,11 @@ afterthought.
   restarted at run time is forked from the main process, and first
   zeroes the copy it gets of what connections have buffered.
 - **Strict config and pidfile checks**: config files must be owned by
-  root, or by the user sniproxy is started as when that is not root,
-  and must not be accessible to group or others (`-g` allows group read
-  only, `-i` any read of a file no one may write, as on the Nix store);
-  the
+  the user that reads them or by root: root for a start as root, root or
+  the configured user for a reload after the privilege drop, and root or
+  the user sniproxy is started as when that is not root. They must not
+  be accessible to group or others (`-g` allows group read only, `-i`
+  any read of a file no one may write, as on the Nix store); the
   `pidfile` and log file paths must be absolute; resolver search domains
   are treated as literal suffixes, not re-parsed by the system resolver.
   Pidfiles refuse to be written over stale sockets, FIFOs or symlinks,
