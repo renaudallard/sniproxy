@@ -177,8 +177,10 @@ SNIProxy runs as four cooperating processes:
    restarts the resolver if it exits, at most once a second once it has
    died three times in quick succession.
 
-These are the names `ps` and `pgrep` show on Linux, truncated there to
-15 characters. On OpenBSD every process keeps the command name
+On Linux these are the process names that `pgrep` and `ps -o comm`
+show, truncated to 15 characters; the command line `ps -ef` shows is
+only rewritten for the logger, or for every process when sniproxy is
+linked with libbsd. On OpenBSD every process keeps the command name
 `sniproxy`, and `ps` shows the helpers as `sniproxy: sniproxy-logger`
 and so on, while the main process keeps its command line so that rc.d
 can find it. On macOS, where sniproxy does not rename its processes,
