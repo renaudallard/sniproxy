@@ -117,6 +117,39 @@ sni_parse_server_name_extension(const uint8_t *data, size_t data_len,
     return -2;
 }
 
+/* Look for a renegotiation_info naming a previous connection before
+ * anything else is checked: a hello the rest of the parse finds invalid
+ * goes to the fallback, which a renegotiation hello must not reach. The
+ * walk stops where the extension lengths stop making sense, as no
+ * extension can be found past that point. Returns 0, -5 when a
+ * renegotiation_info is malformed, or TLS_ERR_CLIENT_RENEGOTIATION. */
+static inline int
+sni_check_renegotiation(const uint8_t *data, size_t data_len) {
+    size_t pos = 0;
+    int malformed = 0;
+
+    while (data_len - pos >= 4) {
+        size_t len = ((size_t)data[pos + 2] << 8) +
+            (size_t)data[pos + 3];
+
+        if (len > data_len - pos - 4)
+            break;
+
+        if (data[pos] == 0xff && data[pos + 1] == 0x01) {
+            if (len >= 1 && data[pos + 4] != 0) {
+                debug("Client-initiated TLS renegotiation is not supported.");
+                return TLS_ERR_CLIENT_RENEGOTIATION;
+            }
+            if (len != 1)
+                malformed = 1;
+        }
+
+        pos += 4 + len;
+    }
+
+    return malformed ? -5 : 0;
+}
+
 static inline int
 sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
         size_t max_extensions, size_t max_extension_length) {
@@ -124,6 +157,10 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
     size_t ext_count = 0;
     int sni_result = -2;
     int sni_seen = 0;
+
+    int rc = sni_check_renegotiation(data, data_len);
+    if (rc < 0)
+        return rc;
 
     while (pos < data_len) {
         size_t remaining = data_len - pos;
@@ -180,38 +217,7 @@ sni_parse_extensions(const uint8_t *data, size_t data_len, char **hostname,
             if (sni_result < 0 && sni_result != -2)
                 return sni_result;
             /* Continue scanning, with or without a host_name, so that a
-             * renegotiation_info after the SNI extension is still
-             * inspected: a hello without a host_name goes to the
-             * fallback, which a renegotiation hello must not reach. */
-        }
-
-        if (data[pos] == 0xff && data[pos + 1] == 0x01) {
-            if (len < 1) {
-                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
-                    free(*hostname);
-                    *hostname = NULL;
-                }
-                return -5;
-            }
-
-            size_t renegotiated_connection_length = data[pos + 4];
-
-            if (renegotiated_connection_length != len - 1) {
-                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
-                    free(*hostname);
-                    *hostname = NULL;
-                }
-                return -5;
-            }
-
-            if (renegotiated_connection_length != 0) {
-                debug("Client-initiated TLS renegotiation is not supported.");
-                if (sni_result > 0 && hostname != NULL && *hostname != NULL) {
-                    free(*hostname);
-                    *hostname = NULL;
-                }
-                return TLS_ERR_CLIENT_RENEGOTIATION;
-            }
+             * second server_name extension is refused. */
         }
 
         pos += 4 + len;

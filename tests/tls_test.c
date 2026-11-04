@@ -714,18 +714,18 @@ static const unsigned char tls11_supported_versions_client_hello[] = {
     0x00, 0x03, 0x02, 0x03, 0x02,
 };
 
+static const unsigned char localhost_sni[] = {
+    0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00, 0x09,
+    'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+};
+
 /*
- * A ClientHello for "localhost" followed by a padding extension of
- * pad_len bytes, which only the server_name extension's size limit could
- * refuse. Returns its length.
+ * Write to buf the header of a TLS 1.2 ClientHello with one cipher suite
+ * whose extensions take ext_len bytes, which the caller appends. Returns
+ * the length of the header.
  */
 static size_t
-build_padded_client_hello(unsigned char *buf, size_t pad_len) {
-    static const unsigned char sni[] = {
-        0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00, 0x09,
-        'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
-    };
-    size_t ext_len = sizeof(sni) + 4 + pad_len;
+build_client_hello_header(unsigned char *buf, size_t ext_len) {
     size_t body_len = 2 + 32 + 1 + 4 + 2 + 2 + ext_len;
     size_t pos = 0;
 
@@ -751,8 +751,22 @@ build_padded_client_hello(unsigned char *buf, size_t pad_len) {
     buf[pos++] = 0x00;
     buf[pos++] = (unsigned char)(ext_len >> 8);
     buf[pos++] = (unsigned char)ext_len;
-    memcpy(buf + pos, sni, sizeof(sni));
-    pos += sizeof(sni);
+
+    return pos;
+}
+
+/*
+ * A ClientHello for "localhost" followed by a padding extension of
+ * pad_len bytes, which only the server_name extension's size limit could
+ * refuse. Returns its length.
+ */
+static size_t
+build_padded_client_hello(unsigned char *buf, size_t pad_len) {
+    size_t pos = build_client_hello_header(buf,
+            sizeof(localhost_sni) + 4 + pad_len);
+
+    memcpy(buf + pos, localhost_sni, sizeof(localhost_sni));
+    pos += sizeof(localhost_sni);
     buf[pos++] = 0x00;                      /* padding */
     buf[pos++] = 0x15;
     buf[pos++] = (unsigned char)(pad_len >> 8);
@@ -772,38 +786,11 @@ static size_t
 build_many_extensions_client_hello(unsigned char *buf, size_t n,
         uint16_t version, uint16_t second) {
     size_t sv_len = second != 0 ? 4 : 2;
-    static const unsigned char sni[] = {
-        0x00, 0x00, 0x00, 0x0e, 0x00, 0x0c, 0x00, 0x00, 0x09,
-        'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
-    };
-    size_t ext_len = sizeof(sni) + 4 * n + 5 + sv_len;
-    size_t body_len = 2 + 32 + 1 + 4 + 2 + 2 + ext_len;
-    size_t pos = 0;
+    size_t pos = build_client_hello_header(buf,
+            sizeof(localhost_sni) + 4 * n + 5 + sv_len);
 
-    buf[pos++] = 0x16;
-    buf[pos++] = 0x03;
-    buf[pos++] = 0x01;
-    buf[pos++] = (unsigned char)((body_len + 4) >> 8);
-    buf[pos++] = (unsigned char)(body_len + 4);
-    buf[pos++] = 0x01;
-    buf[pos++] = 0x00;
-    buf[pos++] = (unsigned char)(body_len >> 8);
-    buf[pos++] = (unsigned char)body_len;
-    buf[pos++] = 0x03;
-    buf[pos++] = 0x03;
-    memset(buf + pos, 0x5a, 32);
-    pos += 32;
-    buf[pos++] = 0x00;                      /* session id */
-    buf[pos++] = 0x00;                      /* one cipher suite */
-    buf[pos++] = 0x02;
-    buf[pos++] = 0x13;
-    buf[pos++] = 0x01;
-    buf[pos++] = 0x01;                      /* null compression */
-    buf[pos++] = 0x00;
-    buf[pos++] = (unsigned char)(ext_len >> 8);
-    buf[pos++] = (unsigned char)ext_len;
-    memcpy(buf + pos, sni, sizeof(sni));
-    pos += sizeof(sni);
+    memcpy(buf + pos, localhost_sni, sizeof(localhost_sni));
+    pos += sizeof(localhost_sni);
     for (size_t i = 0; i < n; i++) {
         buf[pos++] = 0xfa;
         buf[pos++] = (unsigned char)i;
@@ -823,6 +810,133 @@ build_many_extensions_client_hello(unsigned char *buf, size_t n,
     }
 
     return pos;
+}
+
+/* Append to ext a server_name extension holding the host_name name, of
+ * name_len bytes, and return the new length of ext */
+static size_t
+append_sni(unsigned char *ext, size_t len, const char *name, size_t name_len) {
+    ext[len++] = 0x00;
+    ext[len++] = 0x00;
+    ext[len++] = (unsigned char)((name_len + 5) >> 8);
+    ext[len++] = (unsigned char)(name_len + 5);
+    ext[len++] = (unsigned char)((name_len + 3) >> 8);
+    ext[len++] = (unsigned char)(name_len + 3);
+    ext[len++] = 0x00;
+    ext[len++] = (unsigned char)(name_len >> 8);
+    ext[len++] = (unsigned char)name_len;
+    memcpy(ext + len, name, name_len);
+    return len + name_len;
+}
+
+/*
+ * A renegotiation hello is refused whatever else is wrong with it: the
+ * rest of the parse sends an invalid hello to the fallback, which must
+ * not get a renegotiation.
+ */
+static void
+test_renegotiation_refused(void) {
+    static const unsigned char reneg[] = {
+        0xff, 0x01, 0x00, 0x03, 0x02, 0x01, 0x02,
+    };
+    static const unsigned char reneg_empty[] = {
+        0xff, 0x01, 0x00, 0x01, 0x00,
+    };
+    static const unsigned char reneg_short[] = {
+        0xff, 0x01, 0x00, 0x00,
+    };
+    static const unsigned char tls12_versions[] = {
+        0x00, 0x2b, 0x00, 0x03, 0x02, 0x03, 0x03,
+    };
+    static unsigned char ext[8192];
+    static unsigned char hello[8192];
+    static char long_name[5000];
+    enum { BAD_NAME, INVALID_NAME, TWO_SNI, LONG_NAME, LARGE_SNI,
+        MANY_EXTENSIONS, CASES };
+
+    memset(long_name, 'a', sizeof(long_name));
+
+    for (int c = 0; c < CASES; c++) {
+        size_t len = 0;
+
+        switch (c) {
+        case BAD_NAME:
+            len = append_sni(ext, len, "bad-", 4);
+            break;
+        case INVALID_NAME:
+            len = append_sni(ext, len, "_x.example", 10);
+            break;
+        case TWO_SNI:
+            len = append_sni(ext, len, "localhost", 9);
+            len = append_sni(ext, len, "localhost", 9);
+            break;
+        case LONG_NAME:
+            len = append_sni(ext, len, long_name, 300);
+            break;
+        case LARGE_SNI:
+            len = append_sni(ext, len, long_name, sizeof(long_name));
+            break;
+        case MANY_EXTENSIONS:
+            len = append_sni(ext, len, "localhost", 9);
+            memcpy(ext + len, tls12_versions, sizeof(tls12_versions));
+            len += sizeof(tls12_versions);
+            for (size_t i = 0; i < 70; i++) {
+                ext[len++] = 0xfa;
+                ext[len++] = (unsigned char)i;
+                ext[len++] = 0x00;
+                ext[len++] = 0x00;
+            }
+            break;
+        }
+        memcpy(ext + len, reneg, sizeof(reneg));
+        len += sizeof(reneg);
+
+        size_t hello_len = build_client_hello_header(hello, len);
+        memcpy(hello + hello_len, ext, len);
+        hello_len += len;
+
+        char *hostname = NULL;
+        int result = tls_protocol->parse_packet((char *)hello, hello_len,
+                &hostname);
+        assert(result == TLS_ERR_CLIENT_RENEGOTIATION);
+        assert(hostname == NULL);
+    }
+
+    /* An empty renegotiation_info is a first handshake: an invalid name
+     * still goes to the fallback, and a valid one is routed */
+    size_t len = append_sni(ext, 0, "bad-", 4);
+    memcpy(ext + len, reneg_empty, sizeof(reneg_empty));
+    len += sizeof(reneg_empty);
+    size_t hello_len = build_client_hello_header(hello, len);
+    memcpy(hello + hello_len, ext, len);
+    hello_len += len;
+    char *hostname = NULL;
+    int result = tls_protocol->parse_packet((char *)hello, hello_len,
+            &hostname);
+    assert(result == -5);
+    assert(hostname == NULL);
+
+    len = append_sni(ext, 0, "localhost", 9);
+    memcpy(ext + len, reneg_empty, sizeof(reneg_empty));
+    len += sizeof(reneg_empty);
+    hello_len = build_client_hello_header(hello, len);
+    memcpy(hello + hello_len, ext, len);
+    hello_len += len;
+    result = tls_protocol->parse_packet((char *)hello, hello_len, &hostname);
+    assert(result == 9);
+    assert(hostname != NULL && strcmp(hostname, "localhost") == 0);
+    free(hostname);
+
+    /* A renegotiation_info too short to hold its length is malformed */
+    memcpy(ext, reneg_short, sizeof(reneg_short));
+    len = append_sni(ext, sizeof(reneg_short), "localhost", 9);
+    hello_len = build_client_hello_header(hello, len);
+    memcpy(hello + hello_len, ext, len);
+    hello_len += len;
+    hostname = NULL;
+    result = tls_protocol->parse_packet((char *)hello, hello_len, &hostname);
+    assert(result == -5);
+    assert(hostname == NULL);
 }
 
 /*
@@ -876,6 +990,8 @@ int main(void) {
 
     result = tls_protocol->parse_packet(good[0].packet, good[0].len, NULL);
     assert(result == -3);
+
+    test_renegotiation_refused();
 
     /* Large extensions other than server_name, such as session tickets
      * holding a client certificate chain, must not be refused */
