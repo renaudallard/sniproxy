@@ -735,7 +735,8 @@ which have their own warnings. The parse failure itself is logged as a
 warning whether or not this directive is set. A dtls listener ignores
 the directive and logs no such warning: the source of a datagram may be
 forged, so a ClientHello that cannot be parsed or names no host, and a
-datagram that drops its session, are only logged at debug level, and a
+datagram that drops its session, are only logged at debug level, with
+the notice "UDP: no backend" when no fallback takes the session, and a
 session whose ClientHello attempts a renegotiation as a notice.
 
 The directive \fBproxy_protocol yes\fR enables acceptance of incoming
