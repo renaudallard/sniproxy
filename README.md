@@ -986,8 +986,8 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 
 - Check that the resolver process is alive: on Linux `pgrep -l sniproxy`
   lists every sniproxy process by name, truncated to 15 characters, so
-  it shows up there as `sniproxy-resolv`. On OpenBSD, where they are
-  all named `sniproxy`, `pgrep -lf sniproxy-resolver` finds it. On
+  it shows up there as `sniproxy-resolv`. On OpenBSD and FreeBSD, where
+  they are all named `sniproxy`, `pgrep -lf sniproxy-resolver` finds it. On
   macOS the processes cannot be told apart by name; the next step shows
   whether the resolver answers.
 - Run in the foreground with `-d` (see Debug mode below) to trace each
