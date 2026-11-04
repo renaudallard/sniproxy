@@ -4169,9 +4169,20 @@ try_splice(struct Connection *con, struct ev_loop *loop) {
     /* Splice server -> client */
     sp.sp_fd = client_fd;
     if (setsockopt(server_fd, SOL_SOCKET, SO_SPLICE, &sp, sizeof(sp)) < 0) {
-        /* Undo first splice */
-        if (setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0)
+        /* Undo the first splice. A backend that failed in between has
+         * ended it already, which gives EPROTO here, and the kernel
+         * copied an error onto the client socket: clear it while the
+         * client is still connected, so that the failure is handled as
+         * the backend's and the client gets its answer. */
+        if (setsockopt(client_fd, SOL_SOCKET, SO_SPLICE, NULL, 0) < 0 &&
+                errno != EPROTO)
             warn("failed to unsplice client socket: %s", strerror(errno));
+        if (!socket_disconnected(client_fd)) {
+            int error;
+            socklen_t len = sizeof(error);
+
+            (void)getsockopt(client_fd, SOL_SOCKET, SO_ERROR, &error, &len);
+        }
         return 0;
     }
 
