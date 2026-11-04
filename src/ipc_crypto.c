@@ -77,12 +77,15 @@ static uint64_t host_to_be64(uint64_t host) {
  * the counter threshold is never reached. */
 #define IPC_CRYPTO_REKEY_INTERVAL (7 * 24 * 60 * 60)  /* 7 days in seconds */
 
-/* Maximum allowed generation gap between sender and receiver.
- * This limits DoS attacks where an attacker sends a message with a
- * very large generation number, forcing the receiver to perform
- * billions of rekey operations. A gap of 16 allows for reasonable
- * message reordering and recovery scenarios while preventing abuse. */
-#define IPC_CRYPTO_MAX_GENERATION_GAP 16
+/* How far ahead of the receiver's generation a frame may claim to be.
+ * The receiver derives one key per generation it skips before the tag
+ * check tells a forged frame from a genuine one, and a compromised peer
+ * can send such frames without any key, so each one costs the receiver
+ * that many derivations. The sockets keep order, and a sender moves on
+ * one generation at a time, so a gap of more than one only arises when
+ * no frame of a whole generation reached the receiver, as when every log
+ * line of one was dropped on a full socket. */
+#define IPC_CRYPTO_MAX_GENERATION_GAP 2
 
 /* HKDF-SHA256 key derivation function.
  * This replaces raw SHA256 hashing with proper HKDF as per RFC 5869.
