@@ -246,7 +246,7 @@ foreground with `sniproxy -f -c /etc/sniproxy.conf`.
 ## Usage
 
 ```
-Usage: sniproxy [-c <config>] [-f] [-g] [-i] [-t] [-n <max fd>] [-V] [-T <min TLS>] [-d]
+sniproxy [-c <config>] [-f] [-g] [-i] [-t] [-n <max fd>] [-V] [-T <min TLS>] [-d]
     -c  configuration file (default: /etc/sniproxy.conf)
     -f  run in foreground
     -g  allow group-readable (0640) config for SIGHUP reload
