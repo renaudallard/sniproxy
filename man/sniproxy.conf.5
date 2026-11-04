@@ -703,7 +703,12 @@ matching entry's target is '*'. It is
 not used when the address of a matching table entry fails to resolve;
 that connection is closed instead, as is a ClientHello refused by the
 TLS version policy or one that attempts a renegotiation, and a DTLS
-session whose ClientHello attempts one is dropped. On a tls listener, a
+session whose ClientHello attempts one is dropped, as is a DTLS session
+whose parsed datagram is a DTLS record other than a handshake, or of a
+later epoch: the record belongs to an association whose session ended,
+as after a pause, and the client's next ClientHello would otherwise
+follow it to the fallback. Data that is not DTLS, such as STUN, still
+goes there. On a tls listener, a
 connection that starts with a TLS record other than a handshake, or
 whose ClientHello is larger than the client buffer, is closed too. So
 is a connection whose hostname could not be matched against a table

@@ -719,6 +719,18 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
         return;
     }
 
+    if (result == TLS_ERR_NOT_HANDSHAKE) {
+        /* Only at debug level: the source of a datagram may be forged */
+        char client[INET6_ADDRSTRLEN + 8];
+        debug("UDP: dropping the session of %s, which began with a DTLS "
+                "record other than a handshake",
+                display_sockaddr(&session->client_addr,
+                        session->client_addr_len,
+                        client, sizeof(client)));
+        udp_session_destroy(session, loop);
+        return;
+    }
+
     if (result > 0) {
         session->hostname = hostname;
         session->hostname_len = (size_t)result;

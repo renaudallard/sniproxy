@@ -78,6 +78,7 @@ const struct Protocol *const dtls_protocol = &(struct Protocol){
  *  -2   - No SNI extension found
  *  -3   - Invalid hostname pointer
  *  -4   - malloc failure
+ *  TLS_ERR_NOT_HANDSHAKE - a DTLS record other than an epoch 0 handshake
  *  < -4 - Invalid DTLS ClientHello
  */
 static int
@@ -91,9 +92,16 @@ parse_dtls_header(const char *data_char, size_t data_len, char **hostname) {
     if (data_len < DTLS_RECORD_HEADER_LEN)
         return -1;
 
-    /* Content type must be Handshake */
+    /* Content type must be Handshake. RFC 7983 gives DTLS the first
+     * byte values 20 to 63, which take in the DTLS 1.3 unified header.
+     * Such a record belongs to an association whose session is gone, as
+     * after a pause, and the fallback cannot serve it: a session opened
+     * by it would then keep the client's next ClientHello there too.
+     * Other data, such as STUN, may still go to the fallback. */
     if (data[0] != DTLS_HANDSHAKE_CONTENT_TYPE) {
         debug("DTLS: not a handshake record (content_type=0x%02x)", data[0]);
+        if (data[0] >= 20 && data[0] <= 63)
+            return TLS_ERR_NOT_HANDSHAKE;
         return -5;
     }
 
@@ -109,7 +117,7 @@ parse_dtls_header(const char *data_char, size_t data_len, char **hostname) {
     uint16_t epoch = ((uint16_t)data[3] << 8) | data[4];
     if (epoch != 0) {
         debug("DTLS: non-zero epoch %" PRIu16, epoch);
-        return -5;
+        return TLS_ERR_NOT_HANDSHAKE;
     }
 
     /* Record payload length */

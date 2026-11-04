@@ -116,6 +116,22 @@ const unsigned char dtls_truncated[] = {
 };
 
 /* DTLS with non-zero epoch (rekeyed, not initial handshake) */
+/* A DTLS 1.3 record with the unified header, as an association sends
+ * once its handshake is over */
+const unsigned char dtls13_unified_header[] = {
+    0x2f, 0x12, 0x34, 0x00, 0x14,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+    0x10, 0x11, 0x12, 0x13,
+};
+
+/* A STUN binding request, which is not DTLS and may go to the fallback */
+const unsigned char stun_binding_request[] = {
+    0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42,
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    0x09, 0x0a, 0x0b, 0x0c,
+};
+
 const unsigned char dtls_nonzero_epoch[] = {
     0x16,
     0xFE, 0xFD,
@@ -177,7 +193,7 @@ static struct test_case tests[] = {
         "DTLS not a handshake",
         dtls_not_handshake,
         sizeof(dtls_not_handshake),
-        -5,
+        TLS_ERR_NOT_HANDSHAKE,
         NULL,
     },
     {
@@ -195,10 +211,24 @@ static struct test_case tests[] = {
         NULL,
     },
     {
+        "DTLS 1.3 unified header",
+        dtls13_unified_header,
+        sizeof(dtls13_unified_header),
+        TLS_ERR_NOT_HANDSHAKE,
+        NULL,
+    },
+    {
+        "STUN binding request",
+        stun_binding_request,
+        sizeof(stun_binding_request),
+        -5,
+        NULL,
+    },
+    {
         "DTLS non-zero epoch",
         dtls_nonzero_epoch,
         sizeof(dtls_nonzero_epoch),
-        -5,
+        TLS_ERR_NOT_HANDSHAKE,
         NULL,
     },
     {
