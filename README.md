@@ -175,8 +175,9 @@ SNIProxy runs as four cooperating processes:
    log lines over an encrypted, authenticated Unix socket.
 4. **`sniproxy-resolver`**: runs c-ares for async DNS and DNS-over-TLS.
    The main loop caps the queries in flight, overall and per client, and
-   restarts the resolver if it exits, at most once a second once it has
-   died three times in quick succession.
+   restarts the resolver if it exits. Once it has died three times in
+   quick succession, the next attempt waits a second, and each one after
+   that twice as long, up to 30 seconds, until a resolver keeps running.
 
 On Linux these are the process names that `pgrep` and `ps -o comm`
 show, truncated to 15 characters; the command line `ps -ef` shows is

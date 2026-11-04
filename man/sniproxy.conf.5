@@ -470,9 +470,11 @@ When ADDRESS is a hostname it is resolved once at resolver startup, after
 the resolver process has entered its sandbox, through the cleartext
 servers in \fBresolv.conf\fR(5), over TCP, which those servers must
 therefore accept; queries are only answered once that lookup has
-succeeded. If it fails the resolver refuses to start rather
+succeeded. If it fails the resolver exits rather
 than falling back to those cleartext servers, so a configured
-DNS-over-TLS upstream is never silently downgraded. Up to four of the
+DNS-over-TLS upstream is never silently downgraded, and every lookup
+fails until a new resolver finds the address. A new one is started
+after a delay that doubles each time, from one second up to 30. Up to four of the
 addresses it finds are used, those the host can reach first, and queries
 move on to the next one when a server does not answer.
 

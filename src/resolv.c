@@ -300,8 +300,12 @@ static int resolver_restart_in_progress = 0;
 static pthread_mutex_t resolver_restart_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Delay before retrying a restart that was throttled or that failed. The
  * retry runs from the event loop so a crash-looping or unstartable child
- * never blocks the proxy and never leaves the resolver permanently down. */
+ * never blocks the proxy and never leaves the resolver permanently down.
+ * The delay doubles at each retry, up to the maximum, while the children
+ * keep dying, and is back to the first one after a child lived. */
 #define RESOLVER_RESTART_RETRY_DELAY 1.0
+#define RESOLVER_RESTART_MAX_DELAY 30.0
+static ev_tstamp resolver_restart_delay = RESOLVER_RESTART_RETRY_DELAY;
 /* How long the child waits for room on the IPC socket before giving up on
  * a result frame: at most TIMEOUT without progress and TOTAL in all. It
  * pauses PAUSE when the socket polled writable yet still refused it. */
@@ -1707,8 +1711,7 @@ resolver_restart_timer_cb(struct ev_loop *loop, struct ev_timer *w,
     resolver_restart_timer_active = 0;
 
     /* resolver_restart() reports the reason and schedules the next attempt
-     * itself, so a failure here needs no further logging: this fires once
-     * a second while the child stays unstartable. */
+     * itself, so a failure here needs no further logging */
     (void)resolver_restart(1);
 }
 
@@ -1718,9 +1721,13 @@ resolver_schedule_restart(void) {
         return;
 
     ev_timer_init(&resolver_restart_timer, resolver_restart_timer_cb,
-            RESOLVER_RESTART_RETRY_DELAY, 0.0);
+            resolver_restart_delay, 0.0);
     ev_timer_start(resolver_loop_ref, &resolver_restart_timer);
     resolver_restart_timer_active = 1;
+
+    resolver_restart_delay *= 2;
+    if (resolver_restart_delay > RESOLVER_RESTART_MAX_DELAY)
+        resolver_restart_delay = RESOLVER_RESTART_MAX_DELAY;
 }
 
 static void
@@ -1756,12 +1763,17 @@ resolver_restart(int retry) {
     struct timespec now_ts = {0, 0};
     int throttled = 0;
     clock_gettime(CLOCK_MONOTONIC, &now_ts);
-    if (last_restart.tv_sec != 0 &&
-            now_ts.tv_sec - last_restart.tv_sec < 2) {
-        if (++rapid_restarts >= 3 && !retry)
-            throttled = 1;
-    } else {
-        rapid_restarts = 0;
+    /* A retry follows an attempt that started no child, so the time since
+     * that attempt does not tell how long a child lived */
+    if (!retry) {
+        if (last_restart.tv_sec != 0 &&
+                now_ts.tv_sec - last_restart.tv_sec < 2) {
+            if (++rapid_restarts >= 3)
+                throttled = 1;
+        } else {
+            rapid_restarts = 0;
+            resolver_restart_delay = RESOLVER_RESTART_RETRY_DELAY;
+        }
     }
     clock_gettime(CLOCK_MONOTONIC, &last_restart);
 
@@ -1773,7 +1785,7 @@ resolver_restart(int retry) {
     int rc;
     if (throttled) {
         warn("resolver child keeps failing; retrying in %.0f seconds",
-                (double)RESOLVER_RESTART_RETRY_DELAY);
+                (double)resolver_restart_delay);
         rc = -1;
     } else {
         rc = resolv_init(resolver_loop_ref, resolver_saved_nameservers,
