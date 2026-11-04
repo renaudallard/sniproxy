@@ -318,9 +318,9 @@ the RFC 3339 form `2026-10-06T16:42:07Z`.
 ### Debian / Ubuntu
 
 ```sh
-sudo apt-get install autotools-dev cdbs debhelper dh-autoreconf dpkg-dev \
-    gettext libev-dev libpcre2-dev libc-ares-dev libssl-dev libbsd-dev \
-    libseccomp-dev pkg-config fakeroot
+sudo apt-get install build-essential debhelper dpkg-dev fakeroot pkgconf \
+    libev-dev libpcre2-dev libc-ares-dev libssl-dev libbsd-dev \
+    libseccomp-dev
 dpkg-buildpackage -us -uc -b
 sudo dpkg -i ../sniproxy_<version>_<arch>.deb
 ```
