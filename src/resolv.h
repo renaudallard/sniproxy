@@ -36,6 +36,8 @@ struct ResolvQuery;
 int resolv_init(struct ev_loop *, char **, char **, int, int, unsigned int);
 struct ResolvQuery *resolv_query(const char *, int, uint32_t,
         void(*)(struct Address *, void *), void (*)(void *), void *);
+struct ResolvQuery *resolv_query_as_is(const char *, int, uint32_t,
+        void(*)(struct Address *, void *), void (*)(void *), void *);
 void resolv_cancel(struct ResolvQuery *);
 void resolv_shutdown(struct ev_loop *);
 void resolv_parent_capsicum_limit_rights(void);

@@ -898,7 +898,8 @@ udp_parse_and_resolve(struct UDPSession *session, const char *data,
         cb_data->dns_slot = 1;
 
         session->state = UDP_RESOLVING;
-        struct ResolvQuery *qh = resolv_query(hn, resolv_mode, 0,
+        struct ResolvQuery *qh = (lookup.wildcard ?
+                resolv_query_as_is : resolv_query)(hn, resolv_mode, 0,
                 udp_resolv_cb, udp_free_resolv_cb_data, cb_data);
         if (qh == NULL) {
             /* resolv_query failed synchronously and already called the

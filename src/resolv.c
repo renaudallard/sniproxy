@@ -458,6 +458,9 @@ static int child_sock = -1;
 static struct ev_loop *child_loop = NULL;
 static struct ResolverChildQuery *child_queries = NULL;
 static ares_channel child_channel = NULL;
+/* For a name sent with a final dot, such as one a client asked a '*'
+ * entry for: looked up as it is, never with the search domains */
+static ares_channel child_channel_as_is = NULL;
 static int child_shutting_down = 0;
 static struct ev_io child_ipc_watcher;
 static struct ev_timer child_dns_timeout_watcher;
@@ -783,6 +786,28 @@ resolv_shutdown(struct ev_loop *loop) {
     }
 
     ipc_crypto_state_clear(&resolver_ipc_crypto);
+}
+
+/* resolv_query() for a name to look up as it is, never with the search
+ * domains appended, such as one a client asked a '*' entry for. The final
+ * dot added to it tells the resolver process. */
+struct ResolvQuery *
+resolv_query_as_is(const char *hostname, int mode, uint32_t affinity_seed,
+        void (*client_cb)(struct Address *, void *),
+        void (*client_free_cb)(void *), void *client_cb_data) {
+    char name[RESOLVER_MAX_HOSTNAME_LEN + 2];
+    size_t len = hostname != NULL ? strlen(hostname) : 0;
+
+    if (len == 0 || len > RESOLVER_MAX_HOSTNAME_LEN ||
+            hostname[len - 1] == '.')
+        return resolv_query(hostname, mode, affinity_seed, client_cb,
+                client_free_cb, client_cb_data);
+
+    memcpy(name, hostname, len);
+    name[len] = '.';
+    name[len + 1] = '\0';
+    return resolv_query(name, mode, affinity_seed, client_cb,
+            client_free_cb, client_cb_data);
 }
 
 struct ResolvQuery *
@@ -2026,6 +2051,11 @@ resolver_child_setup_dns(struct ev_loop *loop, char **nameservers,
         optmask |= ARES_OPT_FLAGS;
 
     int status = ares_init_options(&child_channel, options_ptr, optmask);
+    if (status == ARES_SUCCESS) {
+        options.flags |= ARES_FLAG_NOSEARCH;
+        status = ares_init_options(&child_channel_as_is, options_ptr,
+                optmask | ARES_OPT_FLAGS);
+    }
     if (status != ARES_SUCCESS) {
         err("resolver child: ares_init failed: %s", ares_strerror(status));
         resolver_child_exit(EXIT_FAILURE);
@@ -2090,6 +2120,10 @@ resolver_child_shutdown_dns(struct ev_loop *loop) {
          * After it returns, c-ares no longer holds any query pointers. */
         ares_destroy(child_channel);
         child_channel = NULL;
+    }
+    if (child_channel_as_is != NULL) {
+        ares_destroy(child_channel_as_is);
+        child_channel_as_is = NULL;
     }
 
     while (child_dot_socket_list != NULL)
@@ -2219,6 +2253,15 @@ resolver_child_submit_query(uint32_t id, int mode,
     memcpy(hostname_copy, hostname, hostname_len);
     hostname_copy[hostname_len] = '\0';
 
+    /* A final dot asks for the name as it is. c-ares would not find such
+     * a name in the hosts file, so it goes without the dot to the channel
+     * that never appends the search domains. */
+    ares_channel channel = child_channel;
+    if (hostname_len > 1 && hostname_copy[hostname_len - 1] == '.') {
+        hostname_copy[hostname_len - 1] = '\0';
+        channel = child_channel_as_is;
+    }
+
     struct ResolverChildQuery *query = calloc(1, sizeof(*query));
     if (query == NULL) {
         free(hostname_copy);
@@ -2266,7 +2309,7 @@ resolver_child_submit_query(uint32_t id, int mode,
             .ai_socktype = SOCK_STREAM,
             .ai_protocol = IPPROTO_TCP,
         };
-        ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
+        ares_getaddrinfo(channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v4_cb, query);
     }
 
@@ -2276,7 +2319,7 @@ resolver_child_submit_query(uint32_t id, int mode,
             .ai_socktype = SOCK_STREAM,
             .ai_protocol = IPPROTO_TCP,
         };
-        ares_getaddrinfo(child_channel, hostname_copy, NULL, &hints,
+        ares_getaddrinfo(channel, hostname_copy, NULL, &hints,
                 resolver_child_dns_query_v6_cb, query);
     }
 
@@ -2609,8 +2652,15 @@ resolver_child_cares_io_cb(struct ev_loop *loop, struct ev_io *w, int revents) {
  * data to c-ares again for as long as it takes some.
  */
 static void
-resolver_child_process_fd(ares_socket_t read_fd, ares_socket_t write_fd) {
+resolver_child_ares_process(ares_socket_t read_fd, ares_socket_t write_fd) {
+    /* Each channel leaves alone a socket that is not its own */
     ares_process_fd(child_channel, read_fd, write_fd);
+    ares_process_fd(child_channel_as_is, read_fd, write_fd);
+}
+
+static void
+resolver_child_process_fd(ares_socket_t read_fd, ares_socket_t write_fd) {
+    resolver_child_ares_process(read_fd, write_fd);
 
     struct ResolverChildDotSocket *sock = child_dot_socket_list;
     while (sock != NULL) {
@@ -2618,7 +2668,7 @@ resolver_child_process_fd(ares_socket_t read_fd, ares_socket_t write_fd) {
         int pending = sock->ssl != NULL ? SSL_pending(sock->ssl) : 0;
 
         if (pending > 0)
-            ares_process_fd(child_channel, fd, ARES_SOCKET_BAD);
+            resolver_child_ares_process(fd, ARES_SOCKET_BAD);
 
         sock = resolver_child_dot_socket_get(fd);
         if (sock == NULL) {
@@ -2648,7 +2698,9 @@ resolver_child_schedule_timeout(struct ev_loop *loop) {
         return;
 
     struct timeval tv = { 0, 0 };
+    struct timeval tv_as_is = { 0, 0 };
     struct timeval *next_timeout = ares_timeout(child_channel, NULL, &tv);
+    next_timeout = ares_timeout(child_channel_as_is, next_timeout, &tv_as_is);
 
     if (next_timeout == NULL) {
         if (ev_is_active(&child_dns_timeout_watcher))
@@ -2826,6 +2878,8 @@ resolver_child_apply_nameservers(char **processed) {
     /* Before c-ares 1.24 ares_set_servers_csv() drops the ports, which
      * would send the queries for a DoT server in cleartext to port 53. */
     int status = ares_set_servers_ports_csv(child_channel, csv);
+    if (status == ARES_SUCCESS)
+        status = ares_set_servers_ports_csv(child_channel_as_is, csv);
     free(csv);
     if (status != ARES_SUCCESS) {
         err("resolver child: ares_set_servers_ports_csv failed: %s", ares_strerror(status));
@@ -2946,6 +3000,8 @@ resolver_child_use_dot_socket_functions(void) {
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
     ares_set_socket_functions(child_channel, &resolver_child_dot_socket_functions, NULL);
+    ares_set_socket_functions(child_channel_as_is,
+            &resolver_child_dot_socket_functions, NULL);
 #if defined(__clang__) || defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

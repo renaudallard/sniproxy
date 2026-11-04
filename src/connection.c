@@ -3518,7 +3518,8 @@ resolve_server_address(struct Connection *con, struct ev_loop *loop) {
                 affinity_seed = 1;
         }
 
-        struct ResolvQuery *qh = resolv_query(hostname,
+        struct ResolvQuery *qh = (result.wildcard ?
+                resolv_query_as_is : resolv_query)(hostname,
                 resolv_mode, affinity_seed, resolv_cb,
                 free_resolv_cb_data, cb_data);
 

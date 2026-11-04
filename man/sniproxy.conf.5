@@ -453,7 +453,10 @@ Multiple \fBnameserver\fR directives may be supplied. Optional
 them: a hostname with at least as many dots as the ndots option there
 (1 by default) is first looked up as it is, and the search domains are
 appended in turn only if that fails; a hostname with fewer dots is
-tried with the search domains first.
+tried with the search domains first. They only apply to the hostnames
+of the configuration: a name a client asks a \fB*\fR table entry for
+is looked up as it is, so that it cannot reach a host of a search
+domain by a short name.
 
 A plain \fBnameserver\fR must be an IP address. Nameservers may also
 point at DNS-over-TLS upstreams using the

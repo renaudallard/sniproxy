@@ -926,7 +926,8 @@ That gives:
 
 - **Process isolation** for DNS code paths
 - **Configurable nameservers and search domains** independent of the
-  system resolver
+  system resolver; the search domains are never appended to a name a
+  client asks a `*` entry for
 - **IPv4/IPv6 preference modes** for mixed-stack deployments
 - **Concurrency caps**, globally and per client, to bound resolver memory
 - **No answer cache by default**: c-ares 1.31 and later cache every
