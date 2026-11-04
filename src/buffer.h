@@ -48,6 +48,7 @@ struct Buffer {
 
 struct Buffer *new_buffer(size_t, struct ev_loop *);
 void free_buffer(struct Buffer *);
+void buffer_wipe(struct Buffer *);
 void buffer_set_memory_observer(void (*observer)(ssize_t delta));
 
 ssize_t buffer_recv(struct Buffer *, int, int, struct ev_loop *);

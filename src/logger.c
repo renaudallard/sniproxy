@@ -353,6 +353,9 @@ static int logger_process_initialized = 0;
  * and must not keep the standard output and error of whoever started
  * sniproxy open, as a shell capturing them would wait for it. */
 static int logger_child_null_stdio = 0;
+/* What every helper runs right after it is forked, see
+ * logger_set_fork_child_hook() */
+static void (*fork_child_hook)(void);
 static struct ChildSink_head child_sink_head = SLIST_HEAD_INITIALIZER(child_sink_head);
 /* Set once the child can no longer connect to the syslog socket, so the
  * connection it opened before must be kept. */
@@ -1713,6 +1716,8 @@ ensure_logger_process(void) {
         int child_fd = fd_child_setup(sockets[1]);
         if (child_fd < 0)
             _exit(EXIT_FAILURE);
+        if (fork_child_hook != NULL)
+            fork_child_hook();
         if (logger_child_null_stdio) {
             int devnull = open("/dev/null", O_RDWR);
             if (devnull < 0 || dup2(devnull, STDOUT_FILENO) < 0 ||
@@ -2684,6 +2689,16 @@ logger_parent_capsicum_limit_rights(void) {
 }
 
 /*
+ * Have each helper forked from now on run hook first, which the main
+ * process uses to wipe the client data a helper it restarts would
+ * otherwise hold a copy of.
+ */
+void
+logger_set_fork_child_hook(void (*hook)(void)) {
+    fork_child_hook = hook;
+}
+
+/*
  * Reset the logging state inherited from the parent. Called by sibling
  * children (binder, resolver) right after fd_child_setup() has closed
  * the inherited descriptors. Without this, any err()/warn()/notice() in
@@ -2703,6 +2718,9 @@ logger_parent_capsicum_limit_rights(void) {
 void
 logger_post_fork_child_disinherit(void) {
     struct LogSink *sink;
+
+    if (fork_child_hook != NULL)
+        fork_child_hook();
 
     logger_sock = -1;
     logger_pid = -1;

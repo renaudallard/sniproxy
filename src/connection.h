@@ -125,6 +125,7 @@ struct Connection {
 };
 
 void init_connections(void);
+void connections_wipe_buffers(void);
 int accept_connection(struct Listener *, struct ev_loop *);
 void free_connections(struct ev_loop *);
 void print_connections(void);

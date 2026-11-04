@@ -747,7 +747,9 @@ afterthought.
   would follow it.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
-  encrypted Unix sockets with framed, length-checked messages.
+  encrypted Unix sockets with framed, length-checked messages. One
+  restarted at run time is forked from the main process, and first
+  zeroes the copy it gets of what connections have buffered.
 - **Strict config and pidfile checks**: config files must be owned by
   root, or by the user sniproxy is started as when that is not root,
   and must not be accessible to group or others (`-g` allows group read

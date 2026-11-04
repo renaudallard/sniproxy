@@ -357,6 +357,22 @@ loop_now(struct ev_loop *loop) {
 }
 
 
+/*
+ * Zero what every connection has buffered. A helper restarted at run time
+ * is forked from the main process and holds a copy of its memory: it calls
+ * this right after the fork, so that a compromised helper finds nothing
+ * other clients sent.
+ */
+void
+connections_wipe_buffers(void) {
+    struct Connection *con;
+
+    TAILQ_FOREACH(con, &connections, entries) {
+        buffer_wipe(con->client.buffer);
+        buffer_wipe(con->server.buffer);
+    }
+}
+
 void
 init_connections(void) {
     TAILQ_INIT(&connections);

@@ -258,60 +258,27 @@ buffer_resize(struct Buffer *buf, size_t new_size) {
     if (new_size == current_size)
         return (ssize_t)buf->len;
 
-    size_t used_end = buf->len == 0 ? 0 : buf->head + buf->len;
-    int data_is_contiguous = (buf->len == 0) || used_end <= current_size;
-    int was_pooled = buf->pool_managed;
+    /* Always a new block, never realloc(): the old one is zeroed when it
+     * is released, while realloc() would hand back to the allocator what
+     * clients sent, in a block that moved or in the tail cut off a
+     * shrinking one. */
+    int pooled = 0;
+    char *new_buffer = buffer_pool_acquire(new_size, &pooled);
+    if (new_buffer == NULL)
+        new_buffer = malloc(new_size);
+    if (new_buffer == NULL)
+        return -2;
 
-    if (buf->len == 0) {
-        if (was_pooled) {
-            int pooled = 0;
-            char *replacement = buffer_pool_acquire(new_size, &pooled);
-            if (replacement == NULL)
-                replacement = malloc(new_size);
-            if (replacement == NULL)
-                return -2;
+    size_t first_len = MIN(buf->len, current_size - buf->head);
+    memcpy(new_buffer, buf->buffer + buf->head, first_len);
+    if (buf->len > first_len)
+        memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
 
-            buffer_release_storage(was_pooled, current_size, buf->buffer);
-            buf->buffer = replacement;
-            buf->pool_managed = pooled;
-            buf->size_mask = new_size - 1;
-            buf->head = 0;
-        } else {
-            char *resized = realloc(buf->buffer, new_size);
-            if (resized == NULL)
-                return -2;
-
-            buf->buffer = resized;
-            buf->size_mask = new_size - 1;
-            buf->head = 0;
-        }
-    } else if (data_is_contiguous && used_end <= new_size && !was_pooled) {
-        char *resized = realloc(buf->buffer, new_size);
-        if (resized == NULL)
-            return -2;
-
-        buf->buffer = resized;
-        buf->size_mask = new_size - 1;
-    } else {
-        int pooled = 0;
-        char *new_buffer = buffer_pool_acquire(new_size, &pooled);
-        if (new_buffer == NULL)
-            new_buffer = malloc(new_size);
-        if (new_buffer == NULL)
-            return -2;
-
-        size_t first_len = MIN(buf->len, current_size - buf->head);
-        memcpy(new_buffer, buf->buffer + buf->head, first_len);
-        if (buf->len > first_len)
-            memcpy(new_buffer + first_len, buf->buffer, buf->len - first_len);
-
-        buffer_release_storage(was_pooled, current_size, buf->buffer);
-        buf->buffer = new_buffer;
-        buf->head = 0;
-        buf->size_mask = new_size - 1;
-        buf->pool_managed = pooled;
-    }
-
+    buffer_release_storage(buf->pool_managed, current_size, buf->buffer);
+    buf->buffer = new_buffer;
+    buf->head = 0;
+    buf->size_mask = new_size - 1;
+    buf->pool_managed = pooled;
 
     buffer_notify_memory((ssize_t)new_size - (ssize_t)current_size);
 
@@ -411,6 +378,17 @@ buffer_maybe_shrink_idle(struct Buffer *buf, ev_tstamp now, ev_tstamp idle_age) 
         return 0;
 
     return buffer_maybe_shrink(buf);
+}
+
+/* Zero what the buffer holds and has held, and empty it */
+void
+buffer_wipe(struct Buffer *buf) {
+    if (buf == NULL || buf->buffer == NULL)
+        return;
+
+    secure_memzero(buf->buffer, buffer_size(buf));
+    buf->len = 0;
+    buf->head = 0;
 }
 
 void
@@ -576,8 +554,10 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
         memcpy(buffer->buffer + first_len, temp, second_len);
     }
 
-    if (temp_on_heap)
+    if (temp_on_heap) {
+        secure_memzero(temp, temp_len);
         free(temp);
+    }
 
     buffer->head = 0;
 

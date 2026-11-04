@@ -799,6 +799,7 @@ main(int argc, char **argv) {
         fatal("Failed to initialize resolver");
 
     init_connections();
+    logger_set_fork_child_hook(connections_wipe_buffers);
     udp_init_sessions();
 
     /* Install seccomp filter after all initialization is complete */
