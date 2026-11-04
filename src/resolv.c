@@ -103,6 +103,8 @@
  * runs, and the end of that lookup */
 #define RESOLVER_CMD_EARLY_RESULT 6u
 #define RESOLVER_CMD_DONE      7u
+/* A message of the child for the error log, its priority as the id */
+#define RESOLVER_CMD_LOG       8u
 
 #define RESOLVER_MAX_HOSTNAME_LEN    1023
 #define RESOLVER_IPC_MAX_PAYLOAD     4096
@@ -365,6 +367,8 @@ static void resolver_process_datagram(const uint8_t *buffer, ssize_t len);
 static void resolver_handle_result(uint32_t id, const uint8_t *payload, size_t payload_len);
 static void resolver_handle_early_result(uint32_t, const uint8_t *, size_t);
 static void resolver_handle_done(uint32_t);
+static void resolver_handle_log(uint32_t, const uint8_t *, size_t);
+static int resolver_child_forward_log(int, const char *, size_t);
 static int resolver_emit_query(struct ResolverPending *pending);
 static int resolver_submit_query(struct ResolverPending *pending);
 static void resolver_send_unsent(void);
@@ -399,7 +403,7 @@ static void resolver_child_submit_query(uint32_t id, int mode,
 static void resolver_child_send_result(uint32_t id, const struct Address *address, int status);
 static void resolver_child_send_answer(uint32_t, uint32_t,
         const struct Address *, int);
-static void resolver_child_send(uint32_t, uint32_t, const uint8_t *, size_t);
+static int resolver_child_send(uint32_t, uint32_t, const uint8_t *, size_t);
 static void resolver_child_cancel_all(void);
 static void resolver_child_remove_query(struct ResolverChildQuery *query);
 static void resolver_child_free_query(struct ResolverChildQuery *query);
@@ -1197,7 +1201,39 @@ resolver_process_datagram(const uint8_t *buffer, ssize_t len) {
         case RESOLVER_CMD_DONE:
             resolver_handle_done(id);
             break;
+        case RESOLVER_CMD_LOG:
+            resolver_handle_log(id, payload, payload_len);
+            break;
         default:
+            break;
+    }
+}
+
+/* A compromised child must not write lines of its own into the error
+ * log, nor log above error */
+static void
+resolver_handle_log(uint32_t priority, const uint8_t *payload, size_t len) {
+    char text[RESOLVER_IPC_MAX_PAYLOAD + 1];
+
+    for (size_t i = 0; i < len; i++)
+        text[i] = isprint(payload[i]) ? (char)payload[i] : '?';
+    text[len] = '\0';
+
+    switch (priority) {
+        case LOG_WARNING:
+            warn("resolver: %s", text);
+            break;
+        case LOG_NOTICE:
+            notice("resolver: %s", text);
+            break;
+        case LOG_INFO:
+            info("resolver: %s", text);
+            break;
+        case LOG_DEBUG:
+            debug("resolver: %s", text);
+            break;
+        default:
+            err("resolver: %s", text);
             break;
     }
 }
@@ -1828,6 +1864,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains,
         fprintf(stderr, "resolver child: failed to set crypto role\n");
         resolver_child_exit(EXIT_FAILURE);
     }
+    logger_forward_to_parent(resolver_child_forward_log);
 
     notice("resolver child starting (pid=%d)", getpid());
     debug_log("resolver child: debug logging ENABLED");
@@ -1923,6 +1960,7 @@ resolver_child_main(int sockfd, char **nameservers, char **search_domains,
     ares_library_cleanup();
 
     ev_io_stop(child_loop, &child_ipc_watcher);
+    logger_forward_to_parent(NULL);
     close(child_sock);
 
     if (child_loop != NULL && child_loop != EV_DEFAULT)
@@ -2286,7 +2324,7 @@ resolver_child_send_answer(uint32_t type, uint32_t id,
             offset + (status == 0 ? addr_len : 0));
 }
 
-static void
+static int
 resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
         size_t payload_len) {
     struct resolver_ipc_header header;
@@ -2296,7 +2334,7 @@ resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
 
     uint8_t buffer[sizeof(header) + RESOLVER_IPC_MAX_PAYLOAD];
     if (payload_len > RESOLVER_IPC_MAX_PAYLOAD)
-        return;
+        return -1;
     memcpy(buffer, &header, sizeof(header));
     if (payload_len > 0)
         memcpy(buffer + sizeof(header), payload, payload_len);
@@ -2306,7 +2344,7 @@ resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
     if (ipc_crypto_seal(&resolver_ipc_crypto, buffer,
             sizeof(header) + payload_len, &frame, &frame_len) < 0) {
         err("resolver child: crypto seal failed");
-        return;
+        return -1;
     }
 
     ssize_t written;
@@ -2363,7 +2401,7 @@ resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
 
     if (written == (ssize_t)frame_len) {
         free(frame);
-        return;
+        return 0;
     }
 
     int send_errno = errno;
@@ -2380,6 +2418,16 @@ resolver_child_send(uint32_t type, uint32_t id, const uint8_t *payload,
         if (child_loop != NULL)
             ev_break(child_loop, EVBREAK_ALL);
     }
+    return -1;
+}
+
+static int
+resolver_child_forward_log(int priority, const char *text, size_t len) {
+    if (child_sock < 0 || len > RESOLVER_IPC_MAX_PAYLOAD)
+        return -1;
+
+    return resolver_child_send(RESOLVER_CMD_LOG, (uint32_t)priority,
+            (const uint8_t *)text, len);
 }
 
 static void

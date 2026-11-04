@@ -68,8 +68,11 @@ int get_resolver_debug(void) {
 }
 
 /* logger.c is not linked into this fuzzer, but resolv.c calls
- * logger_post_fork_child_disinherit in its child fork path. */
+ * logger_post_fork_child_disinherit and logger_forward_to_parent in its
+ * child fork path. */
 void logger_post_fork_child_disinherit(void) {}
+void logger_forward_to_parent(
+        int (*forward)(int, const char *, size_t) __attribute__((unused))) {}
 
 static const int status_map[] = {
     ARES_SUCCESS,

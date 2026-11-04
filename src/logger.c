@@ -264,6 +264,11 @@ static unsigned long logger_sent_at_block = 0;
 /* Messages sent to the logger */
 static unsigned long logger_sent = 0;
 static int logger_health_check_active = 0;
+/* In a helper whose error log is a file, which it cannot write, the
+ * function that hands its messages to the main process. Syslog takes
+ * those it could not hand over. */
+static int (*log_forward)(int, const char *, size_t) = NULL;
+static int log_default_was_file = 0;
 /* A logger found gone is replaced at a check brought forward to this
  * delay. It doubles, up to the check interval, while the loggers started
  * in its place are lost too, and is back to its first value once one
@@ -1048,6 +1053,26 @@ vlog_msg(struct Logger *logger, int priority, const char *format, va_list args) 
 
     if (priority > logger->priority)
         return;
+
+    /* What forwarding logs itself goes to syslog */
+    static int forwarding = 0;
+    if (log_forward != NULL && logger == default_logger && !forwarding) {
+        char text[1024];
+        va_list args_copy;
+
+        va_copy(args_copy, args);
+        size_t text_len = format_log_payload(text, sizeof(text), format,
+                args_copy, 0);
+        va_end(args_copy);
+        if (text_len > 1) {
+            /* Without the new line format_log_payload() ends it with */
+            forwarding = 1;
+            int rc = log_forward(priority, text, text_len - 1);
+            forwarding = 0;
+            if (rc == 0)
+                return;
+        }
+    }
 
     char buffer[1024];
     size_t payload_len = 0;
@@ -2754,6 +2779,7 @@ logger_post_fork_child_disinherit(void) {
         return;
 
     if (default_logger->sink->type == LOG_SINK_FILE) {
+        log_default_was_file = 1;
         struct Logger *fallback = new_syslog_logger("daemon");
         if (fallback == NULL)
             return;
@@ -2765,6 +2791,13 @@ logger_post_fork_child_disinherit(void) {
         closelog();
         openlog(PACKAGE_NAME, LOG_PID | LOG_NDELAY, 0);
     }
+}
+
+/* Called by a helper once it can reach the main process, with NULL when
+ * it no longer can. Only an error log file needs it. */
+void
+logger_forward_to_parent(int (*forward)(int, const char *, size_t)) {
+    log_forward = log_default_was_file ? forward : NULL;
 }
 
 /*

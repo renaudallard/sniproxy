@@ -121,8 +121,9 @@ to DTLS\&.
 -d
 Enable verbose resolver debug logging to aid DNS troubleshooting\&. The
 messages go to the error log at notice priority, so an error log set
-to warning or stricter drops them\&. When the error log is a file the resolver
-process sends them to syslog instead, see the ERROR_LOG section of
+to warning or stricter drops them\&. When the error log is a file, the
+resolver process hands them to the main process, which writes them there,
+see the ERROR_LOG section of
 \fBsniproxy.conf\fR(5)\&.
 
 .SH SIGNALS
