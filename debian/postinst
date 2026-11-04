@@ -9,6 +9,14 @@ if [ "$1" = configure ] && [ -e /var/lib/sniproxy/disable-initscript ]; then
 	rmdir /var/lib/sniproxy 2>/dev/null || true
 fi
 
+# The packages up to 0.25.0 installed the log directory owned by the
+# daemon user, which could then remove or replace the log files it may
+# not read: a directory still owned that way goes to root.
+if [ "$1" = configure ] && [ -d /var/log/sniproxy ] &&
+    [ "$(stat -c %U:%G /var/log/sniproxy)" = daemon:adm ]; then
+	chown root:adm /var/log/sniproxy
+fi
+
 #DEBHELPER#
 
 exit 0

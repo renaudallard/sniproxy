@@ -51,7 +51,7 @@ rm -rf $RPM_BUILD_ROOT
 # daemon user it drops to must read it again on reload (the unit passes -g)
 %config(noreplace) %attr(0640,root,daemon) %{_sysconfdir}/sniproxy.conf
 %config(noreplace) %{_sysconfdir}/logrotate.d/sniproxy
-%dir %attr(0750,daemon,daemon) %{_localstatedir}/log/sniproxy
+%dir %attr(0750,root,daemon) %{_localstatedir}/log/sniproxy
 
 %post
 if [ -x /usr/bin/systemctl ]; then

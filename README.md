@@ -277,7 +277,10 @@ arm64 tarball.
 
 The `.deb`, `.rpm` and `.apk` packages install a default
 `/etc/sniproxy.conf` (mode 0640, group `daemon`), the `/var/log/sniproxy`
-directory and a logrotate file. The `.deb` and `.rpm` packages add a
+directory, owned by root with mode 0750 so that the `daemon` user, which
+owns the log files but may not read them, cannot remove or replace them
+either, and a logrotate file, which rotates with copytruncate for the
+same reason. The `.deb` and `.rpm` packages add a
 systemd unit and the `.apk` an OpenRC service, neither enabled. Both
 start sniproxy as root, which binds its listeners and drops to the
 `user` in the configuration, and pass `-g` so that user can read the
