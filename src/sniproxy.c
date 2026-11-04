@@ -804,6 +804,7 @@ main(int argc, char **argv) {
 
     /* Install seccomp filter after all initialization is complete */
     if (seccomp_available()) {
+        seccomp_set_write_only_files(logger_files_write_only());
         if (seccomp_install_filter(SECCOMP_PROCESS_MAIN) < 0) {
             fatal("main: failed to install seccomp filter: %s", strerror(errno));
         }

@@ -2474,19 +2474,23 @@ logger_child_handle_message(int sockfd, struct logger_ipc_header *header,
                 make_undumpable();
             }
 #ifdef __OpenBSD__
-            /* Tighten pledge - no longer need id or unveil. Runs whether
-             * or not the child was root when the message arrived, so the
-             * logger drops these promises even when sniproxy was started
+            /* Tighten pledge - no longer need id or unveil, nor fattr:
+             * the files are created with the mode they are to have, and
+             * without fattr the owner of a write-only log file cannot
+             * give itself the read permission back. Runs whether or not
+             * the child was root when the message arrived, so the logger
+             * drops these promises even when sniproxy was started
              * directly as the unprivileged target user (the geteuid()==0
              * block is skipped there). */
             if (!logger_child_reduced_pledge) {
-                if (pledge("stdio rpath wpath cpath fattr unix recvfd",
+                if (pledge("stdio rpath wpath cpath unix recvfd",
                             NULL) == -1) {
                     fprintf(stderr,
                             "logger: pledge tighten failed: %s\n",
                             strerror(errno));
                     logger_child_exit(EXIT_FAILURE);
                 }
+                logger_child_reduced_pledge = 1;
             }
 #endif
 #if defined(__FreeBSD__) && defined(HAVE_CAPSICUM)
@@ -2614,8 +2618,11 @@ logger_child_main(int sockfd) {
         logger_child_exit(EXIT_FAILURE);
     }
 
-    /* Install seccomp filter after initialization */
+    /* Install seccomp filter after initialization. A logger started as
+     * root hands the files over at the privilege drop; one forked after
+     * it inherits what the main process did. */
     if (seccomp_available()) {
+        seccomp_set_write_only_files(geteuid() == 0 || log_files_write_only);
         if (seccomp_install_filter(SECCOMP_PROCESS_LOGGER) < 0) {
             fprintf(stderr, "logger: failed to install seccomp filter: %s\n",
                     strerror(errno));

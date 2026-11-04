@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* The lists name each call in all its forms: 32-bit ABIs such as i386 and
@@ -101,14 +102,16 @@ static const char *const fs_read_syscalls[] = {
     NULL,
 };
 
-/* Changes to files the logger makes: dropping group and world write
- * permission from a log file, and handing log files over to the user at
- * the privilege drop, on their descriptors only */
+/* Handing log files over to the user at the privilege drop, on their
+ * descriptors only; fchmod has a rule of its own, see allow_fchmod() */
 static const char *const fs_write_syscalls[] = {
-    "fchmod",
     "fchown", "fchown32",
     NULL,
 };
+
+/* Whether the log files were, or will be, handed over to the user as
+ * write-only files, see seccomp_set_write_only_files() */
+static int write_only_files;
 
 /* What the main process adds: creating the connection dump directory,
  * and removing the dump file, the pidfile and stale unix sockets */
@@ -489,6 +492,35 @@ allow_self_calls(scmp_filter_ctx ctx) {
 
 /* open() and openat() for reading only. openat2() takes its flags in a
  * structure the filter cannot read, and no libc uses it for open(). */
+/*
+ * fchmod(), which the main process and the logger use to take group and
+ * world write permission from a log file, and the owner's read permission
+ * once root handed the files over to the user. From then on a mode with a
+ * read bit is refused with EPERM: the owner of a write-only file could
+ * otherwise give itself the permission back, and read what the other
+ * clients sent. Started as that user, the files are its own to read
+ * anyway and any mode goes through.
+ */
+static int
+allow_fchmod(scmp_filter_ctx ctx) {
+    static const mode_t read_bits[] = { S_IRUSR, S_IRGRP, S_IROTH };
+    int nr = seccomp_syscall_resolve_name("fchmod");
+    int rc;
+
+    if (nr == __NR_SCMP_ERROR)
+        return 0;
+    if (!write_only_files)
+        return seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 0);
+    rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, nr, 1,
+            SCMP_A1(SCMP_CMP_MASKED_EQ, S_IRUSR | S_IRGRP | S_IROTH, 0));
+    /* One rule per bit: a rule without argument would take precedence
+     * over the one above, whatever the order they are added in */
+    for (size_t i = 0; rc == 0 && i < 3; i++)
+        rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), nr, 1,
+                SCMP_A1(SCMP_CMP_MASKED_EQ, read_bits[i], read_bits[i]));
+    return rc;
+}
+
 static int
 allow_open_read(scmp_filter_ctx ctx) {
     const uint64_t mask = O_ACCMODE | O_CREAT | O_TRUNC;
@@ -709,6 +741,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, path_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
+                allow_fchmod(ctx) < 0 ||
                 allow_syscalls(ctx, main_fs_write_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, descriptor_syscalls) < 0 ||
@@ -730,6 +763,7 @@ install_filter(enum seccomp_process_type type) {
                 allow_syscalls(ctx, path_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_read_syscalls) < 0 ||
                 allow_syscalls(ctx, fs_write_syscalls) < 0 ||
+                allow_fchmod(ctx) < 0 ||
                 allow_syscalls(ctx, fs_misc_syscalls) < 0 ||
                 allow_syscalls(ctx, descriptor_syscalls) < 0 ||
                 allow_syscalls(ctx, dir_read_syscalls) < 0 ||
@@ -787,6 +821,14 @@ install_filter(enum seccomp_process_type type) {
     return 0;
 }
 
+/* Called before the filter is installed, with whether the log files are
+ * write-only files handed over by root, or will be once this process
+ * drops its privileges */
+void
+seccomp_set_write_only_files(int write_only) {
+    write_only_files = write_only;
+}
+
 int
 seccomp_install_filter(enum seccomp_process_type type) {
     const char *disable_env = getenv("SNIPROXY_DISABLE_SECCOMP");
@@ -809,6 +851,11 @@ seccomp_install_filter(enum seccomp_process_type type) {
 int
 seccomp_available(void) {
     return 0;
+}
+
+void
+seccomp_set_write_only_files(int write_only) {
+    (void)write_only;
 }
 
 int

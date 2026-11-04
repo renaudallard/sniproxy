@@ -377,9 +377,13 @@ can link one of that user's files at the log path for the moment of the
 checks, and have the log written to that file. That user may append to them but not read them: when sniproxy is
 started as root, a log file loses its owner's read permission, and one
 created later, as by a reopen after rotation, has mode 0200, so that a
-helper process compromised from the network, which runs as that user,
-cannot read the other clients' traffic from them. Read them as root, or
-grant their group read permission. The priority directive indicates what severity of
+process compromised from the network, which runs as that user, cannot
+read the other clients' traffic from them. Nor can it give itself the
+permission back: on Linux the seccomp filters of the main and logger
+processes then refuse an fchmod() with a read bit, on OpenBSD the logger
+pledges without fattr once privileges are dropped, as the main process
+does, and the resolver and binder may not change a file's mode at all.
+Read them as root, or grant their group read permission. The priority directive indicates what severity of
 messages should be logged. Accepted priorities are the standard
 syslog priorities, in increasing verbosity: emergency, alert,
 critical, error, warning, notice, info, and debug. The default is

@@ -228,6 +228,61 @@ main_utimensat(void) {
     (void)syscall(SYS_utimensat, AT_FDCWD, ".", NULL, 0);
 }
 
+/* Once root handed the log files over as write-only files, the main
+ * process and the logger may not give a read permission back with
+ * fchmod(); without the handover, as started by the user, any mode goes */
+static int
+fchmod_modes(enum seccomp_process_type type, int write_only) {
+    char name[] = "seccomp_fchmod_XXXXXX";
+    int fd = mkstemp(name);
+
+    if (fd < 0) {
+        perror("mkstemp");
+        return 1;
+    }
+    unlink(name);
+    seccomp_set_write_only_files(write_only);
+    if (seccomp_install_filter(type) < 0)
+        return 1;
+
+    if (fchmod(fd, S_IWUSR) != 0)
+        return 1;
+    errno = 0;
+    if (write_only)
+        return fchmod(fd, S_IRUSR | S_IWUSR) == -1 && errno == EPERM &&
+            fchmod(fd, S_IRGRP) == -1 && errno == EPERM &&
+            fchmod(fd, S_IWUSR | S_IWGRP) == 0 ? 0 : 1;
+    return fchmod(fd, S_IRUSR | S_IWUSR) == 0 ? 0 : 1;
+}
+
+static int
+test_fchmod_modes(void) {
+    for (int type = 0; type < 2; type++) {
+        for (int write_only = 0; write_only < 2; write_only++) {
+            pid_t pid = fork();
+            if (pid < 0) {
+                perror("fork");
+                return 1;
+            } else if (pid == 0) {
+                _exit(fchmod_modes(type == 0 ? SECCOMP_PROCESS_MAIN :
+                            SECCOMP_PROCESS_LOGGER, write_only));
+            }
+
+            int status;
+            if (waitpid(pid, &status, 0) < 0) {
+                perror("waitpid");
+                return 1;
+            }
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                fprintf(stderr, "fchmod modes: %s filter, write_only %d\n",
+                        type == 0 ? "main" : "logger", write_only);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 /* A NETLINK_ROUTE socket, which libc may open, fails as on a kernel
  * without netlink rather than killing the process */
 static int
@@ -728,6 +783,9 @@ main(void) {
         return 1;
 
     if (test_forked_child_can_install_filter() != 0)
+        return 1;
+
+    if (test_fchmod_modes() != 0)
         return 1;
 
     if (expect_killed(resolver_bind) != 0 ||

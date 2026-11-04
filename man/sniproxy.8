@@ -174,8 +174,10 @@ hidden), which must belong to the user sniproxy runs as and be closed
 to others; one replaced since the last dump, as a cleaner of
 .I /tmp
 may do, is checked again\&. When sniproxy was started as root, the file has
-mode 0200, like the log files, so that a helper process running as the
-same user cannot read it: read it as root\&.
+mode 0200, like the log files, so that a process running as the same
+user cannot read it, nor give itself the permission back, see
+.BR sniproxy.conf (5):
+read it as root\&.
 Under the packaged systemd unit,
 .I /run/sniproxy
 belongs to root and

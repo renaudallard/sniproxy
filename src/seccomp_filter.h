@@ -36,6 +36,7 @@ enum seccomp_process_type {
 };
 
 int seccomp_available(void);
+void seccomp_set_write_only_files(int);
 int seccomp_install_filter(enum seccomp_process_type type);
 
 /* Linux capabilities; no-ops elsewhere. */
