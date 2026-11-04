@@ -115,15 +115,34 @@ const unsigned char dtls_truncated[] = {
     0x16, 0xFE, 0xFD, 0x00, 0x00,
 };
 
-/* DTLS with non-zero epoch (rekeyed, not initial handshake) */
+/* A DTLS 1.2 record with a connection ID (RFC 9146), as an association
+ * sends once its handshake is over */
+const unsigned char dtls12_cid_record[] = {
+    0x19, 0xFE, 0xFD, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x07,
+    0xaa, 0xbb, 0xcc, 0xdd, 0x00, 0x04,
+    0x01, 0x02, 0x03, 0x04,
+};
+
 /* A DTLS 1.3 record with the unified header, as an association sends
- * once its handshake is over */
+ * once its handshake is over: its first byte cannot be told from those
+ * of other protocols, so it may go to the fallback */
 const unsigned char dtls13_unified_header[] = {
     0x2f, 0x12, 0x34, 0x00, 0x14,
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
     0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
     0x10, 0x11, 0x12, 0x13,
 };
+
+/* An OpenVPN P_CONTROL_HARD_RESET_CLIENT_V2 packet, whose first byte
+ * falls in the range RFC 7983 gives DTLS */
+const unsigned char openvpn_hard_reset[] = {
+    0x38, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+    0x88, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+/* An NTP version 4 client request */
+const unsigned char ntp_client_request[48] = { 0x23 };
 
 /* A STUN binding request, which is not DTLS and may go to the fallback */
 const unsigned char stun_binding_request[] = {
@@ -132,6 +151,7 @@ const unsigned char stun_binding_request[] = {
     0x09, 0x0a, 0x0b, 0x0c,
 };
 
+/* DTLS with non-zero epoch (rekeyed, not initial handshake) */
 const unsigned char dtls_nonzero_epoch[] = {
     0x16,
     0xFE, 0xFD,
@@ -211,10 +231,31 @@ static struct test_case tests[] = {
         NULL,
     },
     {
+        "DTLS 1.2 connection ID record",
+        dtls12_cid_record,
+        sizeof(dtls12_cid_record),
+        TLS_ERR_NOT_HANDSHAKE,
+        NULL,
+    },
+    {
         "DTLS 1.3 unified header",
         dtls13_unified_header,
         sizeof(dtls13_unified_header),
-        TLS_ERR_NOT_HANDSHAKE,
+        -5,
+        NULL,
+    },
+    {
+        "OpenVPN hard reset",
+        openvpn_hard_reset,
+        sizeof(openvpn_hard_reset),
+        -5,
+        NULL,
+    },
+    {
+        "NTP client request",
+        ntp_client_request,
+        sizeof(ntp_client_request),
+        -5,
         NULL,
     },
     {

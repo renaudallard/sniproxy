@@ -92,15 +92,17 @@ parse_dtls_header(const char *data_char, size_t data_len, char **hostname) {
     if (data_len < DTLS_RECORD_HEADER_LEN)
         return -1;
 
-    /* Content type must be Handshake. RFC 7983 gives DTLS the first
-     * byte values 20 to 63, which take in the DTLS 1.3 unified header.
-     * Such a record belongs to an association whose session is gone, as
+    /* Content type must be Handshake. Another DTLS record, of a content
+     * type from change_cipher_spec (20) to ack (26) with the DTLS major
+     * version, belongs to an association whose session is gone, as
      * after a pause, and the fallback cannot serve it: a session opened
      * by it would then keep the client's next ClientHello there too.
-     * Other data, such as STUN, may still go to the fallback. */
+     * Other data may still go to the fallback: STUN, or OpenVPN and NTP,
+     * whose first bytes fall in the range RFC 7983 gives DTLS, which is
+     * why the DTLS 1.3 unified header cannot be told from them. */
     if (data[0] != DTLS_HANDSHAKE_CONTENT_TYPE) {
         debug("DTLS: not a handshake record (content_type=0x%02x)", data[0]);
-        if (data[0] >= 20 && data[0] <= 63)
+        if (data[0] >= 20 && data[0] <= 26 && data[1] == 0xFE)
             return TLS_ERR_NOT_HANDSHAKE;
         return -5;
     }

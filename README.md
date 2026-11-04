@@ -763,7 +763,9 @@ afterthought.
   longer answers. A new session whose datagram is a DTLS record other
   than an epoch 0 handshake, as a client sends after such a pause, is
   dropped rather than sent to the fallback, where the client's next
-  ClientHello would follow it.
+  ClientHello would follow it. Other UDP traffic, such as STUN, OpenVPN
+  or NTP, still goes to the fallback, and so do DTLS 1.3 records after
+  the handshake, whose header cannot be told apart from theirs.
 - **Privilege separation**: the privileged binder, the log writer
   and the resolver are each their own process, communicating over
   encrypted Unix sockets with framed, length-checked messages. One
