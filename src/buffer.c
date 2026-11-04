@@ -420,10 +420,10 @@ buffer_coalesce(struct Buffer *buffer, const void **dst) {
         memcpy(buffer->buffer + first_len, temp, second_len);
     }
 
-    if (temp_on_heap) {
-        secure_memzero(temp, temp_len);
+    /* The copy holds part of what a peer sent, on the stack too */
+    secure_memzero(temp, temp_len);
+    if (temp_on_heap)
         free(temp);
-    }
 
     buffer->head = 0;
 
