@@ -29,6 +29,7 @@ TESTS += functional_test \
          half_close_test \
          idle_timeout_test \
          ipv6_v6only_test \
+         proxy_accept_test \
          proxy_header_test \
          rate_limit_test \
          reload_test \
@@ -63,6 +64,7 @@ EXTRA_DIST = check_output.sh \
              half_close_test \
              idle_timeout_test \
              ipv6_v6only_test \
+             proxy_accept_test \
              proxy_header_test \
              rate_limit_test \
              reload_test \

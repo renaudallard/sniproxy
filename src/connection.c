@@ -3140,9 +3140,12 @@ parse_incoming_proxy_header(struct Connection *con) {
         char sport_str[16], dport_str[16];
         int end_offset = 0;
 
-        /* Anything other than the five fields of TCP4 and TCP6 must be
-         * refused rather than ignored */
-        if (sscanf(line, "%7s %45s %45s %15s %15s%n", proto, src_str,
+        /* Anything other than the five fields of TCP4 and TCP6, with
+         * exactly one space between them, must be refused rather than
+         * ignored */
+        if (line[0] == ' ' || strstr(line, "  ") != NULL ||
+                strpbrk(line, "\t\n\v\f\r") != NULL ||
+                sscanf(line, "%7s %45s %45s %15s %15s%n", proto, src_str,
                     dst_str, sport_str, dport_str, &end_offset) != 5 ||
                 (size_t)end_offset != line_len - 6)
             return -2;
