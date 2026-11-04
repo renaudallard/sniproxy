@@ -970,8 +970,11 @@ Inspect with `ss -tlnp` or `netstat -tlnp`. For multi-worker setups, set
 - An IPv6 address in an HTTP Host header is looked up with its
   brackets: match it with `^\\[2001:db8::1\\]$`, since a bare
   `2001:db8::1` never matches and `[2001:db8::1]` is a character class.
-- Check the error log: a request without a hostname or one that fails
-  to parse is logged as a warning, with the client address.
+- Check the error log: on a TCP listener a request without a hostname,
+  or one that fails to parse, is logged as a warning with the client
+  address. A dtls listener logs no warning for them, since the source of
+  a datagram may be forged: the parse failure is a debug line, and a
+  session no fallback takes is ended with the notice "UDP: no backend".
 
 **DNS is not working**
 
