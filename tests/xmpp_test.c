@@ -121,6 +121,16 @@ static const struct xmpp_test_case good[] = {
         "<stream:stream to = \"example.com\" xmlns=\"jabber:client\">",
         "example.com"
     },
+    /* Any prefix may name the stream namespace */
+    {
+        "<s:stream xmlns:s='http://etherx.jabber.org/streams' "
+        "to='example.com' xmlns='jabber:client'>",
+        "example.com"
+    },
+    {
+        "<STREAM:stream to=\"example.com\">",
+        "example.com"
+    },
 };
 
 /* Cases that should return -1 (incomplete) */
@@ -136,6 +146,9 @@ static const char *incomplete[] = {
     "<stream:stream to=\"",
     "<stream:stream to=\"example.com",
     "<stream:stream to=\"example.com\"",
+    "<s:",
+    "<s:str",
+    "<s:stream",
     "<?xml version='1.0'?>",
     "<?xml version='1.0'?><stream:stream to=\"example.com\"",
     /* Unclosed XML declaration */
@@ -179,9 +192,13 @@ static const char *bad[] = {
     /* Wrong stream namespace element (not stream:stream) */
     "<stream:features>",
     "<stream:x to=\"example.com\">",
-    /* Case-sensitive - uppercase should fail */
-    "<STREAM:stream to=\"example.com\">",
+    /* The element name is case sensitive, unlike the prefix */
     "<Stream:Stream to=\"example.com\">",
+    "<stream:STREAM to=\"example.com\">",
+    /* A prefix is a single name, of 64 characters at most */
+    "<a:b:stream to=\"example.com\">",
+    "<:stream to=\"example.com\">",
+    "<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:stream to=\"example.com\">",
     /* Unclosed quote in complete tag */
     "<stream:stream to=\"example.com>",
     "<stream:stream to='example.com xmlns=\"jabber:client\">",

@@ -679,7 +679,8 @@ table xmpp_servers {
 ```
 
 The proxy extracts the `to` attribute from the opening `<stream:stream>`
-element and routes accordingly. The STARTTLS negotiation that follows is
+element, whatever prefix the stream namespace is given, or none, and
+routes accordingly. The STARTTLS negotiation that follows is
 transparent. Hostnames are validated (alphanumeric, dot, hyphen,
 underscore, bracketed IPv6); control characters, path traversal and
 injection metacharacters are rejected. Maximum hostname length is 255

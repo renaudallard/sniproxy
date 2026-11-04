@@ -42,6 +42,8 @@
 #include "hostname_sanitize.h"
 
 #define SERVER_NAME_LEN 256
+/* Longest namespace prefix taken on the stream header */
+#define XMPP_MAX_PREFIX_LEN 64
 
 static size_t xmpp_max_header_len = XMPP_DEFAULT_MAX_HEADER_LEN;
 
@@ -104,9 +106,21 @@ parse_xmpp_stream(const char *data, size_t data_len, char **hostname) {
     return extract_to_attribute(stream_tag, tag_len, hostname);
 }
 
+static int
+xml_name_char(char c) {
+    return isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.';
+}
+
+static int
+xml_space_or_end(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '>';
+}
+
 /*
- * Find the <stream:stream or <stream tag in the data.
- * Returns pointer to start of tag content (after '<stream' or '<stream:stream')
+ * Find the <stream tag in the data, with or without a namespace prefix:
+ * <stream:stream is usual, but RFC 6120 4.8.5 lets the stream namespace
+ * have any prefix.
+ * Returns pointer to start of tag content (after the element name)
  * and sets tag_len to the length of content until '>'.
  * Returns NULL with *tag_len = 0 for incomplete, *tag_len = 1 for error.
  */
@@ -132,34 +146,27 @@ find_stream_tag(const char *data, size_t data_len, size_t *tag_len) {
                 continue;
             }
 
-            /* Check for <stream:stream with proper boundary */
-            if ((size_t)(end - p) >= 15 &&
-                strncmp(p, "<stream:stream", 14) == 0 &&
-                (p[14] == ' ' || p[14] == '\t' || p[14] == '\n' ||
-                 p[14] == '\r' || p[14] == '>')) {
-                tag_start = p + 14;
-                break;
-            }
-
-            /* Partial <stream:stream - need more data */
-            if ((size_t)(end - p) < 15 &&
-                strncmp(p, "<stream:stream", (size_t)(end - p)) == 0) {
+            const char *name = p + 1;
+            const char *q = name;
+            while (q < end && xml_name_char(*q) &&
+                    (size_t)(q - name) <= XMPP_MAX_PREFIX_LEN)
+                q++;
+            if ((size_t)(q - name) > XMPP_MAX_PREFIX_LEN) {
+                *tag_len = 1;
                 return NULL;
             }
+            if (q == end)
+                return NULL; /* need more data */
+            if (*q == ':' && q > name)
+                name = q + 1;
 
-            /* Check for <stream (without namespace prefix) with proper boundary */
-            if ((size_t)(end - p) >= 8 &&
-                strncmp(p, "<stream", 7) == 0 &&
-                (p[7] == ' ' || p[7] == '\t' || p[7] == '\n' ||
-                 p[7] == '\r' || p[7] == '>')) {
-                tag_start = p + 7;
+            size_t left = (size_t)(end - name);
+            if (left < 7 && strncmp(name, "stream", left) == 0)
+                return NULL; /* need more data */
+            if (left >= 7 && strncmp(name, "stream", 6) == 0 &&
+                    xml_space_or_end(name[6])) {
+                tag_start = name + 6;
                 break;
-            }
-
-            /* Partial <stream - need more data */
-            if ((size_t)(end - p) < 8 &&
-                strncmp(p, "<stream", (size_t)(end - p)) == 0) {
-                return NULL;
             }
 
             /* Found a tag that is not <stream - this is an error */
