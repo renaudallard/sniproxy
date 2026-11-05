@@ -484,8 +484,10 @@ therefore accept; queries are only answered once that lookup has
 succeeded. If it fails the resolver exits rather
 than falling back to those cleartext servers, so a configured
 DNS-over-TLS upstream is never silently downgraded, and every lookup
-fails until a new resolver finds the address. A new one is started
-after a delay that doubles each time, from one second up to 30. Up to four of the
+fails until a new resolver finds the address. A new one is started at
+once, and once three have died in quick succession, after a delay that
+doubles each time, from one second up to 30, until one keeps running.
+Up to four of the
 addresses it finds are used, those the host can reach first, and queries
 move on to the next one when a server does not answer.
 
