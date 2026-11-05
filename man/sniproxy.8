@@ -158,7 +158,9 @@ one added by a reload also needs a restart, and the reload warns about
 it\&. So does a listener on a privileged port that a reload adds after
 the binder process holding the privilege to bind it has died, or has
 left a request unanswered for 30 seconds, as the binder that replaces
-it runs without that privilege\&.
+it runs without that privilege, and one that needs the binder once it
+knows 4096 listener addresses, counting those reloads have added since
+startup, which the reload logs\&.
 
 .TP
 .B SIGUSR1
