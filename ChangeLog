@@ -1,3 +1,47 @@
+2026-11-05  Renaud Allard  <renaud@allard.it>
+
+	* Release 0.26.0
+	- udp_connection, dtls: a DTLS session is routed only on a second
+	  datagram that repeats the random of its first ClientHello, or
+	  carries none when the first did.
+	- buffer: data passed on is zeroed as the read position advances.
+	- seccomp, logger: once the log files are handed over, the main and
+	  logger filters refuse an fchmod() with a read bit; on OpenBSD the
+	  logger pledges without fattr after the privilege drop.
+	- packaging: /var/log/sniproxy belongs to root with mode 0750;
+	  debian/postinst gives an existing daemon:adm one to root.
+	- logger, resolv, binder: the resolver and binder hand their
+	  messages to the main process when the error log is a file, at most
+	  100 a second, with a count of those dropped.
+	- resolv: names a client asks a '*' entry for are looked up through
+	  a second c-ares channel without search domains.
+	- connection: a backend that has not accepted the connection when
+	  idle_timeout expires gets the client the protocol's error.
+	- buffer, connection: above 64 MiB in use a client buffer grows to
+	  64 KiB at most.
+	- ipc_crypto: a generation gap of two at most; cipher contexts set
+	  up once per channel.
+	- resolv: a resolver sending more than 1000 frames a second that
+	  answer nothing is replaced; restarts back off from 1 to 30
+	  seconds after three quick deaths.
+	- resolv, binder: a helper being replaced is killed at once.
+	- binder: the allowlist stops at 4096 addresses; past it a startup
+	  warns and a reload logs it.
+	- logger: a lost logger is replaced a second after it is found
+	  gone, doubling up to 30 seconds.
+	- connection: an incoming PROXY v1 line must separate its fields
+	  by single spaces; a v2 AF_UNIX address block must be 216 bytes.
+	- xmpp: a stream header may give the namespace any prefix.
+	- http2_huffman: the output growth that could never run is gone.
+	- address: sockaddr_unmap_ipv4() checks the length first.
+	- connection: a shrink candidate's place is looked for from the
+	  tail of the queue.
+	- table: no STAILQ_EMPTY or STAILQ_CONCAT, for FreeBSD 15.
+	- tests: new proxy_accept_test, HTTP/2, HPACK, extension cap, DTLS
+	  forged second datagram and seccomp fchmod cases; more fuzz seeds.
+	- docs: README, sniproxy(8) and sniproxy.conf(5) checked against
+	  the code.
+
 2026-11-04  Renaud Allard  <renaud@allard.it>
 
 	* Release 0.25.0

@@ -1,3 +1,112 @@
+sniproxy 0.26.0 (2026-11-05)
+===============================
+
+Fixes from a security review of 0.25.0.
+
+Upgrade note: a name a client asks a '*' table entry for is now looked
+up as it is, without the search domains of the resolver block or of
+resolv.conf, so a short name that only resolved through them now gets
+the protocol's backend error. The hostnames in the configuration still
+use them. An incoming PROXY v1 header whose fields are not separated by
+single spaces, and a v2 AF_UNIX header with an address block shorter
+than 216 bytes, now end the connection. Once all connections together
+use more than 64 MiB, a request that needs a client buffer larger than
+64 KiB is refused until they use less. The deb, rpm and apk packages
+install /var/log/sniproxy owned by root, and the deb also gives an
+existing one owned by daemon:adm to root on upgrade.
+
+Highlights:
+
+* A DTLS session was routed on the second datagram from its source,
+  whatever it carried, so a datagram forged with a client's address
+  while its first ClientHello was held chose the client's backend. The
+  second datagram must now repeat the ClientHello of the first, with
+  the same random, or carry none when the first did; any other is
+  dropped and the session keeps waiting.
+
+* Data a connection had already passed on stayed in its buffers until
+  newer data overwrote it, so a helper restarted at run time, forked
+  from the main process, got a copy of the last requests and answers of
+  every connection. It is now zeroed as it is passed on.
+
+* Started as root, sniproxy hands its log files to the user it drops to
+  without read permission, but the main and logger processes could
+  give it back: on Linux their filters allowed fchmod() with any mode,
+  and on OpenBSD the logger kept the fattr promise. On Linux an
+  fchmod() with a read bit is now refused once the files are handed
+  over, and on OpenBSD the logger pledges without fattr after the
+  privilege drop.
+
+* The packages created /var/log/sniproxy owned by the daemon user, which
+  could then remove or replace the log files it may not read. The
+  directory now belongs to root with mode 0750; the shipped logrotate
+  file rotates with copytruncate, so that user never has to create a
+  file there.
+
+* The messages of the resolver and binder, such as DNS-over-TLS
+  handshake failures, went to syslog when the error log is a file, which
+  those helpers cannot write. They now hand them to the main process,
+  which writes them to the file after "resolver:" or "binder:", at most
+  100 a second, and logs how many it dropped.
+
+* Through a '*' entry a client could reach the hosts of the search
+  domains by their short names, and see which exist. Such a name now
+  goes through a c-ares channel that never appends the search domains;
+  the hosts file still answers it.
+
+* A backend that drops the connection attempt left the client waiting
+  until idle_timeout, which then closed the connection without a word.
+  The client now gets the protocol's error, 503 for HTTP, as when a
+  backend refuses the connection.
+
+* The client buffer still grew up to client_buffer_limit once all
+  connections used more than 64 MiB, so clients sending large requests
+  slowly could take memory past that limit. A client buffer may now
+  grow to 64 KiB at most while it lasts, which still holds a
+  ClientHello with a post-quantum key share.
+
+* A compromised helper could keep the main process busy. A frame
+  claiming an IPC key generation up to 16 ahead made it derive 16 keys
+  before refusing the frame, and a resolver could send valid frames
+  that answer nothing as fast as its socket took them. The gap allowed
+  is now two, and a resolver that sends more than 1000 such frames in a
+  second is replaced. A helper being replaced is killed at once instead
+  of being waited on for up to a second, during which no connection
+  was served.
+
+* The binder kept every listener address the main process sent it, so
+  a compromised main process could make it grow without end. The list
+  now stops at 4096 addresses: a configuration with more listeners
+  starts with a warning, and a reload logs that a privileged listener
+  it adds past them cannot be bound.
+
+* A resolver that could not start, such as one whose DNS-over-TLS
+  server name does not resolve, was started again every second. Once
+  three have died in quick succession, the delay now doubles up to 30
+  seconds. A logger found gone when a line is logged is replaced a
+  second later, instead of at the next health check up to 30 seconds
+  later.
+
+* An incoming PROXY v1 header with more than one space or a tab between
+  its fields was accepted, as was a v2 AF_UNIX header with a short
+  address block. Both are now refused like other malformed headers.
+
+* An XMPP stream header giving the stream namespace a prefix other than
+  "stream", which RFC 6120 allows, went to the fallback. Any prefix of
+  up to 64 characters is now accepted.
+
+* Sealing and opening an IPC frame takes about half the time, as the
+  cipher contexts are now set up once per channel.
+
+* New tests cover the HTTP/2 host check, HPACK table size updates, the
+  64 extension cap and incoming PROXY headers. The fuzz seeds now
+  include xmpp, minecraft, address, table lookup and listener ACL
+  inputs, with more for the other parsers. The FreeBSD 15 build no
+  longer warns.
+
+* The README, sniproxy(8) and sniproxy.conf(5) were checked against the
+  code and brought up to date.
+
 sniproxy 0.25.0 (2026-11-04)
 ===============================
 

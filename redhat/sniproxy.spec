@@ -1,5 +1,5 @@
 Name: sniproxy
-Version: 0.25.0
+Version: 0.26.0
 Release: 1%{?dist}
 Summary: Proxy routing TLS, DTLS, HTTP, XMPP and Minecraft by hostname
 
@@ -71,6 +71,11 @@ fi
 
 
 %changelog
+* Thu Nov 05 2026 Renaud Allard <renaud@allard.it> 0.26.0-1
+- Fixes from a security review of 0.25.0. The log directory now belongs
+  to root, and a name a client asks a '*' entry for no longer gets the
+  search domains. See NEWS.
+
 * Wed Nov 04 2026 Renaud Allard <renaud@allard.it> 0.25.0-1
 - Fixes from two security reviews of 0.24.2. New resolver directive
   cache_ttl; the c-ares query cache is now off unless it is set. See
