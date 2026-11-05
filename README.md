@@ -83,8 +83,9 @@ fuzzing, and active maintenance.
 - **Per-platform sandboxing**: pledge(2) + unveil(2) on OpenBSD, Capsicum
   on FreeBSD (capability mode for the logger), seccomp BPF on Linux.
 - **DTLS source check**: a new UDP session is held until a second
-  datagram arrives from the same source address and port before any
-  backend traffic is sent, so a single spoofed packet reaches no backend.
+  datagram repeating its ClientHello arrives from the same source
+  address and port before any backend traffic is sent, so a single
+  spoofed packet reaches no backend.
   When the session table is full, the session that has waited longest
   for its second datagram, if any, makes room for the new one, which
   only helps against floods below about 16000 first datagrams a second.
