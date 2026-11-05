@@ -164,8 +164,11 @@ SNIProxy runs as four cooperating processes:
    leads to, the size, owner and mode of a file or the target of a
    symbolic link, as its own log lines and realpath() need stat and
    readlink. It
-   connects to syslog before its filter, and its few log lines are lost
-   after the syslog daemon restarts, until sniproxy does.
+   connects to syslog before its filter. With a file error log it hands
+   its few log lines to the main process, which writes them there after
+   `binder:`; those it sends to syslog, with a syslog error log or
+   before its channel to the main process is set up, are lost after the
+   syslog daemon restarts, until sniproxy does.
    Elsewhere it stays root, but creates each IP socket as the configured
    user and only binds it as root, so the kernel refuses it an address
    another user's socket holds, as it would refuse that user: a
@@ -1120,7 +1123,9 @@ tracing, logged at notice priority, so an error log set to warning or
 stricter drops it. The resolver process writes it to stderr or to
 syslog, and with `error_log { filename ... }`, a file it cannot write,
 hands its messages to the main process, which writes them there after
-`resolver:`, 100 a second at most.
+`resolver:`. The main process writes at most 100 such messages a second,
+those of the binder and the resolver together, and logs how many it
+dropped.
 
 ## How it compares
 
